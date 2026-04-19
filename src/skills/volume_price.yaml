@@ -1,0 +1,74 @@
+# 量价验证技能
+# 来源：系统化交易大纲 第19章、第40章
+# 功能：验证价格变动与成交量的一致性，发现量价背离
+
+name: volume_price
+alias: 量价验证
+description: 通过成交量与价格变动的关系验证趋势强度，发现量价背离
+
+rules:
+  # 规则1：价涨量增 - 买入信号（健康的上涨）
+  - condition:
+      change_positive:
+        reason: "价格上涨确认"
+        weight: 1.0
+        confidence: 0.7
+      volume_above_avg:
+        reason: "成交量放大超过20日均量"
+        weight: 1.5
+        confidence: 0.8
+    signal: BUY
+    confidence: 0.75
+    weight: 1.2
+
+  # 规则2：价跌量增 - 卖出信号（恐慌抛售）
+  - condition:
+      change_negative:
+        reason: "价格下跌确认"
+        weight: 1.0
+        confidence: 0.7
+      volume_above_avg:
+        reason: "成交量放大（可能恐慌）"
+        weight: 1.5
+        confidence: 0.8
+    signal: SELL
+    confidence: 0.7
+    weight: 1.3
+
+  # 规则3：价涨量缩 - 背离信号（潜在见顶）
+  - condition:
+      change_positive:
+        reason: "价格上涨"
+        weight: 1.0
+        confidence: 0.6
+      volume_below_avg:
+        reason: "成交量萎缩，上涨无量"
+        weight: 1.5
+        confidence: 0.8
+    signal: WATCH
+    confidence: 0.6
+    weight: 1.0
+
+  # 规则4：价跌量缩 - 观望或买入（可能见底）
+  - condition:
+      change_negative:
+        reason: "价格下跌"
+        weight: 1.0
+        confidence: 0.6
+      volume_below_avg:
+        reason: "成交量萎缩，下跌无量"
+        weight: 1.0
+        confidence: 0.6
+    signal: HOLD
+    confidence: 0.5
+    weight: 0.8
+
+  # 规则5：成交量极度萎缩 - 可能变盘信号
+  - condition:
+      volume_below_avg:
+        reason: "成交量极度萎缩"
+        weight: 1.0
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.4
+    weight: 0.5

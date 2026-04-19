@@ -1,0 +1,115 @@
+# 止损管理技能
+# 来源：系统化交易大纲 第34章、第48章、第54章
+# 核心理念：止损不是用来赚钱的，是用来保命的
+# 四种止损方法：均线止损、形态破位止损、ATR止损(近似)、前低止损
+# 铁律：止损只上移不下移
+# 第54章：希望=套牢不割，止损线到就走，不让希望绑架决策
+#
+# v0.4.1 调优（ISS-011）：
+# - 均线止损增加跌幅缓冲：跌破MA20需>1%、跌破MA60需>2%才算有效跌破
+#   原因：价格在均线附近小幅震荡时频繁触发止损（假突破/假跌破），
+#   只有真正跌破一定幅度才说明趋势走坏
+# - MA5下穿MA20死叉：confidence从0.8降到0.7，weight从1.5降到1.0
+#   原因：死叉是滞后信号，出现时往往已经跌了一段，不应过度反应
+# - 希望陷阱：增加price_below_ma60的pct=3%缓冲
+#   原因：短暂跌破MA60不一定是深度套牢
+
+name: stop_loss
+alias: 止损管理
+type: action
+description: 监控持仓风险，触发止损条件时给出卖出信号
+
+rules:
+  # ===== 均线止损（第48章第一种）=====
+  # 规则1：收盘价跌破MA20超过1% - 短期趋势止损
+  # 调优：增加pct=1%缓冲，避免价格在均线附近小幅震荡时误触发
+  - condition:
+      price_below_ma20:
+        pct: 1.0
+        reason: "价格跌破MA20超过1%（均线止损位）"
+        weight: 2.0
+        confidence: 0.9
+      change_negative:
+        reason: "且价格持续下跌"
+        weight: 1.0
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.85
+    weight: 2.0
+
+  # ===== 深度止损/前低止损（第48章第四种）=====
+  # 规则2：价格跌破MA60超过2% - 深度止损，中期趋势走坏
+  # 调优：增加pct=2%缓冲，避免短期波动误触发深度止损
+  - condition:
+      price_below_ma60:
+        pct: 2.0
+        reason: "价格跌破MA60超过2%（深度止损/前低止损位）"
+        weight: 2.5
+        confidence: 0.95
+    signal: SELL
+    confidence: 0.9
+    weight: 2.5
+
+  # ===== 形态破位止损（第48章第二种）=====
+  # 规则3：价格跌破MA5但仍在MA20上方 - 形态初步走坏，警戒
+  - condition:
+      price_below_ma5:
+        reason: "价格跌破MA5（短期形态走坏）"
+        weight: 1.5
+        confidence: 0.7
+      price_above_ma20:
+        reason: "但仍在MA20上方，形态尚未完全破位"
+        weight: 1.0
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.6
+    weight: 1.0
+
+  # ===== 均线死叉止损（第48章第一种+第二种结合）=====
+  # 规则4：MA5下穿MA20 - 均线死叉止损信号
+  # 调优：confidence从0.8降到0.7，weight从1.5降到1.0
+  # 原因：死叉是滞后信号，不应过度反应
+  - condition:
+      ma5_below_ma20:
+        reason: "MA5下穿MA20（均线死叉，趋势反转确认）"
+        weight: 1.5
+        confidence: 0.8
+    signal: SELL
+    confidence: 0.7
+    weight: 1.0
+
+  # ===== 第54章：希望陷阱识别 =====
+  # 规则5：价格在低位且均线空头排列 - 套牢区，希望是毒药
+  # 调优：price_below_ma60增加pct=3%缓冲
+  - condition:
+      price_below_ma60:
+        pct: 3.0
+        reason: "价格远低于MA60（深度套牢区）"
+        weight: 1.5
+        confidence: 0.8
+      ma5_below_ma20:
+        reason: "均线空头排列，趋势向下"
+        weight: 1.5
+        confidence: 0.8
+      volume_below_avg:
+        reason: "缩量下跌，无人接盘"
+        weight: 1.0
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.75
+    weight: 2.0
+
+  # ===== 持仓安全 =====
+  # 规则6：价格在均线上方稳定运行 - 持仓安全
+  - condition:
+      price_above_ma20:
+        reason: "价格稳定在MA20上方"
+        weight: 1.0
+        confidence: 0.8
+      ma5_above_ma20:
+        reason: "均线多头排列"
+        weight: 1.0
+        confidence: 0.8
+    signal: HOLD
+    confidence: 0.7
+    weight: 0.5

@@ -1,0 +1,86 @@
+# AI Investment Advisor - Global Settings
+# 暮云思辨投资助手 - 全局配置
+
+app:
+  name: "暮云思辨投资助手"
+  version: "0.3.0"
+  mode: "CLI"  # CLI / API
+
+# 数据源配置
+data_source:
+  mode: "manual"  # manual / akshare
+  # akshare配置（Phase 2启用）
+  akshare:
+    enabled: false
+    cache_ttl: 300  # 秒
+
+# 向量数据库配置
+vector_store:
+  enabled: false  # Phase 2启用
+  persist_dir: "./knowledge/chroma"
+
+# 决策引擎配置
+decision:
+  default_state: "RISK_OFF"
+  confidence_threshold: 0.6
+  signal_weights:
+    ma_trend: 1.0
+    volume_price: 1.0
+    support_resistance: 1.0
+    stop_loss: 1.5  # 止损权重更高
+    multi_timeframe: 1.2
+    # Phase 2 技术指标
+    macd: 1.0
+    rsi: 0.8
+    boll: 0.9
+    kdj: 0.8
+    # Phase 3 上下文与风控
+    position_context: 1.3  # 位置上下文（第41章）
+    market_context: 1.5    # 大盘环境（第42章，环境决定形态有效性）
+    smart_money: 1.2       # 主力行为（第46-47章）
+    take_profit: 1.3       # 止盈管理（第49章）
+
+# 技能引擎配置
+skills:
+  dir: "./src/skills"
+  enabled:
+    # Phase 1 核心技能
+    - ma_trend
+    - volume_price
+    - support_resistance
+    - stop_loss
+    - multi_timeframe
+    # Phase 2 技术指标
+    - macd
+    - rsi
+    - boll
+    - kdj
+    # Phase 3 上下文与风控
+    - position_context
+    - market_context
+    - smart_money
+    - take_profit
+
+  # 技能分类（ISS-001: 信号去重）
+  # base: 独立信号源，产出BUY/SELL/HOLD
+  # regulator: 上下文调节器，修改base信号的权重，不产出独立信号
+  # action: 动作信号（止损/止盈），拥有优先级覆盖能力
+  types:
+    ma_trend: base
+    volume_price: base
+    support_resistance: base
+    multi_timeframe: base
+    macd: base
+    rsi: base
+    boll: base
+    kdj: base
+    position_context: regulator
+    market_context: regulator
+    smart_money: regulator
+    stop_loss: action
+    take_profit: action
+
+# 日志配置
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"

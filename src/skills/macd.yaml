@@ -1,0 +1,68 @@
+name: macd_trend
+alias: MACD趋势
+description: 基于MACD指标的买卖信号判断
+
+rules:
+  # MACD金叉（DIFF上穿DEA）
+  - signal: BUY
+    confidence: 0.72
+    weight: 1.0
+    condition:
+      macd_dif_above_dea:
+        reason: MACD金叉（DIFF上穿DEA）
+      macd_dif_above_zero:
+        reason: DIF位于零轴上方
+
+  # MACD零轴上方金叉（强买入信号）
+  - signal: BUY
+    confidence: 0.82
+    weight: 1.3
+    condition:
+      macd_dif_above_dea:
+        reason: MACD金叉
+      macd_dea_above_zero:
+        reason: DEA位于零轴上方
+      macd_hist_positive:
+        reason: MACD红柱放大
+
+  # MACD死叉（DIFF下穿DEA）
+  - signal: SELL
+    confidence: 0.72
+    weight: 1.0
+    condition:
+      macd_dif_below_dea:
+        reason: MACD死叉（DIFF下穿DEA）
+      macd_dif_below_zero:
+        reason: DIF位于零轴下方
+
+  # MACD零轴下方死叉（强卖出信号）
+  - signal: SELL
+    confidence: 0.82
+    weight: 1.3
+    condition:
+      macd_dif_below_dea:
+        reason: MACD死叉
+      macd_dea_below_zero:
+        reason: DEA位于零轴下方
+      macd_hist_negative:
+        reason: MACD绿柱放大
+
+  # MACD红柱收缩（上涨动能减弱，谨慎）
+  - signal: HOLD
+    confidence: 0.60
+    weight: 0.7
+    condition:
+      macd_dif_above_zero:
+        reason: DIF仍在零轴上方
+      macd_hist_positive:
+        reason: MACD红柱但动能减弱
+
+  # MACD绿柱收缩（下跌动能减弱，可能反弹）
+  - signal: HOLD
+    confidence: 0.60
+    weight: 0.7
+    condition:
+      macd_dif_below_zero:
+        reason: DIF仍在零轴下方
+      macd_hist_negative:
+        reason: MACD绿柱但动能减弱

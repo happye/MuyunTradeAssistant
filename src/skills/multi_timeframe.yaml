@@ -1,0 +1,90 @@
+# 多时间框架技能
+# 来源：系统化交易大纲 第30章
+# 功能：综合月线、周线、日线判断市场方向
+
+name: multi_timeframe
+alias: 多周期共振
+description: 综合月线定方向、周线定位置、日线找买卖点
+
+rules:
+  # 规则1：三周期共振向上 - 强烈买入
+  - condition:
+      price_above_ma5:
+        reason: "日线价格站稳MA5"
+        weight: 1.0
+        confidence: 0.8
+      price_above_ma20:
+        reason: "日线价格站稳MA20"
+        weight: 1.0
+        confidence: 0.8
+      price_above_ma60:
+        reason: "日线价格站稳MA60"
+        weight: 1.5
+        confidence: 0.9
+    signal: BUY
+    confidence: 0.85
+    weight: 1.5
+
+  # 规则2：月线周线日线全部向上 - 买入
+  - condition:
+      price_above_ma5:
+        reason: "短期趋势向上"
+        weight: 1.0
+        confidence: 0.8
+      price_above_ma20:
+        reason: "中期趋势向上"
+        weight: 1.0
+        confidence: 0.8
+      price_above_ma60:
+        reason: "长期趋势向上"
+        weight: 1.5
+        confidence: 0.9
+    signal: BUY
+    confidence: 0.8
+    weight: 1.3
+
+  # 规则3：日线空头但月线支撑 - 观望
+  - condition:
+      price_below_ma5:
+        reason: "日线短期走弱"
+        weight: 1.0
+        confidence: 0.7
+      price_below_ma20:
+        reason: "日线中期走弱"
+        weight: 1.0
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.6
+    weight: 1.0
+
+  # 规则4：三周期全部向下 - 卖出
+  - condition:
+      price_below_ma5:
+        reason: "短期趋势向下"
+        weight: 1.0
+        confidence: 0.8
+      price_below_ma20:
+        reason: "中期趋势向下"
+        weight: 1.0
+        confidence: 0.8
+      price_below_ma60:
+        reason: "长期趋势向下"
+        weight: 1.5
+        confidence: 0.9
+    signal: SELL
+    confidence: 0.85
+    weight: 1.5
+
+  # 规则5：各周期方向不一致 - 谨慎观望
+  - condition:
+      price_above_ma5:
+        reason: "短期偏多"
+        weight: 1.0
+        confidence: 0.6
+      price_below_ma20:
+        reason: "中期偏空"
+        weight: 1.0
+        confidence: 0.6
+    signal: WATCH
+    confidence: 0.5
+    weight: 1.2

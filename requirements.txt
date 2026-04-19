@@ -1,0 +1,23 @@
+# 依赖
+# Python 3.11+
+
+# 核心框架
+pyyaml>=6.0
+
+# 数据处理
+numpy>=1.24.0
+pandas>=2.0.0
+
+# A股数据 (Phase 2启用)
+# akshare>=1.10.0
+
+# 向量数据库 (Phase 2启用)
+# chromadb>=0.4.0
+
+# Web框架 (Phase 3 API模式)
+# fastapi>=0.100.0
+# uvicorn>=0.23.0
+
+# 工具
+rich>=13.0.0  # CLI美化输出
+pydantic>=2.0.0

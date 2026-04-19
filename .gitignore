@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg-info/
+*.egg
+dist/
+build/
+
+# 虚拟环境
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# 工作记忆（AI内部数据）
+.workbuddy/
+
+# 测试/调试输出
+cli_out*.txt
+test_out*.txt
+test_output*.txt
+test_*.txt
+
+# 系统文件
+Thumbs.db
+.DS_Store
+
+# 敏感配置（如含API密钥）
+# configs/secrets.yaml

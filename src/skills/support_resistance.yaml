@@ -1,0 +1,72 @@
+# 支撑阻力技能
+# 来源：系统化交易大纲 第5章
+# 功能：识别关键支撑位和压力位，判断价格位置和突破情况
+
+name: support_resistance
+alias: 支撑阻力
+description: 识别60日/120日高低点，判断当前价格相对位置
+
+rules:
+  # 规则1：价格接近60日高点且放量 - 突破信号，买入
+  - condition:
+      price_near_high:
+        reason: "价格接近60日高点"
+        weight: 1.0
+        confidence: 0.7
+      volume_above_avg:
+        reason: "成交量放大配合"
+        weight: 1.5
+        confidence: 0.8
+    signal: BUY
+    confidence: 0.75
+    weight: 1.2
+
+  # 规则2：价格接近60日高点但无量 - 谨慎
+  - condition:
+      price_near_high:
+        reason: "价格接近60日高点"
+        weight: 1.0
+        confidence: 0.7
+      volume_below_avg:
+        reason: "成交量不足，突破可能失败"
+        weight: 1.5
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.5
+    weight: 1.0
+
+  # 规则3：价格接近60日低点 - 可能有支撑
+  - condition:
+      price_near_low:
+        reason: "价格接近60日低点"
+        weight: 1.0
+        confidence: 0.7
+      volume_below_avg:
+        reason: "成交量萎缩（抛压减轻）"
+        weight: 1.0
+        confidence: 0.6
+    signal: HOLD
+    confidence: 0.5
+    weight: 0.8
+
+  # 规则4：价格处于区间高位（>80%）- 谨慎追高
+  - condition:
+      price_position:
+        above: 80
+        reason: "价格处于60日区间的80%以上位置"
+        weight: 1.0
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.5
+    weight: 0.8
+
+  # 规则5：价格处于区间低位（<20%）- 可能超卖
+  - condition:
+      price_position:
+        below: 20
+        reason: "价格处于60日区间的20%以下位置（超卖）"
+        weight: 1.0
+        confidence: 0.7
+    signal: HOLD
+    confidence: 0.5
+    weight: 0.8

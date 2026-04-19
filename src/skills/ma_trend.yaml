@@ -1,0 +1,84 @@
+# 均线趋势技能
+# 来源：系统化交易大纲 第4章、第30章
+# 功能：基于均线关系判断短期和中期趋势方向
+
+name: ma_trend
+alias: 均线趋势
+description: 通过MA5/MA20/MA60的多空排列判断趋势方向
+
+rules:
+  # 规则1：均线多头排列 - 强烈买入信号
+  - condition:
+      price_above_ma5:
+        reason: "价格位于MA5上方"
+        weight: 1.0
+        confidence: 0.7
+      price_above_ma20:
+        reason: "价格位于MA20上方"
+        weight: 1.0
+        confidence: 0.7
+      price_above_ma60:
+        reason: "价格位于MA60上方"
+        weight: 1.0
+        confidence: 0.8
+      ma5_above_ma20:
+        reason: "MA5在MA20上方（短期多头）"
+        weight: 1.2
+        confidence: 0.8
+      ma20_above_ma60:
+        reason: "MA20在MA60上方（中期多头）"
+        weight: 1.5
+        confidence: 0.9
+    signal: BUY
+    confidence: 0.8
+    weight: 1.5
+
+  # 规则2：均线空头排列 - 卖出信号
+  - condition:
+      price_below_ma5:
+        reason: "价格跌破MA5"
+        weight: 1.0
+        confidence: 0.7
+      price_below_ma20:
+        reason: "价格跌破MA20"
+        weight: 1.0
+        confidence: 0.7
+      price_below_ma60:
+        reason: "价格跌破MA60"
+        weight: 1.0
+        confidence: 0.8
+      ma5_below_ma20:
+        reason: "MA5在MA20下方（短期空头）"
+        weight: 1.2
+        confidence: 0.8
+    signal: SELL
+    confidence: 0.7
+    weight: 1.5
+
+  # 规则3：价格上涨但均线混乱 - 观望
+  - condition:
+      price_above_ma5:
+        reason: "价格位于MA5上方"
+        weight: 1.0
+        confidence: 0.6
+      price_above_ma20:
+        reason: "价格位于MA20上方"
+        weight: 1.0
+        confidence: 0.6
+    signal: HOLD
+    confidence: 0.5
+    weight: 1.0
+
+  # 规则4：价格低于均线但在反弹 - 观望
+  - condition:
+      price_below_ma5:
+        reason: "价格低于MA5"
+        weight: 1.0
+        confidence: 0.6
+      price_below_ma20:
+        reason: "价格低于MA20"
+        weight: 1.0
+        confidence: 0.6
+    signal: WATCH
+    confidence: 0.4
+    weight: 1.0

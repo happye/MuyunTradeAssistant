@@ -1,0 +1,64 @@
+name: boll_bands
+alias: 布林带
+description: 基于布林带指标的位置和波动率分析
+
+rules:
+  # 价格突破上轨（强势上涨，但警惕回调）
+  - signal: HOLD
+    confidence: 0.65
+    weight: 0.8
+    condition:
+      price_above_boll_upper:
+        reason: 价格突破布林带上轨
+
+  # 价格跌破下轨（超跌，可能反弹）
+  - signal: BUY
+    confidence: 0.72
+    weight: 1.0
+    condition:
+      price_below_boll_lower:
+        reason: 价格跌破布林带下轨
+
+  # 价格接近上轨（强势但不追高）
+  - signal: HOLD
+    confidence: 0.60
+    weight: 0.7
+    condition:
+      price_near_boll_upper:
+        reason: 价格接近布林带上轨
+
+  # 价格接近下轨（低吸机会）
+  - signal: BUY
+    confidence: 0.70
+    weight: 0.9
+    condition:
+      price_near_boll_lower:
+        reason: 价格接近布林带下轨
+
+  # 布林带收口（盘整后选择方向）
+  - signal: HOLD
+    confidence: 0.55
+    weight: 0.6
+    condition:
+      boll_width_narrow:
+        reason: 布林带收口，波动率处于低位
+
+  # 价格在中轨上方且处于上升趋势
+  - signal: BUY
+    confidence: 0.70
+    weight: 0.9
+    condition:
+      price_above_ma5:
+        reason: 价格在均线上方
+      ma5_above_ma20:
+        reason: 均线多头排列
+
+  # 价格在中轨下方且处于下降趋势
+  - signal: SELL
+    confidence: 0.70
+    weight: 0.9
+    condition:
+      price_below_ma5:
+        reason: 价格在均线下方
+      ma5_below_ma20:
+        reason: 均线空头排列

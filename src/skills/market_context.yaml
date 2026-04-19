@@ -1,0 +1,122 @@
+# 大盘环境技能
+# 来源：系统化交易大纲 第42章、第44章
+# 核心理念：牛市做突破，熊市做反弹，震荡做高抛低吸
+# 大盘环境决定技术形态的有效性：牛市突破可信，熊市突破=诱多
+# 情绪亢奋时技术失效，需特别警惕
+# v2: 使用真实大盘数据(沪深300)替代个股均线判断
+
+name: market_context
+alias: 大盘环境
+type: regulator
+description: 根据沪深300趋势判断市场环境，调整技术信号的可信度
+
+rules:
+  # 规则1：大盘牛市 + 个股均线多头 + 放量 - 牛市突破可信
+  - condition:
+      index_bullish:
+        reason: "沪深300趋势向上（牛市环境），突破信号可信"
+        weight: 2.0
+        confidence: 0.9
+      price_above_ma20:
+        reason: "价格在MA20上方（短期趋势向上）"
+        weight: 1.5
+        confidence: 0.8
+      volume_above_avg:
+        reason: "成交量放大，资金活跃"
+        weight: 1.0
+        confidence: 0.7
+    signal: BUY
+    confidence: 0.85
+    weight: 1.5
+
+  # 规则2：大盘熊市 + 个股均线空头 + 缩量 - 熊市环境，突破不可信
+  - condition:
+      index_bearish:
+        reason: "沪深300趋势向下（熊市环境），技术信号不可靠"
+        weight: 2.0
+        confidence: 0.9
+      price_below_ma20:
+        reason: "价格在MA20下方（短期趋势向下）"
+        weight: 1.5
+        confidence: 0.8
+      volume_below_avg:
+        reason: "缩量下跌，资金离场"
+        weight: 1.0
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.85
+    weight: 2.0
+
+  # 规则3：大盘熊市中的个股放量反弹 - 第42章：熊市突破=诱多陷阱
+  - condition:
+      index_bearish:
+        reason: "沪深300趋势向下，熊市中突破不可信"
+        weight: 2.5
+        confidence: 0.9
+      change_positive:
+        reason: "个股短期反弹上涨"
+        weight: 0.5
+        confidence: 0.5
+      volume_above_avg:
+        reason: "熊市放量反弹，警惕诱多"
+        weight: 1.5
+        confidence: 0.75
+    signal: WATCH
+    confidence: 0.75
+    weight: 2.0
+
+  # 规则4：大盘牛市中的个股回踩 - 牛市回踩是买点
+  - condition:
+      index_bullish:
+        reason: "沪深300趋势向上（牛市环境），回踩是机会"
+        weight: 2.0
+        confidence: 0.85
+      price_below_ma20:
+        reason: "价格回踩MA20附近"
+        weight: 1.0
+        confidence: 0.6
+      price_above_ma60:
+        reason: "但仍在MA60上方，中期趋势未破"
+        weight: 1.0
+        confidence: 0.7
+    signal: WATCH
+    confidence: 0.65
+    weight: 1.0
+
+  # 规则5：高位情绪亢奋特征 - RSI超买+高位放量滞涨（第44章）
+  - condition:
+      rsi_6_above_70:
+        reason: "RSI6超买(>70)，情绪亢奋"
+        weight: 1.5
+        confidence: 0.7
+      price_position:
+        above: 80
+        reason: "价格处于高位区域"
+        weight: 1.5
+        confidence: 0.75
+      volume_above_avg:
+        reason: "高位放量，情绪亢奋需警惕"
+        weight: 1.0
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.7
+    weight: 1.5
+
+  # 规则6：恐慌底部特征 - RSI超卖+低位缩量（第44章）
+  - condition:
+      rsi_6_below_30:
+        reason: "RSI6超卖(<30)，恐慌情绪"
+        weight: 1.5
+        confidence: 0.7
+      price_position:
+        below: 20
+        reason: "价格处于低位区域"
+        weight: 1.5
+        confidence: 0.75
+      volume_below_avg:
+        reason: "低位缩量，恐慌抛售枯竭"
+        weight: 1.0
+        confidence: 0.65
+    signal: WATCH
+    confidence: 0.6
+    weight: 1.0

@@ -1,0 +1,847 @@
+"""AKShare数据获取模块 - Phase 2
+
+支持多数据源：
+1. AKShare (东方财富/新浪) - 实时行情
+2. Baostock - 历史K线备用
+"""
+
+import pandas as pd
+import akshare as ak
+import baostock as bs
+from datetime import datetime, timedelta
+from typing import Optional
+import logging
+import time
+import random
+
+from src.data.models import StockData
+
+logger = logging.getLogger(__name__)
+
+# 模块初始化时登录baostock
+_bs_login_status = None
+
+
+def _ensure_baostock_login():
+    """确保baostock已登录（模块级别全局状态）"""
+    global _bs_login_status
+    if _bs_login_status is None:
+        try:
+            lg = bs.login()
+            _bs_login_status = lg.error_code == '0'
+            if _bs_login_status:
+                logger.info("Baostock登录成功")
+            else:
+                logger.warning(f"Baostock登录失败: {lg.error_msg}")
+        except Exception as e:
+            logger.warning(f"Baostock登录异常: {e}")
+            _bs_login_status = False
+    return _bs_login_status
+
+
+class AKShareClient:
+    """AKShare金融数据客户端"""
+
+    @staticmethod
+    def _get_random_ua():
+        """生成随机User-Agent降低被识别风险"""
+        user_agents = [
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0",
+        ]
+        return random.choice(user_agents)
+
+    @staticmethod
+    def _retry_with_backoff(func, *args, max_retries=3, base_delay=2, **kwargs):
+        """带指数退避的重试装饰器
+
+        Args:
+            func: 要重试的函数
+            *args: 函数参数
+            max_retries: 最大重试次数
+            base_delay: 基础延迟秒数
+            **kwargs: 函数关键字参数
+
+        Returns:
+            函数返回值或None
+        """
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    # 指数退避 + 随机抖动
+                    delay = base_delay * (2 ** attempt) + random.uniform(0.5, 1.5)
+                    logger.warning(f"{func.__name__} 失败 (尝试 {attempt + 1}/{max_retries}): {e}, {delay:.1f}秒后重试...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"{func.__name__} 最终失败: {e}")
+                    return None
+        return None
+
+    @classmethod
+    def _normalize_stock_code(cls, code: str) -> tuple[str, str]:
+        """标准化股票代码，返回(市场前缀, 纯代码)
+
+        例如:
+        - 600519 -> (sh, 600519)
+        - 000001 -> (sz, 000001)
+        - 300750 -> (sz, 300750)
+        """
+        code = code.strip().zfill(6)
+        if code.startswith(('6', '9')):
+            return "sh", code
+        elif code.startswith(('0', '3')):
+            return "sz", code
+        else:
+            return "sh", code
+
+    @classmethod
+    def get_realtime_quote(cls, stock_code: str, retry: int = 3) -> Optional[dict]:
+        """获取实时行情（单只股票）- 使用多级备用策略
+
+        优先级：Baostock（已确认可用）> 东方财富/新浪（可能被封）
+
+        Args:
+            stock_code: 股票代码
+            retry: 重试次数
+
+        Returns:
+            dict: 实时行情数据，包含价格、涨跌、成交量等
+        """
+        prefix, code = cls._normalize_stock_code(stock_code)
+
+        # --- 策略1：Baostock（优先，因为本机已验证可用）---
+        try:
+            bs_quote = cls._fetch_baostock_realtime(stock_code)
+            if bs_quote:
+                logger.info(f"Baostock实时行情成功 {stock_code}")
+                return bs_quote
+        except Exception as e:
+            logger.warning(f"Baostock实时行情失败 {stock_code}: {e}")
+
+        # --- 策略2：东方财富/新浪（可能被封）---
+        fetchers = []
+
+        # 东方财富全市场
+        def _fetch_em_all():
+            return ak.stock_zh_a_spot_em()
+        fetchers.append(("东方财富全市场", _fetch_em_all))
+
+        # 上海A股
+        def _fetch_sh():
+            return ak.stock_sh_a_spot_em()
+        fetchers.append(("上海A股", _fetch_sh))
+
+        # 深圳A股
+        def _fetch_sz():
+            return ak.stock_sz_a_spot_em()
+        fetchers.append(("深圳A股", _fetch_sz))
+
+        # 新浪财经
+        def _fetch_sina():
+            return ak.stock_zh_a_spot()
+        fetchers.append(("新浪财经", _fetch_sina))
+
+        last_error = None
+        for name, fetcher in fetchers:
+            try:
+                df = cls._retry_with_backoff(fetcher, max_retries=retry, base_delay=3)
+                if df is None or df.empty:
+                    continue
+
+                # 在结果中查找目标股票
+                # 注意：不同接口的代码列名可能不同
+                code_col = None
+                for col in ['代码', 'code', 'symbol', '代码']:
+                    if col in df.columns:
+                        code_col = col
+                        break
+
+                if code_col is None:
+                    continue
+
+                row = df[df[code_col] == code]
+                if row.empty:
+                    continue
+
+                data = row.iloc[0].to_dict()
+
+                # 尝试找到正确的列名（不同接口返回的列名不同）
+                name_col = None
+                for col in ['名称', 'name', '股票名称']:
+                    if col in data:
+                        name_col = col
+                        break
+
+                price_col = None
+                for col in ['最新价', 'price', '当前价']:
+                    if col in data:
+                        price_col = col
+                        break
+
+                change_col = None
+                for col in ['涨跌幅', '涨跌额', 'change']:
+                    if col in data:
+                        change_col = col
+                        break
+
+                volume_col = None
+                for col in ['成交量', 'volume']:
+                    if col in data:
+                        volume_col = col
+                        break
+
+                return {
+                    "stock_code": code,
+                    "stock_name": data.get(name_col, code) if name_col else code,
+                    "price": float(data.get(price_col, 0)) if price_col else 0,
+                    "change_pct": float(data.get(change_col, 0)) if change_col else 0,
+                    "volume": int(data.get(volume_col, 0)) if volume_col else 0,
+                    "open": float(data.get('今开', data.get('开盘', 0))),
+                    "high": float(data.get('最高', data.get('high', 0))),
+                    "low": float(data.get('最低', data.get('low', 0))),
+                    "close_yesterday": float(data.get('昨收', data.get('close', 0))),
+                }
+            except Exception as e:
+                last_error = e
+                logger.warning(f"数据源 [{name}] 获取失败: {e}")
+                continue
+
+        logger.error(f"所有实时行情接口均失败 {stock_code}, 最后错误: {last_error}")
+        return None
+
+    @classmethod
+    def get_historical_kline(
+        cls,
+        stock_code: str,
+        period: str = "daily",
+        adjust: str = "qfq",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        retry: int = 3
+    ):
+        """获取历史K线数据（多数据源备用）
+
+        优先使用AKShare，失败后自动切换到Baostock
+
+        Args:
+            stock_code: 股票代码（如 600519）
+            period: K线周期 daily/weekly/monthly
+            adjust: 复权类型 qfq(前复权)/hfq(后复权)/None
+            start_date: 开始日期 YYYYMMDD
+            end_date: 结束日期 YYYYMMDD
+            retry: 最大重试次数
+
+        Returns:
+            DataFrame: K线数据或None
+        """
+        prefix, code = cls._normalize_stock_code(stock_code)
+
+        # 默认获取最近120个交易日的数据
+        if end_date is None:
+            end_date = datetime.now().strftime("%Y%m%d")
+        if start_date is None:
+            start_date = (datetime.now() - timedelta(days=180)).strftime("%Y%m%d")
+
+        period_map = {
+            "daily": "daily",
+            "weekly": "weekly",
+            "monthly": "monthly"
+        }
+        period_value = period_map.get(period, "daily")
+
+        # 尝试Baostock（已验证可用，优先）
+        # 转换日期格式：AKShare用YYYYMMDD，Baostock用YYYY-MM-DD
+        bs_start = cls._format_date_for_baostock(start_date)
+        bs_end = cls._format_date_for_baostock(end_date)
+        df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end)
+
+        if df is not None and not df.empty:
+            logger.info(f"Baostock历史K线成功 {stock_code}，获取 {len(df)} 行")
+            return df
+
+        # 如果Baostock失败，尝试AKShare（东方财富，可能是IP被封所以放最后）
+        def _fetch_hist():
+            return ak.stock_zh_a_hist(
+                symbol=code,
+                period=period_value,
+                start_date=start_date,
+                end_date=end_date,
+                adjust=adjust
+            )
+
+        df = cls._retry_with_backoff(_fetch_hist, max_retries=retry, base_delay=3)
+        if df is None:
+            logger.warning(f"AKShare获取失败，尝试Baostock备用 {stock_code}")
+            # 转换日期格式：AKShare用YYYYMMDD，Baostock用YYYY-MM-DD
+            bs_start = cls._format_date_for_baostock(start_date)
+            bs_end = cls._format_date_for_baostock(end_date)
+            df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end)
+
+        return df
+
+    @classmethod
+    def _fetch_baostock_realtime(cls, stock_code: str) -> Optional[dict]:
+        """使用Baostock获取最新行情（当日最近交易日的收盘/最高/最低/成交量）
+
+        注意：Baostock不是真正的实时行情，但能获取最近交易日的K线数据，
+        包含开盘、收盘、最高、最低、成交量，比完全无数据好。
+
+        Args:
+            stock_code: 股票代码
+
+        Returns:
+            dict: 简化版实时行情数据
+        """
+        import baostock as bs_local
+
+        prefix, code = cls._normalize_stock_code(stock_code)
+        bs_code = f"{prefix}.{code}"
+
+        try:
+            lg = bs_local.login()
+            if lg.error_code != '0':
+                return None
+
+            # 获取最近5天的日K线，取最后一天作为"实时"数据
+            from datetime import datetime, timedelta
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
+
+            rs = bs_local.query_history_k_data_plus(
+                bs_code,
+                "date,code,open,high,low,close,volume,amount",
+                start_date=start_date,
+                end_date=end_date,
+                frequency="d"
+            )
+
+            if rs.error_code != '0':
+                bs_local.logout()
+                return None
+
+            data_list = []
+            while rs.next():
+                data_list.append(rs.get_row_data())
+
+            bs_local.logout()
+
+            if not data_list:
+                return None
+
+            # 取最近一条（最后一行）
+            latest = data_list[-1]
+            fields = rs.fields  # ['date', 'code', 'open', 'high', 'low', 'close', 'volume', 'amount']
+
+            return {
+                "stock_code": code,
+                "stock_name": code,
+                "price": float(latest[fields.index('close')]),
+                "open": float(latest[fields.index('open')]),
+                "high": float(latest[fields.index('high')]),
+                "low": float(latest[fields.index('low')]),
+                "close_yesterday": float(latest[fields.index('close')]),  # Baostock无昨收，用收盘代替
+                "volume": int(float(latest[fields.index('volume')])),
+                "change_pct": 0.0,  # Baostock日K无涨跌幅
+                "source": "baostock"
+            }
+
+        except Exception as e:
+            logger.warning(f"_fetch_baostock_realtime异常 {stock_code}: {e}")
+            return None
+
+    @classmethod
+    def _fetch_baostock_kline(
+        cls,
+        stock_code: str,
+        period: str = "daily",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None
+    ) -> Optional[pd.DataFrame]:
+        """使用Baostock获取历史K线（备用数据源）
+
+        Args:
+            stock_code: 股票代码
+            period: K线周期
+            start_date: 开始日期
+            end_date: 结束日期
+
+        Returns:
+            DataFrame: 标准化格式的K线数据
+        """
+        # 局部导入避免模块状态问题
+        import baostock as bs_local
+
+        try:
+            # 确保登录
+            lg = bs_local.login()
+            if lg.error_code != '0':
+                logger.error(f"Baostock登录失败: {lg.error_msg}")
+                return None
+
+            prefix, code = cls._normalize_stock_code(stock_code)
+            bs_code = f"{prefix}.{code}"
+
+            # Baostock周期映射
+            freq_map = {
+                "daily": "d",
+                "weekly": "w",
+                "monthly": "m"
+            }
+            freq = freq_map.get(period, "d")
+
+            fields = "date,code,open,high,low,close,volume,amount"
+            rs = bs_local.query_history_k_data_plus(
+                bs_code,
+                fields,
+                start_date=start_date,
+                end_date=end_date,
+                frequency=freq
+            )
+
+            if rs.error_code != '0':
+                logger.error(f"Baostock查询失败: {rs.error_msg}")
+                bs_local.logout()
+                return None
+
+            data_list = []
+            while (rs.error_code == '0') & rs.next():
+                data_list.append(rs.get_row_data())
+
+            bs_local.logout()
+
+            if not data_list:
+                return None
+
+            df = pd.DataFrame(data_list, columns=rs.fields)
+
+            # 标准化列名
+            df = df.rename(columns={
+                'date': '日期',
+                'code': '代码',
+                'open': '开盘',
+                'high': '最高',
+                'low': '最低',
+                'close': '收盘',
+                'volume': '成交量',
+                'amount': '成交额'
+            })
+
+            # 转换数据类型
+            for col in ['开盘', '最高', '最低', '收盘', '成交量', '成交额']:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce')
+
+            return df
+
+        except Exception as e:
+            logger.error(f"Baostock获取K线异常 {stock_code}: {e}")
+            return None
+
+    @staticmethod
+    def _baostock_adjust_code(bs_code: str) -> str:
+        """Baostock复权代码转换"""
+        # Baostock: 3表示后复权，2表示前复权，1表示不复权
+        return "3"  # 默认后复权
+
+    @staticmethod
+    def _format_date_for_baostock(date_str: Optional[str]) -> Optional[str]:
+        """将YYYYMMDD格式转换为YYYY-MM-DD格式供Baostock使用
+
+        Args:
+            date_str: YYYYMMDD格式日期字符串
+
+        Returns:
+            YYYY-MM-DD格式日期字符串
+        """
+        if date_str is None:
+            return None
+        if len(date_str) == 8 and date_str.isdigit():
+            return f"{date_str[:4]}-{date_str[4:6]}-{date_str[6:8]}"
+        return date_str  # 已经是正确格式或非日期字符串
+
+    @classmethod
+    def calculate_indicators(cls, stock_code: str, require_historical: bool = False) -> Optional[StockData]:
+        """计算完整的技术指标数据（降级模式支持）
+
+        Args:
+            stock_code: 股票代码
+            require_historical: 是否强制要求历史K线（True时失败返回None，False时仅降级）
+
+        Returns:
+            StockData: 包含所有技术指标的股票数据，可能部分指标为None
+        """
+        # 首先尝试获取实时行情
+        quote = cls.get_realtime_quote(stock_code)
+
+        # 尝试获取历史K线计算技术指标
+        df = None
+        try:
+            df = cls.get_historical_kline(stock_code, period="daily", adjust="qfq")
+        except Exception as e:
+            logger.warning(f"获取历史K线异常 {stock_code}: {e}")
+
+        # 如果历史K线获取失败
+        if df is None or df.empty:
+            if not quote:
+                # 实时行情也失败了，完全无法获取数据
+                logger.error(f"实时行情和历史K线均获取失败 {stock_code}")
+                return None
+            else:
+                # 有实时行情但没有历史K线，降级返回实时数据
+                logger.warning(f"历史K线获取失败 {stock_code}，降级返回实时数据（无技术指标）")
+                return StockData(
+                    stock_code=quote["stock_code"],
+                    stock_name=quote["stock_name"],
+                    price=quote["price"],
+                    open=quote.get("open"),
+                    high=quote.get("high"),
+                    low=quote.get("low"),
+                    change_pct=quote.get("change_pct"),
+                    volume=quote.get("volume"),
+                    ma5=None, ma10=None, ma20=None, ma60=None,
+                    avg_volume_20=None, high_60d=None, low_60d=None,
+                    macd_dif=None, macd_dea=None, macd_hist=None,
+                    rsi_6=None, rsi_12=None, rsi_24=None,
+                    boll_upper=None, boll_mid=None, boll_lower=None,
+                    kdj_k=None, kdj_d=None, kdj_j=None,
+                )
+
+        # 有历史K线数据，继续计算技术指标
+        try:
+            # 确保数据按日期排序
+            df = df.sort_values('日期').reset_index(drop=True)
+
+            # 计算均线（AKShare的K线数据不包含均线）
+            close = df['收盘'].astype(float)
+            df['MA5'] = close.rolling(window=5).mean()
+            df['MA10'] = close.rolling(window=10).mean()
+            df['MA20'] = close.rolling(window=20).mean()
+            df['MA60'] = close.rolling(window=60).mean()
+
+            # 取最近60天的数据
+            recent = df.tail(60).copy()
+            latest = df.iloc[-1]
+
+            # 使用实时行情数据填充价格信息（更准确），否则使用历史K线数据
+            if quote:
+                stock_code_val = quote["stock_code"]
+                stock_name_val = quote["stock_name"]
+                price_val = quote["price"]
+                open_val = quote.get("open")
+                high_val = quote.get("high")
+                low_val = quote.get("low")
+                change_pct_val = quote.get("change_pct")
+                volume_val = quote.get("volume")
+            else:
+                # 使用历史K线最后一天的数据
+                stock_code_val = stock_code
+                stock_name_val = stock_code  # 没有名称
+                price_val = float(latest['收盘']) if '收盘' in latest else 0
+                open_val = float(latest['开盘']) if '开盘' in latest else None
+                high_val = float(latest['最高']) if '最高' in latest else None
+                low_val = float(latest['最低']) if '最低' in latest else None
+                change_pct_val = float(latest.get('涨跌幅', 0)) if latest.get('涨跌幅') else 0
+                volume_val = int(float(latest['成交量'])) if '成交量' in latest else 0
+
+            stock_data = StockData(
+                stock_code=stock_code_val,
+                stock_name=stock_name_val,
+                price=price_val,
+                open=open_val,
+                high=high_val,
+                low=low_val,
+                change_pct=change_pct_val,
+                volume=volume_val,
+                # 均线计算
+                ma5=round(float(latest['MA5']), 2) if pd.notna(latest['MA5']) else None,
+                ma10=round(float(latest['MA10']), 2) if pd.notna(latest['MA10']) else None,
+                ma20=round(float(latest['MA20']), 2) if pd.notna(latest['MA20']) else None,
+                ma60=round(float(latest['MA60']), 2) if pd.notna(latest['MA60']) else None,
+                # 成交量
+                avg_volume_20=int(recent['成交量'].tail(20).mean()) if len(recent) >= 20 else None,
+                # 位置信息
+                high_60d=float(recent['最高'].max()) if len(recent) >= 20 else None,
+                low_60d=float(recent['最低'].min()) if len(recent) >= 20 else None,
+            )
+
+            # MACD计算 (如果数据足够)
+            if len(df) >= 26:
+                stock_data.macd_dif, stock_data.macd_dea, stock_data.macd_hist = cls._calculate_macd(df)
+
+            # RSI计算
+            if len(df) >= 24:
+                stock_data.rsi_6, stock_data.rsi_12, stock_data.rsi_24 = cls._calculate_rsi(df)
+
+            # 布林带计算
+            if len(df) >= 20:
+                stock_data.boll_upper, stock_data.boll_mid, stock_data.boll_lower = cls._calculate_boll(df)
+
+            # KDJ计算
+            if len(df) >= 9:
+                stock_data.kdj_k, stock_data.kdj_d, stock_data.kdj_j = cls._calculate_kdj(df)
+
+            # 大盘环境数据（沪深300趋势）
+            try:
+                index_info = cls._get_index_trend()
+                if index_info:
+                    stock_data.index_trend = index_info["trend"]
+                    stock_data.index_ma20 = index_info["ma20"]
+                    stock_data.index_ma60 = index_info["ma60"]
+                    stock_data.index_ma250 = index_info.get("ma250")
+                    stock_data.index_close = index_info["close"]
+                    stock_data.index_change_pct = index_info.get("change_pct")
+                    stock_data.index_high_250d = index_info.get("high_250d")
+                    ma250_str = f", MA250={index_info['ma250']:.0f}" if index_info.get('ma250') else ""
+                    logger.info(f"大盘趋势: {index_info['trend']} (MA20={index_info['ma20']:.0f}, MA60={index_info['ma60']:.0f}{ma250_str})")
+            except Exception as e:
+                logger.warning(f"大盘数据获取失败（不影响个股分析）: {e}")
+
+            return stock_data
+
+        except Exception as e:
+            logger.error(f"计算技术指标失败 {stock_code}: {e}")
+            import traceback
+            traceback.print_exc()
+            # 降级：返回只有实时数据的StockData
+            if quote:
+                return StockData(
+                    stock_code=quote["stock_code"],
+                    stock_name=quote["stock_name"],
+                    price=quote["price"],
+                    open=quote.get("open"),
+                    high=quote.get("high"),
+                    low=quote.get("low"),
+                    change_pct=quote.get("change_pct"),
+                    volume=quote.get("volume"),
+                    ma5=None, ma10=None, ma20=None, ma60=None,
+                    avg_volume_20=None, high_60d=None, low_60d=None,
+                    macd_dif=None, macd_dea=None, macd_hist=None,
+                    rsi_6=None, rsi_12=None, rsi_24=None,
+                    boll_upper=None, boll_mid=None, boll_lower=None,
+                    kdj_k=None, kdj_d=None, kdj_j=None,
+                )
+            else:
+                # 完全没有数据
+                return None
+
+    @staticmethod
+    def _calculate_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):
+        """计算MACD指标
+
+        Args:
+            df: 包含收盘价数据的DataFrame
+            fast: 快线周期
+            slow: 慢线周期
+            signal: 信号线周期
+
+        Returns:
+            (dif, dea, hist): MACD差值线、信号线、柱状图
+        """
+        import pandas as pd
+
+        close = df['收盘'].astype(float)
+
+        # 计算EMA
+        ema_fast = close.ewm(span=fast, adjust=False).mean()
+        ema_slow = close.ewm(span=slow, adjust=False).mean()
+
+        dif = ema_fast - ema_slow
+        dea = dif.ewm(span=signal, adjust=False).mean()
+        hist = (dif - dea) * 2
+
+        return round(float(dif.iloc[-1]), 3), round(float(dea.iloc[-1]), 3), round(float(hist.iloc[-1]), 3)
+
+    @staticmethod
+    def _calculate_rsi(df: pd.DataFrame, n: list = [6, 12, 24]):
+        """计算RSI指标
+
+        Args:
+            df: 包含收盘价数据的DataFrame
+            n: RSI周期列表
+
+        Returns:
+            (rsi_6, rsi_12, rsi_24): 各周期RSI值
+        """
+        import pandas as pd
+
+        close = df['收盘'].astype(float)
+        results = []
+
+        for period in n:
+            if len(close) < period:
+                results.append(None)
+                continue
+
+            delta = close.diff()
+            gain = delta.where(delta > 0, 0.0)
+            loss = -delta.where(delta < 0, 0.0)
+
+            avg_gain = gain.rolling(window=period).mean()
+            avg_loss = loss.rolling(window=period).mean()
+
+            rs = avg_gain / avg_loss
+            rsi = 100 - (100 / (1 + rs))
+            results.append(round(float(rsi.iloc[-1]), 2))
+
+        return tuple(results) if len(results) == 3 else (None, None, None)
+
+    @staticmethod
+    def _calculate_boll(df: pd.DataFrame, period: int = 20, std_dev: int = 2):
+        """计算布林带指标
+
+        Args:
+            df: 包含收盘价数据的DataFrame
+            period: 周期
+            std_dev: 标准差倍数
+
+        Returns:
+            (upper, mid, lower): 上轨、中轨、下轨
+        """
+        close = df['收盘'].astype(float)
+
+        mid = close.rolling(window=period).mean()
+        std = close.rolling(window=period).std()
+
+        upper = mid + std_dev * std
+        lower = mid - std_dev * std
+
+        return round(float(upper.iloc[-1]), 2), round(float(mid.iloc[-1]), 2), round(float(lower.iloc[-1]), 2)
+
+    @staticmethod
+    def _get_index_trend(index_code: str = "sh.000300") -> Optional[dict]:
+        """获取大盘指数趋势（基于沪深300）
+
+        通过Baostock获取沪深300历史K线，计算MA20/MA60/MA250(年线)，
+        判断大盘处于牛市(BULLISH)、熊市(BEARISH)还是中性(NEUTRAL)。
+
+        年线（250日均线）是A股公认的"牛熊分界线"。
+
+        容错机制：
+        - 获取失败返回None，不影响个股分析
+        - 数据不足250日时，用MA20/MA60降级判断
+        - MA20和MA60都无效时返回NEUTRAL
+
+        Args:
+            index_code: 指数代码，默认沪深300
+
+        Returns:
+            dict: {trend, ma20, ma60, ma250, close, change_pct, high_250d} 或 None
+        """
+        if not _ensure_baostock_login():
+            logger.warning("Baostock未登录，跳过大盘数据获取")
+            return None
+
+        try:
+            # 计算日期范围（最近400个自然日，确保250个交易日用于年线计算）
+            end_date = datetime.now().strftime("%Y-%m-%d")
+            start_date = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
+
+            rs = bs.query_history_k_data_plus(
+                index_code,
+                "date,close,high,preclose",
+                start_date=start_date,
+                end_date=end_date,
+                frequency="d",
+            )
+
+            rows = []
+            while (rs.error_code == '0') and rs.next():
+                rows.append(rs.get_row_data())
+
+            if not rows or len(rows) < 20:
+                logger.warning(f"大盘数据不足（{len(rows)}行），无法判断趋势")
+                return None
+
+            df = pd.DataFrame(rows, columns=rs.fields)
+            df['close'] = pd.to_numeric(df['close'], errors='coerce')
+            df['preclose'] = pd.to_numeric(df['preclose'], errors='coerce')
+            if 'high' in df.columns:
+                df['high'] = pd.to_numeric(df['high'], errors='coerce')
+
+            # 计算均线
+            ma20 = df['close'].rolling(20).mean().iloc[-1]
+            ma60 = df['close'].rolling(60).mean().iloc[-1] if len(df) >= 60 else None
+            ma250 = df['close'].rolling(250).mean().iloc[-1] if len(df) >= 250 else None
+            latest_close = df['close'].iloc[-1]
+
+            # 近250日最高价（用于计算回撤幅度）
+            high_250d = None
+            if 'high' in df.columns and len(df) >= 60:
+                high_250d = float(df['high'].tail(250).max())
+
+            # 计算涨跌幅
+            change_pct = None
+            if pd.notna(df['preclose'].iloc[-1]) and df['preclose'].iloc[-1] > 0:
+                change_pct = round((df['close'].iloc[-1] - df['preclose'].iloc[-1]) / df['preclose'].iloc[-1] * 100, 2)
+
+            # 判断趋势（基于年线的牛熊判断优先）
+            trend = "NEUTRAL"
+            if pd.notna(ma250):
+                # 有年线数据时：年线上方=BULLISH，下方=BEARISH
+                if latest_close > ma250:
+                    trend = "BULLISH"
+                else:
+                    trend = "BEARISH"
+            elif pd.notna(ma60):
+                # 无年线时降级用MA20/MA60
+                if ma20 > ma60 and latest_close > ma20:
+                    trend = "BULLISH"
+                elif ma20 < ma60 and latest_close < ma20:
+                    trend = "BEARISH"
+                else:
+                    trend = "NEUTRAL"
+            elif pd.notna(ma20):
+                if latest_close > ma20:
+                    trend = "BULLISH"
+                else:
+                    trend = "BEARISH"
+
+            return {
+                "trend": trend,
+                "ma20": round(float(ma20), 2) if pd.notna(ma20) else None,
+                "ma60": round(float(ma60), 2) if pd.notna(ma60) else None,
+                "ma250": round(float(ma250), 2) if pd.notna(ma250) else None,
+                "close": round(float(latest_close), 2),
+                "change_pct": change_pct,
+                "high_250d": high_250d,
+            }
+
+        except Exception as e:
+            logger.warning(f"大盘趋势获取异常: {e}")
+            return None
+
+    @staticmethod
+    def _calculate_kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3):
+        """计算KDJ指标
+
+        Args:
+            df: 包含High/Low/Close数据的DataFrame
+            n: RSV周期
+            m1: K值平滑
+            m2: D值平滑
+
+        Returns:
+            (k, d, j): KDJ三个值
+        """
+        low_list = df['最低'].rolling(window=n, min_periods=1).min()
+        high_list = df['最高'].rolling(window=n, min_periods=1).max()
+
+        close = df['收盘'].astype(float)
+
+        rsv = (close - low_list) / (high_list - low_list) * 100
+        rsv = rsv.fillna(50)
+
+        k = rsv.ewm(com=m1 - 1, adjust=False).mean()
+        d = k.ewm(com=m2 - 1, adjust=False).mean()
+        j = 3 * k - 2 * d
+
+        return round(float(k.iloc[-1]), 2), round(float(d.iloc[-1]), 2), round(float(j.iloc[-1]), 2)
+
+
+# 导出便捷函数
+get_stock_data = AKShareClient.calculate_indicators
+get_realtime_quote = AKShareClient.get_realtime_quote

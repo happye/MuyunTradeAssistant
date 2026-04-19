@@ -1,0 +1,96 @@
+# 止盈管理技能
+# 来源：系统化交易大纲 第49章
+# 核心理念：会卖的是不贪的师傅
+# 五种止盈方法：移动止盈(均线)、前高止盈、通道上轨止盈、量能止盈、分批止盈
+# 铁律：止损只上移不下移，分批止盈落袋为安
+
+name: take_profit
+alias: 止盈管理
+type: action
+description: 监控持仓盈利状态，触发止盈条件时给出卖出信号
+
+rules:
+  # 规则1：高位价格跌破MA20 - 移动止盈信号（趋势结束）
+  - condition:
+      price_position:
+        above: 60
+        reason: "价格已有一定涨幅（处于60日区间高位）"
+        weight: 1.5
+        confidence: 0.75
+      price_below_ma20:
+        reason: "价格跌破MA20（移动止盈触发）"
+        weight: 2.0
+        confidence: 0.85
+      change_negative:
+        reason: "且价格持续下跌"
+        weight: 1.0
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.8
+    weight: 2.0
+
+  # 规则2：价格接近60日高点 - 前高止盈信号（压力区）
+  - condition:
+      price_near_high:
+        reason: "价格接近60日高点（前高压力区）"
+        weight: 2.0
+        confidence: 0.8
+      volume_above_avg:
+        reason: "高位放量，可能遇到阻力"
+        weight: 1.5
+        confidence: 0.75
+    signal: WATCH
+    confidence: 0.7
+    weight: 1.5
+
+  # 规则3：高位放量但价格不涨 - 量能止盈信号（主力出货）
+  - condition:
+      price_position:
+        above: 70
+        reason: "价格处于高位区域"
+        weight: 1.5
+        confidence: 0.8
+      volume_above_avg:
+        reason: "高位放量"
+        weight: 2.0
+        confidence: 0.85
+      macd_hist_negative:
+        reason: "MACD柱转负，动能减弱"
+        weight: 1.5
+        confidence: 0.7
+    signal: SELL
+    confidence: 0.8
+    weight: 2.0
+
+  # 规则4：RSI超买+布林带上轨 - 通道上轨止盈信号
+  - condition:
+      rsi_6_above_70:
+        reason: "RSI6超买(>70)"
+        weight: 1.5
+        confidence: 0.7
+      price_above_boll_upper:
+        reason: "价格突破布林上轨（通道上轨止盈）"
+        weight: 2.0
+        confidence: 0.8
+    signal: SELL
+    confidence: 0.75
+    weight: 1.5
+
+  # 规则5：价格在MA20上方稳定运行 - 持仓安全，不用止盈
+  - condition:
+      price_above_ma20:
+        reason: "价格稳定在MA20上方"
+        weight: 1.0
+        confidence: 0.7
+      ma5_above_ma20:
+        reason: "均线多头排列"
+        weight: 1.0
+        confidence: 0.7
+      price_position:
+        above: 40
+        reason: "有一定盈利空间但未到高位"
+        weight: 0.5
+        confidence: 0.5
+    signal: HOLD
+    confidence: 0.65
+    weight: 0.5

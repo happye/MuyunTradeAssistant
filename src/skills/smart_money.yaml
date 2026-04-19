@@ -1,0 +1,114 @@
+# 主力行为识别技能
+# 来源：系统化交易大纲 第46章、第47章
+# 核心理念：主力不可怕，可怕的是押在看不清的事上
+# 洗盘vs出货：低位缩量下跌=洗盘（主力在买），高位放量滞涨=出货（主力在卖）
+# 关键信号：放量不涨价=暗度陈仓，高位放量滞涨=出货
+
+name: smart_money
+alias: 主力行为
+type: regulator
+description: 通过量价关系识别主力行为特征，区分洗盘和出货
+
+rules:
+  # 规则1：高位放量滞涨 - 最典型的出货信号
+  # 精确定义：放量(量比>1.5) + 跌幅超过1% + 位置高位
+  - condition:
+      price_position:
+        above: 70
+        reason: "价格处于高位区域"
+        weight: 2.0
+        confidence: 0.85
+      volume_ratio:
+        above: 1.5
+        reason: "高位放量1.5倍以上"
+        weight: 2.0
+        confidence: 0.85
+      change_range:
+        below: -1.0
+        reason: "放量且跌超1%，高位滞涨=主力出货"
+        weight: 2.5
+        confidence: 0.9
+    signal: SELL
+    confidence: 0.9
+    weight: 2.5
+
+  # 规则2：高位放量上涨但留长上影线 - 出货征兆
+  # 注：长上影线需通过price_near_high近似判断
+  - condition:
+      price_position:
+        above: 70
+        reason: "价格处于高位区域"
+        weight: 1.5
+        confidence: 0.8
+      volume_above_avg:
+        reason: "高位放量"
+        weight: 1.5
+        confidence: 0.8
+      change_positive:
+        reason: "价格上涨但高位放量需警惕"
+        weight: 0.5
+        confidence: 0.4
+    signal: WATCH
+    confidence: 0.65
+    weight: 1.5
+
+  # 规则3：低位缩量下跌 - 可能是洗盘
+  - condition:
+      price_position:
+        below: 30
+        reason: "价格处于低位区域"
+        weight: 1.5
+        confidence: 0.75
+      volume_below_avg:
+        reason: "缩量下跌，主力未出逃"
+        weight: 1.5
+        confidence: 0.7
+      change_negative:
+        reason: "低位缩量下跌，可能是洗盘"
+        weight: 1.0
+        confidence: 0.6
+    signal: HOLD
+    confidence: 0.6
+    weight: 1.0
+
+  # 规则4：低位放量不涨 - 暗度陈仓，主力在建仓
+  # 精确定义：放量(量比>1.5) + 涨幅微小(-1%~2%)，说明有人在大笔买入但价格被压住
+  - condition:
+      price_position:
+        below: 30
+        reason: "价格处于低位区域"
+        weight: 1.5
+        confidence: 0.75
+      volume_ratio:
+        above: 1.5
+        reason: "低位放量1.5倍以上，主力在建仓"
+        weight: 2.0
+        confidence: 0.8
+      change_range:
+        min: -1.0
+        max: 2.0
+        reason: "价格微涨或小跌，放量不涨=暗度陈仓"
+        weight: 2.0
+        confidence: 0.85
+    signal: BUY
+    confidence: 0.75
+    weight: 1.5
+
+  # 规则5：RSI底背离（低位RSI超卖但价格企稳） - 洗盘末期
+  - condition:
+      price_position:
+        below: 30
+        reason: "价格处于低位区域"
+        weight: 1.0
+        confidence: 0.7
+      rsi_6_below_30:
+        reason: "RSI超卖，但价格可能已止跌"
+        weight: 1.5
+        confidence: 0.7
+      price_above_ma5:
+        reason: "价格站回MA5，洗盘可能结束"
+        weight: 1.0
+        confidence: 0.65
+    signal: WATCH
+    confidence: 0.6
+    weight: 1.0
