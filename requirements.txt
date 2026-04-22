@@ -8,8 +8,9 @@ pyyaml>=6.0
 numpy>=1.24.0
 pandas>=2.0.0
 
-# A股数据 (Phase 2启用)
-# akshare>=1.10.0
+# A股数据
+baostock>=0.9.1  # 主数据源，历史K线+沪深300指数
+akshare>=1.10.0  # 备用数据源
 
 # 向量数据库 (Phase 2启用)
 # chromadb>=0.4.0

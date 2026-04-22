@@ -1,64 +1,81 @@
+# 布林带技能
+# 来源：系统化交易大纲 第14章
+# 核心理念：布林带是状态显示器，不是指令发射器
+# 第14章明确指出：
+#   - "碰到上轨就卖"是被市场反复打脸的误区
+#   - "碰到下轨就买"同样危险，"下轨不是支撑，是地板下面的地下室"
+#   - 布林带只告诉你"现在价格处于最近20天的什么位置"
+#   - 正确用法：识别市场状态(亢奋/恐慌/平静/发疯)
+#   - 布林带宽度：收口=变盘前夜，扩张=趋势发力
+#
+# 重要修正（策略审查2026-04-19）：
+#   - 原规则"跌破下轨→BUY"与第14章立场相反，原文说"不是买入信号"
+#   - 原规则"接近下轨→BUY"也与原文立场相反
+#   - 布林带下轨附近应标记为WATCH(关注)，不直接买入
+#   - 需要配合其他信号(企稳阳线/缩量)才能确认买入
+#   - 删除了混入的纯均线规则(中轨上方+多头/中轨下方+空头)，
+#     那些属于ma_trend技能，不是布林带核心逻辑
+
 name: boll_bands
 alias: 布林带
-description: 基于布林带指标的位置和波动率分析
+description: 基于布林带指标的市场状态识别和变盘预警
 
 rules:
-  # 价格突破上轨（强势上涨，但警惕回调）
+  # 价格突破上轨 - 市场亢奋，但不直接卖出
+  # 第14章："碰到上轨就卖...然后被市场反复打脸"
+  # 上轨突破在趋势行情中可持续，不能简单卖出
   - signal: HOLD
-    confidence: 0.65
+    confidence: 0.60
     weight: 0.8
     condition:
       price_above_boll_upper:
-        reason: 价格突破布林带上轨
+        reason: 价格突破布林带上轨，市场亢奋，但不等于卖出信号
 
-  # 价格跌破下轨（超跌，可能反弹）
-  - signal: BUY
-    confidence: 0.72
+  # 价格跌破下轨 - 市场恐慌，但不直接买入
+  # 第14章明确："下轨不是支撑，是地板下面的地下室"
+  # 原规则直接给BUY信号是错误的，修正为WATCH
+  - signal: WATCH
+    confidence: 0.65
     weight: 1.0
     condition:
       price_below_boll_lower:
-        reason: 价格跌破布林带下轨
+        reason: 价格跌破布林带下轨，市场恐慌，但不等于买入信号，需等企稳确认
 
-  # 价格接近上轨（强势但不追高）
+  # 价格接近上轨 - 亢奋状态，谨慎
+  # 第14章："价格在上轨附近=市场亢奋，但不是卖出信号"
   - signal: HOLD
-    confidence: 0.60
+    confidence: 0.55
     weight: 0.7
     condition:
       price_near_boll_upper:
-        reason: 价格接近布林带上轨
+        reason: 价格接近布林带上轨，市场亢奋状态
 
-  # 价格接近下轨（低吸机会）
-  - signal: BUY
-    confidence: 0.70
+  # 价格接近下轨 - 恐慌状态，关注但不追买
+  # 第14章："价格在下轨附近=市场恐慌，但不是买入信号"
+  # 原规则直接给BUY信号是错误的，修正为WATCH
+  - signal: WATCH
+    confidence: 0.60
     weight: 0.9
     condition:
       price_near_boll_lower:
-        reason: 价格接近布林带下轨
+        reason: 价格接近布林带下轨，恐慌区域，关注但需其他信号确认
 
-  # 布林带收口（盘整后选择方向）
-  - signal: HOLD
+  # 布林带收口 - 变盘前夜
+  # 第14章："宽度极窄：市场极度平静，往往是大变盘前夜（但不知道方向）"
+  - signal: WATCH
     confidence: 0.55
-    weight: 0.6
+    weight: 0.8
     condition:
       boll_width_narrow:
-        reason: 布林带收口，波动率处于低位
+        reason: 布林带收口，变盘前夜，方向不确定
 
-  # 价格在中轨上方且处于上升趋势
-  - signal: BUY
-    confidence: 0.70
+  # 布林带扩张 + 价格在上轨 - 趋势发力，不逆势
+  # 第14章："宽度急速扩大：趋势正在发力，别反向开单"
+  - signal: HOLD
+    confidence: 0.65
     weight: 0.9
     condition:
-      price_above_ma5:
-        reason: 价格在均线上方
-      ma5_above_ma20:
-        reason: 均线多头排列
-
-  # 价格在中轨下方且处于下降趋势
-  - signal: SELL
-    confidence: 0.70
-    weight: 0.9
-    condition:
-      price_below_ma5:
-        reason: 价格在均线下方
-      ma5_below_ma20:
-        reason: 均线空头排列
+      price_above_boll_upper:
+        reason: 布林带扩张+价格在上轨，上涨趋势发力中
+      boll_width_expand:
+        reason: 布林带宽度扩大，趋势正在发力

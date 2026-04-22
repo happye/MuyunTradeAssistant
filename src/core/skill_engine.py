@@ -354,6 +354,10 @@ class YAMLBasedSkill(Skill):
             threshold = p.get("threshold", 0.1)
             return (d.boll_upper is not None and d.boll_lower is not None
                     and (d.boll_upper - d.boll_lower) / d.boll_mid < threshold)
+        def boll_width_expand(d, p):
+            threshold = p.get("threshold", 0.15)
+            return (d.boll_upper is not None and d.boll_lower is not None
+                    and (d.boll_upper - d.boll_lower) / d.boll_mid > threshold)
 
         # ===== KDJ条件 =====
         def kdj_k_above_d(d, p): return d.kdj_k is not None and d.kdj_d is not None and d.kdj_k > d.kdj_d
@@ -423,6 +427,7 @@ class YAMLBasedSkill(Skill):
         reg["price_near_boll_upper"] = price_near_boll_upper
         reg["price_near_boll_lower"] = price_near_boll_lower
         reg["boll_width_narrow"] = boll_width_narrow
+        reg["boll_width_expand"] = boll_width_expand
 
         # KDJ
         reg["kdj_k_above_d"] = kdj_k_above_d
