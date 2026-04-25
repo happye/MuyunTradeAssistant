@@ -1,0 +1,661 @@
+"""策略层（Strategy Layer） - v0.7.2 核心新增模块
+
+系统目标从"提高预测准确率"升级为"构建具备一致性、抗噪性与现实约束的交易决策系统"。
+
+Strategy Layer 的本质不是"分析"，而是：
+- 约束行为
+- 延迟决策
+- 抑制噪声
+- 维持一致性
+
+核心机制：
+1. 决策惯性（Inertia）：已持仓时，对反向信号提高门槛，防止短期噪声触发反转
+2. 信号确认（Confirmation）：单日信号不直接触发决策，必须连续出现或增强
+3. 冷却机制（Cooldown）：平仓后限制短期内反向操作，防止来回打脸
+4. 反转成本（Reverse Cost）：每次反向操作必须"付费"，成本与持仓时间、波动率相关
+5. 信号稳定性评估：信号变化频繁→权重下降，稳定信号→权重上升
+
+决策原则（高于所有规则）：
+- 原则1：信号可以变，决策必须稳定
+- 原则2：方向改变必须付出成本
+- 原则3：优先避免错误交易，而非追求机会最大化
+"""
+
+import logging
+from typing import Optional
+from copy import deepcopy
+
+from src.data.models import (
+    SignalType, MarketState, PositionAction,
+    TradeLifecycle, StrategyState, StrategyDecision,
+    DecisionResult, StockData
+)
+
+logger = logging.getLogger(__name__)
+
+
+class StrategyLayer:
+    """策略层 - 约束行为、延迟决策、抑制噪声、维持一致性
+
+    输入：Decision Layer的信号聚合结果（决策信号+评分）
+    输出：经过策略层过滤后的稳定决策（StrategyDecision）
+
+    与旧架构的关键区别：
+    - 旧：每日独立判断 → 行为不连续
+    - 新：有状态决策 → 行为连续、一致、可控
+    """
+
+    # ===== 参数配置 =====
+
+    # 决策惯性参数
+    INERTIA_MIN_DAYS = 3           # 最小惯性天数：决策持续不到3天时，反向信号门槛提高
+    INERTIA_BUY_THRESHOLD_BUMP = 0.10   # 持仓时反向(SELL)信号门槛提高10%
+    INERTIA_SELL_THRESHOLD_BUMP = 0.10  # 空仓时反向(BUY)信号门槛提高10%
+
+    # 信号确认参数
+    CONFIRMATION_MIN_CONSECUTIVE = 2     # 连续出现N天相同信号才确认
+    CONFIRMATION_WEAK_SIGNAL_THRESHOLD = 0.30  # 弱信号阈值（低于此值需要确认）
+
+    # 冷却期参数
+    COOLDOWN_AFTER_CLOSE_DAYS = 5       # 清仓后冷却天数（防止来回打脸）
+    COOLDOWN_AFTER_REDUCE_DAYS = 10     # 减仓后冷却天数
+
+    # 反转成本参数
+    REVERSE_COST_BASE_PCT = 0.003       # 反转基础成本（0.3%，约一次往返佣金）
+    REVERSE_COST_PER_REVERSE = 0.002    # 每次额外反转增加0.2%成本
+
+    # 信号稳定性参数
+    STABILITY_LOW_THRESHOLD = 0.4       # 稳定性低于0.4时，信号权重打折
+    STABILITY_DISCOUNT = 0.7            # 不稳定信号的权重打折系数
+
+    # 极端情况自动感知参数（v0.7.2新增）
+    EXTREME_DROP_THRESHOLD = -0.05      # 单日跌幅超过5%视为极端
+    EXTREME_RISE_THRESHOLD = 0.07       # 单日涨幅超过7%视为极端
+    EXTREME_PANIC_SHORTEN_INERTIA = 1   # 极端时惯性天数从3→1（止损要快）
+    EXTREME_PANIC_SKIP_CONFIRM = True   # 极端时止损信号跳过确认（不用等2天）
+    EXTREME_PANIC_SHORTEN_COOLDOWN = 2  # 极端时冷却期从5→2天（快速离场后可更快重评）
+
+    # 仓位管理参数（从decision_engine迁移过来）
+    POSITION_CAPS = {
+        MarketState.RISK_ON: 0.60,
+        MarketState.TRANSITION: 0.30,
+        MarketState.RISK_OFF: 0.15,
+        MarketState.PANIC: 0.0,
+    }
+    OPEN_RATIO = 0.20
+    ADD_RATIO = 0.20
+    TAKE_PROFIT_KEEP = 0.60
+    NORMAL_REDUCE_KEEP = 0.65
+    LOW_POSITION_CLEAR = 0.05
+
+    def __init__(self):
+        """初始化策略层"""
+        pass
+
+    def process(
+        self,
+        decision_result: DecisionResult,
+        strategy_state: StrategyState,
+        data: StockData,
+    ) -> StrategyDecision:
+        """处理信号聚合结果，输出经过策略层过滤的稳定决策
+
+        核心流程：
+        1. 更新信号历史和稳定性评分
+        2. 应用决策惯性（抑制方向变化）
+        3. 应用信号确认（单日信号需确认）
+        4. 检查冷却期（阻止频繁操作）
+        5. 计算反转成本（方向改变需付费）
+        6. 计算仓位管理
+        7. 更新交易生命周期状态
+        8. 生成策略层决策结果
+
+        Args:
+            decision_result: Decision Layer输出的信号聚合结果
+            strategy_state: 上一交易日的策略层状态
+            data: 当前股票数据
+
+        Returns:
+            StrategyDecision: 策略层最终决策
+        """
+        # 深拷贝状态，避免修改原始数据
+        new_state = deepcopy(strategy_state)
+
+        # 冷却期递减
+        new_state.tick_cooldown()
+        new_state.tick_reduce_protection()
+
+        # 当前决策（Decision Layer输出）
+        raw_decision = decision_result.decision
+        raw_score = decision_result.score
+        market_state = decision_result.state
+
+        # ===== 极端情况自动感知（v0.7.2） =====
+        is_extreme = self._detect_extreme_condition(data, market_state, decision_result)
+
+        # Step 1: 更新信号历史和稳定性
+        new_state.push_signal(raw_decision)
+        new_state.update_stability()
+
+        # Step 2: 应用信号稳定性调整
+        stability_adjusted = False
+        adjusted_decision = raw_decision
+        if new_state.signal_stability_score < self.STABILITY_LOW_THRESHOLD:
+            # 信号不稳定：BUY/SELL降级为WATCH
+            stability_adjusted = True
+            if raw_decision == SignalType.BUY:
+                adjusted_decision = SignalType.WATCH
+                logger.info(f"信号不稳定(稳定性={new_state.signal_stability_score})，BUY降级为WATCH")
+            elif raw_decision == SignalType.SELL:
+                adjusted_decision = SignalType.HOLD
+                logger.info(f"信号不稳定(稳定性={new_state.signal_stability_score})，SELL降级为HOLD")
+
+        # Step 3: 应用决策惯性（极端情况下缩短惯性期）
+        inertia_applied = False
+        inertia_min_days = self.EXTREME_PANIC_SHORTEN_INERTIA if is_extreme else self.INERTIA_MIN_DAYS
+        if self._should_apply_inertia(adjusted_decision, new_state, inertia_min_days):
+            adjusted_decision = self._apply_inertia(adjusted_decision, new_state)
+            inertia_applied = True
+
+        # Step 4: 应用信号确认（极端情况下止损信号跳过确认）
+        confirmation_required = False
+        skip_confirm = (is_extreme and self.EXTREME_PANIC_SKIP_CONFIRM
+                        and adjusted_decision == SignalType.SELL)
+        if not skip_confirm and self._needs_confirmation(adjusted_decision, new_state, raw_score):
+            adjusted_decision = self._apply_confirmation(adjusted_decision, new_state)
+            confirmation_required = True
+
+        # Step 5: 检查冷却期（极端情况下缩短冷却期）
+        cooldown_blocked = False
+        if self._is_in_cooldown(new_state, adjusted_decision, is_extreme):
+            adjusted_decision = self._apply_cooldown(new_state, adjusted_decision)
+            cooldown_blocked = True
+
+        # Step 6: 计算反转成本
+        reverse_cost_paid = False
+        if self._is_direction_change(adjusted_decision, new_state):
+            adjusted_decision = self._apply_reverse_cost(
+                adjusted_decision, new_state, decision_result
+            )
+            reverse_cost_paid = True
+
+        # Step 7: 计算仓位管理
+        position_action, position_ratio = self._calculate_position(
+            adjusted_decision, market_state, decision_result, new_state
+        )
+
+        # Step 8: 更新交易生命周期
+        lifecycle_before = new_state.lifecycle
+        new_state = self._update_lifecycle(
+            new_state, adjusted_decision, position_action, data
+        )
+        lifecycle_after = new_state.lifecycle
+
+        # 更新last_decision
+        new_state.last_decision = adjusted_decision
+        if adjusted_decision == new_state.last_decision:
+            new_state.inertia_counter += 1
+        else:
+            new_state.inertia_counter = 1
+
+        # 收集策略层决策理由
+        strategy_reasons = self._generate_strategy_reasons(
+            raw_decision, adjusted_decision, new_state,
+            inertia_applied, confirmation_required,
+            cooldown_blocked, reverse_cost_paid, stability_adjusted,
+            is_extreme
+        )
+
+        return StrategyDecision(
+            decision=adjusted_decision,
+            position_action=position_action,
+            position_ratio=position_ratio,
+            lifecycle_before=lifecycle_before,
+            lifecycle_after=lifecycle_after,
+            inertia_applied=inertia_applied,
+            confirmation_required=confirmation_required,
+            cooldown_blocked=cooldown_blocked,
+            reverse_cost_paid=reverse_cost_paid,
+            stability_adjusted=stability_adjusted,
+            new_state=new_state,
+            strategy_reasons=strategy_reasons,
+        )
+
+    # ===== 决策惯性（Inertia） =====
+
+    def _should_apply_inertia(self, current_decision: SignalType, state: StrategyState,
+                               min_days: int = None) -> bool:
+        """判断是否需要应用决策惯性
+
+        条件：
+        - 当前决策与上一次决策方向相反
+        - 上一次决策持续时间 < min_days（默认INERTIA_MIN_DAYS，极端时缩短）
+
+        Args:
+            current_decision: 当前决策
+            state: 策略状态
+            min_days: 惯性最小天数（None=使用默认值，极端情况传入缩短值）
+        """
+        if state.last_decision is None:
+            return False
+
+        threshold = min_days if min_days is not None else self.INERTIA_MIN_DAYS
+        if state.inertia_counter >= threshold:
+            return False  # 持续够久了，允许变化
+
+        # 方向相反
+        return self._is_opposite_direction(current_decision, state.last_decision)
+
+    def _apply_inertia(self, current_decision: SignalType, state: StrategyState) -> SignalType:
+        """应用决策惯性：对反向决策提高门槛
+
+        逻辑：
+        - 持仓(BUY方向)时，SELL需要更高置信度 → 降级为HOLD
+        - 空仓(SELL/WATCH方向)时，BUY需要更高置信度 → 降级为WATCH
+        """
+        if current_decision == SignalType.SELL and state.last_decision in (SignalType.BUY, SignalType.HOLD):
+            if state.current_position_ratio > 0:
+                # 持仓中收到SELL信号但惯性期未过 → 降级为HOLD（观察而非行动）
+                return SignalType.HOLD
+        elif current_decision == SignalType.BUY and state.last_decision in (SignalType.SELL, SignalType.WATCH):
+            # 空仓收到BUY信号但惯性期未过 → 降级为WATCH（等确认再入场）
+            return SignalType.WATCH
+
+        return current_decision
+
+    # ===== 信号确认（Confirmation） =====
+
+    def _needs_confirmation(
+        self, decision: SignalType, state: StrategyState, score: float
+    ) -> bool:
+        """判断信号是否需要确认
+
+        条件（满足任一）：
+        - 信号置信度低于弱信号阈值
+        - 信号历史上前一天不是同方向（新出现的方向信号）
+        - 交易生命周期在OPEN状态（刚建仓需要确认）
+        """
+        if decision in (SignalType.HOLD, SignalType.WATCH):
+            return False  # 不需要确认保守信号
+
+        # 弱信号需要确认
+        if score < self.CONFIRMATION_WEAK_SIGNAL_THRESHOLD:
+            return True
+
+        # 新出现的方向信号（前一天不是同方向）
+        if state.recent_signals and state.recent_signals[-1] != decision.value:
+            return True
+
+        return False
+
+    def _apply_confirmation(self, decision: SignalType, state: StrategyState) -> SignalType:
+        """应用信号确认：单日信号不直接触发决策
+
+        逻辑：
+        - 如果最近2天都是同方向 → 确认通过，保持原决策
+        - 否则 → 降级
+          - BUY → WATCH（等确认再入场）
+          - SELL → HOLD（等确认再行动）
+        """
+        consecutive = 0
+        for sig in reversed(state.recent_signals):
+            if sig == decision.value:
+                consecutive += 1
+            else:
+                break
+
+        if consecutive >= self.CONFIRMATION_MIN_CONSECUTIVE:
+            return decision  # 确认通过
+
+        # 未确认：降级
+        if decision == SignalType.BUY:
+            return SignalType.WATCH
+        elif decision == SignalType.SELL:
+            return SignalType.HOLD
+        return decision
+
+    # ===== 冷却机制（Cooldown） =====
+
+    def _is_in_cooldown(self, state: StrategyState, decision: SignalType,
+                         is_extreme: bool = False) -> bool:
+        """判断是否在冷却期内且被阻止操作
+
+        冷却期规则：
+        - 清仓后COOLDOWN_AFTER_CLOSE_DAYS天内不允许买入
+        - 减仓后COOLDOWN_AFTER_REDUCE_DAYS天内不允许加仓
+        - 极端情况下冷却期缩短（更快重评）
+
+        Args:
+            state: 策略状态
+            decision: 当前决策
+            is_extreme: 是否为极端行情
+        """
+        if state.cooldown_remaining <= 0:
+            return False
+
+        # 极端情况下冷却期缩短
+        cooldown_threshold = self.EXTREME_PANIC_SHORTEN_COOLDOWN if is_extreme else 0
+
+        # 清仓冷却期：不允许买入（极端情况下冷却期<2天才放行）
+        if decision == SignalType.BUY and state.cooldown_reason == "close_all":
+            if is_extreme and state.cooldown_remaining <= cooldown_threshold:
+                return False  # 极端情况下冷却期已够短，放行
+            return True
+
+        # 减仓保护期：不允许加仓
+        if decision == SignalType.BUY and state.reduce_protection_remaining > 0:
+            return True
+
+        return False
+
+    def _apply_cooldown(self, state: StrategyState, decision: SignalType) -> SignalType:
+        """应用冷却期：阻止操作"""
+        if decision == SignalType.BUY:
+            return SignalType.WATCH  # 冷却期内不买入 → 观望
+        return decision
+
+    # ===== 反转成本（Reverse Cost） =====
+
+    def _is_direction_change(self, decision: SignalType, state: StrategyState) -> bool:
+        """判断是否是方向反转"""
+        if state.last_decision is None:
+            return decision == SignalType.BUY  # 从空仓到买入不算反转
+
+        return self._is_opposite_direction(decision, state.last_decision)
+
+    def _apply_reverse_cost(
+        self,
+        decision: SignalType,
+        state: StrategyState,
+        decision_result: DecisionResult,
+    ) -> SignalType:
+        """应用反转成本：每次反转提高门槛
+
+        成本 = 基础成本 + 每次反转的额外成本
+        如果信号置信度不足以覆盖成本 → 降级
+        """
+        cost = self.REVERSE_COST_BASE_PCT + state.reverse_count * self.REVERSE_COST_PER_REVERSE
+        score = decision_result.score
+
+        if score < cost:
+            # 置信度不足以支付反转成本 → 降级
+            if decision == SignalType.BUY:
+                return SignalType.WATCH
+            elif decision == SignalType.SELL:
+                return SignalType.HOLD
+
+        return decision
+
+    # ===== 仓位管理 =====
+
+    def _calculate_position(
+        self,
+        final_signal: SignalType,
+        state: MarketState,
+        decision_result: DecisionResult,
+        strategy_state: StrategyState,
+    ) -> tuple[PositionAction, float]:
+        """根据最终决策、市场状态和策略状态计算仓位
+
+        与旧版本的关键区别：
+        - 仓位管理逻辑从DecisionEngine迁移到StrategyLayer
+        - 增加了交易生命周期感知（FLAT/OPEN/HOLD/EXIT/COOLDOWN）
+        - 增加了策略状态感知（当前仓位、反转次数等）
+        """
+        cap = self.POSITION_CAPS.get(state, 0.30)
+        current_position_ratio = strategy_state.current_position_ratio
+
+        # 获取决策引擎的加权分数
+        weighted_scores = {}
+        for trace in decision_result.trace:
+            if trace.step == "市场状态影响" and "final_scores" in trace.data:
+                weighted_scores = trace.data["final_scores"]
+                break
+
+        buy_score = weighted_scores.get("BUY", 0.0)
+        sell_score = weighted_scores.get("SELL", 0.0)
+
+        # 判断止损/止盈是否触发
+        action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
+        has_stop_loss = any(
+            s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.7
+            for s in action_signals
+        )
+        has_take_profit = any(
+            s.skill_name == "take_profit" and s.signal == SignalType.SELL and s.confidence >= 0.7
+            for s in action_signals
+        )
+
+        if final_signal == SignalType.SELL:
+            if has_stop_loss:
+                has_deep_stop = any(
+                    s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.85
+                    for s in action_signals
+                )
+                if has_deep_stop:
+                    return PositionAction.CLOSE_ALL, 0.0
+                elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+                    return PositionAction.CLOSE_ALL, 0.0
+                else:
+                    target = current_position_ratio * self.NORMAL_REDUCE_KEEP
+                    return PositionAction.REDUCE, target
+            elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+                return PositionAction.CLOSE_ALL, 0.0
+            elif has_take_profit:
+                target = current_position_ratio * self.TAKE_PROFIT_KEEP
+                return PositionAction.REDUCE, target
+            elif sell_score >= 0.4:
+                target = current_position_ratio * self.NORMAL_REDUCE_KEEP
+                return PositionAction.REDUCE, target
+            else:
+                target = current_position_ratio * self.NORMAL_REDUCE_KEEP
+                return PositionAction.REDUCE, target
+
+        elif final_signal == SignalType.BUY:
+            if buy_score >= 0.4:
+                target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                if current_position_ratio > 0:
+                    return PositionAction.ADD, target
+                return PositionAction.OPEN, target
+            elif buy_score >= 0.25:
+                target = min(self.OPEN_RATIO, cap)
+                return PositionAction.OPEN, target
+            else:
+                target = min(self.OPEN_RATIO * 0.5, cap)
+                return PositionAction.OPEN, target
+
+        elif final_signal == SignalType.HOLD:
+            if buy_score > sell_score * 1.5:
+                target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                return PositionAction.ADD, target
+            else:
+                return PositionAction.HOLD_POSITION, 0.0
+
+        else:  # WATCH
+            return PositionAction.STAY_OUT, 0.0
+
+    # ===== 交易生命周期更新 =====
+
+    def _update_lifecycle(
+        self,
+        state: StrategyState,
+        decision: SignalType,
+        position_action: PositionAction,
+        data: StockData,
+    ) -> StrategyState:
+        """更新交易生命周期状态
+
+        FLAT → OPEN → HOLD → EXIT → COOLDOWN → FLAT
+
+        转换规则：
+        - FLAT + BUY → OPEN（新开仓）
+        - OPEN + HOLD/BUY → HOLD（建仓确认）
+        - HOLD + SELL → EXIT（开始退出）
+        - HOLD + BUY → HOLD（加仓/继续持有）
+        - EXIT + CLOSE_ALL → COOLDOWN（清仓后进入冷却期）
+        - EXIT + REDUCE → HOLD（减仓后继续持有）
+        - COOLDOWN (到期) → FLAT（冷却期结束）
+        """
+        new_state = deepcopy(state)
+        lifecycle = state.lifecycle
+
+        if lifecycle == TradeLifecycle.FLAT:
+            if decision == SignalType.BUY and position_action == PositionAction.OPEN:
+                new_state.lifecycle = TradeLifecycle.OPEN
+                new_state.entry_date = data.stock_code  # 简化，实际应是日期
+                new_state.entry_price = data.price
+                new_state.reverse_count = 0
+                new_state.total_commission_paid = 0.0
+            # FLAT + 非BUY → 保持FLAT
+
+        elif lifecycle == TradeLifecycle.OPEN:
+            if position_action in (PositionAction.CLOSE_ALL,):
+                new_state.lifecycle = TradeLifecycle.COOLDOWN
+                new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
+                new_state.cooldown_reason = "close_all"
+                new_state.current_position_ratio = 0.0
+            elif decision in (SignalType.HOLD, SignalType.BUY) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
+                new_state.lifecycle = TradeLifecycle.HOLD  # 确认建仓成功
+            elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
+                new_state.lifecycle = TradeLifecycle.HOLD  # 减仓但仍持有
+
+        elif lifecycle == TradeLifecycle.HOLD:
+            if position_action == PositionAction.CLOSE_ALL:
+                new_state.lifecycle = TradeLifecycle.COOLDOWN
+                new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
+                new_state.cooldown_reason = "close_all"
+                new_state.current_position_ratio = 0.0
+                new_state.entry_date = None
+                new_state.entry_price = None
+            elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
+                new_state.lifecycle = TradeLifecycle.EXIT
+                new_state.last_reduce_date = data.stock_code  # 简化
+                new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+            elif position_action == PositionAction.ADD:
+                pass  # 加仓，继续HOLD
+
+        elif lifecycle == TradeLifecycle.EXIT:
+            if position_action == PositionAction.CLOSE_ALL:
+                new_state.lifecycle = TradeLifecycle.COOLDOWN
+                new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
+                new_state.cooldown_reason = "close_all"
+                new_state.current_position_ratio = 0.0
+                new_state.entry_date = None
+                new_state.entry_price = None
+            elif position_action == PositionAction.REDUCE:
+                # 继续减仓过程
+                new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+            elif decision in (SignalType.BUY, SignalType.HOLD) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
+                # 方向转回看多 → 回到HOLD
+                new_state.lifecycle = TradeLifecycle.HOLD
+            # EXIT状态下如果已清仓 → COOLDOWN
+            if new_state.current_position_ratio <= 0:
+                new_state.lifecycle = TradeLifecycle.COOLDOWN
+                new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
+                new_state.cooldown_reason = "close_all"
+
+        elif lifecycle == TradeLifecycle.COOLDOWN:
+            if new_state.cooldown_remaining <= 0:
+                new_state.lifecycle = TradeLifecycle.FLAT
+                new_state.cooldown_reason = None
+                new_state.reverse_count = 0
+                new_state.total_commission_paid = 0.0
+
+        return new_state
+
+    # ===== 辅助方法 =====
+
+    def _detect_extreme_condition(
+        self, data: StockData, market_state: MarketState,
+        decision_result: DecisionResult
+    ) -> bool:
+        """自动检测极端行情（v0.7.2）
+
+        检测标准（满足任一即视为极端）：
+        1. 市场状态为PANIC
+        2. 个股单日跌幅超过5%
+        3. 个股单日涨幅超过7%
+        4. 决策评分极高（≥0.80）且方向为SELL → 强烈止损信号
+        5. 止损信号置信度≥0.90 → 极端止损
+
+        极端行情下系统自动调整：
+        - 惯性期缩短（止损要快，不能等3天）
+        - 止损信号跳过确认（不用等2天确认）
+        - 冷却期缩短（快速离场后可更快重评）
+        """
+        # 1. PANIC状态
+        if market_state == MarketState.PANIC:
+            logger.info("极端行情检测: PANIC市场状态")
+            return True
+
+        # 2. 个股单日大跌
+        if data.change_pct is not None and data.change_pct <= self.EXTREME_DROP_THRESHOLD * 100:
+            logger.info(f"极端行情检测: 单日跌幅 {data.change_pct:.1f}%")
+            return True
+
+        # 3. 个股单日大涨
+        if data.change_pct is not None and data.change_pct >= self.EXTREME_RISE_THRESHOLD * 100:
+            logger.info(f"极端行情检测: 单日涨幅 {data.change_pct:.1f}%")
+            return True
+
+        # 4. 强烈止损信号
+        if decision_result.decision == SignalType.SELL and decision_result.score >= 0.80:
+            # 检查是否有高置信度止损
+            action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
+            has_strong_stop = any(
+                s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.85
+                for s in action_signals
+            )
+            if has_strong_stop:
+                logger.info("极端行情检测: 强烈止损信号(conf≥0.85)")
+                return True
+
+        return False
+
+    @staticmethod
+    def _is_opposite_direction(a: SignalType, b: SignalType) -> bool:
+        """判断两个信号是否方向相反"""
+        bullish = {SignalType.BUY, SignalType.HOLD}
+        bearish = {SignalType.SELL, SignalType.WATCH}
+        return (a in bullish and b in bearish) or (a in bearish and b in bullish)
+
+    def _generate_strategy_reasons(
+        self,
+        raw_decision: SignalType,
+        final_decision: SignalType,
+        state: StrategyState,
+        inertia_applied: bool,
+        confirmation_required: bool,
+        cooldown_blocked: bool,
+        reverse_cost_paid: bool,
+        stability_adjusted: bool,
+        is_extreme: bool = False,
+    ) -> list[str]:
+        """生成策略层决策理由"""
+        reasons = []
+
+        if is_extreme:
+            reasons.append("⚠ 极端行情模式（自动缩短惯性/跳过止损确认/缩短冷却期）")
+
+        if raw_decision != final_decision:
+            reasons.append(f"策略层修正: {raw_decision.value} → {final_decision.value}")
+
+        if stability_adjusted:
+            reasons.append(f"信号不稳定(稳定性={state.signal_stability_score:.0%})，降级处理")
+
+        if inertia_applied:
+            reasons.append(f"决策惯性(持续{state.inertia_counter}天)，抑制方向变化")
+
+        if confirmation_required:
+            reasons.append("信号需确认(单日信号未直接触发)")
+
+        if cooldown_blocked:
+            reasons.append(f"冷却期内(剩余{state.cooldown_remaining}天)，阻止操作")
+
+        if reverse_cost_paid:
+            reasons.append(f"反转成本(累计{state.reverse_count}次反转)")
+
+        if not reasons:
+            reasons.append("策略层: 信号通过所有约束，维持原决策")
+
+        return reasons

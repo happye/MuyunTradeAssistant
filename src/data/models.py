@@ -31,6 +31,23 @@ class PositionAction(str, Enum):
     STAY_OUT = "STAY_OUT"            # 空仓观望
 
 
+class TradeLifecycle(str, Enum):
+    """交易生命周期状态（v0.7.2 Strategy Layer核心抽象）
+
+    FLAT → OPEN → HOLD → EXIT → COOLDOWN → FLAT
+
+    核心原则：
+    - 信号可以变，决策必须稳定
+    - 方向改变必须付出成本
+    - 优先避免错误交易，而非追求机会最大化
+    """
+    FLAT = "FLAT"          # 空仓（无持仓，等待入场信号）
+    OPEN = "OPEN"          # 新开仓（刚建仓，需要确认期）
+    HOLD = "HOLD"          # 持仓中（确认趋势，持有为主）
+    EXIT = "EXIT"          # 退出过程（收到退出信号，执行减仓/清仓）
+    COOLDOWN = "COOLDOWN"  # 冷却期（平仓后限制短期内反向操作）
+
+
 class StockData(BaseModel):
     """股票数据结构"""
     stock_code: str = Field(description="股票代码，如 600519")
@@ -99,6 +116,135 @@ class StockData(BaseModel):
 
     class Config:
         extra = "allow"  # 允许额外字段
+
+
+class StrategyState(BaseModel):
+    """策略层状态（v0.7.2 Strategy Layer持久化状态）
+
+    跨交易日持久化，实现"决策有状态"。
+    每日分析时读取上一天的StrategyState，生成新的StrategyState。
+    """
+    # 交易生命周期
+    lifecycle: TradeLifecycle = Field(default=TradeLifecycle.FLAT, description="当前交易生命周期状态")
+
+    # 持仓信息
+    entry_date: Optional[str] = Field(default=None, description="开仓日期")
+    entry_price: Optional[float] = Field(default=None, description="开仓均价")
+    current_position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例")
+
+    # 信号历史（用于信号确认和稳定性评估）
+    recent_signals: list[str] = Field(default_factory=list, description="最近N个交易日的信号序列(BUY/SELL/HOLD/WATCH)")
+    signal_history_maxlen: int = Field(default=5, description="信号历史最大长度")
+
+    # 决策惯性
+    inertia_counter: int = Field(default=0, description="当前决策已持续的交易日数")
+    last_decision: Optional[SignalType] = Field(default=None, description="上一个交易日的最终决策")
+
+    # 冷却期
+    cooldown_remaining: int = Field(default=0, description="冷却期剩余交易日数")
+    cooldown_reason: Optional[str] = Field(default=None, description="冷却原因")
+
+    # 反转成本累计
+    reverse_count: int = Field(default=0, description="本轮交易中的方向反转次数")
+    total_commission_paid: float = Field(default=0.0, description="本轮交易已支付的总佣金")
+
+    # 信号稳定性
+    signal_stability_score: float = Field(default=1.0, ge=0.0, le=1.0, description="信号稳定性评分(0-1)，频繁变化→低分")
+
+    # 减仓保护期
+    last_reduce_date: Optional[str] = Field(default=None, description="上次减仓日期")
+    last_reduce_reason: Optional[str] = Field(default=None, description="上次减仓原因")
+    reduce_protection_remaining: int = Field(default=0, description="减仓保护期剩余天数")
+
+    def push_signal(self, signal: SignalType):
+        """记录今日信号，维护滑动窗口"""
+        self.recent_signals.append(signal.value)
+        if len(self.recent_signals) > self.signal_history_maxlen:
+            self.recent_signals.pop(0)
+
+    def update_stability(self):
+        """根据信号历史更新稳定性评分
+
+        评分逻辑：
+        - 全部相同 = 1.0（最稳定）
+        - 每次方向变化扣分
+        - 最终评分 = 1 - 变化率
+        """
+        if len(self.recent_signals) < 2:
+            self.signal_stability_score = 1.0
+            return
+
+        changes = 0
+        for i in range(1, len(self.recent_signals)):
+            if self.recent_signals[i] != self.recent_signals[i - 1]:
+                changes += 1
+
+        max_changes = len(self.recent_signals) - 1
+        self.signal_stability_score = round(1.0 - (changes / max_changes), 2)
+
+    def tick_cooldown(self):
+        """冷却期递减（每个交易日调用）"""
+        if self.cooldown_remaining > 0:
+            self.cooldown_remaining -= 1
+            if self.cooldown_remaining == 0:
+                self.cooldown_reason = None
+
+    def tick_reduce_protection(self):
+        """减仓保护期递减"""
+        if self.reduce_protection_remaining > 0:
+            self.reduce_protection_remaining -= 1
+            if self.reduce_protection_remaining == 0:
+                self.last_reduce_reason = None
+
+
+class ExecutionConstraint(BaseModel):
+    """执行约束（v0.7.2 Execution Layer）
+
+    将"理想交易"转为"可执行交易"的现实约束。
+    """
+    # 滑点（与波动率正相关）
+    slippage_pct: float = Field(default=0.001, description="基础滑点百分比")
+    volatility_slippage: bool = Field(default=True, description="是否启用波动率滑点（滑点与ATR/波动率挂钩）")
+
+    # 流动性
+    min_volume_ratio: float = Field(default=0.3, description="最低成交量比率（低于20日均量的30%禁止交易）")
+
+    # 涨跌停
+    limit_up_blocked: bool = Field(default=True, description="涨停时禁止买入（A股：涨停封板买不到）")
+    limit_down_blocked: bool = Field(default=True, description="跌停时禁止卖出（A股：跌停封板卖不出）")
+
+    # 冲击成本
+    impact_cost_enabled: bool = Field(default=True, description="是否启用冲击成本计算")
+    impact_cost_rate: float = Field(default=0.001, description="冲击成本比率（与成交量比例相关）")
+
+
+class StrategyDecision(BaseModel):
+    """策略层决策结果（v0.7.2）
+
+    Strategy Layer的输出，包含：
+    - 经过惯性/确认/冷却/反转成本过滤后的稳定决策
+    - 交易生命周期转换
+    - 仓位建议
+    """
+    # 最终决策（经过策略层过滤后）
+    decision: SignalType = Field(description="策略层最终决策")
+    position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
+    position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例")
+
+    # 策略层过滤信息
+    lifecycle_before: TradeLifecycle = Field(description="过滤前生命周期状态")
+    lifecycle_after: TradeLifecycle = Field(description="过滤后生命周期状态")
+    inertia_applied: bool = Field(default=False, description="是否应用了决策惯性（抑制方向变化）")
+    confirmation_required: bool = Field(default=False, description="信号是否需要确认（单日信号未直接触发）")
+    cooldown_blocked: bool = Field(default=False, description="冷却期是否阻止了操作")
+    reverse_cost_paid: bool = Field(default=False, description="是否支付了反转成本")
+    stability_adjusted: bool = Field(default=False, description="是否因信号不稳定调整了权重")
+
+    # 更新后的策略状态
+    new_state: StrategyState = Field(description="更新后的策略层状态")
+
+    # 决策理由
+    strategy_reasons: list[str] = Field(default_factory=list, description="策略层决策理由")
 
 
 class SkillSignal(BaseModel):
@@ -181,3 +327,15 @@ class BacktestResult(BaseModel):
     daily_snapshots: list[DailySnapshot] = Field(default_factory=list, description="每日快照")
     benchmark_return_pct: float = Field(default=0.0, description="基准收益率%(买入持有)")
     invested_return_pct: float = Field(default=0.0, description="投入资金收益率%(盈利/实际投入成本)")
+
+    # v0.7.2 稳定性指标
+    worst_case_return_pct: float = Field(default=0.0, description="最差收益%(Monte Carlo最差路径)")
+    drawdown_stability: float = Field(default=0.0, description="回撤稳定性(回撤标准差，越小越稳定)")
+    result_variance: float = Field(default=0.0, description="结果方差(Monte Carlo多次模拟的收益方差)")
+    decision_stability: float = Field(default=0.0, description="决策稳定性(方向反转次数/总决策数)")
+    mc_simulations: int = Field(default=0, description="Monte Carlo模拟次数(0=单次回测)")
+
+    # v0.7.2 执行约束统计
+    blocked_by_limit_up: int = Field(default=0, description="因涨停无法买入次数")
+    blocked_by_limit_down: int = Field(default=0, description="因跌停无法卖出次数")
+    blocked_by_liquidity: int = Field(default=0, description="因流动性不足被阻止交易次数")

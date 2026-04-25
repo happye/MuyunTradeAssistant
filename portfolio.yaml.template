@@ -1,0 +1,38 @@
+# ============================================================
+# 暮云思辨投资助手 - 持仓记录本（模板）
+# ============================================================
+#
+# 使用说明：
+# 1. 复制本文件为 portfolio.yaml（首次使用时自动创建）
+# 2. 实时分析时系统会自动读取此文件，获取你的持仓状态
+# 3. 分析完成后，系统会建议更新持仓，输入Y确认/N跳过
+# 4. 你也可以手动编辑此文件（如在外部做了交易操作）
+#
+# 重要：系统决策依赖此数据的准确性！
+#   - 如果你在券商APP做了买卖，请及时手动更新此文件
+#   - current_ratio = 该股票市值 / 账户总资产（如2万/10万 = 0.20）
+#   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期
+#   - strategy_state由系统自动维护，一般不需要手动修改
+#
+# ============================================================
+
+positions: {}
+  # 示例（添加持仓后删除 # 注释）：
+  # '000001':
+  #   stock_name: 平安银行
+  #   entry_date: '2026-01-15'
+  #   entry_price: 12.50
+  #   current_ratio: 0.20
+  #   last_action: OPEN
+  #   last_action_date: '2026-01-15'
+  #   lifecycle: OPEN
+  #   strategy_state:
+  #     cooldown_remaining: 0
+  #     cooldown_reason: null
+  #     reverse_count: 0
+  #     inertia_counter: 1
+  #     last_decision: BUY
+  #     recent_signals:
+  #     - BUY
+  #     signal_stability_score: 1.0
+  #     reduce_protection_remaining: 0

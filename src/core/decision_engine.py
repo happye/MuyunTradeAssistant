@@ -92,7 +92,16 @@ class StateMachine:
 
 
 class DecisionEngine:
-    """决策引擎 - 聚合信号，生成最终决策"""
+    """信号聚合器（v0.7.2 角色调整）
+
+    v0.7.2 变更：
+    - 从"最终决策者"变为"信号聚合器"
+    - 保留职责：技能信号整合、市场状态判断、动作信号覆盖
+    - 移除职责：最终交易动作决定、仓位管理（迁移到Strategy Layer）
+
+    输出：DecisionResult（信号聚合结果，非最终交易决策）
+    最终决策由 Strategy Layer + Execution Layer 产出
+    """
 
     # 信号优先级
     SIGNAL_PRIORITY = {
@@ -130,7 +139,16 @@ class DecisionEngine:
         state: Optional[MarketState] = None,
         current_position_ratio: float = 0.0,
     ) -> DecisionResult:
-        """生成最终决策（ISS-001: 分层决策 + 信号去重 + ISS-007: 决策追溯）"""
+        """信号聚合（v0.7.2: 不再是最终决策，而是信号聚合结果）
+
+        v0.7.2 角色调整：
+        - 保留：市场状态判定、基础投票、调节器修正、SELL分层门槛、动作信号覆盖
+        - 移除：仓位管理（由Strategy Layer负责）
+        - position_action/position_ratio字段仍填充，但作为参考，Strategy Layer会重新计算
+
+        ISS-001: 分层决策 + 信号去重
+        ISS-007: 决策追溯
+        """
 
         trace: list[DecisionTrace] = []
 

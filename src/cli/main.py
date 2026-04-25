@@ -5,11 +5,10 @@ import json
 import logging
 from pathlib import Path
 
-# Windows PowerShell 环境下强制 UTF-8 编码
+# Windows PowerShell 环境下设置 UTF-8（通过环境变量，不替换sys.stdout避免与Rich冲突）
 if sys.platform == 'win32':
-    import io
-    sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding='utf-8', errors='replace')
-    sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding='utf-8', errors='replace')
+    import os
+    os.environ.setdefault("PYTHONIOENCODING", "utf-8")
 
 import yaml
 from rich.console import Console
@@ -20,8 +19,9 @@ from rich import print as rprint
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.models import StockData, SignalType, MarketState
+from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle
 from src.core.orchestrator import Orchestrator
+from src.data.portfolio import PortfolioManager
 
 # 配置日志（默认WARNING，只显示警告及以上；--verbose 开启INFO；--debug 开启DEBUG）
 # 注意：必须在 import 其他模块前设置，否则子模块的 getLogger 会继承根 logger 级别
@@ -76,8 +76,8 @@ def create_sample_data() -> StockData:
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        "[bold cyan]暮云思辨投资助手 v0.6.1[/bold cyan]\n"
-        "AI驱动的A股决策辅助工具",
+        "[bold cyan]暮云思辨投资助手 v0.7.2[/bold cyan]\n"
+        "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
 
@@ -137,7 +137,8 @@ def analyze_json(json_path: str):
     return result
 
 
-def display_result(result):
+def display_result(result, strategy_decision=None, execution_eval=None):
+    """格式化显示分析结果（v0.7.2 含策略层和执行层信息）"""
     """格式化显示分析结果"""
     # 信号颜色映射
     signal_colors = {
@@ -202,6 +203,31 @@ def display_result(result):
         console.print("\n[bold]决策理由：[/bold]")
         for i, reason in enumerate(result.reason, 1):
             console.print(f"  {i}. {reason}")
+
+    # v0.7.2: 策略层信息
+    if strategy_decision:
+        console.print(f"\n[bold magenta]策略层：[/bold magenta]")
+        lifecycle_colors = {
+            TradeLifecycle.FLAT: "dim",
+            TradeLifecycle.OPEN: "green",
+            TradeLifecycle.HOLD: "cyan",
+            TradeLifecycle.EXIT: "yellow",
+            TradeLifecycle.COOLDOWN: "red",
+        }
+        lc_color = lifecycle_colors.get(strategy_decision.lifecycle_after, "white")
+        console.print(f"  生命周期: [{lc_color}]{strategy_decision.lifecycle_before.value}[/{lc_color}] → [{lc_color}]{strategy_decision.lifecycle_after.value}[/{lc_color}]")
+        console.print(f"  信号稳定性: {strategy_decision.new_state.signal_stability_score:.0%}")
+        console.print(f"  惯性: {strategy_decision.new_state.inertia_counter}天")
+        if strategy_decision.strategy_reasons:
+            console.print(f"  策略理由: {'; '.join(strategy_decision.strategy_reasons[:3])}")
+
+    # v0.7.2: 执行层信息
+    if execution_eval and execution_eval.blocked:
+        console.print(f"\n[bold red]执行约束：[/bold red]")
+        console.print(f"  ⚠ {execution_eval.block_reason}")
+    elif execution_eval:
+        console.print(f"\n[bold dim]执行评估：[/bold dim]")
+        console.print(f"  滑点: {execution_eval.slippage_pct:.3%}  冲击成本: {execution_eval.impact_cost_pct:.3%}  总成本: {execution_eval.total_cost_pct:.3%}")
 
     # 风险提示
     if result.warnings:
@@ -312,6 +338,23 @@ def analyze_live(stock_code: str):
         if indicators:
             console.print(f"  技术指标: {', '.join(indicators)}")
 
+        # ===== 读取持仓记录 =====
+        pm = PortfolioManager()
+        strategy_state = pm.to_strategy_state(stock_code)
+        pos = pm.get_position(stock_code)
+        if pos:
+            console.print(f"\n[bold green]📂 持仓记录[/bold green]")
+            console.print(f"  生命周期: {pos.lifecycle}")
+            console.print(f"  当前仓位: {pos.current_ratio:.0%}")
+            if pos.entry_price:
+                pnl_pct = (stock_data.price - pos.entry_price) / pos.entry_price * 100
+                pnl_color = "green" if pnl_pct >= 0 else "red"
+                console.print(f"  开仓价: {pos.entry_price}  浮盈: [{pnl_color}]{pnl_pct:+.2f}%[/{pnl_color}]")
+            if pos.strategy_state and pos.strategy_state.get("cooldown_remaining", 0) > 0:
+                console.print(f"  冷却期: 剩余{pos.strategy_state['cooldown_remaining']}天")
+        else:
+            console.print(f"\n[dim]📂 无持仓记录（将从FLAT状态开始分析）[/dim]")
+
         config = load_config()
         enabled_skills = config.get("skills", {}).get("enabled", None)
         skills_dir = config.get("skills", {}).get("dir", "./src/skills")
@@ -319,8 +362,18 @@ def analyze_live(stock_code: str):
         skill_types = config.get("skills", {}).get("types", None)
 
         orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
-        result = orchestrator.analyze(stock_data)
-        display_result(result)
+        result, strategy_decision, execution_eval = orchestrator.analyze(
+            stock_data,
+            current_position_ratio=strategy_state.current_position_ratio,
+            strategy_state=strategy_state,
+        )
+        display_result(result, strategy_decision, execution_eval)
+
+        # ===== 建议更新持仓 =====
+        pm.suggest_update(
+            stock_code, stock_data.stock_name,
+            strategy_decision, stock_data, console
+        )
     else:
         # 无技术指标时，只显示基本信息
         console.print(f"\n[bold yellow]仅实时数据可用，无法进行技术分析[/bold yellow]")
@@ -419,6 +472,24 @@ def display_backtest_result(result):
     stats_table.add_row("胜率", f"{result.win_rate:.1f}%")
     stats_table.add_row("盈亏比", f"{result.profit_loss_ratio:.2f}")
 
+    # v0.7.2: 稳定性指标
+    if result.decision_stability > 0 or result.drawdown_stability > 0:
+        stats_table.add_row("─── v0.7.2 稳定性 ───", "")
+        stats_table.add_row("决策稳定性", f"{result.decision_stability:.0%}")
+        stats_table.add_row("回撤稳定性", f"{result.drawdown_stability:.2f}")
+        if result.mc_simulations > 0:
+            stats_table.add_row("最差收益", f"{result.worst_case_return_pct:+.2f}%")
+            stats_table.add_row("结果方差", f"{result.result_variance:.2f}")
+            stats_table.add_row("MC模拟次数", str(result.mc_simulations))
+        if result.blocked_by_limit_up > 0 or result.blocked_by_limit_down > 0 or result.blocked_by_liquidity > 0:
+            stats_table.add_row("─── 执行约束 ───", "")
+            if result.blocked_by_limit_up > 0:
+                stats_table.add_row("涨停阻止买入", str(result.blocked_by_limit_up))
+            if result.blocked_by_limit_down > 0:
+                stats_table.add_row("跌停阻止卖出", str(result.blocked_by_limit_down))
+            if result.blocked_by_liquidity > 0:
+                stats_table.add_row("流动性不足阻止", str(result.blocked_by_liquidity))
+
     console.print(stats_table)
 
     # ===== 交易记录 =====
@@ -497,10 +568,12 @@ def display_backtest_result(result):
         console.print(summary_table)
 
     # ===== 交易成本说明 =====
-    console.print("\n[bold dim]交易成本模型：[/bold dim]")
-    console.print("  佣金 0.025%(最低5元) + 印花税 0.05%(卖出) + 过户费 0.001% + 滑点 0.1%")
-    console.print("  执行方式: 前日信号 + 次日开盘价（消除前视偏差）")
-    console.print("  T+1: 买入后至少下一交易日才能卖出")
+    console.print("\n[bold dim]交易成本模型（v0.7.2）：[/bold dim]")
+    console.print("  佣金 0.025%(最低5元) + 印花税 0.05%(卖出) + 过户费 0.001%")
+    console.print("  滑点: 与波动率挂钩（高波动=大滑点）| 冲击成本: 与量比相关")
+    console.print("  涨停不买/跌停不卖 | 流动性不足(量比<0.3)禁止交易")
+    console.print("  执行方式: 前日信号+次日开盘价（消除前视偏差）| T+1硬限制")
+    console.print("  策略层: 交易生命周期+决策惯性+信号确认+冷却期+反转成本")
 
     # ===== 风险提示 =====
     console.print("\n[bold yellow]⚠ 风险提示[/bold yellow]")
@@ -511,12 +584,77 @@ def display_backtest_result(result):
         console.print(f"  [red]最大回撤 {result.max_drawdown_pct:.1f}% 较大，策略风险较高。[/red]")
 
 
+def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0, ratio: float = 0.20):
+    """持仓管理子命令"""
+    pm = PortfolioManager()
+
+    if action == "list":
+        positions = pm.list_positions()
+        if not positions:
+            console.print("\n[dim]当前无持仓记录[/dim]")
+            return
+
+        console.print(f"\n[bold cyan]📂 持仓列表[/bold cyan]")
+        table = Table()
+        table.add_column("代码", style="cyan")
+        table.add_column("名称", style="white")
+        table.add_column("仓位", justify="right")
+        table.add_column("开仓价", justify="right")
+        table.add_column("生命周期", style="yellow")
+        table.add_column("开仓日期")
+        table.add_column("上次操作")
+
+        for pos in positions:
+            ratio_str = f"{pos.current_ratio:.0%}"
+            price_str = f"{pos.entry_price:.2f}" if pos.entry_price else "-"
+            table.add_row(
+                pos.stock_code,
+                pos.stock_name or "-",
+                ratio_str,
+                price_str,
+                pos.lifecycle,
+                pos.entry_date or "-",
+                f"{pos.last_action} ({pos.last_action_date or '-'})",
+            )
+
+        console.print(table)
+
+    elif action == "add":
+        if not stock_code:
+            console.print("[red]请指定股票代码[/red]")
+            return
+        if pm.has_position(stock_code):
+            console.print(f"[yellow]⚠ {stock_code} 已有持仓记录，请先 --pos-remove 删除[/yellow]")
+            return
+
+        pm.add_position(
+            stock_code=stock_code,
+            stock_name=name or stock_code,
+            entry_price=price if price > 0 else None,
+            ratio=ratio,
+        )
+        console.print(f"[green]✓ 已添加持仓: {name or stock_code} ({stock_code})[/green]")
+        console.print(f"  仓位: {ratio:.0%}" + (f"  开仓价: {price:.2f}" if price > 0 else ""))
+
+    elif action == "remove":
+        if not stock_code:
+            console.print("[red]请指定股票代码[/red]")
+            return
+        if not pm.has_position(stock_code):
+            console.print(f"[yellow]⚠ {stock_code} 无持仓记录[/yellow]")
+            return
+
+        pos = pm.get_position(stock_code)
+        pm.remove_position(stock_code)
+        console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
+
+
 def main():
     """主入口"""
     import argparse
 
     parser = argparse.ArgumentParser(
-        description="暮云思辨投资助手 - A股技术分析辅助决策工具",
+        description="暮云思辨投资助手 - AI驱动的A股交易行为约束系统",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 使用示例:
@@ -527,6 +665,12 @@ def main():
   python -m src.cli.main --backtest 600519           # 回测模式(默认近1年)
   python -m src.cli.main --backtest 600519 -s 2024-01-01 -e 2025-01-01  # 自定义区间
   python -m src.cli.main --backtest 600519 --capital 200000  # 自定义初始资金
+
+持仓管理:
+  python -m src.cli.main --pos-list                                     # 查看所有持仓
+  python -m src.cli.main --pos-add 002192 --name 融捷股份 --price 35.20  # 添加持仓
+  python -m src.cli.main --pos-add 002192 --name 融捷股份 --ratio 0.40   # 添加持仓(指定仓位)
+  python -m src.cli.main --pos-remove 002192                           # 删除持仓
         """
     )
     parser.add_argument(
@@ -563,7 +707,7 @@ def main():
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="%(prog)s v0.6.1 (SELL分层门槛：牛市0.35/震荡0.30/熊市0.25+强SELL判定)"
+        version="%(prog)s v0.7.2 (交易行为约束系统：Strategy Layer+Execution Layer+稳定性指标)"
     )
     parser.add_argument(
         "--verbose",
@@ -576,6 +720,42 @@ def main():
         help="显示调试日志（DEBUG级别），包含所有内部信息"
     )
 
+    # ===== 持仓管理子命令 =====
+    pos_group = parser.add_argument_group("持仓管理")
+    pos_group.add_argument(
+        "--pos-add",
+        metavar="STOCK_CODE",
+        help="手动添加持仓记录（如：--pos-add 002192 --name 融捷股份 --price 35.20 --ratio 0.20）"
+    )
+    pos_group.add_argument(
+        "--pos-list",
+        action="store_true",
+        help="列出所有持仓记录"
+    )
+    pos_group.add_argument(
+        "--pos-remove",
+        metavar="STOCK_CODE",
+        help="删除持仓记录"
+    )
+    pos_group.add_argument(
+        "--name",
+        metavar="STOCK_NAME",
+        help="持仓添加时的股票名称"
+    )
+    pos_group.add_argument(
+        "--price",
+        type=float,
+        metavar="PRICE",
+        help="持仓添加时的开仓价格"
+    )
+    pos_group.add_argument(
+        "--ratio",
+        type=float,
+        default=0.20,
+        metavar="RATIO",
+        help="持仓添加时的仓位比例（默认0.20即20%%）"
+    )
+
     args = parser.parse_args()
 
     # 根据参数调整日志级别
@@ -584,7 +764,14 @@ def main():
     elif args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
-    if args.backtest:
+    # ===== 持仓管理子命令 =====
+    if args.pos_list:
+        manage_positions("list")
+    elif args.pos_add:
+        manage_positions("add", args.pos_add, args.name, args.price, args.ratio)
+    elif args.pos_remove:
+        manage_positions("remove", args.pos_remove)
+    elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta
         start_date = args.start or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")

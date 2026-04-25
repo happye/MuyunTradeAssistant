@@ -34,3 +34,6 @@ Thumbs.db
 
 # 敏感配置（如含API密钥）
 # configs/secrets.yaml
+
+# 用户持仓数据（含个人交易信息，不上传）
+portfolio.yaml

@@ -3,7 +3,7 @@
 
 app:
   name: "暮云思辨投资助手"
-  version: "0.3.0"
+  version: "0.7.2"
   mode: "CLI"  # CLI / API
 
 # 数据源配置
