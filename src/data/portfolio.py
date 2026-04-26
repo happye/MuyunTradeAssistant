@@ -305,12 +305,16 @@ class PortfolioManager:
             entry_date = None
             entry_price = None
 
+        # 仓位比例：优先用策略层计算的position_ratio，回退到new_state的值
+        # position_ratio是策略层计算的目标仓位，new_state.current_position_ratio可能未同步更新
+        actual_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else new_state.current_position_ratio
+
         record = PositionRecord(
             stock_code=stock_code,
             stock_name=stock_name,
             entry_date=entry_date,
             entry_price=entry_price,
-            current_ratio=new_state.current_position_ratio,
+            current_ratio=actual_ratio,
             last_action=pos_action,
             last_action_date=today,
             lifecycle=new_state.lifecycle.value,
@@ -331,7 +335,7 @@ class PortfolioManager:
 
         # 如果仓位为0且lifecycle是FLAT或COOLDOWN，保留记录（冷却期需要）
         # 如果仓位为0且lifecycle是FLAT且冷却期结束，删除记录
-        if (new_state.current_position_ratio <= 0
+        if (actual_ratio <= 0
                 and new_state.lifecycle == TradeLifecycle.FLAT
                 and new_state.cooldown_remaining <= 0):
             # 交易完全结束，删除记录
@@ -380,7 +384,9 @@ class PortfolioManager:
         console.print(f"\n[bold cyan]📋 持仓更新建议[/bold cyan]")
         console.print(f"  股票: {stock_name} ({stock_code})")
         console.print(f"  动作: [bold]{action_display}[/bold]")
-        console.print(f"  目标仓位: {new_state.current_position_ratio:.0%}")
+        # 优先使用position_ratio（策略层计算的目标仓位），回退到new_state的值
+        display_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else new_state.current_position_ratio
+        console.print(f"  目标仓位: {display_ratio:.0%}")
         console.print(f"  生命周期: {strategy_decision.lifecycle_before.value} → {strategy_decision.lifecycle_after.value}")
         if new_state.cooldown_remaining > 0:
             console.print(f"  冷却期: 剩余{new_state.cooldown_remaining}天")

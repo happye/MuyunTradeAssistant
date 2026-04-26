@@ -187,7 +187,7 @@ class StrategyLayer:
         # Step 8: 更新交易生命周期
         lifecycle_before = new_state.lifecycle
         new_state = self._update_lifecycle(
-            new_state, adjusted_decision, position_action, data
+            new_state, adjusted_decision, position_action, data, position_ratio
         )
         lifecycle_after = new_state.lifecycle
 
@@ -467,7 +467,11 @@ class StrategyLayer:
         elif final_signal == SignalType.HOLD:
             if buy_score > sell_score * 1.5:
                 target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
-                return PositionAction.ADD, target
+                if current_position_ratio > 0:
+                    return PositionAction.ADD, target
+                else:
+                    # 空仓时不能"加仓"，改为建仓
+                    return PositionAction.OPEN, min(self.OPEN_RATIO, cap)
             else:
                 return PositionAction.HOLD_POSITION, 0.0
 
@@ -482,6 +486,7 @@ class StrategyLayer:
         decision: SignalType,
         position_action: PositionAction,
         data: StockData,
+        position_ratio: float = 0.0,
     ) -> StrategyState:
         """更新交易生命周期状态
 
@@ -506,6 +511,23 @@ class StrategyLayer:
                 new_state.entry_price = data.price
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
+                new_state.current_position_ratio = position_ratio
+            elif position_action == PositionAction.OPEN:
+                # 防御：HOLD等信号但仓位动作为OPEN时，也应建仓
+                new_state.lifecycle = TradeLifecycle.OPEN
+                new_state.entry_date = data.stock_code
+                new_state.entry_price = data.price
+                new_state.reverse_count = 0
+                new_state.total_commission_paid = 0.0
+                new_state.current_position_ratio = position_ratio
+            elif position_action == PositionAction.ADD:
+                # 防御：FLAT状态下不应出现ADD，修正为OPEN
+                new_state.lifecycle = TradeLifecycle.OPEN
+                new_state.entry_date = data.stock_code
+                new_state.entry_price = data.price
+                new_state.reverse_count = 0
+                new_state.total_commission_paid = 0.0
+                new_state.current_position_ratio = position_ratio
             # FLAT + 非BUY → 保持FLAT
 
         elif lifecycle == TradeLifecycle.OPEN:
@@ -516,8 +538,10 @@ class StrategyLayer:
                 new_state.current_position_ratio = 0.0
             elif decision in (SignalType.HOLD, SignalType.BUY) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 new_state.lifecycle = TradeLifecycle.HOLD  # 确认建仓成功
+                new_state.current_position_ratio = position_ratio
             elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
                 new_state.lifecycle = TradeLifecycle.HOLD  # 减仓但仍持有
+                new_state.current_position_ratio = position_ratio
 
         elif lifecycle == TradeLifecycle.HOLD:
             if position_action == PositionAction.CLOSE_ALL:
@@ -531,8 +555,9 @@ class StrategyLayer:
                 new_state.lifecycle = TradeLifecycle.EXIT
                 new_state.last_reduce_date = data.stock_code  # 简化
                 new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+                new_state.current_position_ratio = position_ratio
             elif position_action == PositionAction.ADD:
-                pass  # 加仓，继续HOLD
+                new_state.current_position_ratio = position_ratio  # 加仓，继续HOLD
 
         elif lifecycle == TradeLifecycle.EXIT:
             if position_action == PositionAction.CLOSE_ALL:
@@ -545,9 +570,11 @@ class StrategyLayer:
             elif position_action == PositionAction.REDUCE:
                 # 继续减仓过程
                 new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+                new_state.current_position_ratio = position_ratio
             elif decision in (SignalType.BUY, SignalType.HOLD) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 # 方向转回看多 → 回到HOLD
                 new_state.lifecycle = TradeLifecycle.HOLD
+                new_state.current_position_ratio = position_ratio
             # EXIT状态下如果已清仓 → COOLDOWN
             if new_state.current_position_ratio <= 0:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
