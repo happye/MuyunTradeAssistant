@@ -272,7 +272,7 @@ def display_result(result, strategy_decision=None, execution_eval=None):
 
 def analyze_portfolio():
     """一键分析当前所有持仓股"""
-    from src.data.akshare_client import get_stock_data, AKShareClient
+    from src.data.akshare_client import get_stock_data, AKShareClient, _baostock_logout
 
     pm = PortfolioManager()
     positions = pm.list_positions()
@@ -309,6 +309,19 @@ def analyze_portfolio():
                 ])
         except Exception as e:
             logger.warning(f"获取 {pos.stock_code} 完整数据失败: {e}")
+            # socket错误时重置连接，避免后续股票也失败
+            if '10038' in str(e) or 'socket' in str(e).lower():
+                logger.warning("检测到socket异常，重置Baostock连接后重试")
+                _baostock_logout()
+                try:
+                    stock_data = get_stock_data(pos.stock_code)
+                    if stock_data:
+                        has_indicators = any([
+                            stock_data.ma5, stock_data.macd_dif, stock_data.rsi_6,
+                            stock_data.boll_upper, stock_data.kdj_k
+                        ])
+                except Exception as e2:
+                    logger.warning(f"重试获取 {pos.stock_code} 仍失败: {e2}")
 
         # 降级：只获取实时行情
         if not stock_data:
@@ -388,7 +401,18 @@ def analyze_portfolio():
             console.print(f"  [red]✗ 分析失败: {e}[/red]")
             results.append((pos, stock_data, None, None))
 
+        # 股票间间隔，避免API请求过快导致连接异常
+        if i < len(positions):
+            import time
+            time.sleep(1)
+
     # ===== 汇总表格 =====
+    # 扫描结束，清理baostock连接
+    try:
+        _baostock_logout()
+    except Exception:
+        pass
+
     console.print(f"\n[bold cyan]📊 持仓扫描汇总[/bold cyan]")
 
     summary_table = Table()

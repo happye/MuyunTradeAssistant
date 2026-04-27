@@ -23,20 +23,56 @@ _bs_login_status = None
 
 
 def _ensure_baostock_login():
-    """确保baostock已登录（模块级别全局状态）"""
+    """确保baostock已登录（模块级别全局状态）
+
+    支持socket错误自动恢复：如果之前连接异常断开，
+    会先清理残留连接再重新登录。
+    """
     global _bs_login_status
-    if _bs_login_status is None:
+    if _bs_login_status:
+        # 已标记为登录状态，但可能socket已被关闭（其他函数logout后未重置状态）
+        # 尝试轻量查询验证连接是否仍然有效
         try:
-            lg = bs.login()
-            _bs_login_status = lg.error_code == '0'
-            if _bs_login_status:
-                logger.info("Baostock登录成功")
-            else:
-                logger.warning(f"Baostock登录失败: {lg.error_msg}")
+            rs = bs.query_history_k_data_plus(
+                "sh.000001", "date",
+                start_date=(datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
+                end_date=datetime.now().strftime("%Y-%m-%d"),
+                frequency="d"
+            )
+            if rs.error_code == '0':
+                return True
+            # 查询失败，连接已断开
+            logger.debug("Baostock连接验证失败，重新登录")
         except Exception as e:
-            logger.warning(f"Baostock登录异常: {e}")
-            _bs_login_status = False
+            logger.debug(f"Baostock连接验证异常: {e}")
+
+    # 需要重新登录（先清理残留连接再登录）
+    _baostock_logout()
+    try:
+        lg = bs.login()
+        _bs_login_status = lg.error_code == '0'
+        if _bs_login_status:
+            logger.info("Baostock登录成功")
+        else:
+            logger.warning(f"Baostock登录失败: {lg.error_msg}")
+    except Exception as e:
+        logger.warning(f"Baostock登录异常: {e}")
+        _bs_login_status = False
     return _bs_login_status
+
+
+def _baostock_logout():
+    """登出baostock并重置全局登录状态
+
+    必须在每次logout后调用此函数而非直接bs.logout()，
+    否则_ensure_baostock_login()会误以为仍在线。
+    """
+    global _bs_login_status
+    try:
+        bs.logout()
+    except Exception:
+        pass
+    _bs_login_status = None
 
 
 class AKShareClient:
@@ -296,22 +332,18 @@ class AKShareClient:
         Returns:
             dict: 简化版实时行情数据
         """
-        import baostock as bs_local
-
         prefix, code = cls._normalize_stock_code(stock_code)
         bs_code = f"{prefix}.{code}"
 
         try:
-            lg = bs_local.login()
-            if lg.error_code != '0':
+            if not _ensure_baostock_login():
                 return None
 
             # 获取最近5天的日K线，取最后一天作为"实时"数据
-            from datetime import datetime, timedelta
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
 
-            rs = bs_local.query_history_k_data_plus(
+            rs = bs.query_history_k_data_plus(
                 bs_code,
                 "date,code,open,high,low,close,volume,amount",
                 start_date=start_date,
@@ -320,14 +352,12 @@ class AKShareClient:
             )
 
             if rs.error_code != '0':
-                bs_local.logout()
+                logger.warning(f"Baostock实时行情查询失败 {stock_code}: {rs.error_msg}")
                 return None
 
             data_list = []
             while rs.next():
                 data_list.append(rs.get_row_data())
-
-            bs_local.logout()
 
             if not data_list:
                 return None
@@ -351,6 +381,10 @@ class AKShareClient:
 
         except Exception as e:
             logger.warning(f"_fetch_baostock_realtime异常 {stock_code}: {e}")
+            # socket错误时重置连接状态，下次_ensure_baostock_login会重新连接
+            if '10038' in str(e) or 'socket' in str(e).lower():
+                logger.warning("检测到socket异常，重置Baostock连接")
+                _baostock_logout()
             return None
 
     @classmethod
@@ -372,16 +406,10 @@ class AKShareClient:
         Returns:
             DataFrame: 标准化格式的K线数据
         """
-        # 局部导入避免模块状态问题
-        import baostock as bs_local
+        if not _ensure_baostock_login():
+            return None
 
         try:
-            # 确保登录
-            lg = bs_local.login()
-            if lg.error_code != '0':
-                logger.error(f"Baostock登录失败: {lg.error_msg}")
-                return None
-
             prefix, code = cls._normalize_stock_code(stock_code)
             bs_code = f"{prefix}.{code}"
 
@@ -394,7 +422,7 @@ class AKShareClient:
             freq = freq_map.get(period, "d")
 
             fields = "date,code,open,high,low,close,volume,amount"
-            rs = bs_local.query_history_k_data_plus(
+            rs = bs.query_history_k_data_plus(
                 bs_code,
                 fields,
                 start_date=start_date,
@@ -404,14 +432,11 @@ class AKShareClient:
 
             if rs.error_code != '0':
                 logger.error(f"Baostock查询失败: {rs.error_msg}")
-                bs_local.logout()
                 return None
 
             data_list = []
             while (rs.error_code == '0') & rs.next():
                 data_list.append(rs.get_row_data())
-
-            bs_local.logout()
 
             if not data_list:
                 return None
@@ -439,6 +464,10 @@ class AKShareClient:
 
         except Exception as e:
             logger.error(f"Baostock获取K线异常 {stock_code}: {e}")
+            # socket错误时重置连接状态
+            if '10038' in str(e) or 'socket' in str(e).lower():
+                logger.warning("检测到socket异常，重置Baostock连接")
+                _baostock_logout()
             return None
 
     @staticmethod
@@ -812,6 +841,10 @@ class AKShareClient:
 
         except Exception as e:
             logger.warning(f"大盘趋势获取异常: {e}")
+            # socket错误时重置连接状态
+            if '10038' in str(e) or 'socket' in str(e).lower():
+                logger.warning("检测到socket异常，重置Baostock连接")
+                _baostock_logout()
             return None
 
     @staticmethod
