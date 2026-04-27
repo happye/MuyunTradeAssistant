@@ -25,29 +25,15 @@ _bs_login_status = None
 def _ensure_baostock_login():
     """确保baostock已登录（模块级别全局状态）
 
-    支持socket错误自动恢复：如果之前连接异常断开，
-    会先清理残留连接再重新登录。
+    核心设计：信任全局状态，不做验证查询（避免额外开销）。
+    如果连接异常断开，查询时会触发socket错误，
+    异常处理中调用_baostock_logout()重置状态，
+    下次调用本函数会自动重新登录。
     """
     global _bs_login_status
     if _bs_login_status:
-        # 已标记为登录状态，但可能socket已被关闭（其他函数logout后未重置状态）
-        # 尝试轻量查询验证连接是否仍然有效
-        try:
-            rs = bs.query_history_k_data_plus(
-                "sh.000001", "date",
-                start_date=(datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d"),
-                end_date=datetime.now().strftime("%Y-%m-%d"),
-                frequency="d"
-            )
-            if rs.error_code == '0':
-                return True
-            # 查询失败，连接已断开
-            logger.debug("Baostock连接验证失败，重新登录")
-        except Exception as e:
-            logger.debug(f"Baostock连接验证异常: {e}")
+        return True
 
-    # 需要重新登录（先清理残留连接再登录）
-    _baostock_logout()
     try:
         lg = bs.login()
         _bs_login_status = lg.error_code == '0'
@@ -93,6 +79,9 @@ class AKShareClient:
     def _retry_with_backoff(func, *args, max_retries=3, base_delay=2, **kwargs):
         """带指数退避的重试装饰器
 
+        遇到网络不可恢复错误（ProxyError/RemoteDisconnected/ConnectionError）时
+        直接跳过不重试，避免浪费时间等待注定失败的请求。
+
         Args:
             func: 要重试的函数
             *args: 函数参数
@@ -103,10 +92,20 @@ class AKShareClient:
         Returns:
             函数返回值或None
         """
+        # 不可恢复的错误关键词，遇到直接放弃
+        SKIP_RETRY_KEYWORDS = ['ProxyError', 'RemoteDisconnected', 'ConnectionReset',
+                                'ConnectTimeout', 'Max retries exceeded']
+
         for attempt in range(max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
+                error_str = str(e)
+                # 不可恢复错误，直接放弃
+                if any(kw in error_str for kw in SKIP_RETRY_KEYWORDS):
+                    logger.warning(f"{func.__name__} 网络不可恢复错误，跳过重试: {type(e).__name__}")
+                    return None
+
                 if attempt < max_retries - 1:
                     # 指数退避 + 随机抖动
                     delay = base_delay * (2 ** attempt) + random.uniform(0.5, 1.5)
@@ -135,19 +134,23 @@ class AKShareClient:
             return "sh", code
 
     @classmethod
-    def get_realtime_quote(cls, stock_code: str, retry: int = 3) -> Optional[dict]:
+    def get_realtime_quote(cls, stock_code: str, retry: int = 1) -> Optional[dict]:
         """获取实时行情（单只股票）- 使用多级备用策略
 
         优先级：Baostock（已确认可用）> 东方财富/新浪（可能被封）
 
         Args:
             stock_code: 股票代码
-            retry: 重试次数
+            retry: 每个数据源的重试次数（默认1次，快速失败）
 
         Returns:
             dict: 实时行情数据，包含价格、涨跌、成交量等
         """
         prefix, code = cls._normalize_stock_code(stock_code)
+
+        # ETF/指数代码检测：AKShare的stock_zh_a_spot_em()只覆盖A股股票，
+        # 不包含ETF(15xx/51xx)和指数(000xxx)，跳过避免浪费时间
+        is_etf_or_index = code.startswith(('15', '51', '56'))
 
         # --- 策略1：Baostock（优先，因为本机已验证可用）---
         try:
@@ -158,28 +161,19 @@ class AKShareClient:
         except Exception as e:
             logger.warning(f"Baostock实时行情失败 {stock_code}: {e}")
 
-        # --- 策略2：东方财富/新浪（可能被封）---
+        # --- 策略2：东方财富（可能被封，快速失败不浪费时间）---
+        # 注意：stock_zh_a_spot()（新浪分页爬虫）已移除，69页×1秒=太慢且不含ETF
+        # ETF/指数不在A股行情API中，直接跳过
+        if is_etf_or_index:
+            logger.info(f"{stock_code} 是ETF/指数代码，跳过AKShare A股行情API")
+            return None
+
         fetchers = []
 
-        # 东方财富全市场
+        # 东方财富全市场（单次API调用覆盖全市场，失败快）
         def _fetch_em_all():
             return ak.stock_zh_a_spot_em()
         fetchers.append(("东方财富全市场", _fetch_em_all))
-
-        # 上海A股
-        def _fetch_sh():
-            return ak.stock_sh_a_spot_em()
-        fetchers.append(("上海A股", _fetch_sh))
-
-        # 深圳A股
-        def _fetch_sz():
-            return ak.stock_sz_a_spot_em()
-        fetchers.append(("深圳A股", _fetch_sz))
-
-        # 新浪财经
-        def _fetch_sina():
-            return ak.stock_zh_a_spot()
-        fetchers.append(("新浪财经", _fetch_sina))
 
         last_error = None
         for name, fetcher in fetchers:
@@ -300,6 +294,12 @@ class AKShareClient:
             return df
 
         # 如果Baostock失败，尝试AKShare（东方财富，可能是IP被封所以放最后）
+        # ETF/指数不在stock_zh_a_hist中，跳过避免浪费时间
+        is_etf_or_index = code.startswith(('15', '51', '56'))
+        if is_etf_or_index:
+            logger.info(f"{stock_code} 是ETF/指数代码，跳过AKShare A股历史K线API")
+            return df  # Baostock的结果（可能为None）
+
         def _fetch_hist():
             return ak.stock_zh_a_hist(
                 symbol=code,
@@ -309,7 +309,7 @@ class AKShareClient:
                 adjust=adjust
             )
 
-        df = cls._retry_with_backoff(_fetch_hist, max_retries=retry, base_delay=3)
+        df = cls._retry_with_backoff(_fetch_hist, max_retries=1, base_delay=3)
         if df is None:
             logger.warning(f"AKShare获取失败，尝试Baostock备用 {stock_code}")
             # 转换日期格式：AKShare用YYYYMMDD，Baostock用YYYY-MM-DD

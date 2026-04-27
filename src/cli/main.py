@@ -297,11 +297,34 @@ def analyze_portfolio():
     for i, pos in enumerate(positions, 1):
         console.print(f"[dim]─── [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code}) ───[/dim]")
 
-        # 获取数据
+        # 获取数据（带超时保护，防止单只股票卡死整个扫描）
         stock_data = None
         has_indicators = False
         try:
-            stock_data = get_stock_data(pos.stock_code)
+            import threading
+            result_container = [None]
+            error_container = [None]
+
+            def _fetch():
+                try:
+                    result_container[0] = get_stock_data(pos.stock_code)
+                except Exception as e:
+                    error_container[0] = e
+
+            t = threading.Thread(target=_fetch, daemon=True)
+            t.start()
+            t.join(timeout=30)  # 30秒超时
+
+            if t.is_alive():
+                logger.warning(f"获取 {pos.stock_code} 超时(30s)，跳过")
+                console.print(f"  [yellow]⚠ 获取超时，跳过[/yellow]")
+                results.append((pos, None, None, None))
+                continue
+
+            if error_container[0]:
+                raise error_container[0]
+
+            stock_data = result_container[0]
             if stock_data:
                 has_indicators = any([
                     stock_data.ma5, stock_data.macd_dif, stock_data.rsi_6,
@@ -309,19 +332,6 @@ def analyze_portfolio():
                 ])
         except Exception as e:
             logger.warning(f"获取 {pos.stock_code} 完整数据失败: {e}")
-            # socket错误时重置连接，避免后续股票也失败
-            if '10038' in str(e) or 'socket' in str(e).lower():
-                logger.warning("检测到socket异常，重置Baostock连接后重试")
-                _baostock_logout()
-                try:
-                    stock_data = get_stock_data(pos.stock_code)
-                    if stock_data:
-                        has_indicators = any([
-                            stock_data.ma5, stock_data.macd_dif, stock_data.rsi_6,
-                            stock_data.boll_upper, stock_data.kdj_k
-                        ])
-                except Exception as e2:
-                    logger.warning(f"重试获取 {pos.stock_code} 仍失败: {e2}")
 
         # 降级：只获取实时行情
         if not stock_data:
@@ -400,11 +410,6 @@ def analyze_portfolio():
             logger.warning(f"分析 {pos.stock_code} 失败: {e}")
             console.print(f"  [red]✗ 分析失败: {e}[/red]")
             results.append((pos, stock_data, None, None))
-
-        # 股票间间隔，避免API请求过快导致连接异常
-        if i < len(positions):
-            import time
-            time.sleep(1)
 
     # ===== 汇总表格 =====
     # 扫描结束，清理baostock连接
