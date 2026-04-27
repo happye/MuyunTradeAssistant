@@ -124,12 +124,22 @@ class AKShareClient:
         - 600519 -> (sh, 600519)
         - 000001 -> (sz, 000001)
         - 300750 -> (sz, 300750)
+        - 159201 -> (sz, 159201)  深圳ETF
+        - 510300 -> (sh, 510300)  上海ETF
+        - 560100 -> (sh, 560100)  上海ETF
         """
         code = code.strip().zfill(6)
         if code.startswith(('6', '9')):
             return "sh", code
         elif code.startswith(('0', '3')):
             return "sz", code
+        elif code.startswith('15'):
+            # 159xxx / 150xxx 深圳ETF/LOF
+            return "sz", code
+        elif code.startswith(('51', '52', '56', '58')):
+            # 510xxx/511xxx/512xxx/513xxx/515xxx/516xxx/518xxx 上海ETF
+            # 520xxx/560xxx/580xxx 上海ETF/LOF
+            return "sh", code
         else:
             return "sh", code
 
@@ -161,13 +171,45 @@ class AKShareClient:
         except Exception as e:
             logger.warning(f"Baostock实时行情失败 {stock_code}: {e}")
 
-        # --- 策略2：东方财富（可能被封，快速失败不浪费时间）---
-        # 注意：stock_zh_a_spot()（新浪分页爬虫）已移除，69页×1秒=太慢且不含ETF
-        # ETF/指数不在A股行情API中，直接跳过
+        # --- 策略2：ETF专用API（东方财富基金ETF接口）---
         if is_etf_or_index:
-            logger.info(f"{stock_code} 是ETF/指数代码，跳过AKShare A股行情API")
+            logger.info(f"{stock_code} 是ETF代码，尝试AKShare ETF专用接口")
+            try:
+                etf_df = cls._retry_with_backoff(ak.fund_etf_spot_em, max_retries=retry, base_delay=3)
+                if etf_df is not None and not etf_df.empty:
+                    code_col = None
+                    for col in ['代码', 'code', 'symbol']:
+                        if col in etf_df.columns:
+                            code_col = col
+                            break
+                    if code_col:
+                        row = etf_df[etf_df[code_col] == code]
+                        if not row.empty:
+                            data = row.iloc[0].to_dict()
+                            name_col = next((c for c in ['名称', 'name'] if c in data), None)
+                            price_col = next((c for c in ['最新价', 'price'] if c in data), None)
+                            change_col = next((c for c in ['涨跌幅', 'change'] if c in data), None)
+                            volume_col = next((c for c in ['成交量', 'volume'] if c in data), None)
+                            return {
+                                "stock_code": code,
+                                "stock_name": data.get(name_col, code) if name_col else code,
+                                "price": float(data.get(price_col, 0)) if price_col else 0,
+                                "change_pct": float(data.get(change_col, 0)) if change_col else 0,
+                                "volume": int(float(data.get(volume_col, 0))) if volume_col else 0,
+                                "open": float(data.get('今开', 0)),
+                                "high": float(data.get('最高', 0)),
+                                "low": float(data.get('最低', 0)),
+                                "close_yesterday": float(data.get('昨收', 0)),
+                            }
+                    logger.info(f"ETF接口未找到 {stock_code} 的行情数据")
+                else:
+                    logger.warning(f"ETF实时行情接口返回空数据")
+            except Exception as e:
+                logger.warning(f"ETF专用接口失败 {stock_code}: {e}")
             return None
 
+        # --- 策略3：A股股票接口（东方财富全市场）---
+        # 注意：stock_zh_a_spot()（新浪分页爬虫）已移除，69页×1秒=太慢
         fetchers = []
 
         # 东方财富全市场（单次API调用覆盖全市场，失败快）
@@ -293,12 +335,31 @@ class AKShareClient:
             logger.info(f"Baostock历史K线成功 {stock_code}，获取 {len(df)} 行")
             return df
 
-        # 如果Baostock失败，尝试AKShare（东方财富，可能是IP被封所以放最后）
-        # ETF/指数不在stock_zh_a_hist中，跳过避免浪费时间
+        # 如果Baostock失败，尝试AKShare
+        # ETF用专用基金ETF接口，A股用stock_zh_a_hist
         is_etf_or_index = code.startswith(('15', '51', '56'))
+
         if is_etf_or_index:
-            logger.info(f"{stock_code} 是ETF/指数代码，跳过AKShare A股历史K线API")
-            return df  # Baostock的结果（可能为None）
+            # ETF专用历史K线接口
+            logger.info(f"{stock_code} 是ETF代码，尝试AKShare ETF历史K线接口")
+            try:
+                def _fetch_etf_hist():
+                    return ak.fund_etf_hist_em(
+                        symbol=code,
+                        period=period_value,
+                        start_date=start_date,
+                        end_date=end_date,
+                        adjust=adjust
+                    )
+                etf_df = cls._retry_with_backoff(_fetch_etf_hist, max_retries=1, base_delay=3)
+                if etf_df is not None and not etf_df.empty:
+                    logger.info(f"AKShare ETF历史K线成功 {stock_code}，获取 {len(etf_df)} 行")
+                    return etf_df
+            except Exception as e:
+                logger.warning(f"ETF历史K线接口失败 {stock_code}: {e}")
+            return df  # 返回Baostock的结果（可能为None）
+
+        # A股股票：用stock_zh_a_hist
 
         def _fetch_hist():
             return ak.stock_zh_a_hist(
