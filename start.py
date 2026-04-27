@@ -40,6 +40,7 @@ def show_help():
     print("│  用法                                             │")
     print("├──────────────────────────────────────────────────┤")
     print("│  输入股票代码        → 实时行情分析                │")
+    print("│  scan                 → 一键扫描所有持仓股        │")
     print("│  b  <代码> [起止日期] → 回测模式                  │")
     print("│  pos                  → 查看持仓列表              │")
     print("│  pos add <代码> [名称] [价格] [仓位]              │")
@@ -50,7 +51,7 @@ def show_help():
     print("├──────────────────────────────────────────────────┤")
     print("│  示例                                             │")
     print("│    000001              分析平安银行实时行情        │")
-    print("│    600519              分析贵州茅台实时行情        │")
+    print("│    scan                一键扫描所有持仓            │")
     print("│    b 000001            回测平安银行(近1年)         │")
     print("│    b 000001 2025-01-01 2026-01-01                 │")
     print("│                        回测指定区间                │")
@@ -78,6 +79,10 @@ def parse_input(user_input: str):
     # 帮助
     if parts[0].lower() in ("h", "help", "?"):
         return ("help", {})
+
+    # 一键扫描持仓
+    if parts[0].lower() in ("scan", "s"):
+        return ("scan", {})
 
     # 持仓管理
     if parts[0].lower() == "pos":
@@ -144,11 +149,14 @@ def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     from src.cli.main import (
         analyze_live, run_backtest, manage_positions, load_config,
-        console, Orchestrator
+        analyze_portfolio, console, Orchestrator
     )
 
     if mode == "live":
         analyze_live(args["stock_code"])
+
+    elif mode == "scan":
+        analyze_portfolio()
 
     elif mode == "backtest":
         from datetime import datetime, timedelta
@@ -212,7 +220,7 @@ def main():
         # 输出完毕后再次显示简短提示
         print()
         print("─" * 52)
-        print("  代码分析 | b+代码回测 | pos持仓 | h帮助 | q退出")
+        print("  代码分析 | scan扫描 | b+代码回测 | pos持仓 | h帮助 | q退出")
         print("─" * 52)
         print()
 

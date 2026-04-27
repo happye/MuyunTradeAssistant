@@ -270,6 +270,210 @@ def display_result(result, strategy_decision=None, execution_eval=None):
     )
 
 
+def analyze_portfolio():
+    """一键分析当前所有持仓股"""
+    from src.data.akshare_client import get_stock_data, AKShareClient
+
+    pm = PortfolioManager()
+    positions = pm.list_positions()
+
+    if not positions:
+        console.print("\n[yellow]当前无持仓记录，请先使用 --pos-add 添加持仓[/yellow]")
+        return
+
+    console.print(f"\n[bold cyan]🔍 持仓扫描模式[/bold cyan]")
+    console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...\n")
+
+    # 加载配置（所有股票共用一个编排器）
+    config = load_config()
+    enabled_skills = config.get("skills", {}).get("enabled", None)
+    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+    weights = config.get("decision", {}).get("signal_weights", None)
+    skill_types = config.get("skills", {}).get("types", None)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
+
+    results = []  # (pos, stock_data, decision_result, strategy_decision)
+
+    for i, pos in enumerate(positions, 1):
+        console.print(f"[dim]─── [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code}) ───[/dim]")
+
+        # 获取数据
+        stock_data = None
+        has_indicators = False
+        try:
+            stock_data = get_stock_data(pos.stock_code)
+            if stock_data:
+                has_indicators = any([
+                    stock_data.ma5, stock_data.macd_dif, stock_data.rsi_6,
+                    stock_data.boll_upper, stock_data.kdj_k
+                ])
+        except Exception as e:
+            logger.warning(f"获取 {pos.stock_code} 完整数据失败: {e}")
+
+        # 降级：只获取实时行情
+        if not stock_data:
+            try:
+                quote = AKShareClient.get_realtime_quote(pos.stock_code)
+                if quote:
+                    stock_data = StockData(
+                        stock_code=quote["stock_code"],
+                        stock_name=quote["stock_name"],
+                        price=quote["price"],
+                        open=quote.get("open"),
+                        high=quote.get("high"),
+                        low=quote.get("low"),
+                        change_pct=quote.get("change_pct"),
+                        volume=quote.get("volume"),
+                    )
+            except Exception as e:
+                logger.warning(f"获取 {pos.stock_code} 实时行情也失败: {e}")
+
+        if not stock_data:
+            console.print(f"  [red]✗ 数据获取失败，跳过[/red]")
+            results.append((pos, None, None, None))
+            continue
+
+        # 分析
+        strategy_state = pm.to_strategy_state(pos.stock_code)
+
+        if not has_indicators:
+            # 无技术指标，只显示行情
+            console.print(f"  {stock_data.stock_name} 现价 {stock_data.price}  涨跌 {stock_data.change_pct}%  [yellow]⚠ 技术指标不可用，跳过分析[/yellow]")
+            results.append((pos, stock_data, None, None))
+            continue
+
+        try:
+            decision_result, strategy_decision, execution_eval = orchestrator.analyze(
+                stock_data,
+                current_position_ratio=strategy_state.current_position_ratio,
+                strategy_state=strategy_state,
+            )
+            results.append((pos, stock_data, decision_result, strategy_decision))
+
+            # 单只股票简要输出
+            signal_colors = {
+                SignalType.BUY: "green", SignalType.SELL: "red",
+                SignalType.HOLD: "yellow", SignalType.WATCH: "cyan"
+            }
+            sig_color = signal_colors.get(decision_result.decision, "white")
+            pos_action_map = {
+                "OPEN": "建仓", "ADD": "加仓", "REDUCE": "减仓",
+                "CLOSE_ALL": "清仓", "HOLD_POSITION": "持仓", "STAY_OUT": "观望"
+            }
+            pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
+            pos_ratio_str = f"→{strategy_decision.position_ratio:.0%}" if strategy_decision.position_ratio > 0 else ""
+
+            # 浮盈计算
+            pnl_str = ""
+            if pos.entry_price and stock_data.price:
+                pnl_pct = (stock_data.price - pos.entry_price) / pos.entry_price * 100
+                pnl_color = "green" if pnl_pct >= 0 else "red"
+                pnl_str = f"  浮盈:[{pnl_color}]{pnl_pct:+.2f}%[/{pnl_color}]"
+
+            console.print(
+                f"  {stock_data.stock_name} 现价 {stock_data.price}  "
+                f"涨跌 {stock_data.change_pct}%{pnl_str}  "
+                f"决策:[{sig_color}]{decision_result.decision.value}[/{sig_color}]  "
+                f"仓位:[bold]{pos_action_cn}{pos_ratio_str}[/bold]"
+            )
+
+            # 更新持仓
+            pm.suggest_update(
+                pos.stock_code, stock_data.stock_name,
+                strategy_decision, stock_data, console
+            )
+
+        except Exception as e:
+            logger.warning(f"分析 {pos.stock_code} 失败: {e}")
+            console.print(f"  [red]✗ 分析失败: {e}[/red]")
+            results.append((pos, stock_data, None, None))
+
+    # ===== 汇总表格 =====
+    console.print(f"\n[bold cyan]📊 持仓扫描汇总[/bold cyan]")
+
+    summary_table = Table()
+    summary_table.add_column("代码", style="cyan", width=8)
+    summary_table.add_column("名称", width=10)
+    summary_table.add_column("现价", justify="right", width=8)
+    summary_table.add_column("涨跌%", justify="right", width=7)
+    summary_table.add_column("浮盈%", justify="right", width=7)
+    summary_table.add_column("仓位", justify="right", width=6)
+    summary_table.add_column("决策", width=6)
+    summary_table.add_column("动作", width=8)
+    summary_table.add_column("目标仓位", justify="right", width=8)
+
+    signal_colors = {
+        SignalType.BUY: "green", SignalType.SELL: "red",
+        SignalType.HOLD: "yellow", SignalType.WATCH: "cyan"
+    }
+    pos_action_map = {
+        "OPEN": "建仓", "ADD": "加仓", "REDUCE": "减仓",
+        "CLOSE_ALL": "清仓", "HOLD_POSITION": "持仓", "STAY_OUT": "观望"
+    }
+
+    for pos, stock_data, decision_result, strategy_decision in results:
+        if not stock_data:
+            summary_table.add_row(
+                pos.stock_code, pos.stock_name or "-",
+                "-", "-", "-", f"{pos.current_ratio:.0%}",
+                "-", "数据失败", "-"
+            )
+            continue
+
+        # 浮盈
+        pnl_str = "-"
+        if pos.entry_price and stock_data.price:
+            pnl_pct = (stock_data.price - pos.entry_price) / pos.entry_price * 100
+            pnl_color = "green" if pnl_pct >= 0 else "red"
+            pnl_str = f"[{pnl_color}]{pnl_pct:+.2f}[/{pnl_color}]"
+
+        # 涨跌幅颜色
+        chg = stock_data.change_pct or 0
+        chg_color = "green" if chg >= 0 else "red"
+        chg_str = f"[{chg_color}]{chg:+.2f}[/{chg_color}]"
+
+        if decision_result and strategy_decision:
+            sig_color = signal_colors.get(decision_result.decision, "white")
+            pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
+            target_str = f"{strategy_decision.position_ratio:.0%}" if strategy_decision.position_ratio > 0 else "-"
+            summary_table.add_row(
+                pos.stock_code, stock_data.stock_name,
+                f"{stock_data.price:.2f}", chg_str, pnl_str,
+                f"{pos.current_ratio:.0%}",
+                f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
+                pos_action_cn, target_str
+            )
+        else:
+            summary_table.add_row(
+                pos.stock_code, stock_data.stock_name,
+                f"{stock_data.price:.2f}", chg_str, pnl_str,
+                f"{pos.current_ratio:.0%}",
+                "-", "无指标", "-"
+            )
+
+    console.print(summary_table)
+
+    # 操作建议汇总
+    actions_summary = {"建仓": 0, "加仓": 0, "持仓": 0, "减仓": 0, "清仓": 0, "观望": 0}
+    for _, _, decision_result, strategy_decision in results:
+        if strategy_decision:
+            pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, "观望")
+            if pos_action_cn in actions_summary:
+                actions_summary[pos_action_cn] += 1
+            else:
+                actions_summary["观望"] += 1
+
+    action_parts = []
+    action_style = {"建仓": "green", "加仓": "green", "减仓": "yellow", "清仓": "red", "持仓": "cyan", "观望": "dim"}
+    for action, count in actions_summary.items():
+        if count > 0:
+            style = action_style.get(action, "white")
+            action_parts.append(f"[{style}]{action}×{count}[/{style}]")
+
+    if action_parts:
+        console.print(f"\n  操作建议: {'  '.join(action_parts)}")
+
+
 def analyze_live(stock_code: str):
     """实时行情分析模式（通过AKShare）"""
     from src.data.akshare_client import get_stock_data, AKShareClient
@@ -671,6 +875,9 @@ def main():
   python -m src.cli.main --pos-add 002192 --name 融捷股份 --price 35.20  # 添加持仓
   python -m src.cli.main --pos-add 002192 --name 融捷股份 --ratio 0.40   # 添加持仓(指定仓位)
   python -m src.cli.main --pos-remove 002192                           # 删除持仓
+
+一键扫描:
+  python -m src.cli.main --portfolio                                   # 分析所有持仓股
         """
     )
     parser.add_argument(
@@ -755,6 +962,11 @@ def main():
         metavar="RATIO",
         help="持仓添加时的仓位比例（默认0.20即20%%）"
     )
+    pos_group.add_argument(
+        "-p", "--portfolio",
+        action="store_true",
+        help="一键扫描所有持仓股，逐个分析并汇总"
+    )
 
     args = parser.parse_args()
 
@@ -771,6 +983,8 @@ def main():
         manage_positions("add", args.pos_add, args.name, args.price, args.ratio)
     elif args.pos_remove:
         manage_positions("remove", args.pos_remove)
+    elif args.portfolio:
+        analyze_portfolio()
     elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta
