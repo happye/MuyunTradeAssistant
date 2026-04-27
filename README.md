@@ -4,7 +4,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.7.2 已完成** ✅ (交易行为约束系统)
+**v0.7.3 已完成** ✅ (Bug修复+持仓扫描)
 
 ---
 
@@ -32,6 +32,12 @@ python -m src.cli.main -l 000001
 python -m src.cli.main --pos-list                                     # 查看所有持仓
 python -m src.cli.main --pos-add 002192 --name 融捷股份 --price 35.20  # 添加持仓
 python -m src.cli.main --pos-remove 002192                           # 删除持仓
+```
+
+**一键扫描持仓股（v0.7.3新增）：**
+```powershell
+python -m src.cli.main --portfolio                                    # 分析所有持仓股
+python -m src.cli.main -p                                            # 简写
 ```
 
 **回测模式（验证策略）：**
@@ -119,6 +125,7 @@ python -m src.cli.main
 │   ├── data/
 │   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层模型）
 │   │   ├── akshare_client.py    # 多数据源客户端（Baostock+AKShare）
+│   │   ├── portfolio.py         # 持仓管理（portfolio.yaml持久化+Y/N交互）⭐v0.7.2
 │   │   └── data_feeder.py       # 历史数据回放器（回测专用）
 │   ├── skills/                  # 策略技能 (YAML定义)
 │   │   ├── ma_trend.yaml        # 均线趋势
@@ -397,6 +404,17 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.7.3 (Bug修复+持仓扫描) - 2026-04-28
+
+**Bug修复**：空仓分析显示"加仓+0%+FLAT→FLAT"三bug联动
+- `_calculate_position`：空仓时HOLD信号返回OPEN（建仓20%），不再返回ADD
+- `_update_lifecycle`：FLAT下所有建仓动作正确转换lifecycle+同步position_ratio
+- `portfolio.py`：持仓展示/存储统一用strategy_decision.position_ratio
+
+**新增功能**：一键扫描持仓股
+- CLI: `--portfolio` / `-p`，交互模式: `scan` / `s`
+- 遍历持仓逐个分析 → Y/N确认 → 汇总表格+操作建议统计
+
 ### v0.7.2 (交易行为约束系统) - 2026-04-25
 
 **架构升级：从"技术分析工具"升级为"交易行为约束系统"**
@@ -540,6 +558,7 @@ volume_ratio:
 - [x] Phase 4: 仓位管理系统（分批建仓/减仓/清仓）
 - [x] Phase 4.5: 决策架构修复（年线牛熊+止损感知+动态保护期+SELL门槛）
 - [x] Phase 5: 交易行为约束系统（Strategy Layer+Execution Layer+稳定性指标）
+- [x] Phase 5.5: Bug修复（空仓分析错误）+ 持仓扫描功能
 - ~~Phase 6: Web界面 / API服务~~ (已取消，CLI更适合投资分析场景)
 
 ---

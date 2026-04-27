@@ -27,7 +27,7 @@ def show_banner():
     """显示欢迎横幅"""
     print()
     print("=" * 52)
-    print("  暮云思辨投资助手 v0.7.2")
+    print("  暮云思辨投资助手 v0.7.3")
     print("  AI驱动的A股交易行为约束系统")
     print("=" * 52)
     print()

@@ -396,3 +396,5 @@ P3（已取消）:
 - 2026-04-19: 文档全面修正 - 修复使用手册/README中9处过时参数（min_hold_days/佣金模型/止损止盈阈值/加仓减仓/年线判断/数据预取天数等）
 - 2026-04-25: v0.7.2架构升级完成 - 新增Strategy Layer(交易生命周期+5大约束机制)+Execution Layer(波动率滑点+流动性+涨跌停+冲击成本)，Decision Layer从决策者变为信号聚合器，回测新增Monte Carlo+稳定性指标+执行约束统计。002192一年回测收益+21.35%，夏普1.21，决策稳定性78%
 - 2026-04-25: v0.7.2功能补全 - 新增持仓记录本(PortfolioManager+portfolio.yaml+--pos-add/list/remove)，实时分析自动读取持仓+Y/N确认更新，极端行情感知(自动缩短惯性/跳过止损确认/缩短冷却期)
+- 2026-04-28: ISS-018 修复 - 空仓分析显示"加仓+0%+FLAT→FLAT"三bug联动。根因：_calculate_position空仓返回ADD/_update_lifecycle无FLAT+ADD规则/portfolio.py读错字段。修复：空仓HOLD→OPEN/FLAT建仓动作正确转换/统一用position_ratio
+- 2026-04-28: v0.7.3发布 - ISS-018修复 + 一键扫描持仓股(CLI: --portfolio/-p, 交互: scan/s)
