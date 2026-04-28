@@ -109,12 +109,12 @@ def analyze_interactive():
 
     # 执行分析
     console.print("\n[bold yellow]🔄 正在分析...[/bold yellow]")
-    result = orchestrator.analyze(data)
+    decision_result, strategy_decision, execution_eval = orchestrator.analyze(data)
 
-    # 显示结果
-    display_result(result)
+    # 显示结果（支持策略层与执行层信息）
+    display_result(decision_result, strategy_decision, execution_eval)
 
-    return result
+    return decision_result
 
 
 def analyze_json(json_path: str):
@@ -131,10 +131,10 @@ def analyze_json(json_path: str):
     skill_types = config.get("skills", {}).get("types", None)
 
     orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
-    result = orchestrator.analyze(stock_data)
+    decision_result, strategy_decision, execution_eval = orchestrator.analyze(stock_data)
 
-    display_result(result)
-    return result
+    display_result(decision_result, strategy_decision, execution_eval)
+    return decision_result
 
 
 def display_result(result, strategy_decision=None, execution_eval=None):
