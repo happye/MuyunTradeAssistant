@@ -1,0 +1,109 @@
+# ============================================================
+# 暮云思辨投资助手 - 持仓记录本
+# ============================================================
+#
+# 使用说明：
+# 1. 实时分析时系统会自动读取此文件，获取你的持仓状态
+# 2. 分析完成后，系统会建议更新持仓，输入Y确认/N跳过
+# 3. 你也可以手动编辑此文件（如在外部做了交易操作）
+#
+# 重要：系统决策依赖此数据的准确性！
+#   - 如果你在券商APP做了买卖，请及时手动更新此文件
+#   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期
+#   - strategy_state由系统自动维护，一般不需要手动修改
+#
+# ============================================================
+
+positions:
+  '600546':
+    stock_name: '山煤国际'
+    entry_date: '2026-04-25'
+    entry_price: 10.63
+    current_ratio: 0.05
+    last_action: ADD
+    last_action_date: '2026-04-28'
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 2
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - HOLD
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+  '603063':
+    stock_name: 禾望电气
+    entry_date: '2026-04-25'
+    entry_price: 18.02
+    current_ratio: 0.05
+    last_action: HOLD_POSITION
+    last_action_date: '2026-04-25'
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 2
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - SELL
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+  '159201':
+    stock_name: 自由现金流ETF华夏
+    entry_date: '2026-04-25'
+    entry_price: 1.14
+    current_ratio: 0.05
+    last_action: OPEN
+    last_action_date: '2026-04-25'
+    lifecycle: OPEN
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: BUY
+      recent_signals:
+      - BUY
+      signal_stability_score: 1.0
+      reduce_protection_remaining: 0
+  '159611':
+    stock_name: 电力ETF广发
+    entry_date: '2026-04-25'
+    entry_price: 1.03
+    current_ratio: 0.04
+    last_action: OPEN
+    last_action_date: '2026-04-25'
+    lifecycle: OPEN
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: BUY
+      recent_signals:
+      - BUY
+      signal_stability_score: 1.0
+      reduce_protection_remaining: 0
+  '605358':
+    stock_name: 立昂微
+    entry_date: '2026-04-28'
+    entry_price: 39.18
+    current_ratio: 0.11
+    last_action: OPEN
+    last_action_date: '2026-04-28'
+    lifecycle: OPEN
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: BUY
+      recent_signals:
+      - BUY
+      signal_stability_score: 1.0
+      reduce_protection_remaining: 0
