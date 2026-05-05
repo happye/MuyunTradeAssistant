@@ -3,7 +3,7 @@
 
 app:
   name: "暮云思辨投资助手"
-  version: "0.7.3"
+  version: "0.8.0"
   mode: "CLI"  # CLI / API
 
 # 数据源配置
@@ -79,6 +79,26 @@ skills:
     smart_money: regulator
     stop_loss: action
     take_profit: action
+
+# AI调节层配置（v0.8.0）
+ai:
+  enabled: true
+  provider: "deepseek"       # deepseek / kimi
+  deepseek:
+    api_key: ""              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
+    base_url: "https://api.deepseek.com"
+    model: "deepseek-v4-flash"    # 默认用flash（快+便宜）
+    model_pro: "deepseek-v4-pro"  # 深度分析时用pro
+  kimi:
+    api_key: ""              # 用户手动填写，或设置环境变量 KIMI_API_KEY
+    base_url: "https://api.moonshot.ai/v1"
+    model: "moonshot-v1-auto"
+    model_pro: "kimi-k2.6"        # 深度分析时用
+  modifier:
+    sentiment_weight: 0.3    # 情绪调节权重（buy_score *= 1 - confidence * 0.3）
+    risk_position_cap: 0.7   # 高风险时仓位上限打7折
+    max_news_per_stock: 10   # 每只股票最多抓取新闻条数
+    cache_ttl: 3600          # 新闻缓存1小时（秒）
 
 # 日志配置
 logging:

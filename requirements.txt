@@ -22,3 +22,6 @@ akshare>=1.10.0  # 备用数据源
 # 工具
 rich>=13.0.0  # CLI美化输出
 pydantic>=2.0.0
+
+# AI调节层 (v0.8.0)
+openai>=1.0   # DeepSeek/Kimi API兼容（OpenAI SDK格式）

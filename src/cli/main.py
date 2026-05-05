@@ -19,7 +19,7 @@ from rich import print as rprint
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle
+from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle, AIModifierResult
 from src.core.orchestrator import Orchestrator
 from src.data.portfolio import PortfolioManager
 
@@ -39,6 +39,28 @@ def load_config(config_path: str = "./configs/settings.yaml") -> dict:
     """加载配置文件"""
     with open(config_path, 'r', encoding='utf-8') as f:
         return yaml.safe_load(f)
+
+
+def apply_ai_overrides(config: dict, ai_overrides: dict) -> dict:
+    """应用AI参数覆盖到配置（v0.8.0）
+
+    Args:
+        config: 原始配置
+        ai_overrides: 覆盖参数，如 {'disable_ai': True, 'provider': 'kimi'}
+
+    Returns:
+        修改后的配置
+    """
+    if not ai_overrides:
+        return config
+
+    ai_cfg = config.setdefault("ai", {})
+    if ai_overrides.get('disable_ai'):
+        ai_cfg['enabled'] = False
+    if ai_overrides.get('provider'):
+        ai_cfg['provider'] = ai_overrides['provider']
+
+    return config
 
 
 def create_sample_data() -> StockData:
@@ -76,7 +98,7 @@ def create_sample_data() -> StockData:
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        "[bold cyan]暮云思辨投资助手 v0.7.3[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.0[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -92,6 +114,7 @@ def analyze_interactive():
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
+    ai_config = config.get("ai", None)
 
     console.print(f"\n[green]✓[/green] 技能目录: {skills_dir}")
     if enabled_skills:
@@ -99,20 +122,24 @@ def analyze_interactive():
     else:
         console.print("[yellow]⚠[/yellow] 将加载所有可用技能")
 
-    # 创建编排器
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
+    # 创建编排器（含AI调节层）
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
 
     console.print(f"[green]✓[/green] 已加载技能: {', '.join(orchestrator.get_available_skills())}")
+    if orchestrator.ai_modifier and orchestrator.ai_modifier.is_available():
+        console.print(f"[green]✓[/green] AI调节层: 已启用 ({config.get('ai', {}).get('provider', 'deepseek')})")
+    else:
+        console.print(f"[dim]AI调节层: 未配置（可在 configs/settings.yaml 中启用）[/dim]")
 
     # 获取股票数据
     data = create_sample_data()
 
     # 执行分析
     console.print("\n[bold yellow]🔄 正在分析...[/bold yellow]")
-    decision_result, strategy_decision, execution_eval = orchestrator.analyze(data)
+    decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(data, ai_enabled=True)
 
     # 显示结果（支持策略层与执行层信息）
-    display_result(decision_result, strategy_decision, execution_eval)
+    display_result(decision_result, strategy_decision, execution_eval, ai_result)
 
     return decision_result
 
@@ -129,17 +156,17 @@ def analyze_json(json_path: str):
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
+    ai_config = config.get("ai", None)
 
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
-    decision_result, strategy_decision, execution_eval = orchestrator.analyze(stock_data)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+    decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(stock_data, ai_enabled=False)
 
-    display_result(decision_result, strategy_decision, execution_eval)
+    display_result(decision_result, strategy_decision, execution_eval, ai_result)
     return decision_result
 
 
-def display_result(result, strategy_decision=None, execution_eval=None):
-    """格式化显示分析结果（v0.7.2 含策略层和执行层信息）"""
-    """格式化显示分析结果"""
+def display_result(result, strategy_decision=None, execution_eval=None, ai_result=None):
+    """格式化显示分析结果（v0.8.0 含AI调节层信息）"""
     # 信号颜色映射
     signal_colors = {
         SignalType.BUY: "green",
@@ -203,6 +230,33 @@ def display_result(result, strategy_decision=None, execution_eval=None):
         console.print("\n[bold]决策理由：[/bold]")
         for i, reason in enumerate(result.reason, 1):
             console.print(f"  {i}. {reason}")
+
+    # v0.8.0: AI情绪信息
+    if ai_result and ai_result.adjusted:
+        sentiment_cn = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
+        sentiment_color = {"bullish": "green", "bearish": "red", "neutral": "yellow"}
+        sent_cn = sentiment_cn.get(ai_result.sentiment, ai_result.sentiment)
+        sent_color = sentiment_color.get(ai_result.sentiment, "white")
+        event_cn = {"policy": "政策", "war": "地缘冲突", "earnings": "财报", "macro": "宏观", "black_swan": "黑天鹅", "none": ""}
+        evt_cn = event_cn.get(ai_result.event_type, ai_result.event_type)
+
+        ai_line = f"🤖 AI情绪: [{sent_color}]{sent_cn}[/{sent_color}] (置信度: {ai_result.confidence:.0%})"
+        if evt_cn:
+            ai_line += f" | 事件: {evt_cn}"
+        if ai_result.score_adjustment != 0:
+            pct = abs(ai_result.score_adjustment) * 100
+            direction = "下调" if ai_result.score_adjustment < 0 else "上调"
+            ai_line += f" | 信号{direction}{pct:.0f}%"
+        if ai_result.position_cap < 1.0:
+            ai_line += f" | 仓位上限{ai_result.position_cap:.0%}"
+        if ai_result.summary:
+            ai_line += f"\n    {ai_result.summary}"
+
+        console.print(f"\n[bold]AI调节：[/bold]")
+        console.print(f"  {ai_line}")
+
+        if ai_result.force_state:
+            console.print(f"  [bold red]⚠ 状态干预: {ai_result.force_state}[/bold red]")
 
     # v0.7.2: 策略层信息
     if strategy_decision:
@@ -270,7 +324,7 @@ def display_result(result, strategy_decision=None, execution_eval=None):
     )
 
 
-def analyze_portfolio():
+def analyze_portfolio(ai_overrides: dict = None):
     """一键分析当前所有持仓股"""
     from src.data.akshare_client import get_stock_data, AKShareClient, _baostock_logout
 
@@ -286,11 +340,13 @@ def analyze_portfolio():
 
     # 加载配置（所有股票共用一个编排器）
     config = load_config()
+    config = apply_ai_overrides(config, ai_overrides or {})
     enabled_skills = config.get("skills", {}).get("enabled", None)
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
+    ai_config = config.get("ai", None)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
 
     results = []  # (pos, stock_data, decision_result, strategy_decision)
 
@@ -366,10 +422,11 @@ def analyze_portfolio():
             continue
 
         try:
-            decision_result, strategy_decision, execution_eval = orchestrator.analyze(
+            decision_result, strategy_decision, execution_eval, _ = orchestrator.analyze(
                 stock_data,
                 current_position_ratio=strategy_state.current_position_ratio,
                 strategy_state=strategy_state,
+                ai_enabled=True,
             )
             results.append((pos, stock_data, decision_result, strategy_decision))
 
@@ -503,7 +560,7 @@ def analyze_portfolio():
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
-def analyze_live(stock_code: str):
+def analyze_live(stock_code: str, ai_overrides: dict = None):
     """实时行情分析模式（通过AKShare）"""
     from src.data.akshare_client import get_stock_data, AKShareClient
 
@@ -589,18 +646,21 @@ def analyze_live(stock_code: str):
             console.print(f"\n[dim]📂 无持仓记录（将从FLAT状态开始分析）[/dim]")
 
         config = load_config()
+        config = apply_ai_overrides(config, ai_overrides or {})
         enabled_skills = config.get("skills", {}).get("enabled", None)
         skills_dir = config.get("skills", {}).get("dir", "./src/skills")
         weights = config.get("decision", {}).get("signal_weights", None)
         skill_types = config.get("skills", {}).get("types", None)
+        ai_config = config.get("ai", None)
 
-        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types)
-        result, strategy_decision, execution_eval = orchestrator.analyze(
+        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+        result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
             current_position_ratio=strategy_state.current_position_ratio,
             strategy_state=strategy_state,
+            ai_enabled=True,
         )
-        display_result(result, strategy_decision, execution_eval)
+        display_result(result, strategy_decision, execution_eval, ai_result)
 
         # ===== 建议更新持仓 =====
         pm.suggest_update(
@@ -895,6 +955,8 @@ def main():
   python -m src.cli.main sample_data.json             # JSON文件模式
   python -m src.cli.main --live 600519               # 实时行情模式(通过AKShare)
   python -m src.cli.main -l 000001                   # 实时行情模式
+  python -m src.cli.main -l 000001 --no-ai           # 实时行情但禁用AI调节
+  python -m src.cli.main -l 000001 --ai-provider kimi # 临时切换为Kimi API
   python -m src.cli.main --backtest 600519           # 回测模式(默认近1年)
   python -m src.cli.main --backtest 600519 -s 2024-01-01 -e 2025-01-01  # 自定义区间
   python -m src.cli.main --backtest 600519 --capital 200000  # 自定义初始资金
@@ -907,6 +969,11 @@ def main():
 
 一键扫描:
   python -m src.cli.main --portfolio                                   # 分析所有持仓股
+
+AI配置:
+  在 configs/settings.yaml 的 ai 节填写 API Key
+  DeepSeek: ai.deepseek.api_key 或环境变量 DEEPSEEK_API_KEY
+  Kimi: ai.kimi.api_key 或环境变量 KIMI_API_KEY
         """
     )
     parser.add_argument(
@@ -943,7 +1010,7 @@ def main():
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="%(prog)s v0.7.3 (Bug修复+持仓扫描：空仓分析修正+一键扫描所有持仓)"
+        version="%(prog)s v0.8.0 (AI调节层：新闻分析+情绪调节+三层信号调节)"
     )
     parser.add_argument(
         "--verbose",
@@ -954,6 +1021,20 @@ def main():
         "--debug",
         action="store_true",
         help="显示调试日志（DEBUG级别），包含所有内部信息"
+    )
+
+    # ===== AI调节层参数（v0.8.0）=====
+    ai_group = parser.add_argument_group("AI调节层")
+    ai_group.add_argument(
+        "--no-ai",
+        action="store_true",
+        help="禁用AI调节层（仅使用技术面分析）"
+    )
+    ai_group.add_argument(
+        "--ai-provider",
+        metavar="PROVIDER",
+        choices=["deepseek", "kimi"],
+        help="临时切换AI提供商（deepseek/kimi）"
     )
 
     # ===== 持仓管理子命令 =====
@@ -1005,6 +1086,15 @@ def main():
     elif args.verbose:
         logging.getLogger().setLevel(logging.INFO)
 
+    # ===== AI参数处理（v0.8.0）=====
+    # --no-ai 全局禁用AI；--ai-provider 临时切换提供商
+    # 这通过修改 load_config 返回的 dict 中的 ai 配置来实现
+    _ai_override = {}
+    if hasattr(args, 'no_ai') and args.no_ai:
+        _ai_override['disable_ai'] = True
+    if hasattr(args, 'ai_provider') and args.ai_provider:
+        _ai_override['provider'] = args.ai_provider
+
     # ===== 持仓管理子命令 =====
     if args.pos_list:
         manage_positions("list")
@@ -1013,7 +1103,7 @@ def main():
     elif args.pos_remove:
         manage_positions("remove", args.pos_remove)
     elif args.portfolio:
-        analyze_portfolio()
+        analyze_portfolio(ai_overrides=_ai_override)
     elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta
@@ -1022,7 +1112,7 @@ def main():
         run_backtest(args.backtest, start_date, end_date, args.capital)
     elif args.live:
         # 实时行情模式
-        analyze_live(args.live)
+        analyze_live(args.live, ai_overrides=_ai_override)
     elif args.file:
         # 文件模式
         json_path = args.file

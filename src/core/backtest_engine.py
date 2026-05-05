@@ -378,9 +378,10 @@ class BacktestEngine:
             strategy_state.current_position_ratio = current_pos_ratio
 
             try:
-                decision_result, strategy_decision, execution_eval = self.orchestrator.analyze(
+                decision_result, strategy_decision, execution_eval, _ = self.orchestrator.analyze(
                     stock_data, current_position_ratio=current_pos_ratio,
                     strategy_state=strategy_state,
+                    ai_enabled=False,  # 回测不使用AI实时新闻
                 )
             except Exception as e:
                 logger.warning(f"分析异常 {date}: {e}")

@@ -247,6 +247,31 @@ class StrategyDecision(BaseModel):
     strategy_reasons: list[str] = Field(default_factory=list, description="策略层决策理由")
 
 
+class AIModifierResult(BaseModel):
+    """AI调节层输出（v0.8.0）
+
+    AI只负责信息理解和情绪判断，不负责决策输出和交易执行。
+    三层调节机制：
+    1. 信号调节: buy_score *= (1 - confidence × sentiment_weight)
+    2. 仓位调节: 高风险→max_position *= risk_position_cap
+    3. 状态干预: event_type == "black_swan" → force PANIC
+    """
+    sentiment: str = Field(default="neutral", description="情绪倾向: bullish/bearish/neutral")
+    confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="置信度 0-1")
+    risk_level: str = Field(default="low", description="风险等级: low/medium/high")
+    narrative_shift: bool = Field(default=False, description="叙事是否发生重大转变")
+    event_type: str = Field(default="none", description="事件类型: policy/war/earnings/macro/black_swan/none")
+    summary: str = Field(default="", description="一句话摘要")
+    key_events: list[str] = Field(default_factory=list, description="关键事件列表")
+    source_count: int = Field(default=0, description="分析的新闻条数")
+    adjusted: bool = Field(default=False, description="是否对信号进行了调节")
+
+    # 调节结果（由 apply_modification 填充）
+    score_adjustment: float = Field(default=0.0, description="信号评分调节量（负数=压制买入/加强卖出）")
+    position_cap: float = Field(default=1.0, ge=0.0, le=1.0, description="仓位上限调节（1.0=不限制）")
+    force_state: Optional[str] = Field(default=None, description="强制市场状态（如PANIC），None=不干预")
+
+
 class SkillSignal(BaseModel):
     """技能信号输出"""
     skill_name: str = Field(description="技能名称")
