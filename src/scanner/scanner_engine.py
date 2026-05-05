@@ -90,9 +90,10 @@ class ScannerEngine:
         """快速扫描（仅初筛，不深度分析）
 
         用缓存的全市场行情数据执行过滤，秒级返回。
+        rule_name 支持模糊匹配（如"缩量"→shrink_pullback, "动量"→strong_momentum）。
 
         Args:
-            rule_name: 使用的规则集名称
+            rule_name: 使用的规则集名称（支持模糊匹配）
             industry_filter: 行业过滤白名单
             exclude_codes: 排除的股票代码集合
 
@@ -104,11 +105,21 @@ class ScannerEngine:
         import time
         start_time = time.time()
 
-        # 获取规则
-        rule = self.rules.get("rules", {}).get(rule_name)
-        if not rule:
+        # 模糊匹配规则名
+        resolved = self.resolve_rule_name(rule_name)
+        if not resolved:
+            available = [r["name"] for r in self.get_available_rules()]
+            display_names = [r["display_name"] for r in self.get_available_rules()]
             logger.error(f"ScannerEngine: 规则 '{rule_name}' 不存在")
-            return [], {"error": f"规则 '{rule_name}' 不存在"}
+            return [], {
+                "error": f"规则 '{rule_name}' 不存在",
+                "available_keys": available,
+                "available_names": display_names,
+            }
+
+        # 获取规则
+        rule = self.rules.get("rules", {}).get(resolved)
+        # （resolved已验证存在，此处无需再检查）
 
         # 获取全市场行情
         df = self.market_cache.get_all_stocks()
@@ -155,12 +166,13 @@ class ScannerEngine:
             df = df.head(max_candidates)
 
         # 转换为 ScanCandidate 列表
-        candidates = self._df_to_candidates(df, rule_name)
+        candidates = self._df_to_candidates(df, resolved)
 
         elapsed = time.time() - start_time
         scan_info = {
-            "rule_name": rule_name,
-            "rule_display_name": rule.get("name", rule_name),
+            "rule_name": resolved,
+            "rule_input": rule_name,
+            "rule_display_name": rule.get("name", resolved),
             "total_stocks": total_count,
             "after_exclude": after_exclude,
             "after_industry": after_industry,
@@ -292,35 +304,117 @@ class ScannerEngine:
             })
         return result
 
-    def get_industry_list(self) -> list[dict]:
-        """获取行业板块列表（含涨跌幅）
+    def resolve_rule_name(self, user_input: str) -> Optional[str]:
+        """模糊匹配规则名
+
+        支持以下匹配方式（按优先级）：
+        1. 精确匹配 key（如 "default", "shrink_pullback"）
+        2. 精确匹配中文显示名（如 "放量突破", "缩量回调"）
+        3. 包含匹配 key（如 "shrink" → "shrink_pullback"）
+        4. 包含匹配中文显示名（如 "缩量" → "缩量回调", "动量" → "强势动量"）
+
+        Args:
+            user_input: 用户输入的规则名
 
         Returns:
-            [{"name": str, "change_pct": float}, ...]
+            匹配到的规则key，无匹配返回None
+        """
+        if not user_input:
+            return "default"
+
+        rules_cfg = self.rules.get("rules", {})
+
+        # 1. 精确匹配key
+        if user_input in rules_cfg:
+            return user_input
+
+        # 2. 精确匹配中文显示名
+        for key, rule in rules_cfg.items():
+            if rule.get("name", "") == user_input:
+                return key
+
+        # 3. 包含匹配key
+        for key in rules_cfg:
+            if user_input in key:
+                return key
+
+        # 4. 包含匹配中文显示名
+        for key, rule in rules_cfg.items():
+            display_name = rule.get("name", "")
+            if user_input in display_name:
+                return key
+
+        return None
+
+    def get_industry_list(self, keyword: str = None) -> list[dict]:
+        """获取行业板块列表（含涨跌幅）
+
+        Args:
+            keyword: 可选关键词过滤（模糊匹配板块名称）
+
+        Returns:
+            [{"name": str, "change_pct": float, "up_count": int, "down_count": int, "lead_stock": str}, ...]
         """
         df = self.market_cache.get_industry_boards()
         if df.empty:
             return []
 
-        result = []
-        # 查找列名
+        # 查找列名（精确匹配优先）
         name_col = None
         change_col = None
+        up_col = None
+        down_col = None
+        lead_col = None
         for col in df.columns:
-            if "板块" in col or "名称" in col:
+            if col == "板块名称":
                 name_col = col
-            if "涨跌幅" in col:
+            if col == "涨跌幅":
                 change_col = col
+            if col == "上涨家数":
+                up_col = col
+            if col == "下跌家数":
+                down_col = col
+            if col == "领涨股票":
+                lead_col = col
+        # 兜底模糊匹配
+        if name_col is None:
+            for col in df.columns:
+                if "名称" in col:
+                    name_col = col
+                    break
+                if "板块" in col and "代码" not in col:
+                    name_col = col
+                    break
 
-        if name_col:
-            for _, row in df.iterrows():
-                item = {"name": str(row[name_col])}
-                if change_col:
-                    try:
-                        item["change_pct"] = float(row[change_col])
-                    except (ValueError, TypeError):
-                        item["change_pct"] = 0.0
-                result.append(item)
+        if not name_col:
+            return []
+
+        # 关键词过滤
+        if keyword:
+            mask = df[name_col].astype(str).str.contains(keyword, case=False, na=False)
+            df = df[mask]
+
+        result = []
+        for _, row in df.iterrows():
+            item = {"name": str(row[name_col])}
+            if change_col:
+                try:
+                    item["change_pct"] = float(row[change_col])
+                except (ValueError, TypeError):
+                    item["change_pct"] = 0.0
+            if up_col:
+                try:
+                    item["up_count"] = int(row[up_col])
+                except (ValueError, TypeError):
+                    item["up_count"] = 0
+            if down_col:
+                try:
+                    item["down_count"] = int(row[down_col])
+                except (ValueError, TypeError):
+                    item["down_count"] = 0
+            if lead_col:
+                item["lead_stock"] = str(row[lead_col])
+            result.append(item)
 
         return result
 

@@ -1031,13 +1031,23 @@ def scan_market(
     )
 
     # ===== Step 1: 快速初筛 =====
+    # 规则名模糊匹配
+    resolved_name = engine.resolve_rule_name(rule_name)
+    if not resolved_name:
+        console.print(f"[red]未找到规则 '{rule_name}'[/red]")
+        console.print("\n可用规则:")
+        for r in engine.get_available_rules():
+            console.print(f"  [cyan]{r['name']:20s}[/cyan] ({r['display_name']}) - {r['description']}")
+        console.print("\n[dim]提示: 支持模糊匹配，如 '缩量' → 缩量回调, '动量' → 强势动量[/dim]")
+        return
+
     rule_info = None
     for r in engine.get_available_rules():
-        if r["name"] == rule_name:
+        if r["name"] == resolved_name:
             rule_info = r
             break
 
-    rule_display = rule_info["display_name"] if rule_info else rule_name
+    rule_display = rule_info["display_name"] if rule_info else resolved_name
     console.print(f"\n[bold cyan]全市场扫描[/bold cyan] — {rule_display}")
 
     # 显示缓存状态
@@ -1059,6 +1069,10 @@ def scan_market(
 
     if "error" in scan_info:
         console.print(f"[red]扫描失败: {scan_info['error']}[/red]")
+        if "available_keys" in scan_info:
+            console.print("\n可用规则:")
+            for k, n in zip(scan_info["available_keys"], scan_info["available_names"]):
+                console.print(f"  [cyan]{k:20s}[/cyan] ({n})")
         return
 
     if not candidates:
