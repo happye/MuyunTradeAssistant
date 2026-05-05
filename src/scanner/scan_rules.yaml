@@ -18,23 +18,29 @@
 # ============================================================
 
 # 全局排除规则（所有规则集共享）
-# 注意：即使不配置，MarketCache也会自动排除ST和停牌股
+# 格式说明：
+#   每项为 {field, op, value} 三元组，语义为"排除满足此条件的股票"
+#   - op="contains": 名称/代码中包含指定字符串的排除
+#   - op="starts_with": 字段以指定字符串开头的排除
+#   - op="eq": 字段等于指定值的排除
+#   - op="lte"/"lt": 字段小于(等于)指定值的排除
+#   - op="gte"/"gt": 字段大于(等于)指定值的排除
 global_exclude:
-  # 排除ST/*ST股票
+  # 排除ST/*ST股票（名称包含ST）
   - field: "name"
-    op: "not_like"
+    op: "contains"
     value: "ST"
-  # 排除停牌股票（成交量为0）
+  # 排除停牌股票（成交量为0或NaN）
   - field: "volume"
-    op: "gt"
+    op: "lte"
     value: 0
-  # 排除北交所股票（8开头，涨跌停30%且流动性差）
+  # 排除北交所股票（代码以8开头）
   - field: "code"
-    op: "not_like"
-    value: "^8[0-9]"
-  # 排除退市整理期（代码含退）
+    op: "starts_with"
+    value: "8"
+  # 排除退市整理期（名称包含退）
   - field: "name"
-    op: "not_like"
+    op: "contains"
     value: "退"
 
 # 规则集定义

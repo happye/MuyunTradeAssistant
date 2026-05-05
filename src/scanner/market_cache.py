@@ -67,7 +67,7 @@ class MarketCache:
         self._industry_stocks_ttl = 1800  # 30分钟
 
     def get_all_stocks(self, force_refresh: bool = False) -> pd.DataFrame:
-        """获取全市场A股行情（带缓存）
+        """获取全市场A股行情（带缓存+重试）
 
         数据源: ak.stock_zh_a_spot_em()
         返回5000+只A股的实时行情，包含：
@@ -84,33 +84,46 @@ class MarketCache:
             logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
             return self._stock_df
 
-        logger.info("MarketCache: 获取全市场A股行情(约4分钟)...")
-        start_time = time.time()
+        # 带重试的数据获取（网络超时常见）
+        max_retries = 2
+        for attempt in range(max_retries + 1):
+            logger.info(
+                f"MarketCache: 获取全市场A股行情(约4分钟)..."
+                + (f" 第{attempt + 1}次尝试" if attempt > 0 else "")
+            )
+            start_time = time.time()
 
-        try:
-            df = ak.stock_zh_a_spot_em()
-            elapsed = time.time() - start_time
+            try:
+                df = ak.stock_zh_a_spot_em()
+                elapsed = time.time() - start_time
 
-            if df is not None and not df.empty:
-                self._stock_df = df
-                self._stock_timestamp = time.time()
-                self._stock_count = len(df)
-                logger.info(
-                    f"MarketCache: A股行情获取成功 "
-                    f"({self._stock_count}只, {elapsed:.1f}秒)"
+                if df is not None and not df.empty:
+                    self._stock_df = df
+                    self._stock_timestamp = time.time()
+                    self._stock_count = len(df)
+                    logger.info(
+                        f"MarketCache: A股行情获取成功 "
+                        f"({self._stock_count}只, {elapsed:.1f}秒)"
+                    )
+                    return df
+                else:
+                    logger.warning("MarketCache: A股行情返回空数据")
+
+            except Exception as e:
+                elapsed = time.time() - start_time
+                logger.error(
+                    f"MarketCache: A股行情获取失败(第{attempt + 1}次, {elapsed:.1f}秒): {e}"
                 )
-                return df
-            else:
-                logger.warning("MarketCache: A股行情返回空数据")
-                return pd.DataFrame()
+                if attempt < max_retries:
+                    wait = 5 * (attempt + 1)
+                    logger.info(f"MarketCache: {wait}秒后重试...")
+                    time.sleep(wait)
 
-        except Exception as e:
-            logger.error(f"MarketCache: A股行情获取失败: {e}")
-            # 如果有过期缓存，返回过期数据（优于无数据）
-            if self._stock_df is not None:
-                logger.warning("MarketCache: 使用过期A股缓存（兜底）")
-                return self._stock_df
-            return pd.DataFrame()
+        # 所有重试都失败，返回过期缓存（如果有）
+        if self._stock_df is not None:
+            logger.warning("MarketCache: 所有重试失败，使用过期A股缓存（兜底）")
+            return self._stock_df
+        return pd.DataFrame()
 
     def get_all_etfs(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取全市场ETF行情（带缓存）

@@ -1076,7 +1076,22 @@ def scan_market(
         return
 
     if not candidates:
-        console.print("[yellow]未找到符合条件的股票[/yellow]")
+        # 给出详细信息帮助用户理解为什么没有结果
+        total = scan_info.get("total_stocks", "?")
+        after_exclude = scan_info.get("after_exclude", "?")
+        after_industry = scan_info.get("after_industry", "?")
+        console.print(f"\n[yellow]未找到符合条件的股票[/yellow]")
+        console.print(f"  过滤过程: 全市场 {total} 只 → 排除ST/停牌/北交所后 {after_exclude} 只", highlight=False)
+        if industry_filter:
+            console.print(f"  行业过滤后: {after_industry} 只", highlight=False)
+        console.print(f"  规则「{rule_display}」过滤后: 0 只", highlight=False)
+        console.print(f"\n  [dim]可能原因:[/dim]")
+        console.print(f"  [dim]1. 当前非交易时段，量比/换手率等实时指标可能为0或无效[/dim]")
+        console.print(f"  [dim]2. 筛选条件较严格，可尝试其他规则（如 scan market 低估 或 scan market 超跌）[/dim]")
+        console.print(f"  [dim]3. 盘中/盘后数据完整度不同，建议交易时段或收盘后使用[/dim]")
+        console.print(f"\n  [dim]可用规则:[/dim]")
+        for r in engine.get_available_rules():
+            console.print(f"  [dim]  scan market {r['name']:20s} ({r['display_name']}) - {r['description']}[/dim]")
         return
 
     # 展示候选池

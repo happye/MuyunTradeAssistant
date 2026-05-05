@@ -210,12 +210,21 @@ class ScannerFilter:
     def apply_global_exclude(cls, df: pd.DataFrame, excludes: list[dict]) -> pd.DataFrame:
         """应用全局排除规则
 
-        与普通filter不同，exclude是排除逻辑（不匹配的保留）。
-        特殊处理：ST股票排除、停牌排除、北交所排除等。
+        语义：排除满足条件的行（即"不匹配的保留"）。
+        与普通 filter 的区别：
+        - filter: 保留满足条件的行（正向过滤）
+        - exclude: 排除满足条件的行（反向过滤）
+
+        支持的操作符（语义为"排除满足此条件的行"）：
+        - contains: 字段包含指定字符串 → 排除
+        - starts_with: 字段以指定字符串开头 → 排除
+        - eq: 字段等于指定值 → 排除
+        - lt/lte/gt/gte: 数值比较 → 排除
+        - is_nan: 字段为NaN → 排除
 
         Args:
             df: 全市场行情DataFrame
-            excludes: 排除规则列表（格式同filters）
+            excludes: 排除规则列表
 
         Returns:
             排除后的DataFrame
@@ -223,31 +232,51 @@ class ScannerFilter:
         if not excludes:
             # 默认排除规则（即使YAML中未配置也执行）
             result = df.copy()
-            # 排除ST/*ST
             if "名称" in result.columns:
                 result = result[~result["名称"].astype(str).str.contains("ST", na=False)]
-            # 排除停牌（成交量为0或NaN）
             if "成交量" in result.columns:
                 vol = pd.to_numeric(result["成交量"], errors="coerce")
                 result = result[vol > 0]
             return result
 
-        # 用not_like/lt等实现排除逻辑
         result = df.copy()
         for exc in excludes:
-            exc_op = exc.get("op", "")
-            # 将正向操作符转换为排除逻辑
-            if exc_op == "not_like":
-                # not_like本身就是排除
-                result = cls._apply_single(result, exc)
-            elif exc_op == "gt":
-                # gt转为lte（排除大于的）
-                exc_inv = {**exc, "op": "lte"}
-                result = cls._apply_single(result, exc_inv)
-            elif exc_op == "lt":
-                exc_inv = {**exc, "op": "gte"}
-                result = cls._apply_single(result, exc_inv)
+            field = exc.get("field", "")
+            op = exc.get("op", "")
+            value = exc.get("value")
+
+            col_name = cls.FIELD_MAP.get(field)
+            if not col_name or col_name not in result.columns:
+                continue
+
+            if op == "contains":
+                # 排除：字段包含指定字符串
+                mask = result[col_name].astype(str).str.contains(str(value), na=False)
+                result = result[~mask]
+            elif op == "starts_with":
+                # 排除：字段以指定字符串开头
+                mask = result[col_name].astype(str).str.startswith(str(value), na=False)
+                result = result[~mask]
+            elif op == "eq":
+                # 排除：字段等于指定值
+                series = pd.to_numeric(result[col_name], errors="coerce")
+                result = result[series != value]
+            elif op in ("lt", "lte", "gt", "gte"):
+                # 排除：数值比较（如 volume lte 0 → 排除成交量<=0的）
+                series = pd.to_numeric(result[col_name], errors="coerce")
+                if op == "lt":
+                    result = result[~(series < value)]
+                elif op == "lte":
+                    result = result[~(series <= value)]
+                elif op == "gt":
+                    result = result[~(series > value)]
+                elif op == "gte":
+                    result = result[~(series >= value)]
+            elif op == "is_nan":
+                # 排除：字段为NaN
+                series = pd.to_numeric(result[col_name], errors="coerce")
+                result = result[~series.isna()]
             else:
-                result = cls._apply_single(result, exc)
+                logger.warning(f"ScannerFilter: 全局排除不支持操作符 '{op}'，跳过")
 
         return result
