@@ -461,8 +461,10 @@ def analyze_portfolio(ai_overrides: dict = None):
                 if ai_result.summary:
                     ai_str += f" {ai_result.summary}"
 
+            # 优先用portfolio.yaml中的stock_name（用户手动维护），备选stock_data
+            display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
             console.print(
-                f"  {stock_data.stock_name} 现价 {stock_data.price}  "
+                f"  {display_name} 现价 {stock_data.price}  "
                 f"涨跌 {stock_data.change_pct}%{pnl_str}  "
                 f"决策:[{sig_color}]{decision_result.decision.value}[/{sig_color}]  "
                 f"仓位:[bold]{pos_action_cn}{pos_ratio_str}[/bold]"
@@ -547,16 +549,19 @@ def analyze_portfolio(ai_overrides: dict = None):
             sig_color = signal_colors.get(decision_result.decision, "white")
             pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
             target_str = f"{strategy_decision.position_ratio:.0%}" if strategy_decision.position_ratio > 0 else "-"
+            # 优先用portfolio.yaml中的stock_name（用户手动维护），备选stock_data
+            display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
             summary_table.add_row(
-                pos.stock_code, stock_data.stock_name,
+                pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
                 f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
                 pos_action_cn, ai_str, target_str
             )
         else:
+            display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
             summary_table.add_row(
-                pos.stock_code, stock_data.stock_name,
+                pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
                 "-", "无指标", "-", "-"
