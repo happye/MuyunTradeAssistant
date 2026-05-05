@@ -384,9 +384,6 @@ class PortfolioManager:
         console.print(f"\n[bold cyan]📋 持仓更新建议[/bold cyan]")
         console.print(f"  股票: {stock_name} ({stock_code})")
         console.print(f"  动作: [bold]{action_display}[/bold]")
-        # 优先使用position_ratio（策略层计算的目标仓位），回退到new_state的值
-        display_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else new_state.current_position_ratio
-        console.print(f"  目标仓位: {display_ratio:.0%}")
         console.print(f"  生命周期: {strategy_decision.lifecycle_before.value} → {strategy_decision.lifecycle_after.value}")
         if new_state.cooldown_remaining > 0:
             console.print(f"  冷却期: 剩余{new_state.cooldown_remaining}天")

@@ -192,7 +192,6 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         "CLOSE_ALL": "全部清仓", "HOLD_POSITION": "维持仓位", "STAY_OUT": "空仓观望"
     }
     pos_action_cn = pos_action_map.get(result.position_action.value, result.position_action.value)
-    pos_ratio_str = f"{result.position_ratio:.0%}" if result.position_ratio > 0 else ""
 
     # 主决策面板
     title_str = "[bold]分析结果[/bold]"
@@ -202,8 +201,7 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         f"[bold]市场状态:[/bold] [{state_color}]{result.state.value}[/{state_color}]\n"
         f"[bold {signal_color}]决策: {result.decision.value}[/]\n"
         f"[bold]综合评分:[/bold] {result.score:.2f}\n"
-        f"[bold]仓位动作:[/bold] {pos_action_cn}" +
-        (f" (目标{pos_ratio_str})" if pos_ratio_str else "")
+        f"[bold]仓位动作:[/bold] {pos_action_cn}"
     )
     console.print(Panel.fit(content_str, title=title_str, border_style=signal_color))
 
@@ -441,7 +439,8 @@ def analyze_portfolio(ai_overrides: dict = None):
                 "CLOSE_ALL": "清仓", "HOLD_POSITION": "持仓", "STAY_OUT": "观望"
             }
             pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
-            pos_ratio_str = f"→{strategy_decision.position_ratio:.0%}" if strategy_decision.position_ratio > 0 else ""
+            # 不显示具体目标仓位数值——当前算法未考虑组合总仓位，
+            # 单股目标仓位叠加后容易超过100%，展示这个数字会误导决策
 
             # 浮盈计算
             pnl_str = ""
@@ -467,7 +466,7 @@ def analyze_portfolio(ai_overrides: dict = None):
                 f"  {display_name} 现价 {stock_data.price}  "
                 f"涨跌 {stock_data.change_pct}%{pnl_str}  "
                 f"决策:[{sig_color}]{decision_result.decision.value}[/{sig_color}]  "
-                f"仓位:[bold]{pos_action_cn}{pos_ratio_str}[/bold]"
+                f"仓位:[bold]{pos_action_cn}[/bold]"
             )
             if ai_str:
                 console.print(f"  {ai_str}")
@@ -502,7 +501,6 @@ def analyze_portfolio(ai_overrides: dict = None):
     summary_table.add_column("决策", width=6)
     summary_table.add_column("动作", width=8)
     summary_table.add_column("AI情绪", width=12)
-    summary_table.add_column("目标仓位", justify="right", width=8)
 
     signal_colors = {
         SignalType.BUY: "green", SignalType.SELL: "red",
@@ -518,7 +516,7 @@ def analyze_portfolio(ai_overrides: dict = None):
             summary_table.add_row(
                 pos.stock_code, pos.stock_name or "-",
                 "-", "-", "-", f"{pos.current_ratio:.0%}",
-                "-", "数据失败", "-", "-"
+                "-", "数据失败", "-"
             )
             continue
 
@@ -548,7 +546,6 @@ def analyze_portfolio(ai_overrides: dict = None):
         if decision_result and strategy_decision:
             sig_color = signal_colors.get(decision_result.decision, "white")
             pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
-            target_str = f"{strategy_decision.position_ratio:.0%}" if strategy_decision.position_ratio > 0 else "-"
             # 优先用portfolio.yaml中的stock_name（用户手动维护），备选stock_data
             display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
             summary_table.add_row(
@@ -556,7 +553,7 @@ def analyze_portfolio(ai_overrides: dict = None):
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
                 f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
-                pos_action_cn, ai_str, target_str
+                pos_action_cn, ai_str
             )
         else:
             display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
@@ -564,7 +561,7 @@ def analyze_portfolio(ai_overrides: dict = None):
                 pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
-                "-", "无指标", "-", "-"
+                "-", "无指标", "-"
             )
 
     console.print(summary_table)
