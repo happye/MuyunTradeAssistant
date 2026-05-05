@@ -348,7 +348,7 @@ def analyze_portfolio(ai_overrides: dict = None):
     ai_config = config.get("ai", None)
     orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
 
-    results = []  # (pos, stock_data, decision_result, strategy_decision)
+    results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
     for i, pos in enumerate(positions, 1):
         console.print(f"[dim]─── [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code}) ───[/dim]")
@@ -374,7 +374,7 @@ def analyze_portfolio(ai_overrides: dict = None):
             if t.is_alive():
                 logger.warning(f"获取 {pos.stock_code} 超时(30s)，跳过")
                 console.print(f"  [yellow]⚠ 获取超时，跳过[/yellow]")
-                results.append((pos, None, None, None))
+                results.append((pos, None, None, None, None))
                 continue
 
             if error_container[0]:
@@ -418,17 +418,17 @@ def analyze_portfolio(ai_overrides: dict = None):
         if not has_indicators:
             # 无技术指标，只显示行情
             console.print(f"  {stock_data.stock_name} 现价 {stock_data.price}  涨跌 {stock_data.change_pct}%  [yellow]⚠ 技术指标不可用，跳过分析[/yellow]")
-            results.append((pos, stock_data, None, None))
+            results.append((pos, stock_data, None, None, None))
             continue
 
         try:
-            decision_result, strategy_decision, execution_eval, _ = orchestrator.analyze(
+            decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                 stock_data,
                 current_position_ratio=strategy_state.current_position_ratio,
                 strategy_state=strategy_state,
                 ai_enabled=True,
             )
-            results.append((pos, stock_data, decision_result, strategy_decision))
+            results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
 
             # 单只股票简要输出
             signal_colors = {
@@ -450,12 +450,25 @@ def analyze_portfolio(ai_overrides: dict = None):
                 pnl_color = "green" if pnl_pct >= 0 else "red"
                 pnl_str = f"  浮盈:[{pnl_color}]{pnl_pct:+.2f}%[/{pnl_color}]"
 
+            # AI情绪行（v0.8.0）
+            ai_str = ""
+            if ai_result and ai_result.adjusted:
+                sentiment_cn = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
+                sentiment_color = {"bullish": "green", "bearish": "red", "neutral": "yellow"}
+                sent_cn = sentiment_cn.get(ai_result.sentiment, ai_result.sentiment)
+                sent_color = sentiment_color.get(ai_result.sentiment, "white")
+                ai_str = f"  🤖[{sent_color}]{sent_cn}[/{sent_color}]({ai_result.confidence:.0%})"
+                if ai_result.summary:
+                    ai_str += f" {ai_result.summary}"
+
             console.print(
                 f"  {stock_data.stock_name} 现价 {stock_data.price}  "
                 f"涨跌 {stock_data.change_pct}%{pnl_str}  "
                 f"决策:[{sig_color}]{decision_result.decision.value}[/{sig_color}]  "
                 f"仓位:[bold]{pos_action_cn}{pos_ratio_str}[/bold]"
             )
+            if ai_str:
+                console.print(f"  {ai_str}")
 
             # 更新持仓
             pm.suggest_update(
@@ -466,7 +479,7 @@ def analyze_portfolio(ai_overrides: dict = None):
         except Exception as e:
             logger.warning(f"分析 {pos.stock_code} 失败: {e}")
             console.print(f"  [red]✗ 分析失败: {e}[/red]")
-            results.append((pos, stock_data, None, None))
+            results.append((pos, stock_data, None, None, None))
 
     # ===== 汇总表格 =====
     # 扫描结束，清理baostock连接
@@ -486,6 +499,7 @@ def analyze_portfolio(ai_overrides: dict = None):
     summary_table.add_column("仓位", justify="right", width=6)
     summary_table.add_column("决策", width=6)
     summary_table.add_column("动作", width=8)
+    summary_table.add_column("AI情绪", width=12)
     summary_table.add_column("目标仓位", justify="right", width=8)
 
     signal_colors = {
@@ -497,12 +511,12 @@ def analyze_portfolio(ai_overrides: dict = None):
         "CLOSE_ALL": "清仓", "HOLD_POSITION": "持仓", "STAY_OUT": "观望"
     }
 
-    for pos, stock_data, decision_result, strategy_decision in results:
+    for pos, stock_data, decision_result, strategy_decision, ai_result in results:
         if not stock_data:
             summary_table.add_row(
                 pos.stock_code, pos.stock_name or "-",
                 "-", "-", "-", f"{pos.current_ratio:.0%}",
-                "-", "数据失败", "-"
+                "-", "数据失败", "-", "-"
             )
             continue
 
@@ -518,6 +532,17 @@ def analyze_portfolio(ai_overrides: dict = None):
         chg_color = "green" if chg >= 0 else "red"
         chg_str = f"[{chg_color}]{chg:+.2f}[/{chg_color}]"
 
+        # AI情绪
+        ai_str = "-"
+        if ai_result and ai_result.adjusted:
+            sentiment_cn = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
+            sentiment_color = {"bullish": "green", "bearish": "red", "neutral": "yellow"}
+            sent_cn = sentiment_cn.get(ai_result.sentiment, ai_result.sentiment)
+            sent_color = sentiment_color.get(ai_result.sentiment, "white")
+            ai_str = f"[{sent_color}]{sent_cn}[/{sent_color}]({ai_result.confidence:.0%})"
+        elif ai_result and not ai_result.adjusted:
+            ai_str = "[dim]中性[/dim]"
+
         if decision_result and strategy_decision:
             sig_color = signal_colors.get(decision_result.decision, "white")
             pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, strategy_decision.position_action.value)
@@ -527,21 +552,21 @@ def analyze_portfolio(ai_overrides: dict = None):
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
                 f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
-                pos_action_cn, target_str
+                pos_action_cn, ai_str, target_str
             )
         else:
             summary_table.add_row(
                 pos.stock_code, stock_data.stock_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
-                "-", "无指标", "-"
+                "-", "无指标", "-", "-"
             )
 
     console.print(summary_table)
 
     # 操作建议汇总
     actions_summary = {"建仓": 0, "加仓": 0, "持仓": 0, "减仓": 0, "清仓": 0, "观望": 0}
-    for _, _, decision_result, strategy_decision in results:
+    for _, _, decision_result, strategy_decision, _ in results:
         if strategy_decision:
             pos_action_cn = pos_action_map.get(strategy_decision.position_action.value, "观望")
             if pos_action_cn in actions_summary:

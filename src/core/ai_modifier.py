@@ -202,8 +202,14 @@ class AIModifier:
             )
 
             # Step 5: 解析响应
-            content = response.choices[0].message.content.strip()
-            ai_result = self._parse_response(content)
+            message = response.choices[0].message
+            content = (message.content or "").strip()
+            # 思考型模型（v4-flash/v4-pro）可能在reasoning_content中产出分析
+            reasoning_content = ""
+            if hasattr(message, 'reasoning_content') and message.reasoning_content:
+                reasoning_content = message.reasoning_content
+
+            ai_result = self._parse_response(content, reasoning_content)
 
             if ai_result is None:
                 logger.warning("AI Modifier: 响应解析失败，跳过AI调节")
@@ -279,15 +285,32 @@ class AIModifier:
 
         result.adjusted = adjusted
 
-    def _parse_response(self, content: str) -> Optional[AIModifierResult]:
+    def _parse_response(self, content: str, reasoning_content: str = "") -> Optional[AIModifierResult]:
         """解析AI API的JSON响应
 
         Args:
             content: AI返回的文本内容
+            reasoning_content: 思考型模型的推理过程（v4-flash/v4-pro等）
 
         Returns:
             AIModifierResult 或 None
         """
+        # 空内容处理
+        if not content or not content.strip():
+            if reasoning_content and reasoning_content.strip():
+                logger.warning(
+                    f"AI返回空content但有reasoning_content(len={len(reasoning_content)})，"
+                    f"尝试从推理内容提取JSON"
+                )
+                # 尝试从reasoning_content末尾提取JSON
+                content = self._extract_json_from_reasoning(reasoning_content)
+                if not content:
+                    logger.warning("AI响应content为空，且reasoning_content中未找到JSON")
+                    return None
+            else:
+                logger.warning("AI响应content为空，跳过解析")
+                return None
+
         # 尝试提取JSON（可能被markdown代码块包裹）
         json_str = content
         if "```json" in content:
@@ -327,6 +350,41 @@ class AIModifier:
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning(f"AI响应解析失败: {e}, content={content[:200]}")
             return None
+
+    @staticmethod
+    def _extract_json_from_reasoning(reasoning: str) -> str:
+        """从思考型模型的reasoning_content中尝试提取JSON
+
+        思考型模型（deepseek-v4-flash/pro）有时把JSON放在推理过程末尾，
+        而content字段为空。此方法尝试从推理文本末尾提取JSON。
+
+        Args:
+            reasoning: reasoning_content文本
+
+        Returns:
+            提取到的JSON字符串，或空字符串
+        """
+        import re
+        # 尝试匹配最外层 { } 对
+        matches = re.findall(r'\{[^{}]*"sentiment"[^{}]*\}', reasoning, re.DOTALL)
+        if matches:
+            return matches[-1]  # 取最后一个匹配
+
+        # 更宽松的匹配：找最后的 { } 块
+        last_brace = reasoning.rfind('{')
+        if last_brace >= 0:
+            candidate = reasoning[last_brace:]
+            # 找到匹配的 }
+            depth = 0
+            for i, ch in enumerate(candidate):
+                if ch == '{':
+                    depth += 1
+                elif ch == '}':
+                    depth -= 1
+                    if depth == 0:
+                        return candidate[:i + 1]
+
+        return ""
 
     @staticmethod
     def _disabled_result() -> AIModifierResult:

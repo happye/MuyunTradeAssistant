@@ -87,10 +87,10 @@ ai:
   deepseek:
     api_key: "sk-1f0ed445f13e4ab58514e9948904a515"              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
     base_url: "https://api.deepseek.com"
-    model: "deepseek-v4-flash"    # 默认用flash（快+便宜）
-    model_pro: "deepseek-v4-pro"  # 深度分析时用pro
+    model: "deepseek-chat"        # 默认用chat（稳定JSON输出，快+便宜）
+    model_pro: "deepseek-chat"    # 深度分析时也用chat；v4-flash/v4-pro是思考型模型，偶尔返回空content
   kimi:
-    api_key: "sk-82CYPS8jqF9hwYBbLYBU4k7Tu0A1jovU5lCOjLXqm8g7dzIV"              # 用户手动填写，或设置环境变量 KIMI_API_KEY
+    api_key: ""                   # Kimi API Key无效(401)，需用户重新获取
     base_url: "https://api.moonshot.ai/v1"
     model: "moonshot-v1-auto"
     model_pro: "kimi-k2.6"        # 深度分析时用
