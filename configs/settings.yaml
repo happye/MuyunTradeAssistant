@@ -85,12 +85,12 @@ ai:
   enabled: true
   provider: "deepseek"       # deepseek / kimi
   deepseek:
-    api_key: ""              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
+    api_key: "sk-1f0ed445f13e4ab58514e9948904a515"              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
     base_url: "https://api.deepseek.com"
     model: "deepseek-v4-flash"    # 默认用flash（快+便宜）
     model_pro: "deepseek-v4-pro"  # 深度分析时用pro
   kimi:
-    api_key: ""              # 用户手动填写，或设置环境变量 KIMI_API_KEY
+    api_key: "sk-82CYPS8jqF9hwYBbLYBU4k7Tu0A1jovU5lCOjLXqm8g7dzIV"              # 用户手动填写，或设置环境变量 KIMI_API_KEY
     base_url: "https://api.moonshot.ai/v1"
     model: "moonshot-v1-auto"
     model_pro: "kimi-k2.6"        # 深度分析时用

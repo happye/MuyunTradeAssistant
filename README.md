@@ -4,7 +4,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.7.3 已完成** ✅ (Bug修复+持仓扫描)
+**v0.8.0 开发中** 🚧 (AI调节层已完成，Phase 1/5)
 
 ---
 
@@ -25,6 +25,8 @@ cd G:\Tools\暮云思辨投资助手
 ```powershell
 python -m src.cli.main --live 600519
 python -m src.cli.main -l 000001
+python -m src.cli.main -l 000001 --no-ai          # 禁用AI调节层，纯技术面分析
+python -m src.cli.main -l 000001 --ai-provider kimi  # 临时切换AI提供商
 ```
 
 **持仓管理（v0.7.2新增）：**
@@ -71,6 +73,8 @@ python -m src.cli.main
 | 历史K线 | **Baostock** | 东方财富(AKShare) | Baostock直接取交易所数据 |
 | 大盘指数 | **Baostock** | - | 沪深300(sh.000300) MA20/MA60趋势 |
 | 技术指标 | 本地pandas计算 | - | MA/MACD/RSI/布林带/KDJ |
+| 个股新闻 | **AKShare** | - | stock_news_em()，同会话缓存 ⭐v0.8.0 |
+| 宏观快讯 | **AKShare** | - | stock_info_global_em()，1小时缓存 ⭐v0.8.0 |
 
 > ⚠️ **注意**：Baostock实时行情有30秒-1分钟延迟，非盘中实时报价。
 
@@ -118,13 +122,15 @@ python -m src.cli.main
 │   ├── core/                    # 核心引擎
 │   │   ├── skill_engine.py      # YAML规则执行器 + 条件注册表
 │   │   ├── decision_engine.py   # 信号聚合器（投票→调节→覆盖+追溯）
+│   │   ├── ai_modifier.py       # AI调节层（新闻→情绪→信号调节）⭐v0.8.0
 │   │   ├── strategy_layer.py    # 策略层（交易生命周期+惯性+确认+冷却+反转成本）⭐v0.7.2
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
 │   │   ├── backtest_engine.py   # 回测引擎（模拟账户+统计指标+Monte Carlo+稳定性）
-│   │   └── orchestrator.py      # 编排层（五层架构：Signal→Decision→Strategy→Execution）
+│   │   └── orchestrator.py      # 编排层（六层架构：Signal→Decision→AI→Strategy→Execution）
 │   ├── data/
-│   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层模型）
+│   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层+AI调节层模型）
 │   │   ├── akshare_client.py    # 多数据源客户端（Baostock+AKShare）
+│   │   ├── news_client.py       # 新闻数据客户端（个股+宏观，内存缓存）⭐v0.8.0
 │   │   ├── portfolio.py         # 持仓管理（portfolio.yaml持久化+Y/N交互）⭐v0.7.2
 │   │   └── data_feeder.py       # 历史数据回放器（回测专用）
 │   ├── skills/                  # 策略技能 (YAML定义)
@@ -198,9 +204,9 @@ python -m src.cli.main
 
 ---
 
-## 决策引擎架构（v0.7.2）
+## 决策引擎架构（v0.8.0）
 
-### 五层架构：信号→决策→策略→执行
+### 六层架构：信号→决策→AI调节→策略→执行
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -211,6 +217,13 @@ python -m src.cli.main
 │ Decision Layer（决策层/信号聚合器）                                │
 │ 基础投票 → 调节器修正 → SELL分层门槛 → 动作信号覆盖                  │
 │ 输出：DecisionResult（聚合信号，非最终交易决策）                     │
+├─────────────────────────────────────────────────────────────────┤
+│ AI Modifier Layer（AI调节层）⭐v0.8.0新增                         │
+│ 新闻抓取 → AI分析情绪/风险/事件 → 三层信号调节                       │
+│ Layer 1: 信号调节 — bearish压制buy_score, bullish轻微增强          │
+│ Layer 2: 仓位调节 — high risk→仓位×0.7, medium→×0.85              │
+│ Layer 3: 状态干预 — black_swan→强制PANIC                          │
+│ ⚠️ AI只负责信息理解/情绪判断，不负责决策输出/交易执行                │
 ├─────────────────────────────────────────────────────────────────┤
 │ Strategy Layer（策略层/行为约束）⭐v0.7.2核心                      │
 │ 1. 信号稳定性评估 → 不稳定信号降权                                  │
@@ -404,6 +417,36 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.0 (AI调节层) - 2026-05-05
+
+**架构升级：从"看K线"到"理解市场"，五层→六层架构**
+
+核心问题：系统只看技术面，无法感知新闻/政策/黑天鹅等现实事件对市场的影响。
+
+**新增模块：**
+- **AI Modifier Layer** (`ai_modifier.py`)：Decision→Strategy之间插入AI调节层
+  - 三层调节机制：信号调节(bearish压制BUY) + 仓位调节(高风险×0.7) + 状态干预(黑天鹅→PANIC)
+  - 支持DeepSeek/Kimi双提供商（均兼容OpenAI SDK）
+  - 优雅降级：未配置API Key时仅输出WARNING，不中断分析
+- **NewsClient** (`news_client.py`)：新闻数据获取客户端
+  - 个股新闻：AKShare stock_news_em()，同会话缓存
+  - 宏观快讯：AKShare stock_info_global_em()，1小时缓存
+  - 自动格式化为AI可读文本（截断200字/条）
+
+**CLI新增参数：**
+- `--no-ai`：禁用AI调节层，仅使用技术面分析
+- `--ai-provider deepseek/kimi`：临时切换AI提供商
+
+**配置新增（settings.yaml → ai节）：**
+- `ai.enabled`：AI调节层开关
+- `ai.provider`：默认提供商（deepseek/kimi）
+- `ai.deepseek/kimi`：API Key、Base URL、模型名
+- `ai.modifier`：情绪权重(0.3)、仓位上限(0.7)、新闻条数(10)、缓存时间(3600s)
+
+**设计原则：AI只负责信息理解/情绪判断/事件解析，不负责决策输出/交易执行**
+
+**依赖新增：** `openai>=1.0`
+
 ### v0.7.3 (Bug修复+持仓扫描) - 2026-04-28
 
 **Bug修复**：空仓分析显示"加仓+0%+FLAT→FLAT"三bug联动
@@ -559,7 +602,12 @@ volume_ratio:
 - [x] Phase 4.5: 决策架构修复（年线牛熊+止损感知+动态保护期+SELL门槛）
 - [x] Phase 5: 交易行为约束系统（Strategy Layer+Execution Layer+稳定性指标）
 - [x] Phase 5.5: Bug修复（空仓分析错误）+ 持仓扫描功能
-- ~~Phase 6: Web界面 / API服务~~ (已取消，CLI更适合投资分析场景)
+- [x] Phase 6: AI调节层（新闻→情绪→三层信号调节）⭐v0.8.0
+- [ ] Phase 7: 全市场技术面扫描（Scanner Layer）
+- [ ] Phase 8: 事件驱动层（Event Layer）
+- [ ] Phase 9: 多维度排序（Ranking Layer）
+- [ ] Phase 10: 对话式智能助手（Chat Agent）
+- ~~Web界面 / API服务~~ (已取消，CLI更适合投资分析场景)
 
 ---
 
@@ -570,6 +618,7 @@ volume_ratio:
 - PyYAML (技能规则)
 - Pydantic (数据模型)
 - Rich (CLI美化)
-- AKShare v1.18.51 (金融数据，备用)
+- AKShare v1.18.51 (金融数据，备用 + 新闻数据源)
 - Baostock (金融数据，主数据源)
 - NumPy (回测统计计算)
+- OpenAI SDK (AI API调用，兼容DeepSeek/Kimi) ⭐v0.8.0
