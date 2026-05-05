@@ -364,3 +364,20 @@ class BacktestResult(BaseModel):
     blocked_by_limit_up: int = Field(default=0, description="因涨停无法买入次数")
     blocked_by_limit_down: int = Field(default=0, description="因跌停无法卖出次数")
     blocked_by_liquidity: int = Field(default=0, description="因流动性不足被阻止交易次数")
+
+
+class ScanCandidate(BaseModel):
+    """Scanner初筛候选股（v0.8.0 Phase 2）"""
+    stock_code: str = Field(description="股票代码")
+    stock_name: str = Field(description="股票名称")
+    price: float = Field(default=0.0, description="最新价")
+    change_pct: Optional[float] = Field(default=None, description="涨跌幅(%)")
+    turnover_rate: Optional[float] = Field(default=None, description="换手率(%)")
+    volume_ratio: Optional[float] = Field(default=None, description="量比")
+    amplitude: Optional[float] = Field(default=None, description="振幅(%)")
+    amount: Optional[float] = Field(default=None, description="成交额")
+    pe_ratio: Optional[float] = Field(default=None, description="市盈率-动态")
+    pb_ratio: Optional[float] = Field(default=None, description="市净率")
+    total_mv: Optional[float] = Field(default=None, description="总市值")
+    industry: Optional[str] = Field(default=None, description="所属行业")
+    matched_rules: list[str] = Field(default_factory=list, description="命中的规则名")

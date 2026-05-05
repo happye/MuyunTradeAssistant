@@ -975,6 +975,267 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
 
 
+def scan_market(
+    rule_name: str = "default",
+    industry_filter: list[str] = None,
+    ai_debug: bool = False,
+    deep: bool = False,
+    ai_enabled: bool = True,
+):
+    """全市场扫描 — 初筛候选股 + 可选深度分析
+
+    两步走模式：
+    1. quick_scan() → 展示候选池
+    2. 用户选择后 → deep_analyze() 逐只深度分析
+
+    Args:
+        rule_name: 扫描规则名称
+        industry_filter: 行业过滤白名单
+        ai_debug: 是否开启AI调试模式
+        deep: 是否自动执行深度分析（跳过用户选择）
+        ai_enabled: 深度分析时是否启用AI
+    """
+    from src.scanner.scanner_engine import ScannerEngine
+    from src.data.portfolio import PortfolioManager
+
+    config = load_config()
+    scanner_cfg = config.get("scanner", {})
+    ai_config = config.get("ai", None)
+    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+    enabled_skills = config.get("skills", {}).get("enabled", [])
+    signal_weights = config.get("decision", {}).get("signal_weights", {})
+    skill_types = config.get("skills", {}).get("types", {})
+
+    if ai_debug and ai_config:
+        ai_config["debug"] = True
+
+    # 排除已持仓股票
+    exclude_codes = set()
+    if scanner_cfg.get("auto_exclude_holdings", True):
+        try:
+            pm = PortfolioManager()
+            positions = pm.list_positions()
+            exclude_codes = {pos.stock_code for pos in positions}
+        except Exception:
+            pass
+
+    # 创建Scanner引擎
+    engine = ScannerEngine(
+        rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),
+        skills_dir=skills_dir,
+        enabled_skills=enabled_skills,
+        signal_weights=signal_weights,
+        skill_types=skill_types,
+        ai_config=ai_config,
+        cache_ttl=scanner_cfg.get("cache_ttl", 300),
+    )
+
+    # ===== Step 1: 快速初筛 =====
+    rule_info = None
+    for r in engine.get_available_rules():
+        if r["name"] == rule_name:
+            rule_info = r
+            break
+
+    rule_display = rule_info["display_name"] if rule_info else rule_name
+    console.print(f"\n[bold cyan]全市场扫描[/bold cyan] — {rule_display}")
+
+    # 显示缓存状态
+    cache_status = engine.market_cache.get_cache_status()
+    if cache_status["stocks"]["cached"] and not cache_status["stocks"]["expired"]:
+        console.print(f"  行情缓存: [green]命中[/green] ({cache_status['stocks']['count']}只, {cache_status['stocks']['age_seconds']}秒前)")
+    else:
+        console.print("  行情缓存: [yellow]未命中，正在获取全市场数据（约4分钟）...[/yellow]")
+
+    if industry_filter:
+        console.print(f"  行业过滤: {', '.join(industry_filter)}")
+
+    with console.status("扫描中..."):
+        candidates, scan_info = engine.quick_scan(
+            rule_name=rule_name,
+            industry_filter=industry_filter,
+            exclude_codes=exclude_codes,
+        )
+
+    if "error" in scan_info:
+        console.print(f"[red]扫描失败: {scan_info['error']}[/red]")
+        return
+
+    if not candidates:
+        console.print("[yellow]未找到符合条件的股票[/yellow]")
+        return
+
+    # 展示候选池
+    elapsed = scan_info.get("elapsed_seconds", 0)
+    console.print(
+        f"  初筛: {scan_info.get('total_stocks', '?')}只 → "
+        f"[green]{len(candidates)}只[/green] 匹配 "
+        f"({elapsed}秒)"
+    )
+
+    # 候选股表格
+    table = Table(title=f"候选股票池 — {rule_display}", show_lines=False)
+    table.add_column("代码", style="cyan", width=8)
+    table.add_column("名称", style="white", width=10)
+    table.add_column("最新价", justify="right", width=8)
+    table.add_column("涨跌幅%", justify="right", width=8)
+    table.add_column("换手率%", justify="right", width=8)
+    table.add_column("量比", justify="right", width=6)
+    table.add_column("振幅%", justify="right", width=6)
+    table.add_column("成交额(亿)", justify="right", width=10)
+
+    for c in candidates:
+        # 中国股市惯例：涨红跌绿
+        change_style = "red" if (c.change_pct or 0) > 0 else "green" if (c.change_pct or 0) < 0 else "white"
+        amount_yi = f"{c.amount / 1e8:.1f}" if c.amount else "-"
+        table.add_row(
+            c.stock_code,
+            c.stock_name,
+            f"{c.price:.2f}" if c.price else "-",
+            f"[{change_style}]{c.change_pct:+.2f}[/{change_style}]" if c.change_pct is not None else "-",
+            f"{c.turnover_rate:.2f}" if c.turnover_rate else "-",
+            f"{c.volume_ratio:.2f}" if c.volume_ratio else "-",
+            f"{c.amplitude:.2f}" if c.amplitude else "-",
+            amount_yi,
+        )
+
+    console.print(table)
+
+    # ===== Step 2: 深度分析 =====
+    if deep:
+        # 自动全量深度分析
+        selected_codes = [c.stock_code for c in candidates]
+        console.print(f"\n[bold]自动深度分析 {len(selected_codes)} 只候选股...[/bold]")
+    else:
+        # 两步走：让用户选择
+        console.print(
+            "\n  [dim]输入代码深度分析(如: 600546 002192) 或 all(全选) 或 q(跳过)[/dim]"
+        )
+        try:
+            choice = input("  > ").strip()
+        except (EOFError, KeyboardInterrupt):
+            return
+
+        if choice.lower() in ("q", "quit", ""):
+            console.print("  跳过深度分析")
+            return
+
+        if choice.lower() == "all":
+            selected_codes = [c.stock_code for c in candidates]
+            console.print(f"\n  [bold]深度分析 {len(selected_codes)} 只候选股...[/bold]")
+        else:
+            selected_codes = [c.strip() for c in choice.split() if c.strip()]
+
+    if not selected_codes:
+        return
+
+    # 执行深度分析
+    results = engine.deep_analyze(
+        stock_codes=selected_codes,
+        ai_enabled=ai_enabled,
+        ai_debug=ai_debug,
+        progress_callback=_scan_progress_callback,
+    )
+
+    # 展示深度分析结果
+    _display_scan_deep_results(results)
+
+
+def _scan_progress_callback(step: str, current: int, total: int, message: str):
+    """扫描进度回调"""
+    if step == "deep_analyze":
+        console.print(f"  [dim][{current}/{total}] {message}[/dim]")
+
+
+def _display_scan_deep_results(results: list[dict]):
+    """展示深度分析结果汇总表"""
+    if not results:
+        return
+
+    success_results = [r for r in results if r.get("success")]
+
+    if not success_results:
+        console.print("[red]所有股票深度分析均失败[/red]")
+        for r in results:
+            if r.get("error"):
+                console.print(f"  {r['stock_code']}: {r['error']}")
+        return
+
+    # 汇总表
+    table = Table(title="深度分析结果", show_lines=False)
+    table.add_column("代码", style="cyan", width=8)
+    table.add_column("名称", style="white", width=10)
+    table.add_column("决策", style="bold", width=6)
+    table.add_column("评分", justify="right", width=6)
+    table.add_column("仓位", width=8)
+    table.add_column("状态", width=10)
+    table.add_column("AI情绪", width=10)
+
+    buy_count = 0
+    sell_count = 0
+    watch_count = 0
+    hold_count = 0
+
+    for r in success_results:
+        dr = r.get("decision_result")
+        sd = r.get("strategy_decision")
+        ai_r = r.get("ai_result")
+
+        decision = dr.decision.value if dr else "?"
+        score = dr.score if dr else 0
+        pos_action = sd.position_action.value if sd else "?"
+        lifecycle = sd.lifecycle_after.value if sd else "?"
+
+        # AI情绪
+        ai_str = "-"
+        if ai_r and ai_r.adjusted:
+            sentiment_map = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
+            ai_str = f"{sentiment_map.get(ai_r.sentiment, '?')}({ai_r.confidence:.0%})"
+
+        # 决策颜色
+        decision_style = {
+            "BUY": "green", "HOLD": "cyan", "SELL": "red", "WATCH": "yellow"
+        }.get(decision, "white")
+
+        # 统计
+        if decision == "BUY":
+            buy_count += 1
+        elif decision == "SELL":
+            sell_count += 1
+        elif decision == "WATCH":
+            watch_count += 1
+        else:
+            hold_count += 1
+
+        table.add_row(
+            r["stock_code"],
+            r.get("stock_name", ""),
+            f"[{decision_style}]{decision}[/{decision_style}]",
+            f"{score:.2f}",
+            pos_action,
+            lifecycle,
+            ai_str,
+        )
+
+    console.print(table)
+
+    # 操作建议
+    action_parts = []
+    action_style = {"BUY": "green", "HOLD": "cyan", "SELL": "red", "WATCH": "yellow"}
+    for action, count in [("BUY", buy_count), ("SELL", sell_count), ("WATCH", watch_count), ("HOLD", hold_count)]:
+        if count > 0:
+            style = action_style.get(action, "white")
+            action_parts.append(f"[{style}]{action}×{count}[/{style}]")
+
+    if action_parts:
+        console.print(f"\n  操作建议: {'  '.join(action_parts)}")
+
+    # 失败提示
+    failed = [r for r in results if not r.get("success")]
+    if failed:
+        console.print(f"\n  [dim]{len(failed)}只分析失败[/dim]")
+
+
 def main():
     """主入口"""
     import argparse
@@ -1111,6 +1372,36 @@ AI配置:
         help="一键扫描所有持仓股，逐个分析并汇总"
     )
 
+    # ===== 全市场扫描参数（v0.8.0 Phase 2）=====
+    scan_group = parser.add_argument_group("全市场扫描")
+    scan_group.add_argument(
+        "--scan",
+        nargs="?",
+        const="default",
+        metavar="RULE",
+        help="全市场扫描（默认规则: default，可指定规则名如: shrink_pullback）"
+    )
+    scan_group.add_argument(
+        "--scan-deep",
+        action="store_true",
+        help="扫描时自动执行深度分析（跳过用户选择）"
+    )
+    scan_group.add_argument(
+        "--scan-industry",
+        metavar="INDUSTRY",
+        help="限制扫描行业（逗号分隔，如: 半导体,锂电池）"
+    )
+    scan_group.add_argument(
+        "--scan-list-rules",
+        action="store_true",
+        help="列出所有可用的扫描规则"
+    )
+    scan_group.add_argument(
+        "--scan-list-industries",
+        action="store_true",
+        help="列出所有行业板块（含涨跌幅）"
+    )
+
     args = parser.parse_args()
 
     # 根据参数调整日志级别
@@ -1137,6 +1428,49 @@ AI配置:
         manage_positions("remove", args.pos_remove)
     elif args.portfolio:
         analyze_portfolio(ai_overrides=_ai_override)
+    elif hasattr(args, 'scan_list_rules') and args.scan_list_rules:
+        # 列出可用扫描规则
+        from src.scanner.scanner_engine import ScannerEngine
+        config = load_config()
+        scanner_cfg = config.get("scanner", {})
+        engine = ScannerEngine(rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"))
+        rules = engine.get_available_rules()
+        table = Table(title="可用扫描规则")
+        table.add_column("规则名", style="cyan")
+        table.add_column("中文名", style="white")
+        table.add_column("描述")
+        for r in rules:
+            table.add_row(r["name"], r["display_name"], r["description"])
+        console.print(table)
+    elif hasattr(args, 'scan_list_industries') and args.scan_list_industries:
+        # 列出行业板块
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        industries = engine.get_industry_list()
+        if not industries:
+            console.print("[yellow]行业板块数据获取失败[/yellow]")
+        else:
+            table = Table(title=f"行业板块 ({len(industries)}个)")
+            table.add_column("行业", style="cyan")
+            table.add_column("涨跌幅%", justify="right")
+            for ind in industries[:50]:  # 只显示前50个
+                change = ind.get("change_pct", 0)
+                style = "red" if change > 0 else "green" if change < 0 else "white"
+                table.add_row(ind["name"], f"[{style}]{change:+.2f}[/{style}]")
+            console.print(table)
+            if len(industries) > 50:
+                console.print(f"  [dim]... 共{len(industries)}个行业，仅显示前50个[/dim]")
+    elif hasattr(args, 'scan') and args.scan:
+        # 全市场扫描
+        industry_filter = None
+        if hasattr(args, 'scan_industry') and args.scan_industry:
+            industry_filter = [s.strip() for s in args.scan_industry.split(",")]
+        scan_market(
+            rule_name=args.scan or "default",
+            industry_filter=industry_filter,
+            deep=getattr(args, 'scan_deep', False),
+            ai_enabled=not _ai_override.get('disable_ai', False),
+        )
     elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta

@@ -41,6 +41,10 @@ def show_help():
     print("├──────────────────────────────────────────────────┤")
     print("│  输入股票代码        → 实时行情分析                │")
     print("│  scan                 → 一键扫描所有持仓股        │")
+    print("│  scan market          → 全市场扫描(初筛)          │")
+    print("│  scan market <规则>   → 指定规则扫描              │")
+    print("│  scan market -i <行业>→ 行业过滤扫描              │")
+    print("│  industries           → 列出行业板块              │")
     print("│  b  <代码> [起止日期] → 回测模式                  │")
     print("│  pos                  → 查看持仓列表              │")
     print("│  pos add <代码> [名称] [价格] [仓位]              │")
@@ -53,6 +57,9 @@ def show_help():
     print("│  示例                                             │")
     print("│    000001              分析平安银行实时行情        │")
     print("│    scan                一键扫描所有持仓            │")
+    print("│    scan market         全市场放量突破扫描          │")
+    print("│    scan market shrink  缩量回调扫描                │")
+    print("│    industries          列出行业板块                │")
     print("│    b 000001            回测平安银行(近1年)         │")
     print("│    b 000001 2025-01-01 2026-01-01                 │")
     print("│                        回测指定区间                │")
@@ -92,7 +99,23 @@ def parse_input(user_input: str):
 
     # 一键扫描持仓
     if parts[0].lower() in ("scan", "s"):
+        # scan market [规则名] [-i 行业]
+        if len(parts) >= 2 and parts[1].lower() in ("market", "m"):
+            args = {"rule_name": "default"}
+            i = 2
+            while i < len(parts):
+                if parts[i].lower() in ("-i", "--industry") and i + 1 < len(parts):
+                    args["industry_filter"] = parts[i + 1].split(",")
+                    i += 2
+                else:
+                    args["rule_name"] = parts[i]
+                    i += 1
+            return ("scan_market", args)
         return ("scan", {})
+
+    # 行业板块列表
+    if parts[0].lower() in ("industries", "industry"):
+        return ("industries", {})
 
     # 持仓管理
     if parts[0].lower() == "pos":
@@ -161,7 +184,7 @@ def run_cli(mode: str, args: dict):
 
     from src.cli.main import (
         analyze_live, run_backtest, manage_positions, load_config,
-        analyze_portfolio, console, Orchestrator
+        analyze_portfolio, console, Orchestrator, scan_market
     )
 
     if mode == "live":
@@ -169,6 +192,29 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "scan":
         analyze_portfolio(ai_debug=_ai_debug)
+
+    elif mode == "scan_market":
+        scan_market(
+            rule_name=args.get("rule_name", "default"),
+            industry_filter=args.get("industry_filter"),
+            ai_debug=_ai_debug,
+        )
+
+    elif mode == "industries":
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        industries = engine.get_industry_list()
+        if industries:
+            print(f"\n  行业板块 ({len(industries)}个):")
+            for ind in industries[:30]:
+                change = ind.get("change_pct", 0)
+                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+                print(f"    {ind['name']:8s} {change:+6.2f}% {arrow}")
+            if len(industries) > 30:
+                print(f"    ... 共{len(industries)}个，仅显示前30个")
+            print()
+        else:
+            print("  行业板块数据获取失败")
 
     elif mode == "debug":
         _ai_debug = not _ai_debug

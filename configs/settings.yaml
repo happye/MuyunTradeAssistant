@@ -91,15 +91,23 @@ ai:
     model: "deepseek-chat"        # 默认用chat（稳定JSON输出，快+便宜）
     model_pro: "deepseek-chat"    # 深度分析时也用chat；v4-flash/v4-pro是思考型模型，偶尔返回空content
   kimi:
-    api_key: ""                   # 在此处填写Kimi API Key，或设置环境变量 KIMI_API_KEY
+    api_key: "sk-zXfIjeAIUYIf6SJjb3jysqn999GFYNmMSjKhVIbwcD2YGLfG"                   # 在此处填写Kimi API Key，或设置环境变量 KIMI_API_KEY
     base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）
     model: "moonshot-v1-auto"     # moonshot-v1系列支持temperature参数
-    model_pro: "kimi-k2-0905-preview"  # kimi-k2.6不支持temperature，用kimi-k2-0905-preview替代
+    model_pro: "kimi-k2.6"       # 思考型模型，content偶尔为空（reasoning_content兜底）
   modifier:
     sentiment_weight: 0.3    # 情绪调节权重（buy_score *= 1 - confidence * 0.3）
     risk_position_cap: 0.7   # 高风险时仓位上限打7折
     max_news_per_stock: 10   # 每只股票最多抓取新闻条数
     cache_ttl: 3600          # 新闻缓存1小时（秒）
+
+# 全市场扫描配置（v0.8.0 Phase 2）
+scanner:
+  rules_path: "./src/scanner/scan_rules.yaml"
+  cache_ttl: 300               # 全市场行情缓存TTL(秒)，盘中5分钟
+  deep_analysis_timeout: 30    # 单只股票深度分析超时(秒)
+  default_max_candidates: 30   # 默认最大候选股数量
+  auto_exclude_holdings: true  # 自动排除已持仓股票
 
 # 日志配置
 logging:
