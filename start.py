@@ -27,7 +27,7 @@ def show_banner():
     """显示欢迎横幅"""
     print()
     print("=" * 52)
-    print("  暮云思辨投资助手 v0.7.3")
+    print("  暮云思辨投资助手 v0.8.0")
     print("  AI驱动的A股交易行为约束系统")
     print("=" * 52)
     print()
@@ -46,6 +46,7 @@ def show_help():
     print("│  pos add <代码> [名称] [价格] [仓位]              │")
     print("│                       → 添加持仓记录              │")
     print("│  pos rm <代码>        → 删除持仓记录              │")
+    print("│  debug                → 切换AI调试模式            │")
     print("│  h  或 help           → 显示用法                  │")
     print("│  q  或 quit           → 退出                      │")
     print("├──────────────────────────────────────────────────┤")
@@ -59,8 +60,13 @@ def show_help():
     print("│    pos add 002192 融捷股份 35.20 0.20             │")
     print("│                        添加融捷股份持仓            │")
     print("│    pos rm 002192       删除融捷股份持仓            │")
+    print("│    debug               开启/关闭AI调试模式        │")
     print("└──────────────────────────────────────────────────┘")
     print()
+
+
+# 全局AI debug状态
+_ai_debug = False
 
 
 def parse_input(user_input: str):
@@ -79,6 +85,10 @@ def parse_input(user_input: str):
     # 帮助
     if parts[0].lower() in ("h", "help", "?"):
         return ("help", {})
+
+    # AI调试模式切换
+    if parts[0].lower() == "debug":
+        return ("debug", {})
 
     # 一键扫描持仓
     if parts[0].lower() in ("scan", "s"):
@@ -147,16 +157,24 @@ def parse_input(user_input: str):
 
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
+    global _ai_debug
+
     from src.cli.main import (
         analyze_live, run_backtest, manage_positions, load_config,
         analyze_portfolio, console, Orchestrator
     )
 
     if mode == "live":
-        analyze_live(args["stock_code"])
+        analyze_live(args["stock_code"], ai_debug=_ai_debug)
 
     elif mode == "scan":
-        analyze_portfolio()
+        analyze_portfolio(ai_debug=_ai_debug)
+
+    elif mode == "debug":
+        _ai_debug = not _ai_debug
+        status = "开启" if _ai_debug else "关闭"
+        print(f"  AI调试模式: {status}")
+        print(f"  （将显示AI交互的完整输入/输出和新闻抓取详情）")
 
     elif mode == "backtest":
         from datetime import datetime, timedelta
@@ -185,7 +203,17 @@ def run_cli(mode: str, args: dict):
 
 
 def main():
+    global _ai_debug
+
+    # 检查命令行参数
+    if "--debug" in sys.argv:
+        _ai_debug = True
+
     show_banner()
+
+    if _ai_debug:
+        print("  ⚡ AI调试模式已启用（命令行 --debug）")
+        print()
 
     while True:
         try:
@@ -219,8 +247,9 @@ def main():
 
         # 输出完毕后再次显示简短提示
         print()
+        debug_tag = " [DEBUG]" if _ai_debug else ""
         print("─" * 52)
-        print("  代码分析 | scan扫描 | b+代码回测 | pos持仓 | h帮助 | q退出")
+        print(f"  代码分析 | scan扫描 | b+代码回测 | pos持仓 | debug | h帮助 | q退出{debug_tag}")
         print("─" * 52)
         print()
 

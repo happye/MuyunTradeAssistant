@@ -322,7 +322,7 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
     )
 
 
-def analyze_portfolio(ai_overrides: dict = None):
+def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     """一键分析当前所有持仓股"""
     from src.data.akshare_client import get_stock_data, AKShareClient, _baostock_logout
 
@@ -344,6 +344,9 @@ def analyze_portfolio(ai_overrides: dict = None):
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
     ai_config = config.get("ai", None)
+    # debug模式：覆盖配置中的debug开关
+    if ai_debug and ai_config:
+        ai_config["debug"] = True
     orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
@@ -587,7 +590,7 @@ def analyze_portfolio(ai_overrides: dict = None):
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
-def analyze_live(stock_code: str, ai_overrides: dict = None):
+def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False):
     """实时行情分析模式（通过AKShare）"""
     from src.data.akshare_client import get_stock_data, AKShareClient
 
@@ -679,6 +682,9 @@ def analyze_live(stock_code: str, ai_overrides: dict = None):
         weights = config.get("decision", {}).get("signal_weights", None)
         skill_types = config.get("skills", {}).get("types", None)
         ai_config = config.get("ai", None)
+        # debug模式：覆盖配置中的debug开关
+        if ai_debug and ai_config:
+            ai_config["debug"] = True
 
         orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(

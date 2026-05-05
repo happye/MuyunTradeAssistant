@@ -80,6 +80,7 @@ class AIModifier:
         self.config = config
         self.enabled = config.get("enabled", True)
         self.provider = config.get("provider", "deepseek")
+        self.debug = config.get("debug", False)
 
         # 调节参数
         modifier_cfg = config.get("modifier", {})
@@ -89,7 +90,7 @@ class AIModifier:
         self.cache_ttl = modifier_cfg.get("cache_ttl", 3600)
 
         # 配置新闻客户端缓存
-        NewsClient.configure(cache_ttl=self.cache_ttl)
+        NewsClient.configure(cache_ttl=self.cache_ttl, debug=self.debug)
 
         # 初始化OpenAI客户端
         self._client: Optional[OpenAI] = None
@@ -136,6 +137,23 @@ class AIModifier:
         except Exception as e:
             logger.error(f"AI Modifier初始化失败: {e}")
             self.enabled = False
+
+    @staticmethod
+    def _should_pass_temperature(model: str) -> bool:
+        """判断模型是否支持temperature参数
+
+        kimi-k2.6 和 kimi-k2.5 不支持 temperature/top_p/n/presence_penalty/frequency_penalty
+        参考: https://platform.kimi.com/docs/api/chat
+
+        Args:
+            model: 模型名称
+
+        Returns:
+            True 表示可以传 temperature 参数
+        """
+        # kimi-k2.6 和 kimi-k2.5 不支持这些参数
+        unsupported_models = ("kimi-k2.6", "kimi-k2.5")
+        return not model.startswith(unsupported_models)
 
     def analyze(
         self,
@@ -186,28 +204,58 @@ class AIModifier:
             if stock_data.change_pct is not None:
                 user_prompt += f"，涨跌幅: {stock_data.change_pct}%"
 
+            # Debug: 打印完整输入
+            if self.debug:
+                print("\n" + "=" * 60)
+                print(f"[AI DEBUG] Provider: {self.provider}, Model: {self._model}")
+                print(f"[AI DEBUG] System Prompt ({len(SYSTEM_PROMPT)}字):")
+                print(SYSTEM_PROMPT[:500] + ("..." if len(SYSTEM_PROMPT) > 500 else ""))
+                print(f"\n[AI DEBUG] User Prompt ({len(user_prompt)}字):")
+                print(user_prompt[:1000] + ("..." if len(user_prompt) > 1000 else ""))
+                print("=" * 60)
+
             # Step 4: 调用AI API
             model = self._model_pro if use_pro else self._model
             logger.info(f"AI Modifier: 调用 {model} 分析 {stock_data.stock_code}...")
 
-            response = self._client.chat.completions.create(
-                model=model,
-                messages=[
+            # 构建API调用参数（不同模型/提供商支持的参数不同）
+            api_params = {
+                "model": model,
+                "messages": [
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,  # 低温度=更确定性的输出
-                max_tokens=500,
-                timeout=30,
-            )
+            }
+
+            # temperature: kimi-k2.6/kimi-k2.5不支持此参数
+            # max_completion_tokens: Kimi官方推荐替代已弃用的max_tokens
+            if self._should_pass_temperature(model):
+                api_params["temperature"] = 0.1  # 低温度=更确定性输出
+            api_params["max_completion_tokens"] = 500
+            api_params["timeout"] = 30
+
+            if self.debug:
+                logger.debug(f"AI Modifier DEBUG: API参数={api_params}")
+
+            response = self._client.chat.completions.create(**api_params)
 
             # Step 5: 解析响应
             message = response.choices[0].message
             content = (message.content or "").strip()
-            # 思考型模型（v4-flash/v4-pro）可能在reasoning_content中产出分析
+            # 思考型模型（v4-flash/v4-pro/kimi-k2-thinking）可能在reasoning_content中产出分析
             reasoning_content = ""
             if hasattr(message, 'reasoning_content') and message.reasoning_content:
                 reasoning_content = message.reasoning_content
+
+            # Debug: 打印完整输出
+            if self.debug:
+                print("\n" + "=" * 60)
+                print(f"[AI DEBUG] Response content ({len(content)}字):")
+                print(content[:2000] + ("..." if len(content) > 2000 else ""))
+                if reasoning_content:
+                    print(f"\n[AI DEBUG] Reasoning content ({len(reasoning_content)}字):")
+                    print(reasoning_content[:1000] + ("..." if len(reasoning_content) > 1000 else ""))
+                print("=" * 60)
 
             ai_result = self._parse_response(content, reasoning_content)
 

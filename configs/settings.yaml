@@ -83,6 +83,7 @@ skills:
 # AI调节层配置（v0.8.0）
 ai:
   enabled: true
+  debug: false               # debug模式：打印AI交互的完整输入输出
   provider: "deepseek"       # deepseek / kimi
   deepseek:
     api_key: "sk-1f0ed445f13e4ab58514e9948904a515"              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
@@ -90,10 +91,10 @@ ai:
     model: "deepseek-chat"        # 默认用chat（稳定JSON输出，快+便宜）
     model_pro: "deepseek-chat"    # 深度分析时也用chat；v4-flash/v4-pro是思考型模型，偶尔返回空content
   kimi:
-    api_key: ""                   # Kimi API Key无效(401)，需用户重新获取
-    base_url: "https://api.moonshot.ai/v1"
-    model: "moonshot-v1-auto"
-    model_pro: "kimi-k2.6"        # 深度分析时用
+    api_key: ""                   # 在此处填写Kimi API Key，或设置环境变量 KIMI_API_KEY
+    base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）
+    model: "moonshot-v1-auto"     # moonshot-v1系列支持temperature参数
+    model_pro: "kimi-k2-0905-preview"  # kimi-k2.6不支持temperature，用kimi-k2-0905-preview替代
   modifier:
     sentiment_weight: 0.3    # 情绪调节权重（buy_score *= 1 - confidence * 0.3）
     risk_position_cap: 0.7   # 高风险时仓位上限打7折

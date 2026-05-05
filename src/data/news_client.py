@@ -26,15 +26,18 @@ class NewsClient:
     _stock_news_cache: dict[str, tuple[float, list[dict]]] = {}  # code -> (timestamp, news_list)
     _macro_news_cache: tuple[float, list[dict]] = (0.0, [])       # (timestamp, news_list)
     _cache_ttl: int = 3600  # 默认1小时
+    _debug: bool = False    # debug模式开关
 
     @classmethod
-    def configure(cls, cache_ttl: int = 3600):
+    def configure(cls, cache_ttl: int = 3600, debug: bool = False):
         """配置缓存参数
 
         Args:
             cache_ttl: 缓存有效期（秒），默认3600（1小时）
+            debug: 是否开启debug模式（打印新闻抓取详情）
         """
         cls._cache_ttl = cache_ttl
+        cls._debug = debug
 
     @classmethod
     def get_stock_news(cls, stock_code: str, max_count: int = 10) -> list[dict]:
@@ -82,6 +85,13 @@ class NewsClient:
             cls._stock_news_cache[stock_code] = (time.time(), news_list)
             logger.info(f"个股新闻获取成功: {stock_code} ({len(news_list)}条)")
 
+            if cls._debug:
+                print(f"\n[NEWS DEBUG] 个股新闻 {stock_code}: 获取{len(news_list)}条")
+                for i, n in enumerate(news_list[:3], 1):
+                    print(f"  {i}. {n.get('title', '?')[:60]}")
+                if len(news_list) > 3:
+                    print(f"  ... 共{len(news_list)}条")
+
             return news_list[:max_count]
 
         except Exception as e:
@@ -127,6 +137,11 @@ class NewsClient:
             # 写入缓存
             cls._macro_news_cache = (time.time(), news_list)
             logger.info(f"宏观快讯获取成功 ({len(news_list)}条)")
+
+            if cls._debug:
+                print(f"\n[NEWS DEBUG] 宏观快讯: 获取{len(news_list)}条")
+                for i, n in enumerate(news_list[:3], 1):
+                    print(f"  {i}. {n.get('title', '?')[:60]}")
 
             return news_list[:max_count]
 
