@@ -6,121 +6,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 **v0.8.0 Phase 2 完成** ✅ (AI调节层 + 全市场扫描)
 
----
-
-## 快速开始
-
-### 1. 激活虚拟环境
-
-```powershell
-cd G:\Tools\暮云思辨投资助手
-.venv\Scripts\activate.ps1
-```
-
-**或者直接双击 `start.bat` 一键启动交互模式**（自动激活虚拟环境）。
-
-### 2. 运行分析
-
-**实时行情模式（推荐）：**
-```powershell
-python -m src.cli.main --live 600519
-python -m src.cli.main -l 000001
-python -m src.cli.main -l 000001 --no-ai          # 禁用AI调节层，纯技术面分析
-python -m src.cli.main -l 000001 --ai-provider kimi  # 临时切换AI提供商
-```
-
-**持仓管理（v0.7.2新增）：**
-```powershell
-python -m src.cli.main --pos-list                                     # 查看所有持仓
-python -m src.cli.main --pos-add 002192 --name 融捷股份 --price 35.20  # 添加持仓
-python -m src.cli.main --pos-remove 002192                           # 删除持仓
-```
-
-**一键扫描持仓股（v0.7.3新增）：**
-```powershell
-python -m src.cli.main --portfolio                                    # 分析所有持仓股
-python -m src.cli.main -p                                            # 简写
-```
-
-**全市场扫描（v0.8.0新增）：**
-```powershell
-python -m src.cli.main --scan                                        # 默认规则（放量突破）
-python -m src.cli.main --scan --rule value_pick                      # 低估值筛选
-python -m src.cli.main --scan --rule shrink_pullback                 # 缩量回调
-python -m src.cli.main --scan --rule strong_momentum                 # 强势动量
-python -m src.cli.main --scan --rule oversold_bounce                 # 超跌反弹
-```
-
-**回测模式（验证策略）：**
-```powershell
-python -m src.cli.main --backtest 600519                              # 默认近1年
-python -m src.cli.main -b 000001 -s 2024-01-01 -e 2025-01-01          # 自定义区间
-python -m src.cli.main --backtest 600519 --capital 500000              # 自定义初始资金
-```
-
-**JSON文件模式：**
-```powershell
-python -m src.cli.main sample_data.json
-```
-
-**交互输入模式：**
-```powershell
-python -m src.cli.main
-```
-
----
-
-## 数据来源说明
-
-### 多数据源架构
-
-本项目采用多数据源降级策略，确保数据获取的稳定性：
-
-| 数据类型 | 主数据源 | 备用数据源 | 说明 |
-|---------|---------|-----------|------|
-| 全市场行情(Scanner) | **新浪财经API** | efinance（东方财富） | 新浪~5秒获取5511只A股，efinance因IP封禁常失败 ⭐v0.8.0 |
-| 单股实时行情 | **Baostock** | 东方财富/新浪 | Baostock稳定可用，东方财富IP可能被封 |
-| 历史K线 | **Baostock** | 东方财富(AKShare) | Baostock直接取交易所数据 |
-| 大盘指数 | **Baostock** | - | 沪深300(sh.000300) MA20/MA60趋势 |
-| 个股新闻 | **AKShare** | - | stock_news_em()，同会话缓存 ⭐v0.8.0 |
-| 宏观快讯 | **AKShare** | - | stock_info_global_em()，1小时缓存 ⭐v0.8.0 |
-| 技术指标 | 本地pandas计算 | - | MA/MACD/RSI/布林带/KDJ |
-
-> ⚠️ **注意**：Baostock实时行情有30秒-1分钟延迟，非盘中实时报价。
-
-### 需要用户提供的
-
-**仅需输入股票代码**，其余数据自动获取：
-```
-股票代码: 600519
-```
-
-### 手工数据模式（JSON文件）
-
-如果网络不稳定或需要分析特定场景数据，可手工编辑JSON文件：
-
-```json
-{
-  "stock_code": "600519",
-  "stock_name": "贵州茅台",
-  "price": 1460.0,
-  "ma5": 1440.0,
-  "ma20": 1400.0,
-  "ma60": 1380.0,
-  "macd_dif": 15.2,
-  "macd_dea": 10.5,
-  "macd_hist": 4.7,
-  "rsi_6": 68.5,
-  "rsi_12": 62.3,
-  "rsi_24": 58.7,
-  "boll_upper": 1520.0,
-  "boll_mid": 1400.0,
-  "boll_lower": 1280.0,
-  "kdj_k": 72.5,
-  "kdj_d": 65.2,
-  "kdj_j": 87.1
-}
-```
+> 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**，本文档仅包含架构设计、技术实现与版本历史。
 
 ---
 
@@ -174,6 +60,24 @@ python -m src.cli.main
 ├── ISSUES.md                    # 问题追踪与待办
 └── 使用手册.md                   # 详细使用手册
 ```
+
+---
+
+## 数据源架构
+
+本项目采用多数据源降级策略，确保数据获取的稳定性：
+
+| 数据类型 | 主数据源 | 备用数据源 | 说明 |
+|---------|---------|-----------|------|
+| 全市场行情(Scanner) | **新浪财经API** | efinance（东方财富） | 新浪~5秒获取5511只A股，efinance因IP封禁常失败 ⭐v0.8.0 |
+| 单股实时行情 | **Baostock** | 东方财富/新浪 | Baostock稳定可用，东方财富IP可能被封 |
+| 历史K线 | **Baostock** | 东方财富(AKShare) | Baostock直接取交易所数据 |
+| 大盘指数 | **Baostock** | - | 沪深300(sh.000300) MA20/MA60趋势 |
+| 个股新闻 | **AKShare** | - | stock_news_em()，同会话缓存 ⭐v0.8.0 |
+| 宏观快讯 | **AKShare** | - | stock_info_global_em()，1小时缓存 ⭐v0.8.0 |
+| 技术指标 | 本地pandas计算 | - | MA/MACD/RSI/布林带/KDJ |
+
+> ⚠️ **注意**：Baostock实时行情有30秒-1分钟延迟，非盘中实时报价。
 
 ---
 
@@ -311,19 +215,6 @@ FLAT(空仓) → OPEN(新开仓) → HOLD(持仓) → EXIT(退出过程) → COO
 
 用历史数据验证策略表现，回答关键问题：**这套策略在过去的A股市场到底行不行？**
 
-### 使用方式
-
-```powershell
-# 基本用法：回测近1年
-python -m src.cli.main --backtest 600519
-
-# 指定时间区间
-python -m src.cli.main -b 000001 -s 2024-01-01 -e 2025-12-31
-
-# 调整初始资金
-python -m src.cli.main --backtest 600519 --capital 500000
-```
-
 ### 回测流程
 
 ```
@@ -375,36 +266,6 @@ DataFeeder加载历史数据（Baostock）
 - **流动性过滤** → 量比<0.3禁止交易 ⭐v0.7.2
 - **冲击成本** → 与成交量比例相关 ⭐v0.7.2
 - **回测结束强制清仓** → 按最后一天开盘价卖出
-
-### 回测输出示例
-
-```
-╭────────── 回测结果 ──────────╮
-│ 股票: 000001                 │
-│ 区间: 2025-07-01 ~ 2025-12-31│
-│ 初始资金: ¥100,000           │
-│ 最终资产: ¥90,371            │
-│                              │
-│ 总收益率: -9.63%             │
-│ 年化收益率: -20.28%          │
-│ 最大回撤: -13.91%            │
-│ 夏普比率: -1.94              │
-│                              │
-│ 基准收益(买入持有): -7.24%   │
-│ ✗ 跑输基准                   │
-╰──────────────────────────────╯
-
-交易统计
-┌────────┬──────┐
-│ 指标   │ 值   │
-├────────┼──────┤
-│ 总交易 │ 10   │
-│ 买入   │ 5    │
-│ 卖出   │ 5    │
-│ 胜率   │ 20%  │
-│ 盈亏比 │ 1.32 │
-└────────┴──────┘
-```
 
 ### 条件注册表（ISS-002 参数化条件）
 
