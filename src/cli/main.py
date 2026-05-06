@@ -19,7 +19,7 @@ from rich import print as rprint
 # 添加项目根目录到路径
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle, AIModifierResult
+from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle, AIModifierResult, MarketEvent
 from src.core.orchestrator import Orchestrator
 from src.data.portfolio import PortfolioManager
 
@@ -116,14 +116,17 @@ def analyze_interactive():
     skill_types = config.get("skills", {}).get("types", None)
     ai_config = config.get("ai", None)
 
+    # v0.8.0 Phase 3: 事件层配置
+    event_config = config.get("event", None)
+
     console.print(f"\n[green]✓[/green] 技能目录: {skills_dir}")
     if enabled_skills:
         console.print(f"[green]✓[/green] 启用的技能: {', '.join(enabled_skills)}")
     else:
         console.print("[yellow]⚠[/yellow] 将加载所有可用技能")
 
-    # 创建编排器（含AI调节层）
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+    # 创建编排器（含AI调节层+事件层）
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
 
     console.print(f"[green]✓[/green] 已加载技能: {', '.join(orchestrator.get_available_skills())}")
     if orchestrator.ai_modifier and orchestrator.ai_modifier.is_available():
@@ -157,8 +160,10 @@ def analyze_json(json_path: str):
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
     ai_config = config.get("ai", None)
+    event_config = config.get("event", None)
 
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
+
     decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(stock_data, ai_enabled=False)
 
     display_result(decision_result, strategy_decision, execution_eval, ai_result)
@@ -347,7 +352,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     # debug模式：覆盖配置中的debug开关
     if ai_debug and ai_config:
         ai_config["debug"] = True
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+    event_config = config.get("event", None)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -685,8 +691,9 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         # debug模式：覆盖配置中的debug开关
         if ai_debug and ai_config:
             ai_config["debug"] = True
+        event_config = config.get("event", None)
 
-        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config)
+        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
             current_position_ratio=strategy_state.current_position_ratio,
@@ -1265,6 +1272,121 @@ def _display_scan_deep_results(results: list[dict]):
         console.print(f"\n  [dim]{len(failed)}只分析失败[/dim]")
 
 
+def scan_events(ai_debug: bool = False):
+    """事件驱动扫描 - 检测重大市场事件并预警"""
+    from src.core.event_layer import EventLayer
+    from src.data.portfolio import PortfolioManager
+
+    config = load_config()
+    event_config = config.get("event", {})
+    ai_config = config.get("ai", None)
+    if ai_debug and ai_config:
+        ai_config["debug"] = True
+
+    if not event_config.get("enabled", False):
+        console.print("[yellow]事件驱动层未启用[/yellow]（在 configs/settings.yaml 的 event.enabled 中开启）")
+        return
+
+    # 创建EventLayer
+    event_layer = EventLayer(event_config, ai_config=ai_config)
+
+    console.print(f"\n[bold cyan]⚡ 事件驱动扫描[/bold cyan]")
+    console.print(f"  关键词扫描: {'✓' if event_layer.keyword_scan_enabled else '✗'}")
+    console.print(f"  AI分类: {'✓' if event_layer._ai_available else '✗ (API不可用)'}")
+    console.print(f"  持仓扫描: {'✓' if event_layer.portfolio_scan_enabled else '✗'}")
+    console.print()
+
+    # 获取持仓列表
+    positions = []
+    if event_layer.portfolio_scan_enabled:
+        try:
+            pm = PortfolioManager()
+            positions = pm.list_positions()
+            if positions:
+                console.print(f"  持仓: {len(positions)}只")
+        except Exception:
+            pass
+
+    # 执行完整扫描
+    with console.status("扫描事件中..."):
+        events = event_layer.detect_all(positions=positions if positions else None)
+
+    # 展示结果
+    if not events:
+        console.print(f"\n[green]✓ 未检测到重大市场事件[/green]")
+        return
+
+    # 事件预警展示
+    console.print(f"\n[bold]⚡ 事件预警 ({len(events)}条)[/bold]")
+
+    # 事件表格
+    table = Table(show_lines=False)
+    table.add_column("等级", width=4, justify="center")
+    table.add_column("类型", width=8)
+    table.add_column("情绪", width=6)
+    table.add_column("范围", width=6)
+    table.add_column("摘要", style="white")
+    table.add_column("来源", style="dim", max_width=30)
+    table.add_column("检测方式", style="dim", width=6)
+
+    impact_icons = {1: "·", 2: "🟡", 3: "🟠", 4: "🔴", 5: "🔴"}
+    event_type_cn = {
+        "policy": "政策", "war": "地缘", "earnings": "财报",
+        "macro": "宏观", "black_swan": "黑天鹅", "market_crash": "暴跌", "none": ""
+    }
+    sentiment_cn = {"bullish": "利好", "bearish": "利空", "neutral": "中性"}
+    sentiment_colors = {"bullish": "green", "bearish": "red", "neutral": "yellow"}
+    scope_cn = {"market": "全市场", "sector": "行业", "stock": "个股"}
+    method_cn = {"keyword": "关键词", "ai": "AI", "rule": "规则"}
+
+    for event in events:
+        icon = impact_icons.get(event.impact_level, "·")
+        evt_cn = event_type_cn.get(event.event_type, event.event_type)
+        sent_cn = sentiment_cn.get(event.sentiment, event.sentiment)
+        sent_color = sentiment_colors.get(event.sentiment, "white")
+        scp_cn = scope_cn.get(event.scope, event.scope)
+        mth_cn = method_cn.get(event.detection_method, event.detection_method)
+
+        # 受影响标的
+        affected = ""
+        if event.affected_codes:
+            affected = f" [{','.join(event.affected_codes[:3])}]"
+
+        table.add_row(
+            f"{icon}{event.impact_level}",
+            evt_cn,
+            f"[{sent_color}]{sent_cn}[/{sent_color}]",
+            scp_cn,
+            f"{event.summary}{affected}",
+            (event.source or "")[:30],
+            mth_cn,
+        )
+
+    console.print(table)
+
+    # 高影响事件预警
+    high_impact = [e for e in events if e.impact_level >= 4]
+    if high_impact:
+        console.print(f"\n[bold red]⚠ 高影响事件 ({len(high_impact)}条):[/bold red]")
+        for event in high_impact:
+            evt_cn = event_type_cn.get(event.event_type, event.event_type)
+            console.print(f"  🔴 [{evt_cn}] {event.summary} — {event.source}")
+
+    # 事件对策略的影响
+    if events:
+        top_event = max(events, key=lambda e: e.impact_level)
+        if top_event.impact_level >= 3:
+            ai_result = event_layer.to_ai_modifier_result(top_event)
+            console.print(f"\n[bold]策略影响预判：[/bold]")
+            if ai_result.score_adjustment != 0:
+                direction = "压制" if ai_result.score_adjustment < 0 else "增强"
+                console.print(f"  信号{direction}: {abs(ai_result.score_adjustment):.1%}")
+            if ai_result.position_cap < 1.0:
+                console.print(f"  仓位上限: {ai_result.position_cap:.0%}")
+            if ai_result.force_state:
+                console.print(f"  [bold red]状态干预: {ai_result.force_state}[/bold red]")
+
+
 def main():
     """主入口"""
     import argparse
@@ -1431,6 +1553,14 @@ AI配置:
         help="列出所有行业板块（含涨跌幅）"
     )
 
+    # ===== 事件驱动参数（v0.8.0 Phase 3）=====
+    event_group = parser.add_argument_group("事件驱动")
+    event_group.add_argument(
+        "--events",
+        action="store_true",
+        help="扫描重大市场事件并预警（宏观+持仓+规则）"
+    )
+
     args = parser.parse_args()
 
     # 根据参数调整日志级别
@@ -1500,6 +1630,9 @@ AI配置:
             deep=getattr(args, 'scan_deep', False),
             ai_enabled=not _ai_override.get('disable_ai', False),
         )
+    elif hasattr(args, 'events') and args.events:
+        # 事件驱动扫描
+        scan_events(ai_debug=getattr(args, 'debug', False))
     elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta

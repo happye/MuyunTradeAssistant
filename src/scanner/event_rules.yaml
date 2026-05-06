@@ -1,0 +1,194 @@
+# 事件触发规则 - Event Layer (v0.8.0 Phase 3)
+# 定义市场事件的自动检测规则
+# 规则类型: keyword(关键词匹配) / market_index(大盘指标) / stock_price(个股价格)
+
+rules:
+  # ===== 市场指数规则 =====
+
+  - name: "market_crash"
+    display_name: "市场暴跌"
+    description: "沪深300单日跌幅超过3%"
+    trigger:
+      type: "market_index"
+      conditions:
+        - field: "index_change_pct"
+          op: "<"
+          value: -3.0
+    event:
+      event_type: "black_swan"
+      sentiment: "bearish"
+      impact_level: 5
+      scope: "market"
+      duration: "medium"
+
+  - name: "market_slump"
+    display_name: "市场大跌"
+    description: "沪深300单日跌幅超过1.5%"
+    trigger:
+      type: "market_index"
+      conditions:
+        - field: "index_change_pct"
+          op: "<"
+          value: -1.5
+    event:
+      event_type: "macro"
+      sentiment: "bearish"
+      impact_level: 3
+      scope: "market"
+      duration: "short"
+
+  # ===== 个股价格规则 =====
+
+  - name: "stock_plunge"
+    display_name: "持仓股暴跌"
+    description: "持仓股单日跌幅超过5%"
+    trigger:
+      type: "stock_price"
+      conditions:
+        - field: "change_pct"
+          op: "<"
+          value: -5.0
+    event:
+      event_type: "market_crash"
+      sentiment: "bearish"
+      impact_level: 4
+      scope: "stock"
+      duration: "short"
+
+  - name: "stock_limit_down"
+    display_name: "持仓股跌停"
+    description: "持仓股触及跌停板"
+    trigger:
+      type: "stock_price"
+      conditions:
+        - field: "change_pct"
+          op: "<="
+          value: -9.5
+    event:
+      event_type: "black_swan"
+      sentiment: "bearish"
+      impact_level: 5
+      scope: "stock"
+      duration: "medium"
+
+  # ===== 关键词规则 =====
+
+  - name: "policy_bullish"
+    display_name: "政策利好"
+    description: "新闻包含重大政策利好关键词"
+    trigger:
+      type: "keyword"
+      keywords:
+        bullish:
+          - "降息"
+          - "降准"
+          - "刺激经济"
+          - "利好"
+          - "扶持"
+          - "减税"
+          - "放松监管"
+          - "扩大内需"
+          - "产业政策"
+          - "补贴"
+    event:
+      event_type: "policy"
+      sentiment: "bullish"
+      impact_level: 3
+      scope: "market"
+      duration: "medium"
+
+  - name: "policy_bearish"
+    display_name: "政策利空"
+    description: "新闻包含政策利空关键词"
+    trigger:
+      type: "keyword"
+      keywords:
+        bearish:
+          - "加息"
+          - "收紧"
+          - "监管"
+          - "限制"
+          - "整顿"
+          - "利空"
+          - "制裁"
+          - "反垄断"
+          - "去杠杆"
+    event:
+      event_type: "policy"
+      sentiment: "bearish"
+      impact_level: 3
+      scope: "market"
+      duration: "medium"
+
+  - name: "geopolitical_risk"
+    display_name: "地缘风险"
+    description: "新闻包含地缘冲突关键词"
+    trigger:
+      type: "keyword"
+      keywords:
+        bearish:
+          - "战争"
+          - "军事冲突"
+          - "入侵"
+          - "导弹"
+          - "制裁"
+          - "断交"
+          - "军事演习"
+          - "边境冲突"
+    event:
+      event_type: "war"
+      sentiment: "bearish"
+      impact_level: 4
+      scope: "market"
+      duration: "medium"
+
+  - name: "earnings_surprise"
+    display_name: "财报超预期"
+    description: "新闻包含财报利好关键词"
+    trigger:
+      type: "keyword"
+      keywords:
+        bullish:
+          - "超预期"
+          - "业绩大增"
+          - "净利翻倍"
+          - "分红"
+        bearish:
+          - "暴雷"
+          - "业绩亏损"
+          - "商誉减值"
+          - "财务造假"
+    event:
+      event_type: "earnings"
+      impact_level: 3
+      scope: "stock"
+      duration: "short"
+
+  - name: "black_swan_keyword"
+    display_name: "黑天鹅关键词"
+    description: "新闻包含极端风险关键词"
+    trigger:
+      type: "keyword"
+      keywords:
+        bearish:
+          - "熔断"
+          - "暴跌"
+          - "崩盘"
+          - "系统性风险"
+          - "流动性危机"
+          - "违约潮"
+    event:
+      event_type: "black_swan"
+      sentiment: "bearish"
+      impact_level: 5
+      scope: "market"
+      duration: "long"
+
+# 全局配置
+global:
+  # 关键词匹配时的最小匹配数（1=任一关键词匹配即触发）
+  min_keyword_matches: 1
+  # AI二次分类的impact_level阈值（>=此值才触发AI确认）
+  ai_classify_threshold: 3
+  # 事件缓存时间（秒）
+  event_cache_ttl: 300

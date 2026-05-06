@@ -1,4 +1,4 @@
-"""编排层 - 协调数据、技能、决策、AI调节、策略、执行流程
+"""编排层 - 协调数据、技能、决策、事件、AI调节、策略、执行流程
 
 v0.8.0 架构：
   Data Layer
@@ -7,13 +7,15 @@ v0.8.0 架构：
      ↓
   Decision Layer（信号聚合器）
      ↓
-  AI Modifier Layer（新增：新闻分析+情绪调节）
+  Event Layer（v0.8.0 Phase 3：事件检测+预警）
+     ↓
+  AI Modifier Layer（新闻分析+情绪调节）
      ↓
   Strategy Layer（约束行为、延迟决策、抑制噪声）
      ↓
   Execution Layer（现实约束建模）
 
-Orchestrator 协调完整的六层流程。
+Orchestrator 协调完整的七层流程。
 """
 
 import logging
@@ -21,7 +23,7 @@ from typing import Optional
 
 from src.data.models import (
     StockData, DecisionResult, StrategyState, StrategyDecision,
-    ExecutionConstraint, TradeLifecycle, AIModifierResult
+    ExecutionConstraint, TradeLifecycle, AIModifierResult, MarketEvent
 )
 from src.core.skill_engine import SkillEngine
 from src.core.decision_engine import DecisionEngine, StateMachine
@@ -32,7 +34,7 @@ logger = logging.getLogger(__name__)
 
 
 class Orchestrator:
-    """编排器 - 协调六层分析流程（v0.8.0 含AI调节层）"""
+    """编排器 - 协调七层分析流程（v0.8.0 含事件层+AI调节层）"""
 
     def __init__(
         self,
@@ -42,6 +44,7 @@ class Orchestrator:
         skill_types: Optional[dict[str, str]] = None,
         execution_constraint: Optional[ExecutionConstraint] = None,
         ai_config: Optional[dict] = None,
+        event_config: Optional[dict] = None,
     ):
         # 初始化技能引擎（Signal Layer）
         self.skill_engine = SkillEngine(skills_dir, skill_types)
@@ -63,6 +66,19 @@ class Orchestrator:
                 logger.warning(f"AI Modifier初始化异常: {e}，将跳过AI调节")
                 self.ai_modifier = None
 
+        # 初始化事件驱动层（Event Layer, v0.8.0 Phase 3新增）
+        self.event_layer = None
+        if event_config and event_config.get("enabled", False):
+            try:
+                from src.core.event_layer import EventLayer
+                self.event_layer = EventLayer(event_config, ai_config=ai_config)
+                if not self.event_layer.is_available():
+                    logger.warning("EventLayer初始化失败，将跳过事件检测")
+                    self.event_layer = None
+            except Exception as e:
+                logger.warning(f"EventLayer初始化异常: {e}，将跳过事件检测")
+                self.event_layer = None
+
         # 初始化策略层（Strategy Layer）
         self.strategy_layer = StrategyLayer()
 
@@ -70,7 +86,8 @@ class Orchestrator:
         self.execution_layer = ExecutionLayer(execution_constraint)
 
         ai_status = "enabled" if self.ai_modifier else "disabled"
-        logger.info(f"Orchestrator initialized (v0.8.0: Signal→Decision→AI Modifier({ai_status})→Strategy→Execution)")
+        event_status = "enabled" if self.event_layer else "disabled"
+        logger.info(f"Orchestrator initialized (v0.8.0: Signal→Decision→Event({event_status})→AI Modifier({ai_status})→Strategy→Execution)")
 
     def analyze(
         self,
@@ -116,6 +133,31 @@ class Orchestrator:
         )
         logger.info(f"Decision aggregate: {decision_result.decision} (score: {decision_result.score})")
 
+        # Layer 3.25: 事件驱动层（Event Layer, v0.8.0 Phase 3新增）
+        event_ai_result = None
+        if self.event_layer and self.event_layer.enabled and self.event_layer.auto_scan:
+            active_events = self.event_layer.check_events()
+            if active_events:
+                # 取impact_level最高的事件
+                top_event = max(active_events, key=lambda e: e.impact_level)
+                if top_event.impact_level >= 3:
+                    event_ai_result = self.event_layer.to_ai_modifier_result(top_event)
+                    logger.info(
+                        f"Event Layer detected: {top_event.event_type} "
+                        f"impact={top_event.impact_level} sentiment={top_event.sentiment}"
+                    )
+                    # 记录事件到决策理由
+                    event_type_cn = {
+                        "policy": "政策", "war": "地缘冲突", "earnings": "财报",
+                        "macro": "宏观", "black_swan": "黑天鹅", "market_crash": "暴跌"
+                    }
+                    sentiment_cn = {"bullish": "利好", "bearish": "利空", "neutral": "中性"}
+                    decision_result.reason.append(
+                        f"⚡事件预警: [{event_type_cn.get(top_event.event_type, top_event.event_type)}] "
+                        f"{sentiment_cn.get(top_event.sentiment, top_event.sentiment)} "
+                        f"(等级{top_event.impact_level}), {top_event.summary}"
+                    )
+
         # Layer 3.5: AI调节层（v0.8.0新增）
         ai_result = None
         if ai_enabled and self.ai_modifier and self.ai_modifier.is_available():
@@ -150,6 +192,41 @@ class Orchestrator:
                     f"AI情绪: {sentiment_cn.get(ai_result.sentiment, ai_result.sentiment)}"
                     f"({ai_result.confidence:.0%}), {ai_result.summary}"
                 )
+
+        # 合并事件层调节到AI调节结果
+        if event_ai_result:
+            # 如果AI调节也存在，叠加事件效果
+            if ai_result and ai_result.adjusted:
+                ai_result.score_adjustment += event_ai_result.score_adjustment
+                ai_result.position_cap = min(ai_result.position_cap, event_ai_result.position_cap)
+                if event_ai_result.force_state:
+                    ai_result.force_state = event_ai_result.force_state
+            else:
+                # 事件层独立调节
+                ai_result = event_ai_result
+
+                # 应用信号调节
+                original_score = decision_result.score
+                decision_result.score = max(0.0, min(1.0, decision_result.score + ai_result.score_adjustment))
+                logger.info(
+                    f"Event Layer adjusted score: {original_score:.3f} → {decision_result.score:.3f} "
+                    f"(adjustment={ai_result.score_adjustment:.3f})"
+                )
+
+                # 应用仓位调节
+                if ai_result.position_cap < 1.0:
+                    decision_result.position_ratio = min(
+                        decision_result.position_ratio, ai_result.position_cap
+                    )
+                    logger.info(f"Event Layer capped position: max {ai_result.position_cap:.0%}")
+
+                # 应用状态干预
+                if ai_result.force_state:
+                    force_state = ai_result.force_state
+                    from src.data.models import MarketState
+                    state = MarketState[force_state.upper()]
+                    decision_result.state = state
+                    logger.warning(f"Event Layer forced state: {state.value}")
 
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:

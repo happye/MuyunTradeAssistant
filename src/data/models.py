@@ -381,3 +381,22 @@ class ScanCandidate(BaseModel):
     total_mv: Optional[float] = Field(default=None, description="总市值")
     industry: Optional[str] = Field(default=None, description="所属行业")
     matched_rules: list[str] = Field(default_factory=list, description="命中的规则名")
+
+
+class MarketEvent(BaseModel):
+    """市场事件（v0.8.0 Phase 3）
+
+    Event Layer 主动检测的市场事件，影响交易策略调整。
+    检测方式：关键词匹配 / AI分类 / 市场规则触发
+    """
+    event_type: str = Field(description="事件类型: policy/war/earnings/macro/black_swan/market_crash")
+    sentiment: str = Field(default="neutral", description="情绪倾向: bullish/bearish/neutral")
+    impact_level: int = Field(default=1, ge=1, le=5, description="影响等级 1-5 (5=黑天鹅)")
+    scope: str = Field(default="market", description="影响范围: market/sector/stock")
+    duration: str = Field(default="short", description="预期持续: short/medium/long")
+    source: str = Field(default="", description="事件来源（新闻标题/规则名）")
+    summary: str = Field(default="", description="事件摘要")
+    affected_codes: list[str] = Field(default_factory=list, description="受影响的股票代码")
+    affected_sectors: list[str] = Field(default_factory=list, description="受影响的行业")
+    timestamp: str = Field(default="", description="检测时间 ISO8601")
+    detection_method: str = Field(default="keyword", description="检测方式: keyword/ai/rule")

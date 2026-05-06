@@ -109,6 +109,16 @@ scanner:
   default_max_candidates: 30   # 默认最大候选股数量
   auto_exclude_holdings: true  # 自动排除已持仓股票
 
+# 事件驱动层配置（v0.8.0 Phase 3）
+event:
+  enabled: true
+  rules_path: "./src/scanner/event_rules.yaml"
+  auto_scan_on_analyze: true   # analyze时自动检查事件（轻量，几乎无开销）
+  keyword_scan: true            # 关键词扫描（无需AI，秒级检测）
+  ai_classify: true             # AI二次分类（需AI，精确判断影响等级）
+  portfolio_scan: true          # events命令时扫描持仓股新闻
+  max_events_display: 10        # 最大展示事件数
+
 # 日志配置
 logging:
   level: "INFO"

@@ -46,6 +46,7 @@ def show_help():
     print("│  scan market -i <行业>→ 行业过滤扫描              │")
     print("│  industries           → 列出行业板块              │")
     print("│  industries <关键词>  → 搜索行业板块              │")
+    print("│  events               → 事件驱动扫描(预警)        │")
     print("│  b  <代码> [起止日期] → 回测模式                  │")
     print("│  pos                  → 查看持仓列表              │")
     print("│  pos add <代码> [名称] [价格] [仓位]              │")
@@ -60,6 +61,7 @@ def show_help():
     print("│    scan                一键扫描所有持仓            │")
     print("│    scan market         全市场放量突破扫描          │")
     print("│    scan market 缩量    缩量回调扫描(模糊匹配)     │")
+    print("│    events             事件驱动扫描(预警)          │")
     print("│    industries 半导体   搜索半导体相关板块         │")
     print("│    b 000001            回测平安银行(近1年)         │")
     print("│    b 000001 2025-01-01 2026-01-01                 │")
@@ -118,6 +120,10 @@ def parse_input(user_input: str):
     if parts[0].lower() in ("industries", "industry"):
         keyword = parts[1] if len(parts) >= 2 else None
         return ("industries", {"keyword": keyword})
+
+    # 事件驱动扫描
+    if parts[0].lower() == "events":
+        return ("events", {})
 
     # 持仓管理
     if parts[0].lower() == "pos":
@@ -186,7 +192,7 @@ def run_cli(mode: str, args: dict):
 
     from src.cli.main import (
         analyze_live, run_backtest, manage_positions, load_config,
-        analyze_portfolio, console, Orchestrator, scan_market
+        analyze_portfolio, console, Orchestrator, scan_market, scan_events
     )
 
     if mode == "live":
@@ -228,6 +234,9 @@ def run_cli(mode: str, args: dict):
                 print(f"  未找到包含 \"{keyword}\" 的行业板块")
             else:
                 print("  行业板块数据获取失败")
+
+    elif mode == "events":
+        scan_events(ai_debug=_ai_debug)
 
     elif mode == "debug":
         _ai_debug = not _ai_debug
@@ -308,7 +317,7 @@ def main():
         print()
         debug_tag = " [DEBUG]" if _ai_debug else ""
         print("─" * 52)
-        print(f"  代码分析 | scan扫描 | b+代码回测 | pos持仓 | debug | h帮助 | q退出{debug_tag}")
+        print(f"  代码分析 | scan扫描 | events事件 | b+代码回测 | pos持仓 | debug | h帮助 | q退出{debug_tag}")
         print("─" * 52)
         print()
 
