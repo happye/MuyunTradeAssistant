@@ -231,9 +231,8 @@ class ScannerFilter:
         """
         if not excludes:
             # 默认排除规则（即使YAML中未配置也执行）
+            # 注意：ST股不做默认排除——部分ST股有重组/摘帽预期
             result = df.copy()
-            if "名称" in result.columns:
-                result = result[~result["名称"].astype(str).str.contains("ST", na=False)]
             if "成交量" in result.columns:
                 vol = pd.to_numeric(result["成交量"], errors="coerce")
                 result = result[vol > 0]

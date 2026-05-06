@@ -4,7 +4,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.0 开发中** 🚧 (AI调节层已完成，Phase 1/5)
+**v0.8.0 Phase 2 完成** ✅ (AI调节层 + 全市场扫描)
 
 ---
 
@@ -42,6 +42,15 @@ python -m src.cli.main --portfolio                                    # 分析�
 python -m src.cli.main -p                                            # 简写
 ```
 
+**全市场扫描（v0.8.0新增）：**
+```powershell
+python -m src.cli.main --scan                                        # 默认规则（放量突破）
+python -m src.cli.main --scan --rule value_pick                      # 低估值筛选
+python -m src.cli.main --scan --rule shrink_pullback                 # 缩量回调
+python -m src.cli.main --scan --rule strong_momentum                 # 强势动量
+python -m src.cli.main --scan --rule oversold_bounce                 # 超跌反弹
+```
+
 **回测模式（验证策略）：**
 ```powershell
 python -m src.cli.main --backtest 600519                              # 默认近1年
@@ -69,12 +78,13 @@ python -m src.cli.main
 
 | 数据类型 | 主数据源 | 备用数据源 | 说明 |
 |---------|---------|-----------|------|
-| 实时行情 | **Baostock** | 东方财富/新浪 | Baostock稳定可用，东方财富IP可能被封 |
+| 全市场行情(Scanner) | **新浪财经API** | efinance（东方财富） | 新浪~5秒获取5511只A股，efinance因IP封禁常失败 ⭐v0.8.0 |
+| 单股实时行情 | **Baostock** | 东方财富/新浪 | Baostock稳定可用，东方财富IP可能被封 |
 | 历史K线 | **Baostock** | 东方财富(AKShare) | Baostock直接取交易所数据 |
 | 大盘指数 | **Baostock** | - | 沪深300(sh.000300) MA20/MA60趋势 |
-| 技术指标 | 本地pandas计算 | - | MA/MACD/RSI/布林带/KDJ |
 | 个股新闻 | **AKShare** | - | stock_news_em()，同会话缓存 ⭐v0.8.0 |
 | 宏观快讯 | **AKShare** | - | stock_info_global_em()，1小时缓存 ⭐v0.8.0 |
+| 技术指标 | 本地pandas计算 | - | MA/MACD/RSI/布林带/KDJ |
 
 > ⚠️ **注意**：Baostock实时行情有30秒-1分钟延迟，非盘中实时报价。
 
@@ -127,6 +137,11 @@ python -m src.cli.main
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
 │   │   ├── backtest_engine.py   # 回测引擎（模拟账户+统计指标+Monte Carlo+稳定性）
 │   │   └── orchestrator.py      # 编排层（六层架构：Signal→Decision→AI→Strategy→Execution）
+│   ├── scanner/                 # 全市场扫描模块 ⭐v0.8.0
+│   │   ├── market_cache.py      # 全市场行情缓存（新浪/efinance/过期缓存3层降级）
+│   │   ├── scanner_engine.py    # 扫描引擎（初筛quick_scan + 深度分析deep_analyze）
+│   │   ├── scanner_filter.py    # 声明式过滤器（field/op/value三元组，YAML可配置）
+│   │   └── scan_rules.yaml      # 扫描规则配置（5条规则+全局排除）
 │   ├── data/
 │   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层+AI调节层模型）
 │   │   ├── akshare_client.py    # 多数据源客户端（Baostock+AKShare）
@@ -417,9 +432,9 @@ volume_ratio:
 
 ## 版本历史
 
-### v0.8.0 (AI调节层) - 2026-05-05
+### v0.8.0 (AI调节层 + 全市场扫描) - 2026-05-05
 
-**架构升级：从"看K线"到"理解市场"，五层→六层架构**
+**Phase 1: AI调节层 — 从"看K线"到"理解市场"，五层→六层架构**
 
 核心问题：系统只看技术面，无法感知新闻/政策/黑天鹅等现实事件对市场的影响。
 
@@ -433,9 +448,30 @@ volume_ratio:
   - 宏观快讯：AKShare stock_info_global_em()，1小时缓存
   - 自动格式化为AI可读文本（截断200字/条）
 
+**Phase 2: 全市场扫描（Scanner） — 从"逐只分析"到"全市场筛选"**
+
+核心问题：5500+只A股逐只分析不现实，需要快速缩小范围。
+
+**新增模块：**
+- **Scanner** (`src/scanner/`)：两步走全市场扫描
+  - Step 1 初筛(quick_scan)：纯规则驱动，5秒内从5511只筛出≤30只候选
+  - Step 2 深度分析(deep_analyze)：逐只走Orchestrator六层架构+AI
+- **MarketCache** (`market_cache.py`)：3层数据源降级（新浪→efinance→过期缓存）
+  - 新浪API：10线程并行分页，0.3~5秒获取5511只A股
+  - efinance：备用（东方财富IP封禁风险）
+  - 过期缓存：最后兜底
+- **ScannerFilter** (`scanner_filter.py`)：声明式过滤器
+  - field/op/value三元组，YAML可配置
+  - 自动跳过缺失字段（如新浪无量比）
+- **5条初筛规则** (`scan_rules.yaml`)：
+  - 放量突破 / 缩量回调 / 强势动量 / 低估值筛选 / 超跌反弹
+  - 全局排除：停牌/北交所/退市（ST保留给用户判断）
+
 **CLI新增参数：**
 - `--no-ai`：禁用AI调节层，仅使用技术面分析
 - `--ai-provider deepseek/kimi`：临时切换AI提供商
+- `--scan`：全市场扫描
+- `--rule <规则ID>`：指定初筛规则
 
 **配置新增（settings.yaml → ai节）：**
 - `ai.enabled`：AI调节层开关
@@ -603,7 +639,7 @@ volume_ratio:
 - [x] Phase 5: 交易行为约束系统（Strategy Layer+Execution Layer+稳定性指标）
 - [x] Phase 5.5: Bug修复（空仓分析错误）+ 持仓扫描功能
 - [x] Phase 6: AI调节层（新闻→情绪→三层信号调节）⭐v0.8.0
-- [ ] Phase 7: 全市场技术面扫描（Scanner Layer）
+- [x] Phase 7: 全市场扫描（Scanner两步走：初筛→深度分析）⭐v0.8.0
 - [ ] Phase 8: 事件驱动层（Event Layer）
 - [ ] Phase 9: 多维度排序（Ranking Layer）
 - [ ] Phase 10: 对话式智能助手（Chat Agent）

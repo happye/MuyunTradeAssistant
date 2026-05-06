@@ -26,10 +26,7 @@
 #   - op="lte"/"lt": 字段小于(等于)指定值的排除
 #   - op="gte"/"gt": 字段大于(等于)指定值的排除
 global_exclude:
-  # 排除ST/*ST股票（名称包含ST）
-  - field: "name"
-    op: "contains"
-    value: "ST"
+  # 注意：ST股票不做全局排除——部分ST股有重组/摘帽预期，保留给用户自行判断
   # 排除停牌股票（成交量为0或NaN）
   - field: "volume"
     op: "lte"
