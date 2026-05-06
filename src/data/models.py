@@ -400,3 +400,23 @@ class MarketEvent(BaseModel):
     affected_sectors: list[str] = Field(default_factory=list, description="受影响的行业")
     timestamp: str = Field(default="", description="检测时间 ISO8601")
     detection_method: str = Field(default="keyword", description="检测方式: keyword/ai/rule")
+
+
+class DimensionScore(BaseModel):
+    """排名维度评分（v0.8.0 Phase 4）"""
+    name: str = Field(description="维度名: technical/sentiment/liquidity/volatility")
+    score: float = Field(ge=0.0, le=100.0, description="维度得分 0-100")
+    weight: float = Field(ge=0.0, le=1.0, description="实际权重（归一化后）")
+    contribution: float = Field(description="维度贡献分 = score × weight")
+    detail: str = Field(default="", description="评分说明（可解释性）")
+
+
+class RankingResult(BaseModel):
+    """排名结果（v0.8.0 Phase 4）"""
+    stock_code: str = Field(description="股票代码")
+    stock_name: str = Field(default="", description="股票名称")
+    total_score: float = Field(ge=0.0, le=100.0, description="综合得分 0-100")
+    rank: int = Field(ge=0, description="排名（1=最佳，0=未排名）")
+    dimensions: list[DimensionScore] = Field(default_factory=list, description="各维度评分明细")
+    decision: str = Field(default="", description="决策: BUY/SELL/HOLD/WATCH")
+    ai_enabled: bool = Field(default=True, description="排名时AI是否启用")

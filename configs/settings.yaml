@@ -119,6 +119,23 @@ event:
   portfolio_scan: true          # events命令时扫描持仓股新闻
   max_events_display: 10        # 最大展示事件数
 
+# 排名层配置（v0.8.0 Phase 4）
+ranking:
+  enabled: true                  # 是否启用排名
+  weights:
+    technical: 0.40              # 技术面权重
+    sentiment: 0.20              # AI情绪权重（AI禁用时自动归零）
+    liquidity: 0.20              # 流动性权重
+    volatility: 0.20             # 波动性权重
+  liquidity:
+    amount_weight: 0.60          # 成交额在流动性中的权重
+    turnover_weight: 0.40        # 换手率在流动性中的权重
+  volatility:
+    optimal_range: [2.0, 5.0]   # 最优振幅区间(%)
+  display:
+    top_n: 10                    # 默认展示前N名（高亮）
+    show_dimensions: true        # 是否展示各维度得分明细
+
 # 日志配置
 logging:
   level: "INFO"

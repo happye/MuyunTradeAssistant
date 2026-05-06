@@ -194,17 +194,21 @@ class ScannerEngine:
     def deep_analyze(
         self,
         stock_codes: list[str],
+        candidates: list[ScanCandidate] = None,
         ai_enabled: bool = True,
         ai_debug: bool = False,
         progress_callback: Optional[Callable] = None,
+        ranking_config: Optional[dict] = None,
     ) -> list[dict]:
-        """对选定的候选股逐只执行深度分析（走Orchestrator六层）
+        """对选定的候选股逐只执行深度分析（走Orchestrator七层）
 
         Args:
             stock_codes: 要深度分析的股票代码列表
+            candidates: 初筛候选股列表（提供流动性/波动性数据，用于排名）
             ai_enabled: 是否启用AI调节层
             ai_debug: 是否开启AI调试模式
             progress_callback: 进度回调 callback(step, current, total, message)
+            ranking_config: 排名层配置（None时使用默认配置）
 
         Returns:
             分析结果列表，每项为 dict:
@@ -216,10 +220,17 @@ class ScannerEngine:
                 "strategy_decision": StrategyDecision,
                 "execution_eval": ExecutionEvaluation,
                 "ai_result": Optional[AIModifierResult],
+                "candidate": Optional[ScanCandidate],
+                "ranking": Optional[RankingResult],  # 排名结果
                 "error": Optional[str],
             }
         """
         from src.data.portfolio import PortfolioManager
+
+        # 构建 candidates 索引 {stock_code: ScanCandidate}
+        candidate_map = {}
+        if candidates:
+            candidate_map = {c.stock_code: c for c in candidates}
 
         results = []
         total = len(stock_codes)
@@ -231,6 +242,9 @@ class ScannerEngine:
                 progress_callback("deep_analyze", i + 1, total, f"分析 {code}")
 
             result = {"stock_code": code, "success": False}
+
+            # 附加候选股数据（用于排名层的流动性/波动性评分）
+            result["candidate"] = candidate_map.get(code)
 
             # 防御性校验：跳过北交所代码（初筛应已排除，此处为兜底）
             if code.startswith("920") or code.startswith("8"):
@@ -293,6 +307,12 @@ class ScannerEngine:
             f"ScannerEngine: 深度分析完成 "
             f"{success_count}/{total}只成功"
         )
+
+        # 排名层：对深度分析结果按四维评分排序
+        if ranking_config is None or ranking_config.get("enabled", True):
+            from src.core.ranking_layer import RankingLayer
+            ranking_layer = RankingLayer(ranking_config)
+            results = ranking_layer.rank(results, ai_enabled=ai_enabled)
 
         return results
 

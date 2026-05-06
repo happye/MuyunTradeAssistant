@@ -1166,11 +1166,14 @@ def scan_market(
         return
 
     # 执行深度分析
+    ranking_config = config.get("ranking", {})
     results = engine.deep_analyze(
         stock_codes=selected_codes,
+        candidates=candidates,
         ai_enabled=ai_enabled,
         ai_debug=ai_debug,
         progress_callback=_scan_progress_callback,
+        ranking_config=ranking_config,
     )
 
     # 展示深度分析结果
@@ -1184,7 +1187,7 @@ def _scan_progress_callback(step: str, current: int, total: int, message: str):
 
 
 def _display_scan_deep_results(results: list[dict]):
-    """展示深度分析结果汇总表"""
+    """展示深度分析结果排名表（v0.8.0 Phase 4 按综合评分排序）"""
     if not results:
         return
 
@@ -1197,7 +1200,147 @@ def _display_scan_deep_results(results: list[dict]):
                 console.print(f"  {r['stock_code']}: {r['error']}")
         return
 
-    # 汇总表
+    # 检查是否有排名数据
+    has_ranking = any(r.get("ranking") for r in success_results)
+
+    if has_ranking:
+        _display_ranked_results(success_results)
+    else:
+        _display_unranked_results(success_results)
+
+    # 失败提示
+    failed = [r for r in results if not r.get("success")]
+    if failed:
+        console.print(f"\n  [dim]{len(failed)}只分析失败[/dim]")
+
+
+def _display_ranked_results(success_results: list[dict]):
+    """展示带排名的深度分析结果"""
+    # 排名表格
+    table = Table(title="深度分析排名（按综合评分排序）", show_lines=False)
+    table.add_column("排名", justify="center", width=4)
+    table.add_column("代码", style="cyan", width=8)
+    table.add_column("名称", style="white", width=10)
+    table.add_column("综合分", justify="right", width=6)
+    table.add_column("技术", justify="right", width=5)
+    table.add_column("情绪", justify="right", width=5)
+    table.add_column("流动", justify="right", width=5)
+    table.add_column("波动", justify="right", width=5)
+    table.add_column("决策", style="bold", width=6)
+    table.add_column("仓位", width=8)
+    table.add_column("AI情绪", width=10)
+
+    buy_count = 0
+    sell_count = 0
+    watch_count = 0
+    hold_count = 0
+    top3_stocks = []
+
+    for r in success_results:
+        dr = r.get("decision_result")
+        sd = r.get("strategy_decision")
+        ai_r = r.get("ai_result")
+        ranking = r.get("ranking")
+
+        decision = dr.decision.value if dr else "?"
+        pos_action = sd.position_action.value if sd else "?"
+
+        # AI情绪
+        ai_str = "-"
+        if ai_r and ai_r.adjusted:
+            sentiment_map = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
+            ai_str = f"{sentiment_map.get(ai_r.sentiment, '?')}({ai_r.confidence:.0%})"
+
+        # 决策颜色
+        decision_style = {
+            "BUY": "green", "HOLD": "cyan", "SELL": "red", "WATCH": "yellow"
+        }.get(decision, "white")
+
+        # 统计
+        if decision == "BUY":
+            buy_count += 1
+        elif decision == "SELL":
+            sell_count += 1
+        elif decision == "WATCH":
+            watch_count += 1
+        else:
+            hold_count += 1
+
+        # 排名数据
+        if ranking:
+            rank_str = str(ranking.rank)
+            total_score = ranking.total_score
+
+            # 综合分颜色
+            if total_score >= 70:
+                score_style = "green"
+            elif total_score >= 50:
+                score_style="yellow"
+            else:
+                score_style = "dim"
+
+            # 各维度分
+            dim_map = {d.name: d for d in ranking.dimensions}
+            tech_str = f"{dim_map['technical'].score:.0f}" if 'technical' in dim_map else "-"
+            sent_str = f"{dim_map['sentiment'].score:.0f}" if 'sentiment' in dim_map else "-"
+            liq_str = f"{dim_map['liquidity'].score:.0f}" if 'liquidity' in dim_map else "-"
+            vol_str = f"{dim_map['volatility'].score:.0f}" if 'volatility' in dim_map else "-"
+
+            # TOP3 加粗
+            if ranking.rank <= 3:
+                rank_str = f"[bold]{rank_str}[/bold]"
+                top3_stocks.append(f"{r['stock_code']} {r.get('stock_name', '')}({total_score}分)")
+
+            table.add_row(
+                rank_str,
+                r["stock_code"],
+                r.get("stock_name", ""),
+                f"[{score_style}]{total_score:.0f}[/{score_style}]",
+                tech_str,
+                sent_str,
+                liq_str,
+                vol_str,
+                f"[{decision_style}]{decision}[/{decision_style}]",
+                pos_action,
+                ai_str,
+            )
+        else:
+            # 无排名数据时用旧格式
+            score = dr.score if dr else 0
+            table.add_row(
+                "-",
+                r["stock_code"],
+                r.get("stock_name", ""),
+                f"{score:.2f}",
+                "-",
+                "-",
+                "-",
+                "-",
+                f"[{decision_style}]{decision}[/{decision_style}]",
+                pos_action,
+                ai_str,
+            )
+
+    console.print(table)
+
+    # 操作建议
+    action_parts = []
+    action_style = {"BUY": "green", "HOLD": "cyan", "SELL": "red", "WATCH": "yellow"}
+    for action, count in [("BUY", buy_count), ("SELL", sell_count), ("WATCH", watch_count), ("HOLD", hold_count)]:
+        if count > 0:
+            style = action_style.get(action, "white")
+            action_parts.append(f"[{style}]{action}×{count}[/{style}]")
+
+    if action_parts:
+        console.print(f"\n  操作建议: {'  '.join(action_parts)}")
+
+    # TOP3推荐
+    if top3_stocks:
+        console.print(f"  [bold green]TOP3推荐[/bold green]: {' | '.join(top3_stocks)}")
+
+
+def _display_unranked_results(success_results: list[dict]):
+    """展示无排名的深度分析结果（兜底，排名层未启用时使用）"""
     table = Table(title="深度分析结果", show_lines=False)
     table.add_column("代码", style="cyan", width=8)
     table.add_column("名称", style="white", width=10)
@@ -1265,11 +1408,6 @@ def _display_scan_deep_results(results: list[dict]):
 
     if action_parts:
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
-
-    # 失败提示
-    failed = [r for r in results if not r.get("success")]
-    if failed:
-        console.print(f"\n  [dim]{len(failed)}只分析失败[/dim]")
 
 
 def scan_events(ai_debug: bool = False):
