@@ -4,7 +4,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.0 Phase 2 完成** ✅ (AI调节层 + 全市场扫描)
+**v0.8.0 Phase 3 完成** ✅ (AI调节层 + 全市场扫描 + 事件驱动)
 
 > 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**，本文档仅包含架构设计、技术实现与版本历史。
 
@@ -18,18 +18,20 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │   ├── core/                    # 核心引擎
 │   │   ├── skill_engine.py      # YAML规则执行器 + 条件注册表
 │   │   ├── decision_engine.py   # 信号聚合器（投票→调节→覆盖+追溯）
+│   │   ├── event_layer.py       # 事件驱动层（关键词匹配+AI分类+持仓扫描）⭐v0.8.0
 │   │   ├── ai_modifier.py       # AI调节层（新闻→情绪→信号调节）⭐v0.8.0
 │   │   ├── strategy_layer.py    # 策略层（交易生命周期+惯性+确认+冷却+反转成本）⭐v0.7.2
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
 │   │   ├── backtest_engine.py   # 回测引擎（模拟账户+统计指标+Monte Carlo+稳定性）
-│   │   └── orchestrator.py      # 编排层（六层架构：Signal→Decision→AI→Strategy→Execution）
+│   │   └── orchestrator.py      # 编排层（七层架构：Signal→Decision→Event→AI→Strategy→Execution）
 │   ├── scanner/                 # 全市场扫描模块 ⭐v0.8.0
 │   │   ├── market_cache.py      # 全市场行情缓存（新浪/efinance/过期缓存3层降级）
 │   │   ├── scanner_engine.py    # 扫描引擎（初筛quick_scan + 深度分析deep_analyze）
 │   │   ├── scanner_filter.py    # 声明式过滤器（field/op/value三元组，YAML可配置）
-│   │   └── scan_rules.yaml      # 扫描规则配置（5条规则+全局排除）
+│   │   ├── scan_rules.yaml      # 扫描规则配置（5条规则+全局排除）
+│   │   └── event_rules.yaml     # 事件触发规则（9条：政策/地缘/财报/黑天鹅/暴跌）⭐v0.8.0
 │   ├── data/
-│   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层+AI调节层模型）
+│   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层+AI调节层+事件层模型）
 │   │   ├── akshare_client.py    # 多数据源客户端（Baostock+AKShare）
 │   │   ├── news_client.py       # 新闻数据客户端（个股+宏观，内存缓存）⭐v0.8.0
 │   │   ├── portfolio.py         # 持仓管理（portfolio.yaml持久化+Y/N交互）⭐v0.7.2
@@ -125,7 +127,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 决策引擎架构（v0.8.0）
 
-### 六层架构：信号→决策→AI调节→策略→执行
+### 七层架构：信号→决策→事件→AI调节→策略→执行
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -136,6 +138,12 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │ Decision Layer（决策层/信号聚合器）                                │
 │ 基础投票 → 调节器修正 → SELL分层门槛 → 动作信号覆盖                  │
 │ 输出：DecisionResult（聚合信号，非最终交易决策）                     │
+├─────────────────────────────────────────────────────────────────┤
+│ Event Layer（事件驱动层）⭐v0.8.0新增                              │
+│ 关键词匹配(秒级) + AI二次分类 + 市场规则检测 + 持仓新闻扫描          │
+│ 9条事件规则：市场暴跌/政策/地缘/财报/黑天鹅等                       │
+│ 事件→AIModifierResult转换，复用三层调节机制                        │
+│ 优雅降级：AI不可用时关键词匹配仍可检测                               │
 ├─────────────────────────────────────────────────────────────────┤
 │ AI Modifier Layer（AI调节层）⭐v0.8.0新增                         │
 │ 新闻抓取 → AI分析情绪/风险/事件 → 三层信号调节                       │
@@ -293,7 +301,7 @@ volume_ratio:
 
 ## 版本历史
 
-### v0.8.0 (AI调节层 + 全市场扫描) - 2026-05-05
+### v0.8.0 (AI调节层 + 全市场扫描 + 事件驱动) - 2026-05-07
 
 **Phase 1: AI调节层 — 从"看K线"到"理解市场"，五层→六层架构**
 
@@ -328,17 +336,33 @@ volume_ratio:
   - 放量突破 / 缩量回调 / 强势动量 / 低估值筛选 / 超跌反弹
   - 全局排除：停牌/北交所/退市（ST保留给用户判断）
 
+**Phase 3: 事件驱动层（Event Layer） — 从"只看价格"到"感知事件"，六层→七层架构**
+
+核心问题：系统无法感知降息/战争/暴雷/崩盘等重大事件对市场的即时冲击。
+
+**新增模块：**
+- **EventLayer** (`event_layer.py`)：Decision→AI Modifier之间插入事件驱动层
+  - 关键词匹配：秒级检测宏观新闻中的重大事件（降息/加息/战争/暴跌等）
+  - 市场规则：检测沪深300跌幅>3%/1.5%、持仓股跌幅>5%/跌停
+  - 持仓扫描：批量扫描持仓股新闻，AI判断影响（events命令时触发）
+  - AI二次分类：对关键词命中事件做AI确认（独立AI客户端，不复用AIModifier）
+  - 事件→AIModifierResult转换：复用三层调节机制（信号调节+仓位调节+状态干预）
+  - 优雅降级：AI不可用时关键词匹配+市场规则检测仍可正常工作
+- **9条事件规则** (`event_rules.yaml`)：
+  - 市场暴跌(impact=5) / 市场下跌(3) / 个股暴跌(4) / 跌停(5)
+  - 政策利好(3) / 政策利空(3) / 地缘风险(4) / 财报意外(3) / 黑天鹅关键词(5)
+- **MarketEvent** 模型 (`models.py`)：event_type/sentiment/impact_level(1-5)/scope/detection_method等
+
 **CLI新增参数：**
 - `--no-ai`：禁用AI调节层，仅使用技术面分析
 - `--ai-provider deepseek/kimi`：临时切换AI提供商
 - `--scan`：全市场扫描
 - `--rule <规则ID>`：指定初筛规则
+- `--events`：事件扫描（宏观新闻+持仓新闻+市场规则检测）⭐v0.8.0
 
-**配置新增（settings.yaml → ai节）：**
-- `ai.enabled`：AI调节层开关
-- `ai.provider`：默认提供商（deepseek/kimi）
-- `ai.deepseek/kimi`：API Key、Base URL、模型名
-- `ai.modifier`：情绪权重(0.3)、仓位上限(0.7)、新闻条数(10)、缓存时间(3600s)
+**配置新增（settings.yaml）：**
+- `ai`节：AI调节层配置（双提供商+modifier参数）
+- `event`节：事件驱动层配置（规则路径+AI分类+持仓扫描开关）⭐v0.8.0
 
 **设计原则：AI只负责信息理解/情绪判断/事件解析，不负责决策输出/交易执行**
 
@@ -501,7 +525,7 @@ volume_ratio:
 - [x] Phase 5.5: Bug修复（空仓分析错误）+ 持仓扫描功能
 - [x] Phase 6: AI调节层（新闻→情绪→三层信号调节）⭐v0.8.0
 - [x] Phase 7: 全市场扫描（Scanner两步走：初筛→深度分析）⭐v0.8.0
-- [ ] Phase 8: 事件驱动层（Event Layer）
+- [x] Phase 8: 事件驱动层（Event Layer：关键词+AI分类+9条规则+持仓扫描）⭐v0.8.0
 - [ ] Phase 9: 多维度排序（Ranking Layer）
 - [ ] Phase 10: 对话式智能助手（Chat Agent）
 - ~~Web界面 / API服务~~ (已取消，CLI更适合投资分析场景)

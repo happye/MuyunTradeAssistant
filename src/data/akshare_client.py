@@ -127,9 +127,17 @@ class AKShareClient:
         - 159201 -> (sz, 159201)  深圳ETF
         - 510300 -> (sh, 510300)  上海ETF
         - 560100 -> (sh, 560100)  上海ETF
+        - 920001 -> (bj, 920001)  北交所
+        - 830001 -> (bj, 830001)  北交所
         """
         code = code.strip().zfill(6)
-        if code.startswith(('6', '9')):
+        if code.startswith('920') or code.startswith('8'):
+            # 北交所：920xxx（新代码段）或 8xxxxx（老代码段）
+            return "bj", code
+        elif code.startswith('6'):
+            return "sh", code
+        elif code.startswith('9'):
+            # 900xxx 上海B股（非北交所的9开头代码）
             return "sh", code
         elif code.startswith(('0', '3')):
             return "sz", code

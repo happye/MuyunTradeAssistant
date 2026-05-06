@@ -232,6 +232,14 @@ class ScannerEngine:
 
             result = {"stock_code": code, "success": False}
 
+            # 防御性校验：跳过北交所代码（初筛应已排除，此处为兜底）
+            if code.startswith("920") or code.startswith("8"):
+                result["error"] = "北交所股票不支持深度分析"
+                result["stock_name"] = code
+                logger.info(f"ScannerEngine: 跳过北交所股票 {code}")
+                results.append(result)
+                continue
+
             try:
                 # 获取完整技术指标数据
                 stock_data = AKShareClient.calculate_indicators(code)
