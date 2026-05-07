@@ -268,7 +268,11 @@ class ScannerEngine:
                     results.append(result)
                     continue
 
-                result["stock_name"] = stock_data.stock_name or code
+                # 名称修复：Baostock日K线不返回股票名称，优先用候选股的中文名
+                name = stock_data.stock_name or code
+                if (name == code or not name.strip()) and code in candidate_map:
+                    name = candidate_map[code].stock_name or name
+                result["stock_name"] = name
 
                 # 获取持仓状态（如果有）
                 current_ratio = 0.0

@@ -133,6 +133,10 @@ class MarketCache:
         Returns:
             全市场行情DataFrame（列名标准化），空DataFrame表示获取失败
         """
+        # 禁用AKShare/efinance内部的tqdm进度条
+        import os
+        os.environ["TQDM_DISABLE"] = "1"
+
         if not force_refresh and self._stock_df is not None and not self._is_expired(self._stock_timestamp):
             logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
             return self._stock_df

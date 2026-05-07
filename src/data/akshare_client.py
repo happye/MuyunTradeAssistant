@@ -222,7 +222,13 @@ class AKShareClient:
 
         # 东方财富全市场（单次API调用覆盖全市场，失败快）
         def _fetch_em_all():
-            return ak.stock_zh_a_spot_em()
+            # 禁用AKShare内部的tqdm进度条，避免在CLI中产生混淆
+            import os
+            os.environ["TQDM_DISABLE"] = "1"
+            try:
+                return ak.stock_zh_a_spot_em()
+            finally:
+                os.environ.pop("TQDM_DISABLE", None)
         fetchers.append(("东方财富全市场", _fetch_em_all))
 
         last_error = None
@@ -437,14 +443,14 @@ class AKShareClient:
 
             return {
                 "stock_code": code,
-                "stock_name": code,
+                "stock_name": code,  # Baostock日K线不含名称，由上层用候选股数据补充
                 "price": float(latest[fields.index('close')]),
                 "open": float(latest[fields.index('open')]),
                 "high": float(latest[fields.index('high')]),
                 "low": float(latest[fields.index('low')]),
                 "close_yesterday": float(latest[fields.index('close')]),  # Baostock无昨收，用收盘代替
                 "volume": int(float(latest[fields.index('volume')])),
-                "change_pct": 0.0,  # Baostock日K无涨跌幅
+                "change_pct": 0.0,  # Baostock日K无涨跌幅，由上层用实时行情补充
                 "source": "baostock"
             }
 
@@ -572,6 +578,10 @@ class AKShareClient:
         Returns:
             StockData: 包含所有技术指标的股票数据，可能部分指标为None
         """
+        # 禁用AKShare内部的tqdm进度条，避免在CLI中产生混淆
+        import os as _os
+        _os.environ["TQDM_DISABLE"] = "1"
+
         # 首先尝试获取实时行情
         quote = cls.get_realtime_quote(stock_code)
 

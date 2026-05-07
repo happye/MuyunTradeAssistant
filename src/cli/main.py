@@ -339,7 +339,18 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         return
 
     console.print(f"\n[bold cyan]🔍 持仓扫描模式[/bold cyan]")
-    console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...\n")
+    console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...")
+
+    # 数据时效性提示
+    from datetime import datetime
+    now = datetime.now()
+    is_trading = (now.weekday() < 5
+                  and ((9 <= now.hour < 12) or (13 <= now.hour < 15)))
+    if is_trading:
+        console.print("[dim]  ⏱ 盘中模式：数据来自最近交易日K线（Baostock约30秒延迟），技术指标准确[/dim]")
+    else:
+        console.print("[dim]  ⏱ 盘后模式：数据为最近交易日收盘数据，技术指标准确[/dim]")
+    console.print()
 
     # 加载配置（所有股票共用一个编排器）
     config = load_config()
@@ -394,7 +405,11 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                     stock_data.boll_upper, stock_data.kdj_k
                 ])
         except Exception as e:
+            error_msg = str(e)
             logger.warning(f"获取 {pos.stock_code} 完整数据失败: {e}")
+            # 连接超时/网络错误的友好提示
+            if '10060' in error_msg or 'timeout' in error_msg.lower() or '连接' in error_msg:
+                console.print(f"  [yellow]⚠ 网络连接超时，正在尝试备用数据源...[/yellow]")
 
         # 降级：只获取实时行情
         if not stock_data:
@@ -1138,46 +1153,68 @@ def scan_market(
     console.print(table)
 
     # ===== Step 2: 深度分析 =====
-    if deep:
-        # 自动全量深度分析
-        selected_codes = [c.stock_code for c in candidates]
-        console.print(f"\n[bold]自动深度分析 {len(selected_codes)} 只候选股...[/bold]")
-    else:
-        # 两步走：让用户选择
-        console.print(
-            "\n  [dim]输入代码深度分析(如: 600546 002192) 或 all(全选) 或 q(跳过)[/dim]"
-        )
-        try:
-            choice = input("  > ").strip()
-        except (EOFError, KeyboardInterrupt):
-            return
+    # 已分析的代码集合，支持多轮选择
+    analyzed_results = []
+    remaining_candidates = list(candidates)  # 可分析的候选股
 
-        if choice.lower() in ("q", "quit", ""):
-            console.print("  跳过深度分析")
-            return
-
-        if choice.lower() == "all":
-            selected_codes = [c.stock_code for c in candidates]
-            console.print(f"\n  [bold]深度分析 {len(selected_codes)} 只候选股...[/bold]")
+    while remaining_candidates:
+        if deep:
+            # 自动全量深度分析
+            selected_codes = [c.stock_code for c in remaining_candidates]
+            console.print(f"\n[bold]自动深度分析 {len(selected_codes)} 只候选股...[/bold]")
+            remaining_candidates = []
         else:
-            selected_codes = [c.strip() for c in choice.split() if c.strip()]
+            # 两步走：让用户选择
+            remaining_display = ", ".join(c.stock_code for c in remaining_candidates[:10])
+            if len(remaining_candidates) > 10:
+                remaining_display += f" ... 等{len(remaining_candidates)}只"
+            console.print(
+                f"\n  [dim]待分析: {remaining_display}[/dim]"
+            )
+            console.print(
+                "  [dim]输入代码深度分析(如: 600546 002192) 或 all(全选) 或 q(跳过)[/dim]"
+            )
+            try:
+                choice = input("  > ").strip()
+            except (EOFError, KeyboardInterrupt):
+                break
 
-    if not selected_codes:
-        return
+            if choice.lower() in ("q", "quit", ""):
+                console.print("  跳过剩余深度分析")
+                break
 
-    # 执行深度分析
-    ranking_config = config.get("ranking", {})
-    results = engine.deep_analyze(
-        stock_codes=selected_codes,
-        candidates=candidates,
-        ai_enabled=ai_enabled,
-        ai_debug=ai_debug,
-        progress_callback=_scan_progress_callback,
-        ranking_config=ranking_config,
-    )
+            if choice.lower() == "all":
+                selected_codes = [c.stock_code for c in remaining_candidates]
+                console.print(f"\n  [bold]深度分析 {len(selected_codes)} 只候选股...[/bold]")
+                remaining_candidates = []
+            else:
+                selected_codes = [c.strip() for c in choice.split() if c.strip()]
+                # 从剩余候选中移除已选择的
+                remaining_candidates = [c for c in remaining_candidates if c.stock_code not in selected_codes]
 
-    # 展示深度分析结果
-    _display_scan_deep_results(results)
+        if not selected_codes:
+            break
+
+        # 执行深度分析
+        ranking_config = config.get("ranking", {})
+        batch_results = engine.deep_analyze(
+            stock_codes=selected_codes,
+            candidates=candidates,
+            ai_enabled=ai_enabled,
+            ai_debug=ai_debug,
+            progress_callback=_scan_progress_callback,
+            ranking_config=ranking_config,
+        )
+        analyzed_results.extend(batch_results)
+
+        # 非自动模式且还有候选，展示本轮结果后继续循环
+        if not deep and remaining_candidates:
+            _display_scan_deep_results(batch_results)
+            console.print(f"\n  [dim]还剩 {len(remaining_candidates)} 只候选股待分析[/dim]")
+
+    # 展示汇总结果
+    if analyzed_results:
+        _display_scan_deep_results(analyzed_results)
 
 
 def _scan_progress_callback(step: str, current: int, total: int, message: str):
