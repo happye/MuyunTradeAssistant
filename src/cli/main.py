@@ -557,7 +557,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         chg_str = f"[{chg_color}]{chg:+.2f}[/{chg_color}]"
 
         # AI情绪
-        ai_str = "-"
+        ai_str = "[dim]无数据[/dim]"
         if ai_result and ai_result.adjusted:
             sentiment_cn = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
             sentiment_color = {"bullish": "green", "bearish": "red", "neutral": "yellow"}
@@ -565,7 +565,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             sent_color = sentiment_color.get(ai_result.sentiment, "white")
             ai_str = f"[{sent_color}]{sent_cn}[/{sent_color}]({ai_result.confidence:.0%})"
         elif ai_result and not ai_result.adjusted:
-            ai_str = "[dim]中性[/dim]"
+            ai_str = f"[dim]未生效({ai_result.summary or '未知'})[/dim]"
 
         if decision_result and strategy_decision:
             sig_color = signal_colors.get(decision_result.decision, "white")
@@ -1282,11 +1282,13 @@ def _display_ranked_results(success_results: list[dict]):
         decision = dr.decision.value if dr else "?"
         pos_action = sd.position_action.value if sd else "?"
 
-        # AI情绪
-        ai_str = "-"
+        # AI情绪（排名表格）
+        ai_str = "无数据"
         if ai_r and ai_r.adjusted:
             sentiment_map = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
             ai_str = f"{sentiment_map.get(ai_r.sentiment, '?')}({ai_r.confidence:.0%})"
+        elif ai_r and not ai_r.adjusted:
+            ai_str = f"未生效({ai_r.summary or '未知'})"
 
         # 决策颜色
         decision_style = {
@@ -1375,6 +1377,15 @@ def _display_ranked_results(success_results: list[dict]):
     if top3_stocks:
         console.print(f"  [bold green]TOP3推荐[/bold green]: {' | '.join(top3_stocks)}")
 
+    # 评分解读
+    console.print(
+        "\n  [dim]评分解读: "
+        "综合分=加权总分(技术40%+情绪20%+流动20%+波动20%) | "
+        "技术=核心信号(看这个最重要) | "
+        "情绪=AI判断(50=中性,>50看多,<50看空) | "
+        "流动=成交活跃度 | 波动=振幅适度性[/dim]"
+    )
+
 
 def _display_unranked_results(success_results: list[dict]):
     """展示无排名的深度分析结果（兜底，排名层未启用时使用）"""
@@ -1402,11 +1413,13 @@ def _display_unranked_results(success_results: list[dict]):
         pos_action = sd.position_action.value if sd else "?"
         lifecycle = sd.lifecycle_after.value if sd else "?"
 
-        # AI情绪
-        ai_str = "-"
+        # AI情绪（unranked表格）
+        ai_str = "无数据"
         if ai_r and ai_r.adjusted:
             sentiment_map = {"bullish": "看多", "bearish": "看空", "neutral": "中性"}
             ai_str = f"{sentiment_map.get(ai_r.sentiment, '?')}({ai_r.confidence:.0%})"
+        elif ai_r and not ai_r.adjusted:
+            ai_str = f"未生效({ai_r.summary or '未知'})"
 
         # 决策颜色
         decision_style = {

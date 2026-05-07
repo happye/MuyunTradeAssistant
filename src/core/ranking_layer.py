@@ -134,11 +134,22 @@ class RankingLayer:
                 ai_enabled=ai_enabled,
             )
 
-        # 3. 排序并填充排名
+        # 3. 排序并填充排名（同分并列）
         success_results = [r for r in results if r.get("success")]
         success_results.sort(key=lambda r: r["ranking"].total_score, reverse=True)
-        for i, r in enumerate(success_results):
-            r["ranking"].rank = i + 1
+
+        # 并列排名：相同分数的股票获得相同名次
+        if success_results:
+            success_results[0]["ranking"].rank = 1
+            for i in range(1, len(success_results)):
+                prev_score = success_results[i - 1]["ranking"].total_score
+                curr_score = success_results[i]["ranking"].total_score
+                if curr_score == prev_score:
+                    # 同分并列，与上一名相同排名
+                    success_results[i]["ranking"].rank = success_results[i - 1]["ranking"].rank
+                else:
+                    # 不同分，排名=在列表中的位置+1（跳过并列占位）
+                    success_results[i]["ranking"].rank = i + 1
 
         # 4. 重组 results（成功的按排名排前面，失败的排后面）
         ranked = success_results + [r for r in results if not r.get("success")]
@@ -181,7 +192,15 @@ class RankingLayer:
     ) -> tuple[float, str]:
         """AI情绪评分
 
-        基于情绪方向 + 置信度偏移 + 风险等级惩罚。
+        以50分为中性基准，看多向100偏移，看空向0偏移。
+        偏移幅度由置信度驱动：置信度越高，偏离中性越远。
+        风险等级会压低分数（对看多信号施加折扣）。
+
+        公式：score = 50 + sentiment_direction × confidence × 50 + risk_penalty
+        - bullish: direction = +1, score ∈ [50, 100]（减去风险惩罚后最低25）
+        - neutral:  direction =  0, score = 50 附近
+        - bearish:  direction = -1, score ∈ [0, 50]（加上风险惩罚后最高75）
+
         无AI数据时返回50分（中性）。
 
         Returns:
@@ -190,28 +209,32 @@ class RankingLayer:
         if ai_r is None or not ai_r.adjusted:
             return 50.0, "无AI数据"
 
-        # 基础分：情绪方向
-        base = {
-            "bullish": 70,
-            "neutral": 50,
-            "bearish": 30,
-        }.get(ai_r.sentiment, 50)
+        # 情绪方向映射
+        direction = {
+            "bullish": 1,
+            "neutral": 0,
+            "bearish": -1,
+        }.get(ai_r.sentiment, 0)
 
-        # 置信度偏移：置信度越高，偏离50越远
-        confidence_shift = ai_r.confidence * 20  # 最多偏移20分
+        # 核心公式：50分基准 + 方向×置信度×50分偏移
+        # 置信度0→50分, 置信度1→看多100/看空0
+        score = 50 + direction * ai_r.confidence * 50
 
-        if ai_r.sentiment == "bullish":
-            score = base + confidence_shift
-        elif ai_r.sentiment == "bearish":
-            score = base - confidence_shift
-        else:
-            # neutral但adjusted=True，轻微偏移
-            score = base + ai_r.score_adjustment * 50
+        # neutral但adjusted=True时，轻微偏移（基于score_adjustment）
+        if ai_r.sentiment == "neutral" and ai_r.score_adjustment != 0:
+            score += ai_r.score_adjustment * 25  # 微调，最多±12.5分
 
-        # 风险等级惩罚
-        risk_penalty = {"low": 0, "medium": -10, "high": -20}.get(
-            ai_r.risk_level, 0
-        )
+        # 风险等级惩罚：仅对看多/中性信号生效（看空信号风险已反映在方向中）
+        risk_penalty = 0
+        if direction >= 0:  # bullish 或 neutral
+            risk_penalty = {"low": 0, "medium": -10, "high": -25}.get(
+                ai_r.risk_level, 0
+            )
+        else:  # bearish
+            # 看空+高风险：风险确认了判断方向，轻微加分
+            risk_penalty = {"low": 0, "medium": -5, "high": -5}.get(
+                ai_r.risk_level, 0
+            )
         score += risk_penalty
 
         score = self._clip(score, 0, 100)
