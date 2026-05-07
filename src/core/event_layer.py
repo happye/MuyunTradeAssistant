@@ -1,4 +1,4 @@
-"""事件驱动层（Event Layer） - v0.8.0 Phase 3
+"""事件驱动层（Event Layer） - v0.8.1
 
 在 AI Modifier Layer 之前主动检测重大市场事件，触发预警和策略调整。
 
@@ -10,6 +10,11 @@
   2. 市场规则：检测沪深300暴跌、持仓股跌停等
   3. 持仓扫描：批量扫描持仓股新闻，AI判断影响
   4. AI分类：对关键词命中的事件做AI二次确认
+
+v0.8.1 新增：
+  - RAG策略知识增强：事件分类时注入相关策略知识上下文
+  - 事件类型→策略知识映射：如"政策变化"自动检索政策应对策略
+  - 通过 rag_service 参数注入，不影响现有调用方式
 
 设计原则：
   - 关键词优先，AI辅助（简单事件关键词秒级，复杂事件AI确认）
@@ -67,12 +72,24 @@ EVENT_CLASSIFY_PROMPT = """你是一个专业的A股市场事件分析师。根�
 class EventLayer:
     """事件驱动层 - 主动检测市场事件并预警"""
 
-    def __init__(self, config: dict, ai_config: Optional[dict] = None):
+    # v0.8.1: 事件类型 → RAG搜索关键词映射
+    # 当检测到某类事件时，自动检索相关策略知识
+    EVENT_RAG_QUERIES = {
+        "policy": "政策变化应对策略 行业监管影响",
+        "war": "地缘冲突 市场避险 黑天鹅应对",
+        "earnings": "财报分析 业绩评估 估值调整",
+        "macro": "宏观经济 市场周期 大盘环境",
+        "black_swan": "黑天鹅事件 极端风险 危机应对 止损",
+        "market_crash": "暴跌应对 止损策略 恐慌抛售",
+    }
+
+    def __init__(self, config: dict, ai_config: Optional[dict] = None, rag_service=None):
         """初始化事件驱动层
 
         Args:
             config: settings.yaml中的event配置节
             ai_config: settings.yaml中的ai配置节（用于AI分类）
+            rag_service: RAG服务实例（v0.8.1可选，策略知识增强）
         """
         self.config = config
         self.enabled = config.get("enabled", True)
@@ -82,6 +99,7 @@ class EventLayer:
         self.ai_classify_enabled = config.get("ai_classify", True)
         self.portfolio_scan_enabled = config.get("portfolio_scan", True)
         self.max_display = config.get("max_events_display", 10)
+        self._rag_service = rag_service  # v0.8.1: RAG策略知识增强
 
         # 加载事件规则
         self.rules: list[dict] = []
@@ -531,7 +549,7 @@ class EventLayer:
         return None
 
     def _ai_classify_event(self, title: str, summary: str) -> Optional[MarketEvent]:
-        """AI二次分类宏观事件
+        """AI二次分类宏观事件（v0.8.1增加RAG策略知识增强）
 
         Args:
             title: 新闻标题
@@ -545,6 +563,11 @@ class EventLayer:
 
         try:
             user_prompt = f"请判断以下新闻是否为需要投资者关注的重大事件：\n\n标题：{title}\n摘要：{summary}"
+
+            # v0.8.1: RAG策略知识增强
+            rag_context = self._get_rag_context_for_event(title, summary)
+            if rag_context:
+                user_prompt += f"\n\n--- 策略知识参考 ---\n{rag_context}"
 
             response = self._ai_client.chat.completions.create(
                 model=self._ai_model,
@@ -591,7 +614,7 @@ class EventLayer:
     def _ai_classify_portfolio_news(
         self, stock_name: str, stock_code: str, news_text: str
     ) -> Optional[MarketEvent]:
-        """AI判断持仓股新闻是否影响持仓
+        """AI判断持仓股新闻是否影响持仓（v0.8.1增加RAG策略知识增强）
 
         Args:
             stock_name: 股票名称
@@ -609,6 +632,22 @@ class EventLayer:
                 f"请判断以下关于持仓股 {stock_name}({stock_code}) 的新闻是否影响持仓安全：\n\n"
                 f"{news_text}"
             )
+
+            # v0.8.1: RAG策略知识增强 - 检索持仓股相关策略
+            rag_context = ""
+            if self._rag_service and self._rag_service.is_available():
+                try:
+                    search_query = f"{stock_name} 持仓风险 应对策略"
+                    rag_context = self._rag_service.get_context(
+                        search_query, target="event",
+                        event_type="earnings",
+                        top_k=3, max_length=800,
+                    )
+                    if rag_context:
+                        user_prompt += f"\n\n--- 策略知识参考 ---\n{rag_context}"
+                        logger.debug(f"EventLayer: RAG检索到持仓策略知识({len(rag_context)}字)")
+                except Exception as e:
+                    logger.debug(f"EventLayer: RAG检索异常(不影响主流程): {e}")
 
             response = self._ai_client.chat.completions.create(
                 model=self._ai_model,
@@ -668,3 +707,57 @@ class EventLayer:
     def is_available(self) -> bool:
         """检查事件层是否可用"""
         return self.enabled
+
+    # ===== RAG策略知识增强（v0.8.1） =====
+
+    def _get_rag_context_for_event(self, title: str, summary: str = "") -> str:
+        """根据事件内容检索相关策略知识
+
+        v0.8.1新增：为事件分类提供策略参考，帮助AI更准确判断事件影响。
+        结合新闻关键词和事件类型映射的预定义搜索词。
+
+        Args:
+            title: 新闻标题
+            summary: 新闻摘要
+
+        Returns:
+            策略知识上下文文本，或空字符串
+        """
+        if not self._rag_service or not self._rag_service.is_available():
+            return ""
+
+        try:
+            # 组合搜索词：标题关键词 + 预定义事件类型搜索词
+            search_parts = [title]
+
+            # 尝试匹配事件类型关键词
+            text = f"{title} {summary}"
+            for event_type, query in self.EVENT_RAG_QUERIES.items():
+                # 简单关键词匹配
+                type_keywords = {
+                    "policy": ["政策", "监管", "降息", "加息", "法规"],
+                    "war": ["战争", "冲突", "地缘", "军事"],
+                    "earnings": ["财报", "业绩", "盈利", "分红", "暴雷"],
+                    "macro": ["GDP", "CPI", "PMI", "宏观经济", "经济数据"],
+                    "black_swan": ["黑天鹅", "崩盘", "熔断", "危机"],
+                    "market_crash": ["暴跌", "跌停", "恐慌", "大跌"],
+                }
+                keywords = type_keywords.get(event_type, [])
+                if any(kw in text for kw in keywords):
+                    search_parts.append(query)
+                    break  # 只匹配最相关的事件类型
+
+            search_query = " ".join(search_parts[:3])  # 限制搜索词长度
+            rag_context = self._rag_service.get_context(
+                search_query, target="event",
+                top_k=3, max_length=800,
+            )
+
+            if rag_context:
+                logger.debug(f"EventLayer: RAG检索到事件策略知识({len(rag_context)}字)")
+
+            return rag_context or ""
+
+        except Exception as e:
+            logger.debug(f"EventLayer: RAG检索异常(不影响主流程): {e}")
+            return ""

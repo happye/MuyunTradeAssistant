@@ -1,4 +1,4 @@
-"""AI调节层（AI Modifier Layer） - v0.8.0
+"""AI调节层（AI Modifier Layer） - v0.8.1
 
 在 Decision Layer → Strategy Layer 之间插入，用AI分析新闻/情绪，调节信号和仓位。
 
@@ -9,6 +9,10 @@ AI只负责：
   - 信息理解（新闻摘要、事件提取）
   - 情绪判断（市场情绪倾向和置信度）
   - 事件解析（政策/战争/财报/宏观/黑天鹅）
+
+v0.8.1 新增：
+  - RAG策略知识增强：AI分析时注入相关策略知识上下文
+  - 通过 rag_service 参数注入，不影响现有调用方式
 
 AI不负责：
   - 决策输出（BUY/SELL/HOLD由Decision Layer决定）
@@ -71,16 +75,18 @@ class AIModifier:
     使用DeepSeek/Kimi API分析新闻，输出AIModifierResult。
     """
 
-    def __init__(self, config: dict):
+    def __init__(self, config: dict, rag_service=None):
         """初始化AI调节层
 
         Args:
             config: settings.yaml中的ai配置节
+            rag_service: RAG服务实例（v0.8.1可选，策略知识增强）
         """
         self.config = config
         self.enabled = config.get("enabled", True)
         self.provider = config.get("provider", "deepseek")
         self.debug = config.get("debug", False)
+        self._rag_service = rag_service  # v0.8.1: RAG策略知识增强
 
         # 调节参数
         modifier_cfg = config.get("modifier", {})
@@ -193,8 +199,26 @@ class AIModifier:
             # Step 2: 格式化新闻
             news_text = NewsClient.format_news_for_ai(news_data)
 
-            # Step 3: 构建用户提示
+            # 提前获取stock_name（RAG和prompt都需要）
             stock_name = stock_data.stock_name or stock_data.stock_code
+
+            # Step 2.5: RAG策略知识增强（v0.8.1）
+            rag_context = ""
+            if self._rag_service and self._rag_service.is_available():
+                try:
+                    # 智能搜索query：股票名 + 事件关键词
+                    search_query = self._build_rag_query(stock_name, news_text)
+                    rag_context = self._rag_service.get_context(
+                        search_query, target="modifier",
+                        stock_name=stock_name,
+                        top_k=3, max_length=1500,
+                    )
+                    if rag_context:
+                        logger.info(f"AI Modifier: RAG检索到策略知识上下文({len(rag_context)}字)")
+                except Exception as e:
+                    logger.debug(f"AI Modifier: RAG检索异常(不影响主流程): {e}")
+
+            # Step 3: 构建用户提示
             user_prompt = (
                 f"请分析以下关于 {stock_name}（{stock_data.stock_code}）的新闻数据：\n\n"
                 f"{news_text}\n\n"
@@ -203,6 +227,10 @@ class AIModifier:
 
             if stock_data.change_pct is not None:
                 user_prompt += f"，涨跌幅: {stock_data.change_pct}%"
+
+            # 注入RAG策略知识上下文（v0.8.1）
+            if rag_context:
+                user_prompt += f"\n\n--- 策略知识参考 ---\n{rag_context}"
 
             # Debug: 打印完整输入
             if self.debug:
@@ -461,3 +489,47 @@ class AIModifier:
     def is_available(self) -> bool:
         """检查AI调节层是否可用（已配置且API Key有效）"""
         return self.enabled and self._client is not None
+
+    # ===== RAG策略知识增强辅助方法（v0.8.1） =====
+
+    # 事件关键词 → RAG搜索词映射
+    _EVENT_RAG_KEYWORDS = {
+        "政策": "政策变化 行业监管",
+        "监管": "行业监管 合规风险",
+        "降息": "货币政策 利率影响",
+        "加息": "货币政策 利率影响",
+        "战争": "地缘冲突 避险策略",
+        "冲突": "地缘冲突 市场风险",
+        "财报": "财务分析 业绩评估",
+        "业绩": "业绩评估 估值分析",
+        "暴雷": "风险事件 止损策略",
+        "分红": "分红策略 价值投资",
+        "暴跌": "暴跌应对 止损",
+        "大涨": "追涨策略 动量",
+        "重组": "资产重组 事件驱动",
+        "退市": "退市风险 止损",
+    }
+
+    def _build_rag_query(self, stock_name: str, news_text: str) -> str:
+        """构建智能RAG搜索query
+
+        结合股票名、新闻中的事件关键词、以及行业特征，
+        生成更有针对性的搜索query，提高检索精度。
+
+        Args:
+            stock_name: 股票名称
+            news_text: 格式化的新闻文本
+
+        Returns:
+            优化后的搜索query
+        """
+        parts = [stock_name]
+
+        # 从新闻文本中提取事件关键词
+        for keyword, rag_query in self._EVENT_RAG_KEYWORDS.items():
+            if keyword in news_text:
+                parts.append(rag_query)
+
+        # 限制搜索词长度（避免query过长导致语义稀释）
+        query = " ".join(parts[:4])  # 最多4个片段
+        return query[:200]  # 长度上限

@@ -4,7 +4,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.0 Phase 4 完成** ✅ (AI调节层 + 全市场扫描 + 事件驱动 + 四维排名)
+**v0.8.0 Phase 5 完成** ✅ (AI调节层 + 全市场扫描 + 事件驱动 + 四维排名 + 对话模式)
 
 > 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**
 > 📖 **AI系统详解请参阅 [AI系统说明.md](docs/AI系统说明.md)** — AI的角色、影响范围和可控性
@@ -27,6 +27,12 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
 │   │   ├── backtest_engine.py   # 回测引擎（模拟账户+统计指标+Monte Carlo+稳定性）
 │   │   └── orchestrator.py      # 编排层（七层架构：Signal→Decision→Event→AI→Strategy→Execution）
+│   ├── chat/                    # 对话式智能助手 ⭐v0.8.0
+│   │   ├── agent.py             # ChatAgent核心（function calling+REPL主循环）
+│   │   ├── tools.py             # 5个工具函数（到引擎的映射层）+ TOOL_REGISTRY
+│   │   ├── formatter.py         # 结构化数据→纯文本格式化器
+│   │   ├── prompts.py           # 系统提示词 + 5个工具JSON Schema定义
+│   │   └── __init__.py          # 包初始化
 │   ├── scanner/                 # 全市场扫描模块 ⭐v0.8.0
 │   │   ├── market_cache.py      # 全市场行情缓存（新浪/efinance/过期缓存3层降级）
 │   │   ├── scanner_engine.py    # 扫描引擎（初筛quick_scan + 深度分析deep_analyze）
@@ -54,7 +60,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │   │   ├── smart_money.yaml       # 主力行为（第46/47章）
 │   │   └── take_profit.yaml       # 止盈管理（第49章）
 │   └── cli/
-│       └── main.py              # CLI入口（含回测+策略层+执行层展示）
+│       └── main.py              # CLI入口（含回测+策略层+执行层+Chat模式展示）
 ├── configs/
 │   └── settings.yaml            # 全局配置（含技能分类）
 ├── tests/
@@ -179,6 +185,14 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │ AI禁用时权重自动重分配：{50%, 0%, 25%, 25%}                        │
 │ TOP3推荐 + 综合分排序 + 颜色区分                                   │
 │ AI情绪维度仅复用AI调节层结果，不独立调用AI                           │
+├─────────────────────────────────────────────────────────────────┤
+│ Chat Agent Mode（对话模式）⭐v0.8.0新增                            │
+│ 自然语言 → AI(function calling) → 5个工具函数 → 底层引擎           │
+│ 绕过CLI层，直接调Orchestrator/ScannerEngine/PortfolioManager等      │
+│ 纯文本输出（不使用Rich Console），对话历史滑动窗口(20条)            │
+│ 工具：search_stocks_by_sector / analyze_stock / scan_market       │
+│       / get_portfolio / get_news                                  │
+│ 循环保护(3轮) + 结果截断(4000字符) + reset重置对话                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -313,7 +327,7 @@ volume_ratio:
 
 ## 版本历史
 
-### v0.8.0 (AI调节层 + 全市场扫描 + 事件驱动 + 四维排名) - 2026-05-07
+### v0.8.0 (AI调节层 + 全市场扫描 + 事件驱动 + 四维排名 + 对话模式) - 2026-05-07
 
 **Phase 1: AI调节层 — 从"看K线"到"理解市场"，五层→六层架构**
 
@@ -380,16 +394,37 @@ volume_ratio:
 - **DimensionScore + RankingResult** 模型 (`models.py`)：四维分数+排名+决策建议
 - **CLI排名展示**：排名表+TOP3高亮+颜色区分(≥70绿/50-70黄/<50灰)+推荐行
 
+**Phase 5: 对话式智能助手（Chat Agent Mode） — 从"命令行"到"自然语言"**
+
+核心问题：CLI命令行交互门槛高，需要记忆大量参数和命令格式。
+
+**新增模块：**
+- **ChatAgent** (`src/chat/agent.py`)：对话式REPL主循环，OpenAI function calling协议
+  - 用户自然语言 → AI(DeepSeek/Kimi)解析意图 → function calling → 调用底层引擎
+  - 绕过CLI层（Rich Console无返回值），直接调底层引擎获取结构化数据
+  - 对话历史管理（滑动窗口20条，reset重置）
+  - 循环保护（单次最多3轮工具调用），结果截断（4000字符防token爆炸）
+- **5个工具函数** (`src/chat/tools.py`)：到引擎的映射层
+  - `search_stocks_by_sector(keyword)` → ScannerEngine.get_industry_list()
+  - `analyze_stock(stock_code)` → Orchestrator.analyze()
+  - `scan_market(rule_name, industry)` → ScannerEngine.quick_scan()
+  - `get_portfolio()` → PortfolioManager.list_positions()
+  - `get_news(stock_code, max_count)` → NewsClient.gather_news_for_analysis()
+- **纯文本格式化器** (`src/chat/formatter.py`)：结构化数据→AI可读纯文本
+- **工具Schema定义** (`src/chat/prompts.py`)：5个OpenAI function JSON Schema
+
 **CLI新增参数：**
 - `--no-ai`：禁用AI调节层，仅使用技术面分析
 - `--ai-provider deepseek/kimi`：临时切换AI提供商
 - `--scan`：全市场扫描
 - `--rule <规则ID>`：指定初筛规则
 - `--events`：事件扫描（宏观新闻+持仓新闻+市场规则检测）⭐v0.8.0
+- `--chat`：进入对话模式（自然语言交互）⭐v0.8.0
 
 **配置新增（settings.yaml）：**
 - `ai`节：AI调节层配置（双提供商+modifier参数）
 - `event`节：事件驱动层配置（规则路径+AI分类+持仓扫描开关）⭐v0.8.0
+- `chat`节：对话模式配置（历史消息数+工具调用轮次+结果长度）⭐v0.8.0
 
 **设计原则：AI只负责信息理解/情绪判断/事件解析，不负责决策输出/交易执行**
 📖 详见 [docs/AI系统说明.md](docs/AI系统说明.md)
@@ -555,7 +590,7 @@ volume_ratio:
 - [x] Phase 7: 全市场扫描（Scanner两步走：初筛→深度分析）⭐v0.8.0
 - [x] Phase 8: 事件驱动层（Event Layer：关键词+AI分类+9条规则+持仓扫描）⭐v0.8.0
 - [x] Phase 9: 四维排名层（Ranking Layer：技术面+AI情绪+流动性+波动性）⭐v0.8.0
-- [ ] Phase 10: 对话式智能助手（Chat Agent）
+- [x] Phase 10: 对话式智能助手（Chat Agent：function calling+5工具+REPL）⭐v0.8.0
 - ~~Web界面 / API服务~~ (已取消，CLI更适合投资分析场景)
 
 ---

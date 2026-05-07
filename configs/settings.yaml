@@ -3,7 +3,7 @@
 
 app:
   name: "暮云思辨投资助手"
-  version: "0.8.0"
+  version: "0.8.1"
   mode: "CLI"  # CLI / API
 
 # 数据源配置
@@ -14,10 +14,26 @@ data_source:
     enabled: false
     cache_ttl: 300  # 秒
 
-# 向量数据库配置
-vector_store:
-  enabled: false  # Phase 2启用
-  persist_dir: "./knowledge/chroma"
+# 向量数据库配置（v0.8.0已废弃，v0.8.1迁移到rag配置）
+# vector_store:
+#   enabled: false
+#   persist_dir: "./knowledge/chroma"
+
+# RAG知识库配置（v0.8.1）
+rag:
+  enabled: true                               # 是否启用RAG
+  knowledge_dir: "./投资策略（持续更新）"        # 策略知识目录
+  index_dir: "./knowledge/index"               # 索引持久化目录
+  chunk_size: 500                              # 分块大小（字）
+  chunk_overlap: 50                            # 分块重叠（字）
+  default_top_k: 5                             # 默认检索数量
+  retrieval_method: "hybrid"                   # keyword/semantic/hybrid
+  hybrid_weights:                              # 混合检索权重
+    keyword: 0.4
+    semantic: 0.6
+  embedding:                                   # 嵌入配置
+    provider: "sentence"                       # sentence(默认)/tfidf(降级)
+    model: "BAAI/bge-small-zh-v1.5"           # 中文嵌入模型
 
 # 决策引擎配置
 decision:

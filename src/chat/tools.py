@@ -1,10 +1,12 @@
-"""Chat Agent工具函数 — 映射到底层引擎 (v0.8.0 Phase 5)
+"""Chat Agent工具函数 — 映射到底层引擎 (v0.8.1)
 
 设计原则：
 - 绕过CLI层（CLI层用Rich Console打印，无返回值）
-- 直接调底层引擎（Orchestrator/ScannerEngine/PortfolioManager/NewsClient）
+- 直接调底层引擎（Orchestrator/ScannerEngine/PortfolioManager/NewsClient/RAGService）
 - 返回纯文本字符串（供AI读取和用户查看）
 - 所有异常在工具层捕获并返回友好错误信息
+
+v0.8.1 新增：search_knowledge 工具（RAG策略知识检索）
 """
 
 import logging
@@ -16,6 +18,7 @@ logger = logging.getLogger(__name__)
 _orchestrator = None
 _scanner_engine = None
 _portfolio_manager = None
+_rag_service = None  # v0.8.1: RAG服务实例
 
 
 def init_engines(config: dict):
@@ -24,7 +27,7 @@ def init_engines(config: dict):
     Args:
         config: settings.yaml完整配置
     """
-    global _orchestrator, _scanner_engine, _portfolio_manager
+    global _orchestrator, _scanner_engine, _portfolio_manager, _rag_service
 
     from src.core.orchestrator import Orchestrator
     from src.scanner.scanner_engine import ScannerEngine
@@ -38,9 +41,26 @@ def init_engines(config: dict):
     event_config = config.get("event", None)
     scanner_cfg = config.get("scanner", {})
 
+    # v0.8.1: 初始化RAG服务（先于Orchestrator，以便传递给子组件）
+    rag_config = config.get("rag", {})
+    if rag_config.get("enabled", False):
+        try:
+            from src.rag.service import RAGService
+            _rag_service = RAGService(rag_config)
+            _rag_service.initialize()
+            if _rag_service.is_available():
+                logger.info(f"RAG服务已启用: {_rag_service.doc_count}个文档块")
+            else:
+                logger.warning("RAG服务初始化失败，search_knowledge工具不可用")
+                _rag_service = None
+        except Exception as e:
+            logger.warning(f"RAG服务初始化异常: {e}，search_knowledge工具不可用")
+            _rag_service = None
+
     _orchestrator = Orchestrator(
         skills_dir, enabled_skills, weights, skill_types,
-        ai_config=ai_config, event_config=event_config
+        ai_config=ai_config, event_config=event_config,
+        rag_service=_rag_service,  # v0.8.1: 传递RAG服务给子组件
     )
 
     _scanner_engine = ScannerEngine(
@@ -225,4 +245,40 @@ TOOL_REGISTRY = {
     "scan_market": scan_market,
     "get_portfolio": get_portfolio,
     "get_news": get_news,
+    "search_knowledge": lambda query="": search_knowledge(query),  # v0.8.1
 }
+
+
+def search_knowledge(query: str) -> str:
+    """搜索策略知识库（v0.8.1 RAG）
+
+    根据查询文本检索相关策略知识，返回格式化的上下文。
+    用于回答用户关于交易策略、止损止盈方法、心理偏差等问题。
+
+    Args:
+        query: 查询文本，如"止损怎么设"、"套牢了怎么办"
+
+    Returns:
+        策略知识检索结果（纯文本）
+    """
+    if not _rag_service or not _rag_service.is_available():
+        return "策略知识库未启用或初始化失败"
+
+    if not query.strip():
+        return "请提供查询内容，如'止损怎么设'、'突破买入注意事项'"
+
+    try:
+        context = _rag_service.get_context(
+            query, target="chat", top_k=5, max_length=3000
+        )
+
+        if not context:
+            return f"未找到与'{query}'相关的策略知识"
+
+        result = _rag_service.retrieve(query, top_k=5)
+        header = f"找到 {len(result.documents)} 条相关策略知识：\n\n"
+        return header + context
+
+    except Exception as e:
+        logger.error(f"search_knowledge失败: {e}")
+        return f"搜索策略知识时出错: {e}"

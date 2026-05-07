@@ -287,6 +287,7 @@ def run_chat_repl(config: dict):
             print("    - 市场扫描: '帮我扫描放量突破的股票'")
             print("    - 查看持仓: '我的持仓' 或 '查看持仓'")
             print("    - 获取新闻: '600519有什么新闻'")
+            print("    - 策略查询: '止损怎么设' 或 '套牢了怎么办' (v0.8.1)")
             print("    - 重置对话: 'reset'")
             print("    - 退出: 'q'")
             print()

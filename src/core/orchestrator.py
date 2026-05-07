@@ -1,21 +1,22 @@
 """编排层 - 协调数据、技能、决策、事件、AI调节、策略、执行流程
 
-v0.8.0 架构：
+v0.8.1 架构：
   Data Layer
      ↓
   Signal Layer（Skill Engine）
      ↓
   Decision Layer（信号聚合器）
      ↓
-  Event Layer（v0.8.0 Phase 3：事件检测+预警）
+  Event Layer（事件检测+预警，v0.8.1 RAG增强）
      ↓
-  AI Modifier Layer（新闻分析+情绪调节）
+  AI Modifier Layer（新闻分析+情绪调节，v0.8.1 RAG增强）
      ↓
   Strategy Layer（约束行为、延迟决策、抑制噪声）
      ↓
   Execution Layer（现实约束建模）
 
 Orchestrator 协调完整的七层流程。
+v0.8.1 新增 rag_service 参数，传递给 EventLayer 和 AIModifier。
 """
 
 import logging
@@ -45,7 +46,11 @@ class Orchestrator:
         execution_constraint: Optional[ExecutionConstraint] = None,
         ai_config: Optional[dict] = None,
         event_config: Optional[dict] = None,
+        rag_service=None,  # v0.8.1: RAG服务实例
     ):
+        # v0.8.1: RAG服务（可选，用于策略知识增强）
+        self.rag_service = rag_service
+
         # 初始化技能引擎（Signal Layer）
         self.skill_engine = SkillEngine(skills_dir, skill_types)
         self.skill_engine.load_skills(enabled_skills)
@@ -53,12 +58,12 @@ class Orchestrator:
         # 初始化信号聚合器（Decision Layer）
         self.decision_engine = DecisionEngine(signal_weights)
 
-        # 初始化AI调节层（AI Modifier Layer, v0.8.0新增）
+        # 初始化AI调节层（AI Modifier Layer, v0.8.0新增, v0.8.1增加RAG）
         self.ai_modifier = None
         if ai_config and ai_config.get("enabled", False):
             try:
                 from src.core.ai_modifier import AIModifier
-                self.ai_modifier = AIModifier(ai_config)
+                self.ai_modifier = AIModifier(ai_config, rag_service=rag_service)
                 if not self.ai_modifier.is_available():
                     logger.warning("AI Modifier初始化失败（API Key未配置？），将跳过AI调节")
                     self.ai_modifier = None
@@ -66,12 +71,12 @@ class Orchestrator:
                 logger.warning(f"AI Modifier初始化异常: {e}，将跳过AI调节")
                 self.ai_modifier = None
 
-        # 初始化事件驱动层（Event Layer, v0.8.0 Phase 3新增）
+        # 初始化事件驱动层（Event Layer, v0.8.0 Phase 3新增, v0.8.1增加RAG）
         self.event_layer = None
         if event_config and event_config.get("enabled", False):
             try:
                 from src.core.event_layer import EventLayer
-                self.event_layer = EventLayer(event_config, ai_config=ai_config)
+                self.event_layer = EventLayer(event_config, ai_config=ai_config, rag_service=rag_service)
                 if not self.event_layer.is_available():
                     logger.warning("EventLayer初始化失败，将跳过事件检测")
                     self.event_layer = None
@@ -87,7 +92,8 @@ class Orchestrator:
 
         ai_status = "enabled" if self.ai_modifier else "disabled"
         event_status = "enabled" if self.event_layer else "disabled"
-        logger.info(f"Orchestrator initialized (v0.8.0: Signal→Decision→Event({event_status})→AI Modifier({ai_status})→Strategy→Execution)")
+        rag_status = "enabled" if self.rag_service else "disabled"
+        logger.info(f"Orchestrator initialized (v0.8.1: Signal→Decision→Event({event_status})→AI Modifier({ai_status})→Strategy→Execution, RAG={rag_status})")
 
     def analyze(
         self,
