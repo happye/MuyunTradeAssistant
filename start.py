@@ -53,6 +53,7 @@ def show_help():
     print("│                       → 添加持仓记录              │")
     print("│  pos rm <代码>        → 删除持仓记录              │")
     print("│  debug                → 切换AI调试模式            │")
+    print("│  chat                 → 进入AI对话模式            │")
     print("│  h  或 help           → 显示用法                  │")
     print("│  q  或 quit           → 退出                      │")
     print("├──────────────────────────────────────────────────┤")
@@ -124,6 +125,10 @@ def parse_input(user_input: str):
     # 事件驱动扫描
     if parts[0].lower() == "events":
         return ("events", {})
+
+    # Chat Agent对话模式
+    if parts[0].lower() == "chat":
+        return ("chat", {})
 
     # 持仓管理
     if parts[0].lower() == "pos":
@@ -268,6 +273,11 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "pos_remove":
         manage_positions("remove", stock_code=args.get("stock_code", ""))
+
+    elif mode == "chat":
+        from src.chat.agent import run_chat_repl
+        config = load_config()
+        run_chat_repl(config)
 
 
 def main():

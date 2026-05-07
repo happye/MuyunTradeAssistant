@@ -1749,6 +1749,14 @@ AI配置:
         help="扫描重大市场事件并预警（宏观+持仓+规则）"
     )
 
+    # Chat Agent参数
+    chat_group = parser.add_argument_group("Chat Agent")
+    chat_group.add_argument(
+        "--chat",
+        action="store_true",
+        help="进入Chat Agent对话模式（自然语言交互）"
+    )
+
     args = parser.parse_args()
 
     # 根据参数调整日志级别
@@ -1837,6 +1845,11 @@ AI配置:
             console.print(f"[red]文件不存在: {json_path}[/red]")
             sys.exit(1)
         analyze_json(json_path)
+    elif args.chat:
+        # Chat Agent对话模式
+        from src.chat.agent import run_chat_repl
+        config = load_config()
+        run_chat_repl(config)
     else:
         # 交互模式
         analyze_interactive()
