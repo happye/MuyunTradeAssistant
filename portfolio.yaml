@@ -16,7 +16,7 @@
 
 positions:
   '600546':
-    stock_name: 山煤国际
+    stock_name: '山煤国际'
     entry_date: '2026-04-25'
     entry_price: 10.63
     current_ratio: 0.05
@@ -57,20 +57,19 @@ positions:
     stock_name: 自由现金流ETF华夏
     entry_date: '2026-04-25'
     entry_price: 1.14
-    current_ratio: 0.3
-    last_action: ADD
-    last_action_date: '2026-05-07'
-    lifecycle: HOLD
+    current_ratio: 0.05
+    last_action: OPEN
+    last_action_date: '2026-04-25'
+    lifecycle: OPEN
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 2
-      last_decision: HOLD
+      inertia_counter: 1
+      last_decision: BUY
       recent_signals:
       - BUY
-      - HOLD
-      signal_stability_score: 0.0
+      signal_stability_score: 1.0
       reduce_protection_remaining: 0
   '159611':
     stock_name: 电力ETF广发
