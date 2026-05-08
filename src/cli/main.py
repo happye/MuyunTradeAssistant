@@ -1508,14 +1508,14 @@ def scan_events(ai_debug: bool = False):
     console.print(f"\n[bold]⚡ 事件预警 ({len(events)}条)[/bold]")
 
     # 事件表格
-    table = Table(show_lines=False)
+    table = Table(show_lines=False, expand=True)
     table.add_column("等级", width=4, justify="center")
     table.add_column("类型", width=8)
     table.add_column("情绪", width=6)
     table.add_column("范围", width=6)
-    table.add_column("摘要", style="white")
-    table.add_column("来源", style="dim", max_width=30)
-    table.add_column("检测方式", style="dim", width=6)
+    table.add_column("摘要", style="white", overflow="fold")
+    table.add_column("来源", style="dim", overflow="fold")
+    table.add_column("检测方式", style="dim", overflow="fold")
 
     impact_icons = {1: "·", 2: "🟡", 3: "🟠", 4: "🔴", 5: "🔴"}
     event_type_cn = {
