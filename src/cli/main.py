@@ -734,6 +734,7 @@ def run_backtest(
     start_date: str,
     end_date: str,
     capital: float = 100000.0,
+    backtest_mode: str = "framework_strict",
 ):
     """回测模式"""
     from src.core.backtest_engine import BacktestEngine
@@ -742,6 +743,8 @@ def run_backtest(
     console.print(f"  股票: {stock_code}")
     console.print(f"  区间: {start_date} ~ {end_date}")
     console.print(f"  初始资金: ¥{capital:,.0f}")
+    mode_cn = "严格框架" if backtest_mode == "framework_strict" else "兼容模式"
+    console.print(f"  回测模式: {mode_cn} ({backtest_mode})")
     console.print(f"\n[bold yellow]正在加载数据并回测...[/bold yellow]")
 
     config = load_config()
@@ -755,6 +758,7 @@ def run_backtest(
         start_date=start_date,
         end_date=end_date,
         initial_capital=capital,
+        execution_mode=backtest_mode,
         skills_dir=skills_dir,
         enabled_skills=enabled_skills,
         signal_weights=weights,
@@ -763,11 +767,11 @@ def run_backtest(
 
     result = engine.run()
 
-    display_backtest_result(result)
+    display_backtest_result(result, backtest_mode)
     return result
 
 
-def display_backtest_result(result):
+def display_backtest_result(result, backtest_mode: str = "framework_strict"):
     """展示回测结果"""
     from src.data.models import BacktestResult
 
@@ -786,6 +790,7 @@ def display_backtest_result(result):
     content = (
         f"[bold]股票:[/bold] {result.stock_code}\n"
         f"[bold]区间:[/bold] {result.start_date} ~ {result.end_date}\n"
+        f"[bold]回测模式:[/bold] {backtest_mode}\n"
         f"[bold]初始资金:[/bold] ¥{result.initial_capital:,.0f}\n"
         f"[bold]最终资产:[/bold] ¥{result.final_value:,.2f}\n"
         f"\n[bold {return_color}]总资金收益率: {result.total_return_pct:+.2f}%[/]\n"
@@ -812,6 +817,7 @@ def display_backtest_result(result):
     stats_table.add_column("值", justify="right")
 
     stats_table.add_row("总交易次数", str(result.total_trades))
+    stats_table.add_row("回测模式", backtest_mode)
     stats_table.add_row("买入次数", str(result.buy_count))
     stats_table.add_row("卖出次数", str(result.sell_count))
     stats_table.add_row("总投入成本", f"¥{total_buy_amount:,.0f}")
@@ -928,6 +934,19 @@ def display_backtest_result(result):
     console.print("  回测结果不代表未来收益。历史数据回测存在过拟合风险。")
     if result.total_trades < 5:
         console.print("  [yellow]交易次数较少，统计指标可能不具参考性。[/yellow]")
+    if result.total_trades == 0 and result.daily_snapshots:
+        min_price = min(s.price for s in result.daily_snapshots if s.price and s.price > 0)
+        min_lot_cost = min_price * 100  # A股最小交易单位：1手=100股
+        if result.initial_capital < min_lot_cost:
+            console.print(
+                f"  [yellow]零交易诊断：初始资金不足以买入1手（最低约¥{min_lot_cost:,.0f}），"
+                "策略信号即使触发也无法成交。[/yellow]"
+            )
+        else:
+            console.print(
+                "  [yellow]零交易诊断：资金可买入1手，可能由策略信号、"
+                "执行约束或样本区间共同导致。建议拉长区间或更换标的复核。[/yellow]"
+            )
     if result.max_drawdown_pct > 30:
         console.print(f"  [red]最大回撤 {result.max_drawdown_pct:.1f}% 较大，策略风险较高。[/red]")
 
@@ -1593,6 +1612,7 @@ def main():
   python -m src.cli.main --backtest 600519           # 回测模式(默认近1年)
   python -m src.cli.main --backtest 600519 -s 2024-01-01 -e 2025-01-01  # 自定义区间
   python -m src.cli.main --backtest 600519 --capital 200000  # 自定义初始资金
+    python -m src.cli.main --backtest 600519 --backtest-mode legacy_compatible  # 旧版兼容门控
 
 持仓管理:
   python -m src.cli.main --pos-list                                     # 查看所有持仓
@@ -1639,6 +1659,12 @@ AI配置:
         type=float,
         default=100000.0,
         help="回测初始资金 (默认: 100000)"
+    )
+    parser.add_argument(
+        "--backtest-mode",
+        choices=["framework_strict", "legacy_compatible"],
+        default="framework_strict",
+        help="回测执行模式：framework_strict(默认，按最新框架) / legacy_compatible(保留旧门控)"
     )
     parser.add_argument(
         "-v", "--version",
@@ -1834,7 +1860,7 @@ AI配置:
         from datetime import datetime, timedelta
         start_date = args.start or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
         end_date = args.end or datetime.now().strftime("%Y-%m-%d")
-        run_backtest(args.backtest, start_date, end_date, args.capital)
+        run_backtest(args.backtest, start_date, end_date, args.capital, args.backtest_mode)
     elif args.live:
         # 实时行情模式
         analyze_live(args.live, ai_overrides=_ai_override)

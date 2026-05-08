@@ -191,12 +191,13 @@ class StrategyLayer:
         )
         lifecycle_after = new_state.lifecycle
 
-        # 更新last_decision
+        # 更新last_decision（必须先对比旧值再写入，避免计数永远递增）
+        prev_decision = new_state.last_decision
         new_state.last_decision = adjusted_decision
-        if adjusted_decision == new_state.last_decision:
-            new_state.inertia_counter += 1
-        else:
+        if prev_decision is None or adjusted_decision != prev_decision:
             new_state.inertia_counter = 1
+        else:
+            new_state.inertia_counter += 1
 
         # 收集策略层决策理由
         strategy_reasons = self._generate_strategy_reasons(

@@ -159,6 +159,10 @@ class BacktestEngine:
     STAMP_TAX_RATE = 0.0005
     TRANSFER_FEE_RATE = 0.00001
 
+    # 回测执行模式
+    MODE_FRAMEWORK_STRICT = "framework_strict"
+    MODE_LEGACY_COMPATIBLE = "legacy_compatible"
+
     def __init__(
         self,
         stock_code: str,
@@ -169,6 +173,7 @@ class BacktestEngine:
         cooldown_days: int = 5,
         commission_rate: float = 0.00025,
         slippage_pct: float = 0.001,
+        execution_mode: str = MODE_FRAMEWORK_STRICT,
         skills_dir: str = "./src/skills",
         enabled_skills: Optional[list[str]] = None,
         signal_weights: Optional[dict[str, float]] = None,
@@ -183,8 +188,14 @@ class BacktestEngine:
         self.cooldown_days = cooldown_days
         self.commission_rate = commission_rate
         self.slippage_pct = slippage_pct
+        if execution_mode not in (self.MODE_FRAMEWORK_STRICT, self.MODE_LEGACY_COMPATIBLE):
+            raise ValueError(
+                f"Invalid execution_mode: {execution_mode}. "
+                f"Expected one of: {self.MODE_FRAMEWORK_STRICT}, {self.MODE_LEGACY_COMPATIBLE}"
+            )
+        self.execution_mode = execution_mode
 
-        # 初始化编排器（v0.7.2 五层架构）
+        # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
             skills_dir, enabled_skills, signal_weights,
             skill_types, execution_constraint
@@ -498,6 +509,7 @@ class BacktestEngine:
                 cooldown_days=self.cooldown_days,
                 commission_rate=self.commission_rate,
                 slippage_pct=self.slippage_pct * slippage_multiplier,
+                execution_mode=self.execution_mode,
                 skills_dir="./src/skills",
                 execution_constraint=perturbed_constraint,
             )
@@ -515,7 +527,11 @@ class BacktestEngine:
     # ===== T+1 和最小持有天数 =====
 
     def _can_sell(self, current_date: str, buy_date: Optional[str]) -> bool:
-        """检查是否满足卖出条件（T+1硬限制 + 策略级min_hold_days）"""
+        """检查是否满足卖出条件。
+
+        - 所有模式都强制执行T+1（A股硬规则）
+        - legacy_compatible 模式额外执行最少持有天数
+        """
         if buy_date is None:
             return True
         d1 = datetime.strptime(buy_date, "%Y-%m-%d")
@@ -523,12 +539,18 @@ class BacktestEngine:
         hold_days = (d2 - d1).days
         if hold_days < 1:
             return False
-        if hold_days < self.min_hold_days:
+        if self.execution_mode == self.MODE_LEGACY_COMPATIBLE and hold_days < self.min_hold_days:
             return False
         return True
 
     def _not_in_cooldown(self, current_date: str, last_sell_date: Optional[str]) -> bool:
-        """检查是否在买入冷却期外"""
+        """检查是否在买入冷却期外。
+
+        仅 legacy_compatible 模式启用旧版冷却期门控；
+        framework_strict 模式交由 Strategy Layer 状态机统一约束。
+        """
+        if self.execution_mode != self.MODE_LEGACY_COMPATIBLE:
+            return True
         if last_sell_date is None:
             return True
         d1 = datetime.strptime(last_sell_date, "%Y-%m-%d")
