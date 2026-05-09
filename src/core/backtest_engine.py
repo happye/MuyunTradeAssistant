@@ -30,7 +30,7 @@ from src.data.models import (
 )
 from src.data.data_feeder import DataFeeder
 from src.core.orchestrator import Orchestrator
-from src.core.execution_layer import ExecutionLayer
+from src.core.execution_layer import ExecutionLayer, ExecutionEvaluation
 
 logger = logging.getLogger(__name__)
 
@@ -163,6 +163,11 @@ class BacktestEngine:
     MODE_FRAMEWORK_STRICT = "framework_strict"
     MODE_LEGACY_COMPATIBLE = "legacy_compatible"
 
+    # 回测分层模式
+    LAYER_DECISION_ONLY = "decision_only"
+    LAYER_DECISION_STRATEGY = "decision_strategy"
+    LAYER_DECISION_STRATEGY_EXECUTION = "decision_strategy_execution"
+
     def __init__(
         self,
         stock_code: str,
@@ -174,6 +179,7 @@ class BacktestEngine:
         commission_rate: float = 0.00025,
         slippage_pct: float = 0.001,
         execution_mode: str = MODE_FRAMEWORK_STRICT,
+        layer_mode: str = LAYER_DECISION_STRATEGY_EXECUTION,
         skills_dir: str = "./src/skills",
         enabled_skills: Optional[list[str]] = None,
         signal_weights: Optional[dict[str, float]] = None,
@@ -193,7 +199,17 @@ class BacktestEngine:
                 f"Invalid execution_mode: {execution_mode}. "
                 f"Expected one of: {self.MODE_FRAMEWORK_STRICT}, {self.MODE_LEGACY_COMPATIBLE}"
             )
+        if layer_mode not in (
+            self.LAYER_DECISION_ONLY,
+            self.LAYER_DECISION_STRATEGY,
+            self.LAYER_DECISION_STRATEGY_EXECUTION,
+        ):
+            raise ValueError(
+                f"Invalid layer_mode: {layer_mode}. "
+                f"Expected one of: {self.LAYER_DECISION_ONLY}, {self.LAYER_DECISION_STRATEGY}, {self.LAYER_DECISION_STRATEGY_EXECUTION}"
+            )
         self.execution_mode = execution_mode
+        self.layer_mode = layer_mode
 
         # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
@@ -222,11 +238,14 @@ class BacktestEngine:
         # 3. 逐日回测
         trades: list[TradeRecord] = []
         daily_snapshots: list[DailySnapshot] = []
+        daily_decisions: list[dict] = []
+        execution_logs: list[dict] = []
         first_price = None
 
         # 缓存前一日决策
         pending_decision: Optional[StrategyDecision] = None
         pending_result: Optional[DecisionResult] = None
+        pending_signal_date: Optional[str] = None
         last_sell_date: Optional[str] = None
 
         # v0.7.2: 策略层状态（跨日持久化）
@@ -249,24 +268,23 @@ class BacktestEngine:
             current_price = stock_data.price
 
             # ===== 执行前日挂单 =====
-            if pending_decision is not None:
+            if pending_result is not None:
                 exec_price = stock_data.open
                 if exec_price is None:
                     logger.warning(f"{date}: 开盘价不可用，降级使用前日收盘价")
                     exec_price = current_price
 
-                # 使用策略层的仓位动作
-                pos_action = pending_decision.position_action
-                pos_ratio = pending_decision.position_ratio
+                # 按分层模式选择仓位动作来源
+                pos_action, pos_ratio, pending_signal = self._resolve_pending_action(
+                    pending_result, pending_decision
+                )
 
-                # v0.7.2: 执行层评估
+                # v0.7.2: 执行层评估（按分层模式可跳过）
                 volume_ratio = None
                 if stock_data.avg_volume_20 and stock_data.avg_volume_20 > 0:
                     volume_ratio = stock_data.volume / stock_data.avg_volume_20
 
-                exec_eval = self.orchestrator.execution_layer.evaluate(
-                    stock_data, pos_action, volume_ratio
-                )
+                exec_eval = self._evaluate_execution_layer(stock_data, pos_action, volume_ratio)
 
                 # 被阻止的交易统计
                 if exec_eval.blocked:
@@ -285,6 +303,7 @@ class BacktestEngine:
 
                 trade = None
                 actual_pos_action = effective_action
+                position_ratio_before = round(account.position_ratio(exec_price), 4) if account.has_position else 0.0
 
                 if effective_action == PositionAction.OPEN:
                     if not account.has_position and self._not_in_cooldown(date, last_sell_date):
@@ -344,7 +363,7 @@ class BacktestEngine:
                     pass  # 维持仓位
 
                 # 兼容：信号BUY/SELL但无仓位动作时
-                elif pending_decision.decision == SignalType.BUY and not account.has_position:
+                elif pending_signal == SignalType.BUY and not account.has_position:
                     if self._not_in_cooldown(date, last_sell_date):
                         buy_price = exec_price * (1 + actual_slippage)
                         trade = account.buy(buy_price, target_position_ratio=0.20)
@@ -352,7 +371,7 @@ class BacktestEngine:
                             account.buy_date = date
                             actual_pos_action = PositionAction.OPEN
 
-                elif pending_decision.decision == SignalType.SELL and account.has_position:
+                elif pending_signal == SignalType.SELL and account.has_position:
                     if self._can_sell(date, account.buy_date):
                         sell_price = exec_price * (1 - actual_slippage)
                         trade = account.sell(sell_price)
@@ -378,9 +397,21 @@ class BacktestEngine:
                     if trade.action == "SELL" and account.position == 0:
                         last_sell_date = date
 
+                execution_logs.append(self._build_execution_log(
+                    execution_date=date,
+                    signal_date=pending_signal_date,
+                    decision_result=pending_result,
+                    strategy_decision=pending_decision,
+                    execution_eval=exec_eval,
+                    trade=trade,
+                    position_ratio_before=position_ratio_before,
+                    position_ratio_after=round(account.position_ratio(current_price), 4),
+                ))
+
                 # 清除挂单
                 pending_decision = None
                 pending_result = None
+                pending_signal_date = None
 
             # ===== 生成今日信号（明日执行） =====
             current_pos_ratio = account.position_ratio(current_price) if account.has_position else 0.0
@@ -399,20 +430,28 @@ class BacktestEngine:
                 decision_result = None
                 strategy_decision = None
 
-            if strategy_decision:
-                decision = strategy_decision.decision
-                # 更新策略状态
-                strategy_state = strategy_decision.new_state
+            strategy_for_log = strategy_decision if self._uses_strategy_layer() else None
+            if decision_result and (strategy_decision or not self._uses_strategy_layer()):
+                final_decision = strategy_decision.decision if strategy_decision else decision_result.decision
 
-                # 记录决策方向（用于决策稳定性计算）
-                if decision in (SignalType.BUY, SignalType.HOLD):
+                if strategy_decision:
+                    strategy_state = strategy_decision.new_state
+
+                daily_decisions.append(self._build_daily_decision_log(
+                    date=date,
+                    current_position_ratio=current_pos_ratio,
+                    decision_result=decision_result,
+                    strategy_decision=strategy_for_log,
+                ))
+
+                if final_decision in (SignalType.BUY, SignalType.HOLD):
                     decision_directions.append("bullish")
-                elif decision in (SignalType.SELL, SignalType.WATCH):
+                elif final_decision in (SignalType.SELL, SignalType.WATCH):
                     decision_directions.append("bearish")
 
-                # 缓存决策
-                pending_decision = strategy_decision
+                pending_decision = strategy_decision if self._uses_strategy_layer() else None
                 pending_result = decision_result
+                pending_signal_date = date
 
             # ===== 记录每日快照 =====
             total_val = account.total_value(current_price)
@@ -456,6 +495,11 @@ class BacktestEngine:
             decision_directions, blocked_limit_up,
             blocked_limit_down, blocked_liquidity,
         )
+        result.diagnostics = {
+            "daily_decisions": daily_decisions,
+            "execution_logs": execution_logs,
+        }
+        result.layer_mode = self.layer_mode
 
         return result
 
@@ -510,6 +554,7 @@ class BacktestEngine:
                 commission_rate=self.commission_rate,
                 slippage_pct=self.slippage_pct * slippage_multiplier,
                 execution_mode=self.execution_mode,
+                layer_mode=self.layer_mode,
                 skills_dir="./src/skills",
                 execution_constraint=perturbed_constraint,
             )
@@ -582,6 +627,44 @@ class BacktestEngine:
             return ""
         reasons = result.reason[:2]
         return "; ".join(reasons) if reasons else result.decision.value
+
+    def _uses_strategy_layer(self) -> bool:
+        return self.layer_mode in (
+            self.LAYER_DECISION_STRATEGY,
+            self.LAYER_DECISION_STRATEGY_EXECUTION,
+        )
+
+    def _uses_execution_layer(self) -> bool:
+        return self.layer_mode == self.LAYER_DECISION_STRATEGY_EXECUTION
+
+    def _resolve_pending_action(
+        self,
+        pending_result: Optional[DecisionResult],
+        pending_decision: Optional[StrategyDecision],
+    ) -> tuple[PositionAction, float, Optional[SignalType]]:
+        if self._uses_strategy_layer() and pending_decision is not None:
+            return pending_decision.position_action, pending_decision.position_ratio, pending_decision.decision
+        if pending_result is not None:
+            return pending_result.position_action, pending_result.position_ratio, pending_result.decision
+        return PositionAction.STAY_OUT, 0.0, None
+
+    def _evaluate_execution_layer(
+        self,
+        stock_data: StockData,
+        pos_action: PositionAction,
+        volume_ratio: Optional[float],
+    ) -> ExecutionEvaluation:
+        if self._uses_execution_layer():
+            return self.orchestrator.execution_layer.evaluate(stock_data, pos_action, volume_ratio)
+        return ExecutionEvaluation(
+            original_action=pos_action,
+            effective_action=pos_action,
+            blocked=False,
+            block_reason="",
+            slippage_pct=0.0,
+            impact_cost_pct=0.0,
+            total_cost_pct=0.0,
+        )
 
     def _calculate_stats(
         self,
@@ -699,6 +782,7 @@ class BacktestEngine:
             start_date=first_snapshot.date,
             end_date=final_snapshot.date,
             initial_capital=self.initial_capital,
+            layer_mode=self.layer_mode,
             final_value=round(final_snapshot.total_value, 2),
             total_return_pct=round(total_return, 2),
             annualized_return_pct=round(annualized_return, 2),
@@ -729,9 +813,88 @@ class BacktestEngine:
             start_date=self.start_date,
             end_date=self.end_date,
             initial_capital=self.initial_capital,
+            layer_mode=self.layer_mode,
             final_value=self.initial_capital,
             total_return_pct=0.0,
         )
+
+    def _build_daily_decision_log(
+        self,
+        date: str,
+        current_position_ratio: float,
+        decision_result: Optional[DecisionResult],
+        strategy_decision: Optional[StrategyDecision],
+    ) -> dict:
+        return {
+            "date": date,
+            "position_ratio_before": round(current_position_ratio, 4),
+            "decision": self._serialize_decision_result(decision_result),
+            "strategy": self._serialize_strategy_decision(strategy_decision),
+        }
+
+    def _build_execution_log(
+        self,
+        execution_date: str,
+        signal_date: Optional[str],
+        decision_result: Optional[DecisionResult],
+        strategy_decision: Optional[StrategyDecision],
+        execution_eval,
+        trade: Optional[TradeRecord],
+        position_ratio_before: float,
+        position_ratio_after: float,
+    ) -> dict:
+        return {
+            "execution_date": execution_date,
+            "signal_date": signal_date,
+            "position_ratio_before": round(position_ratio_before, 4),
+            "position_ratio_after": round(position_ratio_after, 4),
+            "decision": self._serialize_decision_result(decision_result),
+            "strategy": self._serialize_strategy_decision(strategy_decision),
+            "execution": self._serialize_execution_eval(execution_eval),
+            "trade": trade.model_dump() if trade else None,
+        }
+
+    def _serialize_decision_result(self, decision_result: Optional[DecisionResult]) -> Optional[dict]:
+        if not decision_result:
+            return None
+        return {
+            "decision": decision_result.decision.value,
+            "state": decision_result.state.value,
+            "score": round(decision_result.score, 4),
+            "position_action": decision_result.position_action.value,
+            "position_ratio": round(decision_result.position_ratio, 4),
+            "reason": decision_result.reason[:5],
+            "warnings": decision_result.warnings[:5],
+        }
+
+    def _serialize_strategy_decision(self, strategy_decision: Optional[StrategyDecision]) -> Optional[dict]:
+        if not strategy_decision:
+            return None
+        return {
+            "decision": strategy_decision.decision.value,
+            "position_action": strategy_decision.position_action.value,
+            "position_ratio": round(strategy_decision.position_ratio, 4),
+            "lifecycle_before": strategy_decision.lifecycle_before.value,
+            "lifecycle_after": strategy_decision.lifecycle_after.value,
+            "inertia_applied": strategy_decision.inertia_applied,
+            "confirmation_required": strategy_decision.confirmation_required,
+            "cooldown_blocked": strategy_decision.cooldown_blocked,
+            "reverse_cost_paid": strategy_decision.reverse_cost_paid,
+            "stability_adjusted": strategy_decision.stability_adjusted,
+            "strategy_reasons": strategy_decision.strategy_reasons[:5],
+        }
+
+    def _serialize_execution_eval(self, execution_eval) -> Optional[dict]:
+        if not execution_eval:
+            return None
+        return {
+            "blocked": execution_eval.blocked,
+            "block_reason": execution_eval.block_reason,
+            "effective_action": execution_eval.effective_action.value,
+            "slippage_pct": round(execution_eval.slippage_pct, 6),
+            "impact_cost_pct": round(execution_eval.impact_cost_pct, 6),
+            "total_cost_pct": round(execution_eval.total_cost_pct, 6),
+        }
 
     @staticmethod
     def summarize_monte_carlo(results: list[BacktestResult]) -> dict:

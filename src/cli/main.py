@@ -735,11 +735,16 @@ def run_backtest(
     end_date: str,
     capital: float = 100000.0,
     backtest_mode: str = "framework_strict",
+    export_analysis_json_path: str | None = None,
+    export_analysis_txt_path: str | None = None,
+    layer_mode: str = "decision_strategy_execution",
 ):
     """回测模式"""
     from src.core.backtest_engine import BacktestEngine
+    from src.core.backtest_reporter import export_analysis_json, export_analysis_txt
 
     console.print(f"\n[bold cyan]回测模式[/bold cyan]")
+    console.print(f"  分层模式: {layer_mode}")
     console.print(f"  股票: {stock_code}")
     console.print(f"  区间: {start_date} ~ {end_date}")
     console.print(f"  初始资金: ¥{capital:,.0f}")
@@ -759,19 +764,27 @@ def run_backtest(
         end_date=end_date,
         initial_capital=capital,
         execution_mode=backtest_mode,
+        layer_mode=layer_mode,
         skills_dir=skills_dir,
-        enabled_skills=enabled_skills,
         signal_weights=weights,
         skill_types=skill_types,
     )
 
     result = engine.run()
 
-    display_backtest_result(result, backtest_mode)
+    display_backtest_result(result, backtest_mode, layer_mode)
+
+    if export_analysis_json_path:
+        output = export_analysis_json(result, backtest_mode, export_analysis_json_path, layer_mode)
+        console.print(f"[green]✓[/green] 已导出分析 JSON: {output}")
+
+    if export_analysis_txt_path:
+        output = export_analysis_txt(result, backtest_mode, export_analysis_txt_path, layer_mode)
+        console.print(f"[green]✓[/green] 已导出分析文本: {output}")
     return result
 
 
-def display_backtest_result(result, backtest_mode: str = "framework_strict"):
+def display_backtest_result(result, backtest_mode: str = "framework_strict", layer_mode: str = "decision_strategy_execution"):
     """展示回测结果"""
     from src.data.models import BacktestResult
 
@@ -791,6 +804,7 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict"):
         f"[bold]股票:[/bold] {result.stock_code}\n"
         f"[bold]区间:[/bold] {result.start_date} ~ {result.end_date}\n"
         f"[bold]回测模式:[/bold] {backtest_mode}\n"
+        f"[bold]分层模式:[/bold] {layer_mode}\n"
         f"[bold]初始资金:[/bold] ¥{result.initial_capital:,.0f}\n"
         f"[bold]最终资产:[/bold] ¥{result.final_value:,.2f}\n"
         f"\n[bold {return_color}]总资金收益率: {result.total_return_pct:+.2f}%[/]\n"
@@ -818,6 +832,7 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict"):
 
     stats_table.add_row("总交易次数", str(result.total_trades))
     stats_table.add_row("回测模式", backtest_mode)
+    stats_table.add_row("分层模式", layer_mode)
     stats_table.add_row("买入次数", str(result.buy_count))
     stats_table.add_row("卖出次数", str(result.sell_count))
     stats_table.add_row("总投入成本", f"¥{total_buy_amount:,.0f}")
@@ -1667,6 +1682,22 @@ AI配置:
         help="回测执行模式：framework_strict(默认，按最新框架) / legacy_compatible(保留旧门控)"
     )
     parser.add_argument(
+        "--layer-mode",
+        choices=["decision_only", "decision_strategy", "decision_strategy_execution"],
+        default="decision_strategy_execution",
+        help="回测分层模式：decision_only / decision_strategy / decision_strategy_execution(默认)"
+    )
+    parser.add_argument(
+        "--export-analysis-json",
+        metavar="PATH",
+        help="导出 AI 分析用 JSON 载荷（含汇总指标、交易记录、每日快照）"
+    )
+    parser.add_argument(
+        "--export-analysis-txt",
+        metavar="PATH",
+        help="导出 AI 分析用文本摘要"
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
         version="%(prog)s v0.8.0 (AI调节层：新闻分析+情绪调节+三层信号调节)"
@@ -1860,7 +1891,16 @@ AI配置:
         from datetime import datetime, timedelta
         start_date = args.start or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
         end_date = args.end or datetime.now().strftime("%Y-%m-%d")
-        run_backtest(args.backtest, start_date, end_date, args.capital, args.backtest_mode)
+        run_backtest(
+            args.backtest,
+            start_date,
+            end_date,
+            args.capital,
+            args.backtest_mode,
+            args.export_analysis_json,
+            args.export_analysis_txt,
+            args.layer_mode,
+        )
     elif args.live:
         # 实时行情模式
         analyze_live(args.live, ai_overrides=_ai_override)

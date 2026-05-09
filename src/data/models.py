@@ -338,6 +338,7 @@ class BacktestResult(BaseModel):
     start_date: str = Field(description="回测起始日期")
     end_date: str = Field(description="回测结束日期")
     initial_capital: float = Field(description="初始资金")
+    layer_mode: str = Field(default="decision_strategy_execution", description="回测层级模式")
     final_value: float = Field(description="最终总资产")
     total_return_pct: float = Field(description="总收益率%")
     annualized_return_pct: float = Field(default=0.0, description="年化收益率%")
@@ -364,6 +365,9 @@ class BacktestResult(BaseModel):
     blocked_by_limit_up: int = Field(default=0, description="因涨停无法买入次数")
     blocked_by_limit_down: int = Field(default=0, description="因跌停无法卖出次数")
     blocked_by_liquidity: int = Field(default=0, description="因流动性不足被阻止交易次数")
+
+    # v0.8.2 诊断导出
+    diagnostics: dict = Field(default_factory=dict, description="回测中间决策与执行诊断日志")
 
 
 class ScanCandidate(BaseModel):
