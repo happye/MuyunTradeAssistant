@@ -737,11 +737,12 @@ def run_backtest(
     backtest_mode: str = "framework_strict",
     export_analysis_json_path: str | None = None,
     export_analysis_txt_path: str | None = None,
+    export_layer_comparison_json_path: str | None = None,
     layer_mode: str = "decision_strategy_execution",
 ):
     """回测模式"""
     from src.core.backtest_engine import BacktestEngine
-    from src.core.backtest_reporter import export_analysis_json, export_analysis_txt
+    from src.core.backtest_reporter import export_analysis_json, export_analysis_txt, export_layer_comparison_json
 
     console.print(f"\n[bold cyan]回测模式[/bold cyan]")
     console.print(f"  分层模式: {layer_mode}")
@@ -758,17 +759,20 @@ def run_backtest(
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
 
-    engine = BacktestEngine(
-        stock_code=stock_code,
-        start_date=start_date,
-        end_date=end_date,
-        initial_capital=capital,
-        execution_mode=backtest_mode,
-        layer_mode=layer_mode,
-        skills_dir=skills_dir,
-        signal_weights=weights,
-        skill_types=skill_types,
-    )
+    def build_engine(target_layer_mode: str) -> BacktestEngine:
+        return BacktestEngine(
+            stock_code=stock_code,
+            start_date=start_date,
+            end_date=end_date,
+            initial_capital=capital,
+            execution_mode=backtest_mode,
+            layer_mode=target_layer_mode,
+            skills_dir=skills_dir,
+            signal_weights=weights,
+            skill_types=skill_types,
+        )
+
+    engine = build_engine(layer_mode)
 
     result = engine.run()
 
@@ -781,6 +785,16 @@ def run_backtest(
     if export_analysis_txt_path:
         output = export_analysis_txt(result, backtest_mode, export_analysis_txt_path, layer_mode)
         console.print(f"[green]✓[/green] 已导出分析文本: {output}")
+
+    if export_layer_comparison_json_path:
+        comparison_results = {layer_mode: result}
+        for compare_layer in ("decision_only", "decision_strategy", "decision_strategy_execution"):
+            if compare_layer in comparison_results:
+                continue
+            console.print(f"[bold yellow]正在生成三层对照: {compare_layer}[/bold yellow]")
+            comparison_results[compare_layer] = build_engine(compare_layer).run()
+        output = export_layer_comparison_json(comparison_results, backtest_mode, export_layer_comparison_json_path)
+        console.print(f"[green]✓[/green] 已导出三层对照 JSON: {output}")
     return result
 
 
@@ -1698,6 +1712,11 @@ AI配置:
         help="导出 AI 分析用文本摘要"
     )
     parser.add_argument(
+        "--export-layer-comparison-json",
+        metavar="PATH",
+        help="导出 decision_only / decision_strategy / decision_strategy_execution 三层对照 JSON"
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
         version="%(prog)s v0.8.0 (AI调节层：新闻分析+情绪调节+三层信号调节)"
@@ -1899,6 +1918,7 @@ AI配置:
             args.backtest_mode,
             args.export_analysis_json,
             args.export_analysis_txt,
+            args.export_layer_comparison_json,
             args.layer_mode,
         )
     elif args.live:

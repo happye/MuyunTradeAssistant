@@ -312,6 +312,7 @@ DataFeeder加载历史数据（Baostock）
 - 只有显式传入 `--export-analysis-json PATH` 或 `--export-analysis-txt PATH` 时，归因结果才会持久化落盘到指定路径。
 - JSON/TXT 导出由 `src/core/backtest_reporter.py` 负责组装，不改变回测统计口径，只做结构化分析输出。
 - 当前 JSON 载荷已包含 `layer_breakdown`、`action_source_table`、`hold_break_table`、`diagnostics`，其中动作/持仓破坏归因会额外标出 `trigger_layer` / `broken_layer`。
+- 若传入 `--export-layer-comparison-json <PATH>`，系统会顺序运行 `decision_only / decision_strategy / decision_strategy_execution` 三层，并导出单个对照 JSON。
 - 若不传导出参数，终端展示结束后结果不会自动写入仓库固定目录。
 
 ### 条件注册表（ISS-002 参数化条件）
@@ -433,6 +434,7 @@ volume_ratio:
 - `--layer-mode decision_only/decision_strategy/decision_strategy_execution`：回测分层模式（默认完整链路）
 - `--export-analysis-json <PATH>`：导出归因 JSON，按你提供的路径持久化保存
 - `--export-analysis-txt <PATH>`：导出归因文本摘要，按你提供的路径持久化保存
+- `--export-layer-comparison-json <PATH>`：单次命令导出三层对照 JSON，便于直接做分层归因
 - `--scan`：全市场扫描
 - `--rule <规则ID>`：指定初筛规则
 - `--events`：事件扫描（宏观新闻+持仓新闻+市场规则检测）⭐v0.8.0

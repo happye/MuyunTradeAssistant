@@ -13,6 +13,13 @@ from typing import Any
 from src.data.models import BacktestResult
 
 
+LAYER_COMPARE_ORDER = [
+    "decision_only",
+    "decision_strategy",
+    "decision_strategy_execution",
+]
+
+
 def build_analysis_payload(result: BacktestResult, backtest_mode: str, layer_mode: str | None = None) -> dict[str, Any]:
     """构造 AI 分析导出载荷。"""
     layer_mode = layer_mode or result.layer_mode
@@ -107,6 +114,119 @@ def export_analysis_txt(result: BacktestResult, backtest_mode: str, output_path:
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(_render_text_report(payload), encoding="utf-8")
     return target
+
+
+def build_layer_comparison_payload(results_by_layer: dict[str, BacktestResult], backtest_mode: str) -> dict[str, Any]:
+    """构造三层回测对照载荷。"""
+    ordered_layers = [layer for layer in LAYER_COMPARE_ORDER if layer in results_by_layer]
+    if not ordered_layers:
+        raise ValueError("results_by_layer must contain at least one layer result")
+
+    base_result = results_by_layer[ordered_layers[0]]
+    layer_breakdown = [_build_layer_breakdown_row(results_by_layer[layer]) for layer in ordered_layers]
+    layer_payloads = {
+        layer: build_analysis_payload(results_by_layer[layer], backtest_mode, layer)
+        for layer in ordered_layers
+    }
+
+    return {
+        "meta": {
+            "stock_code": base_result.stock_code,
+            "stock_name": base_result.stock_name,
+            "start_date": base_result.start_date,
+            "end_date": base_result.end_date,
+            "initial_capital": base_result.initial_capital,
+            "backtest_mode": backtest_mode,
+            "analysis_version": "v0.8.2",
+            "comparison_type": "layer_comparison",
+            "layers": ordered_layers,
+        },
+        "layer_breakdown": layer_breakdown,
+        "layer_deltas": _build_layer_deltas(layer_breakdown),
+        "comparison_hints": _build_layer_comparison_hints(layer_breakdown),
+        "layers": layer_payloads,
+        "limitations": [
+            "当前对照导出会顺序执行多个 layer_mode，因此耗时高于单次回测。",
+            "当前 comparison payload 仅做层级横向比较，尚未输出统一的逐日 merged timeline。",
+        ],
+    }
+
+
+def export_layer_comparison_json(results_by_layer: dict[str, BacktestResult], backtest_mode: str, output_path: str) -> Path:
+    """导出三层回测对照 JSON。"""
+    payload = build_layer_comparison_payload(results_by_layer, backtest_mode)
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target
+
+
+def _build_layer_breakdown_row(result: BacktestResult) -> dict[str, Any]:
+    excess_return_pct = round(result.total_return_pct - result.benchmark_return_pct, 2)
+    return {
+        "layer_mode": result.layer_mode,
+        "total_return_pct": result.total_return_pct,
+        "benchmark_return_pct": result.benchmark_return_pct,
+        "excess_return_pct": excess_return_pct,
+        "max_drawdown_pct": result.max_drawdown_pct,
+        "total_trades": result.total_trades,
+        "buy_count": result.buy_count,
+        "sell_count": result.sell_count,
+        "decision_stability": result.decision_stability,
+    }
+
+
+def _build_layer_deltas(layer_breakdown: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    deltas: list[dict[str, Any]] = []
+    for index in range(1, len(layer_breakdown)):
+        prev_row = layer_breakdown[index - 1]
+        curr_row = layer_breakdown[index]
+        deltas.append({
+            "from_layer": prev_row["layer_mode"],
+            "to_layer": curr_row["layer_mode"],
+            "return_delta_pct": round(curr_row["total_return_pct"] - prev_row["total_return_pct"], 2),
+            "excess_return_delta_pct": round(curr_row["excess_return_pct"] - prev_row["excess_return_pct"], 2),
+            "trade_delta": curr_row["total_trades"] - prev_row["total_trades"],
+            "buy_delta": curr_row["buy_count"] - prev_row["buy_count"],
+            "sell_delta": curr_row["sell_count"] - prev_row["sell_count"],
+            "drawdown_delta_pct": round(curr_row["max_drawdown_pct"] - prev_row["max_drawdown_pct"], 2),
+        })
+    return deltas
+
+
+def _build_layer_comparison_hints(layer_breakdown: list[dict[str, Any]]) -> list[str]:
+    by_layer = {row["layer_mode"]: row for row in layer_breakdown}
+    hints: list[str] = []
+
+    decision_only = by_layer.get("decision_only")
+    decision_strategy = by_layer.get("decision_strategy")
+    decision_strategy_execution = by_layer.get("decision_strategy_execution")
+
+    if decision_only and decision_strategy:
+        trade_delta = decision_strategy["total_trades"] - decision_only["total_trades"]
+        return_delta = round(decision_strategy["total_return_pct"] - decision_only["total_return_pct"], 2)
+        if trade_delta < 0:
+            hints.append(f"策略层使交易次数减少 {abs(trade_delta)} 次，说明它在压制部分原始决策动作。")
+        elif trade_delta > 0:
+            hints.append(f"策略层使交易次数增加 {trade_delta} 次，说明它在放大或重排原始动作。")
+        if return_delta > 0:
+            hints.append(f"策略层相对 decision_only 提升收益 {return_delta}%，说明行为约束当前在改善结果。")
+        elif return_delta < 0:
+            hints.append(f"策略层相对 decision_only 降低收益 {abs(return_delta)}%，需检查是否存在过度抑制或错误加仓。")
+
+    if decision_strategy and decision_strategy_execution:
+        return_delta = round(decision_strategy_execution["total_return_pct"] - decision_strategy["total_return_pct"], 2)
+        trade_delta = decision_strategy_execution["total_trades"] - decision_strategy["total_trades"]
+        if return_delta < 0:
+            hints.append(f"执行层相对策略层带来 {abs(return_delta)}% 的收益回落，需关注成本、流动性和成交约束。")
+        elif return_delta > 0:
+            hints.append(f"执行层相对策略层提升收益 {return_delta}%，需检查是否来自更真实的成交过滤。")
+        if trade_delta != 0:
+            hints.append(f"执行层使最终成交次数变化 {trade_delta} 次，说明现实约束已改变最终执行结果。")
+
+    if not hints:
+        hints.append("三层结果差异较小，当前样本下层级约束影响有限，需扩大样本再判断。")
+    return hints
 
 
 def _infer_trigger_type(trade: Any) -> str:
