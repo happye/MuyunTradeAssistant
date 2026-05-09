@@ -88,7 +88,7 @@ def build_analysis_payload(result: BacktestResult, backtest_mode: str, layer_mod
         "diagnostics": diagnostics,
         "analysis_hints": _build_analysis_hints(result, excess_return_pct),
         "limitations": [
-            "当前导出一次只包含本次回测结果；若要横向比较 decision_only / decision_strategy / decision_strategy_execution，需分别运行并导出多个文件。",
+            "当前导出一次只包含本层结果；若要横向比较多层结果，可使用 layer comparison 导出。",
             "当前导出文件不会自动归档到固定目录，是否持久化取决于是否显式传入导出路径。",
             "若需更细粒度的逐日归因模型，后续仍可继续补充专用诊断字段与对照分析器。",
         ],
@@ -158,6 +158,15 @@ def export_layer_comparison_json(results_by_layer: dict[str, BacktestResult], ba
     target = Path(output_path)
     target.parent.mkdir(parents=True, exist_ok=True)
     target.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    return target
+
+
+def export_layer_comparison_txt(results_by_layer: dict[str, BacktestResult], backtest_mode: str, output_path: str) -> Path:
+    """导出三层回测对照文本分析。"""
+    payload = build_layer_comparison_payload(results_by_layer, backtest_mode)
+    target = Path(output_path)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(_render_layer_comparison_text_report(payload), encoding="utf-8")
     return target
 
 
@@ -524,4 +533,42 @@ def _render_text_report(payload: dict[str, Any]) -> str:
             f"- {trade['date']} | {trade['action']} | {trade.get('position_action', '')} | "
             f"价格 {trade['price']:.2f} | 金额 {trade['amount']:.2f} | 原因: {trade.get('reason', '')}"
         )
+    return "\n".join(lines) + "\n"
+
+
+def _render_layer_comparison_text_report(payload: dict[str, Any]) -> str:
+    meta = payload["meta"]
+    lines = [
+        f"{meta['stock_name'] or meta['stock_code']} 三层回测对照分析",
+        f"区间: {meta['start_date']} ~ {meta['end_date']}",
+        f"回测模式: {meta['backtest_mode']}",
+        "",
+        "一、三层结果对照",
+    ]
+    for row in payload["layer_breakdown"]:
+        lines.append(
+            f"- {row['layer_mode']} | 收益 {row['total_return_pct']:+.2f}% | 超额 {row['excess_return_pct']:+.2f}% | "
+            f"回撤 -{row['max_drawdown_pct']:.2f}% | 交易 {row['total_trades']}"
+        )
+
+    lines.extend([
+        "",
+        "二、层间变化",
+    ])
+    for delta in payload["layer_deltas"]:
+        lines.append(
+            f"- {delta['from_layer']} → {delta['to_layer']} | 收益变化 {delta['return_delta_pct']:+.2f}% | "
+            f"超额变化 {delta['excess_return_delta_pct']:+.2f}% | 交易变化 {delta['trade_delta']}"
+        )
+
+    lines.extend([
+        "",
+        "三、自动分析提示",
+    ])
+    lines.extend(f"- {hint}" for hint in payload["comparison_hints"])
+    lines.extend([
+        "",
+        "四、限制说明",
+    ])
+    lines.extend(f"- {item}" for item in payload["limitations"])
     return "\n".join(lines) + "\n"

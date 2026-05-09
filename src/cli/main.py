@@ -738,11 +738,26 @@ def run_backtest(
     export_analysis_json_path: str | None = None,
     export_analysis_txt_path: str | None = None,
     export_layer_comparison_json_path: str | None = None,
+    export_layer_comparison_txt_path: str | None = None,
+    export_validation_json_path: str | None = None,
+    export_validation_txt_path: str | None = None,
     layer_mode: str = "decision_strategy_execution",
 ):
     """回测模式"""
     from src.core.backtest_engine import BacktestEngine
-    from src.core.backtest_reporter import export_analysis_json, export_analysis_txt, export_layer_comparison_json
+    from src.core.backtest_reporter import (
+        export_analysis_json,
+        export_analysis_txt,
+        export_layer_comparison_json,
+        export_layer_comparison_txt,
+    )
+    from src.core.backtest_validator import (
+        build_validation_payload,
+        build_validation_windows,
+        export_validation_json,
+        export_validation_txt,
+        load_trading_dates,
+    )
 
     console.print(f"\n[bold cyan]回测模式[/bold cyan]")
     console.print(f"  分层模式: {layer_mode}")
@@ -759,11 +774,11 @@ def run_backtest(
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
 
-    def build_engine(target_layer_mode: str) -> BacktestEngine:
+    def build_engine(target_layer_mode: str, target_start_date: str | None = None, target_end_date: str | None = None) -> BacktestEngine:
         return BacktestEngine(
             stock_code=stock_code,
-            start_date=start_date,
-            end_date=end_date,
+            start_date=target_start_date or start_date,
+            end_date=target_end_date or end_date,
             initial_capital=capital,
             execution_mode=backtest_mode,
             layer_mode=target_layer_mode,
@@ -795,6 +810,43 @@ def run_backtest(
             comparison_results[compare_layer] = build_engine(compare_layer).run()
         output = export_layer_comparison_json(comparison_results, backtest_mode, export_layer_comparison_json_path)
         console.print(f"[green]✓[/green] 已导出三层对照 JSON: {output}")
+
+    if export_layer_comparison_txt_path:
+        comparison_results = {layer_mode: result}
+        for compare_layer in ("decision_only", "decision_strategy", "decision_strategy_execution"):
+            if compare_layer in comparison_results:
+                continue
+            console.print(f"[bold yellow]正在生成三层对照: {compare_layer}[/bold yellow]")
+            comparison_results[compare_layer] = build_engine(compare_layer).run()
+        output = export_layer_comparison_txt(comparison_results, backtest_mode, export_layer_comparison_txt_path)
+        console.print(f"[green]✓[/green] 已导出三层对照文本: {output}")
+
+    if export_validation_json_path or export_validation_txt_path:
+        console.print("[bold yellow]正在执行回测验证基线...[/bold yellow]")
+        trading_dates = load_trading_dates(stock_code, start_date, end_date)
+        windows = build_validation_windows(trading_dates)
+        in_sample = windows["in_sample"]
+        out_of_sample = windows["out_of_sample"]
+        in_sample_result = build_engine(layer_mode, in_sample["start_date"], in_sample["end_date"]).run()
+        out_of_sample_result = build_engine(layer_mode, out_of_sample["start_date"], out_of_sample["end_date"]).run()
+        walk_forward_results = []
+        for window in windows["walk_forward_windows"]:
+            wf_result = build_engine(layer_mode, window["test_start"], window["test_end"]).run()
+            walk_forward_results.append({"window": window, "result": wf_result})
+        validation_payload = build_validation_payload(
+            full_result=result,
+            backtest_mode=backtest_mode,
+            windows=windows,
+            in_sample_result=in_sample_result,
+            out_of_sample_result=out_of_sample_result,
+            walk_forward_results=walk_forward_results,
+        )
+        if export_validation_json_path:
+            output = export_validation_json(validation_payload, export_validation_json_path)
+            console.print(f"[green]✓[/green] 已导出验证 JSON: {output}")
+        if export_validation_txt_path:
+            output = export_validation_txt(validation_payload, export_validation_txt_path)
+            console.print(f"[green]✓[/green] 已导出验证文本: {output}")
     return result
 
 
@@ -1717,6 +1769,21 @@ AI配置:
         help="导出 decision_only / decision_strategy / decision_strategy_execution 三层对照 JSON"
     )
     parser.add_argument(
+        "--export-layer-comparison-txt",
+        metavar="PATH",
+        help="导出 decision_only / decision_strategy / decision_strategy_execution 三层对照文本分析"
+    )
+    parser.add_argument(
+        "--export-validation-json",
+        metavar="PATH",
+        help="导出 lookahead / 样本内外 / walk-forward 验证 JSON"
+    )
+    parser.add_argument(
+        "--export-validation-txt",
+        metavar="PATH",
+        help="导出 lookahead / 样本内外 / walk-forward 验证文本"
+    )
+    parser.add_argument(
         "-v", "--version",
         action="version",
         version="%(prog)s v0.8.0 (AI调节层：新闻分析+情绪调节+三层信号调节)"
@@ -1919,6 +1986,9 @@ AI配置:
             args.export_analysis_json,
             args.export_analysis_txt,
             args.export_layer_comparison_json,
+            args.export_layer_comparison_txt,
+            args.export_validation_json,
+            args.export_validation_txt,
             args.layer_mode,
         )
     elif args.live:
