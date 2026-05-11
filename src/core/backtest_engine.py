@@ -26,7 +26,7 @@ from src.data.models import (
     StockData, BacktestResult, TradeRecord, DailySnapshot,
     SignalType, DecisionResult, PositionAction,
     StrategyState, StrategyDecision, ExecutionConstraint,
-    TradeLifecycle
+    TradeLifecycle, infer_action_semantic
 )
 from src.data.data_feeder import DataFeeder
 from src.core.orchestrator import Orchestrator
@@ -384,6 +384,7 @@ class BacktestEngine:
                     trade.reason = self._get_trade_reason(pending_result, pending_decision)
                     trade.signal_score = pending_result.score if pending_result else 0.0
                     trade.position_action = actual_pos_action.value
+                    trade.action_semantic = infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
                     trade.position_ratio_after = round(account.position_ratio(current_price), 2)
 
                     # 扣除交易成本
@@ -862,6 +863,11 @@ class BacktestEngine:
             "state": decision_result.state.value,
             "score": round(decision_result.score, 4),
             "position_action": decision_result.position_action.value,
+            "action_semantic": infer_action_semantic(
+                decision_result.position_action,
+                decision_result.decision,
+                decision_result.reason,
+            ),
             "position_ratio": round(decision_result.position_ratio, 4),
             "reason": decision_result.reason[:5],
             "warnings": decision_result.warnings[:5],
@@ -873,6 +879,8 @@ class BacktestEngine:
         return {
             "decision": strategy_decision.decision.value,
             "position_action": strategy_decision.position_action.value,
+            "action_semantic": strategy_decision.action_semantic,
+            "sell_path": strategy_decision.sell_path,
             "position_ratio": round(strategy_decision.position_ratio, 4),
             "lifecycle_before": strategy_decision.lifecycle_before.value,
             "lifecycle_after": strategy_decision.lifecycle_after.value,

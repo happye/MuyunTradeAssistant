@@ -6,11 +6,12 @@
 
 from __future__ import annotations
 
+from collections import Counter
 import json
 from pathlib import Path
 from typing import Any
 
-from src.data.models import BacktestResult
+from src.data.models import BacktestResult, infer_action_semantic
 
 
 LAYER_COMPARE_ORDER = [
@@ -30,6 +31,8 @@ def build_analysis_payload(result: BacktestResult, backtest_mode: str, layer_mod
     diagnostics = result.diagnostics or {}
     action_source_table = _build_action_source_table(result, diagnostics)
     hold_break_table = _build_hold_break_table(result, diagnostics)
+    enriched_trades = [_serialize_trade_with_semantic(trade) for trade in result.trades]
+    semantic_breakdown = _build_semantic_breakdown(enriched_trades)
     has_real_diagnostics = bool(diagnostics.get("execution_logs"))
 
     payload = {
@@ -68,8 +71,10 @@ def build_analysis_payload(result: BacktestResult, backtest_mode: str, layer_mod
             "blocked_by_limit_up": result.blocked_by_limit_up,
             "blocked_by_limit_down": result.blocked_by_limit_down,
             "blocked_by_liquidity": result.blocked_by_liquidity,
+            "action_semantic_breakdown": semantic_breakdown["action_semantic_breakdown"],
+            "sell_path_breakdown": semantic_breakdown["sell_path_breakdown"],
         },
-        "trades": [trade.model_dump() for trade in result.trades],
+        "trades": enriched_trades,
         "daily_snapshots": [snapshot.model_dump() for snapshot in result.daily_snapshots],
         "layer_breakdown": [
             {
@@ -579,19 +584,72 @@ def _infer_trigger_type(trade: Any) -> str:
     return "hold"
 
 
+def _serialize_trade_with_semantic(trade: Any) -> dict[str, Any]:
+    payload = trade.model_dump() if hasattr(trade, "model_dump") else dict(trade)
+    payload["action_semantic"] = payload.get("action_semantic") or infer_action_semantic(
+        payload.get("position_action"),
+        reasons=[payload.get("reason", "")],
+        trade_action=payload.get("action"),
+    )
+    payload["sell_path"] = payload.get("sell_path") or _infer_sell_path_from_payload(payload)
+    return payload
+
+
+def _build_semantic_breakdown(trades: list[dict[str, Any]]) -> dict[str, dict[str, int]]:
+    action_semantic_counter = Counter(
+        str(trade.get("action_semantic") or "UNKNOWN").upper()
+        for trade in trades
+    )
+    sell_path_counter = Counter(
+        str(trade.get("sell_path") or "none")
+        for trade in trades
+        if str(trade.get("action") or "").upper() == "SELL"
+    )
+    return {
+        "action_semantic_breakdown": dict(sorted(action_semantic_counter.items())),
+        "sell_path_breakdown": dict(sorted(sell_path_counter.items())),
+    }
+
+
+def _infer_sell_path_from_payload(payload: dict[str, Any]) -> str | None:
+    action_semantic = str(payload.get("action_semantic") or "").upper()
+    position_action = str(payload.get("position_action") or "").upper()
+    reason = str(payload.get("reason") or "")
+    reason_text = reason.lower()
+
+    if position_action == "STAY_OUT":
+        return "flat_sell"
+    if action_semantic == "STOP":
+        return "stop_loss_exit" if position_action == "CLOSE_ALL" else "stop_loss_trim"
+    if action_semantic == "TRIM":
+        if "止盈" in reason:
+            return "take_profit_trim"
+        if "止损" in reason:
+            return "stop_loss_trim"
+        return "weak_sell"
+    if action_semantic == "EXIT":
+        if "回测结束强制清仓" in reason or "forced" in reason_text:
+            return "trend_exit"
+        return "trend_exit"
+    return None
+
+
 def _infer_trigger_source(trade: Any) -> str:
-    reason_text = (trade.reason or "").lower()
-    if "止损" in trade.reason:
+    reason = getattr(trade, "reason", "")
+    if not reason and isinstance(trade, dict):
+        reason = trade.get("reason", "")
+    reason_text = reason.lower()
+    if "止损" in reason:
         return "stop_loss"
-    if "止盈" in trade.reason:
+    if "止盈" in reason:
         return "take_profit"
-    if "冷却" in trade.reason:
+    if "冷却" in reason:
         return "cooldown"
-    if "惯性" in trade.reason:
+    if "惯性" in reason:
         return "inertia"
-    if "确认" in trade.reason:
+    if "确认" in reason:
         return "confirmation"
-    if "极端" in trade.reason or "panic" in reason_text:
+    if "极端" in reason or "panic" in reason_text:
         return "extreme"
     return "decision"
 
@@ -604,6 +662,8 @@ def _build_action_source_table(result: BacktestResult, diagnostics: dict[str, An
                 "date": trade.date,
                 "action": trade.action,
                 "position_action": trade.position_action,
+                "action_semantic": trade.action_semantic or infer_action_semantic(trade.position_action, reasons=[trade.reason], trade_action=trade.action),
+                "sell_path": getattr(trade, "sell_path", None) or _infer_sell_path_from_payload(_serialize_trade_with_semantic(trade)),
                 "reason": trade.reason,
                 "signal_score": trade.signal_score,
                 "position_ratio_after": trade.position_ratio_after,
@@ -634,6 +694,13 @@ def _build_action_source_table(result: BacktestResult, diagnostics: dict[str, An
             "action": trade.get("action") if trade else None,
             "final_signal": strategy.get("decision") or decision.get("decision"),
             "position_action": (trade.get("position_action") if trade else None) or strategy.get("position_action") or execution.get("effective_action"),
+            "action_semantic": infer_action_semantic(
+                (trade.get("position_action") if trade else None) or strategy.get("position_action") or execution.get("effective_action"),
+                strategy.get("decision") or decision.get("decision"),
+                [reason],
+                trade.get("action") if trade else None,
+            ),
+            "sell_path": strategy.get("sell_path"),
             "trigger_layer": _infer_trigger_layer_from_log(log),
             "trigger_type": _infer_trigger_type_from_log(log),
             "trigger_source": _infer_trigger_source_from_log(log),
@@ -680,6 +747,8 @@ def _build_hold_break_table(result: BacktestResult, diagnostics: dict[str, Any])
             "stock_code": result.stock_code,
             "hold_context": _build_hold_context(log),
             "broken_by": pos_action,
+            "action_semantic": infer_action_semantic(pos_action, reasons=[trade.get("reason", "")], trade_action=trade.get("action")),
+            "sell_path": (log.get("strategy", {}) or {}).get("sell_path") if log else _infer_sell_path_from_payload(trade),
             "broken_layer": _infer_trigger_layer_from_log(log) if log else _infer_trigger_layer_from_trade(trade),
             "trigger_source": _infer_trigger_source_from_log(log) if log else _infer_trigger_source(trade),
             "broken_reason": trade.get("reason", ""),
@@ -709,7 +778,9 @@ def _infer_trigger_type_from_log(log: dict[str, Any]) -> str:
 
 
 def _infer_trigger_layer_from_trade(trade: Any) -> str:
-    reason = getattr(trade, "reason", "") or trade.get("reason", "")
+    reason = getattr(trade, "reason", "")
+    if not reason and isinstance(trade, dict):
+        reason = trade.get("reason", "")
     lower_reason = reason.lower()
     if any(token in reason for token in ("策略层修正", "反转成本", "冷却", "惯性", "确认", "稳定性")):
         return "strategy"
@@ -825,6 +896,8 @@ def _build_analysis_hints(result: BacktestResult, excess_return_pct: float) -> l
 def _render_text_report(payload: dict[str, Any]) -> str:
     meta = payload["meta"]
     summary = payload["summary"]
+    action_semantic_breakdown = summary.get("action_semantic_breakdown", {})
+    sell_path_breakdown = summary.get("sell_path_breakdown", {})
     lines = [
         f"{meta['stock_name'] or meta['stock_code']} 回测分析导出",
         f"区间: {meta['start_date']} ~ {meta['end_date']}",
@@ -840,9 +913,15 @@ def _render_text_report(payload: dict[str, Any]) -> str:
         f"总交易次数: {summary['total_trades']}",
         f"买入次数: {summary['buy_count']}",
         f"卖出次数: {summary['sell_count']}",
+    ]
+    if action_semantic_breakdown:
+        lines.append(f"动作语义分布: {_format_breakdown_line(action_semantic_breakdown)}")
+    if sell_path_breakdown:
+        lines.append(f"卖出路径分布: {_format_breakdown_line(sell_path_breakdown)}")
+    lines.extend([
         "",
         "二、AI分析提示",
-    ]
+    ])
     lines.extend(f"- {hint}" for hint in payload["analysis_hints"])
     lines.extend([
         "",
@@ -855,10 +934,14 @@ def _render_text_report(payload: dict[str, Any]) -> str:
     ])
     for trade in payload["trades"][:20]:
         lines.append(
-            f"- {trade['date']} | {trade['action']} | {trade.get('position_action', '')} | "
+            f"- {trade['date']} | {trade['action']} | {trade.get('position_action', '')} | {trade.get('action_semantic', '-') or '-'} | "
             f"价格 {trade['price']:.2f} | 金额 {trade['amount']:.2f} | 原因: {trade.get('reason', '')}"
         )
     return "\n".join(lines) + "\n"
+
+
+def _format_breakdown_line(breakdown: dict[str, int]) -> str:
+    return ", ".join(f"{key}={value}" for key, value in breakdown.items())
 
 
 def _render_layer_comparison_text_report(payload: dict[str, Any]) -> str:

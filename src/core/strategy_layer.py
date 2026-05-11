@@ -28,6 +28,7 @@ from copy import deepcopy
 from src.data.models import (
     SignalType, MarketState, PositionAction,
     TradeLifecycle, StrategyState, StrategyDecision,
+    infer_action_semantic,
     DecisionResult, StockData
 )
 
@@ -87,6 +88,14 @@ class StrategyLayer:
     TAKE_PROFIT_KEEP = 0.60
     NORMAL_REDUCE_KEEP = 0.65
     LOW_POSITION_CLEAR = 0.05
+    STOP_LOSS_REDUCE_THRESHOLD = 0.70
+    STOP_LOSS_EXIT_THRESHOLD = 0.85
+    TAKE_PROFIT_TRIM_THRESHOLD = 0.70
+    TAKE_PROFIT_MIN_GAIN_PCT = 0.05
+    STOP_LOSS_EXIT_LOSS_PCT = -0.05
+    STRONG_SELL_EXIT_THRESHOLD = 0.55
+    SELL_DOMINANCE_GAP = 0.15
+    TREND_EXIT_BREAK_PCT = -0.02
 
     def __init__(self):
         """初始化策略层"""
@@ -206,10 +215,28 @@ class StrategyLayer:
             cooldown_blocked, reverse_cost_paid, stability_adjusted,
             is_extreme
         )
+        sell_path = self._infer_sell_path(
+            adjusted_decision,
+            position_action,
+            decision_result,
+            strategy_state,
+        )
+        position_reason = self._describe_position_action(
+            adjusted_decision,
+            position_action,
+            sell_path,
+            market_state,
+            decision_result,
+            strategy_state,
+        )
+        if position_reason:
+            strategy_reasons.append(position_reason)
 
         return StrategyDecision(
             decision=adjusted_decision,
             position_action=position_action,
+            action_semantic=infer_action_semantic(position_action, adjusted_decision, strategy_reasons),
+            sell_path=sell_path,
             position_ratio=position_ratio,
             lifecycle_before=lifecycle_before,
             lifecycle_after=lifecycle_after,
@@ -418,36 +445,47 @@ class StrategyLayer:
 
         # 判断止损/止盈是否触发
         action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
-        has_stop_loss = any(
-            s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.7
-            for s in action_signals
+        stop_loss_confidence = self._get_sell_action_confidence(action_signals, "stop_loss")
+        take_profit_confidence = self._get_sell_action_confidence(action_signals, "take_profit")
+        has_stop_loss = stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD
+        has_take_profit = take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
+        current_return_pct = self._get_unrealized_return_pct(strategy_state, decision_result.stock)
+        valid_take_profit = has_take_profit and self._has_take_profit_buffer(current_return_pct)
+        stop_loss_exit = (
+            stop_loss_confidence >= self.STOP_LOSS_EXIT_THRESHOLD
+            and self._has_stop_loss_exit_loss(current_return_pct)
         )
-        has_take_profit = any(
-            s.skill_name == "take_profit" and s.signal == SignalType.SELL and s.confidence >= 0.7
-            for s in action_signals
+        strong_sell_exit = (
+            sell_score >= self.STRONG_SELL_EXIT_THRESHOLD
+            and sell_score >= buy_score + self.SELL_DOMINANCE_GAP
+        )
+        trend_exit = self._is_trend_exit_condition(
+            decision_result.stock,
+            strategy_state,
+            current_return_pct,
+            strong_sell_exit,
         )
 
         if final_signal == SignalType.SELL:
+            if current_position_ratio <= 0:
+                return PositionAction.STAY_OUT, 0.0
             if has_stop_loss:
-                has_deep_stop = any(
-                    s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.85
-                    for s in action_signals
-                )
-                if has_deep_stop:
+                if stop_loss_exit:
                     return PositionAction.CLOSE_ALL, 0.0
                 elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+                    return PositionAction.CLOSE_ALL, 0.0
+                elif trend_exit and self._has_stop_loss_exit_loss(current_return_pct):
                     return PositionAction.CLOSE_ALL, 0.0
                 else:
                     target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                     return PositionAction.REDUCE, target
             elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
                 return PositionAction.CLOSE_ALL, 0.0
-            elif has_take_profit:
+            elif valid_take_profit:
                 target = current_position_ratio * self.TAKE_PROFIT_KEEP
                 return PositionAction.REDUCE, target
-            elif sell_score >= 0.4:
-                target = current_position_ratio * self.NORMAL_REDUCE_KEEP
-                return PositionAction.REDUCE, target
+            elif trend_exit or strategy_state.lifecycle == TradeLifecycle.EXIT:
+                return PositionAction.CLOSE_ALL, 0.0
             else:
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                 return PositionAction.REDUCE, target
@@ -478,6 +516,138 @@ class StrategyLayer:
 
         else:  # WATCH
             return PositionAction.STAY_OUT, 0.0
+
+    def _describe_position_action(
+        self,
+        final_signal: SignalType,
+        position_action: PositionAction,
+        sell_path: Optional[str],
+        market_state: MarketState,
+        decision_result: DecisionResult,
+        strategy_state: StrategyState,
+    ) -> Optional[str]:
+        if final_signal != SignalType.SELL:
+            return None
+
+        current_position_ratio = strategy_state.current_position_ratio
+        if current_position_ratio <= 0 or sell_path == "flat_sell" or position_action == PositionAction.STAY_OUT:
+            return "空仓卖出信号: 不执行减仓"
+        if sell_path == "stop_loss_exit":
+            return "止损触发: 清仓保护本金"
+        if sell_path == "stop_loss_trim":
+            return "止损触发: 先减仓控制风险"
+        if sell_path == "take_profit_trim":
+            return "止盈触发: 分批落袋"
+        if sell_path == "trend_exit" or position_action == PositionAction.CLOSE_ALL:
+            trend_reason = self._describe_trend_exit_reason(decision_result.stock, strategy_state)
+            return f"趋势退出: {trend_reason}，执行清仓({market_state.value})"
+        if sell_path == "weak_sell" or position_action == PositionAction.REDUCE:
+            return "弱卖出: 卖压存在但趋势未破坏，先减仓观察"
+        return None
+
+    def _infer_sell_path(
+        self,
+        final_signal: SignalType,
+        position_action: PositionAction,
+        decision_result: DecisionResult,
+        strategy_state: StrategyState,
+    ) -> Optional[str]:
+        if final_signal != SignalType.SELL:
+            return None
+
+        if strategy_state.current_position_ratio <= 0 or position_action == PositionAction.STAY_OUT:
+            return "flat_sell"
+
+        action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
+        stop_loss_confidence = self._get_sell_action_confidence(action_signals, "stop_loss")
+        take_profit_confidence = self._get_sell_action_confidence(action_signals, "take_profit")
+        current_return_pct = self._get_unrealized_return_pct(strategy_state, decision_result.stock)
+
+        if (
+            stop_loss_confidence >= self.STOP_LOSS_EXIT_THRESHOLD
+            and self._has_stop_loss_exit_loss(current_return_pct)
+            and position_action == PositionAction.CLOSE_ALL
+        ):
+            return "stop_loss_exit"
+        if stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD and position_action == PositionAction.REDUCE:
+            return "stop_loss_trim"
+        if (
+            take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
+            and self._has_take_profit_buffer(current_return_pct)
+            and position_action == PositionAction.REDUCE
+        ):
+            return "take_profit_trim"
+        if position_action == PositionAction.CLOSE_ALL:
+            return "trend_exit"
+        if position_action == PositionAction.REDUCE:
+            return "weak_sell"
+        return None
+
+    def _get_sell_action_confidence(self, action_signals: list, skill_name: str) -> float:
+        candidates = [
+            s.confidence
+            for s in action_signals
+            if s.skill_name == skill_name and s.signal == SignalType.SELL
+        ]
+        return max(candidates, default=0.0)
+
+    def _get_unrealized_return_pct(self, strategy_state: StrategyState, stock: StockData) -> Optional[float]:
+        if not strategy_state.entry_price or strategy_state.entry_price <= 0:
+            return None
+        return (stock.price - strategy_state.entry_price) / strategy_state.entry_price
+
+    def _has_take_profit_buffer(self, current_return_pct: Optional[float]) -> bool:
+        return current_return_pct is not None and current_return_pct >= self.TAKE_PROFIT_MIN_GAIN_PCT
+
+    def _has_stop_loss_exit_loss(self, current_return_pct: Optional[float]) -> bool:
+        return current_return_pct is not None and current_return_pct <= self.STOP_LOSS_EXIT_LOSS_PCT
+
+    def _describe_trend_exit_reason(self, stock: StockData, strategy_state: StrategyState) -> str:
+        current_return_pct = self._get_unrealized_return_pct(strategy_state, stock)
+        facts: list[str] = []
+
+        if stock.ma60 is not None and stock.price < stock.ma60:
+            facts.append("跌破MA60")
+        if (
+            stock.ma20 is not None
+            and stock.ma60 is not None
+            and stock.ma20 <= stock.ma60
+            and stock.price < stock.ma20
+        ):
+            facts.append("MA20失守且短中期转弱")
+        elif stock.ma20 is not None and stock.price < stock.ma20:
+            facts.append("跌破MA20")
+        if current_return_pct is not None and current_return_pct <= self.TREND_EXIT_BREAK_PCT:
+            facts.append("浮亏扩大")
+        if strategy_state.lifecycle == TradeLifecycle.EXIT:
+            facts.append("生命周期已转EXIT")
+
+        if not facts:
+            return "卖压占优"
+        return "、".join(dict.fromkeys(facts))
+
+    def _is_trend_exit_condition(
+        self,
+        stock: StockData,
+        strategy_state: StrategyState,
+        current_return_pct: Optional[float],
+        strong_sell_exit: bool,
+    ) -> bool:
+        if not strong_sell_exit:
+            return False
+
+        broke_ma60 = stock.ma60 is not None and stock.price < stock.ma60
+        broke_ma20 = stock.ma20 is not None and stock.price < stock.ma20
+        ma20_lost_trend = (
+            stock.ma20 is not None
+            and stock.ma60 is not None
+            and stock.ma20 <= stock.ma60
+            and stock.price < stock.ma20
+        )
+        losing_hold = current_return_pct is not None and current_return_pct <= self.TREND_EXIT_BREAK_PCT
+        already_exiting = strategy_state.lifecycle == TradeLifecycle.EXIT
+
+        return broke_ma60 or ma20_lost_trend or (broke_ma20 and losing_hold) or already_exiting
 
     # ===== 交易生命周期更新 =====
 
@@ -630,12 +800,9 @@ class StrategyLayer:
         if decision_result.decision == SignalType.SELL and decision_result.score >= 0.80:
             # 检查是否有高置信度止损
             action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
-            has_strong_stop = any(
-                s.skill_name == "stop_loss" and s.signal == SignalType.SELL and s.confidence >= 0.85
-                for s in action_signals
-            )
+            has_strong_stop = self._get_sell_action_confidence(action_signals, "stop_loss") >= self.STOP_LOSS_EXIT_THRESHOLD
             if has_strong_stop:
-                logger.info("极端行情检测: 强烈止损信号(conf≥0.85)")
+                logger.info(f"极端行情检测: 强烈止损信号(conf≥{self.STOP_LOSS_EXIT_THRESHOLD:.2f})")
                 return True
 
         return False

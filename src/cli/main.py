@@ -35,6 +35,12 @@ logger = logging.getLogger(__name__)
 console = Console(legacy_windows=False)
 
 
+def normalize_stock_code(stock_code: str) -> str:
+    """规范化股票代码，修复 PowerShell 数字参数吞掉前导零的问题。"""
+    code = str(stock_code).strip()
+    return code.zfill(6) if code.isdigit() and len(code) < 6 else code
+
+
 def load_config(config_path: str = "./configs/settings.yaml") -> dict:
     """加载配置文件"""
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -273,6 +279,10 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         }
         lc_color = lifecycle_colors.get(strategy_decision.lifecycle_after, "white")
         console.print(f"  生命周期: [{lc_color}]{strategy_decision.lifecycle_before.value}[/{lc_color}] → [{lc_color}]{strategy_decision.lifecycle_after.value}[/{lc_color}]")
+        if strategy_decision.action_semantic:
+            console.print(f"  动作语义: {strategy_decision.action_semantic}")
+        if strategy_decision.sell_path:
+            console.print(f"  卖出路径: {strategy_decision.sell_path}")
         console.print(f"  信号稳定性: {strategy_decision.new_state.signal_stability_score:.0%}")
         console.print(f"  惯性: {strategy_decision.new_state.inertia_counter}天")
         if strategy_decision.strategy_reasons:
@@ -687,6 +697,10 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             console.print(f"\n[bold green]📂 持仓记录[/bold green]")
             console.print(f"  生命周期: {pos.lifecycle}")
             console.print(f"  当前仓位: {pos.current_ratio:.0%}")
+            if pos.last_action_semantic:
+                console.print(f"  上次动作语义: {pos.last_action_semantic}")
+            if pos.last_sell_path:
+                console.print(f"  上次卖出路径: {pos.last_sell_path}")
             if pos.entry_price:
                 pnl_pct = (stock_data.price - pos.entry_price) / pos.entry_price * 100
                 pnl_color = "green" if pnl_pct >= 0 else "red"
@@ -851,6 +865,117 @@ def run_backtest(
             output = export_validation_txt(validation_payload, export_validation_txt_path)
             console.print(f"[green]✓[/green] 已导出验证文本: {output}")
     return result
+
+
+def run_batch_validation(
+    stock_codes: list[str],
+    start_date: str,
+    end_date: str,
+    capital: float = 100000.0,
+    backtest_mode: str = "framework_strict",
+    export_batch_validation_json_path: str | None = None,
+    export_batch_validation_txt_path: str | None = None,
+    layer_mode: str = "decision_strategy_execution",
+):
+    """多标的批量回测验证。"""
+    from src.core.backtest_engine import BacktestEngine
+    from src.core.backtest_validator import (
+        build_batch_validation_payload,
+        build_replay_consistency_check,
+        build_validation_payload,
+        build_validation_windows,
+        export_batch_validation_json,
+        export_batch_validation_txt,
+        load_trading_dates,
+    )
+
+    stock_codes = [normalize_stock_code(code) for code in stock_codes]
+
+    console.print(f"\n[bold cyan]批量回测验证模式[/bold cyan]")
+    console.print(f"  股票数: {len(stock_codes)}")
+    console.print(f"  区间: {start_date} ~ {end_date}")
+    console.print(f"  初始资金: ¥{capital:,.0f}")
+    console.print(f"  分层模式: {layer_mode}")
+    console.print(f"  回测模式: {backtest_mode}")
+
+    config = load_config()
+    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+    weights = config.get("decision", {}).get("signal_weights", None)
+    skill_types = config.get("skills", {}).get("types", None)
+
+    payloads: list[dict] = []
+    failures: list[dict[str, str]] = []
+
+    for index, stock_code in enumerate(stock_codes, start=1):
+        console.print(f"[bold yellow]({index}/{len(stock_codes)}) 正在验证 {stock_code}...[/bold yellow]")
+
+        def build_engine(target_layer_mode: str, target_start_date: str | None = None, target_end_date: str | None = None) -> BacktestEngine:
+            return BacktestEngine(
+                stock_code=stock_code,
+                start_date=target_start_date or start_date,
+                end_date=target_end_date or end_date,
+                initial_capital=capital,
+                execution_mode=backtest_mode,
+                layer_mode=target_layer_mode,
+                skills_dir=skills_dir,
+                signal_weights=weights,
+                skill_types=skill_types,
+            )
+
+        try:
+            result = build_engine(layer_mode).run()
+            trading_dates = load_trading_dates(stock_code, start_date, end_date)
+            windows = build_validation_windows(trading_dates)
+            consistency_check = build_replay_consistency_check(
+                result,
+                stock_code=stock_code,
+                skills_dir=skills_dir,
+                signal_weights=weights,
+                skill_types=skill_types,
+            )
+            in_sample = windows["in_sample"]
+            out_of_sample = windows["out_of_sample"]
+            in_sample_result = build_engine(layer_mode, in_sample["start_date"], in_sample["end_date"]).run()
+            out_of_sample_result = build_engine(layer_mode, out_of_sample["start_date"], out_of_sample["end_date"]).run()
+            walk_forward_results = []
+            for window in windows["walk_forward_windows"]:
+                wf_result = build_engine(layer_mode, window["test_start"], window["test_end"]).run()
+                walk_forward_results.append({"window": window, "result": wf_result})
+            validation_payload = build_validation_payload(
+                full_result=result,
+                backtest_mode=backtest_mode,
+                windows=windows,
+                in_sample_result=in_sample_result,
+                out_of_sample_result=out_of_sample_result,
+                walk_forward_results=walk_forward_results,
+                consistency_check=consistency_check,
+            )
+            payloads.append(validation_payload)
+            console.print(
+                f"[green]✓[/green] {stock_code} | 收益 {validation_payload['slices']['full_period']['total_return_pct']:+.2f}% | "
+                f"一致性 {'通过' if validation_payload['checks']['replay_consistency'].get('passed') else '未通过'}"
+            )
+        except Exception as exc:
+            failures.append({"stock_code": stock_code, "error": str(exc)})
+            console.print(f"[red]✗[/red] {stock_code} 验证失败: {exc}")
+
+    batch_payload = build_batch_validation_payload(
+        validation_payloads=payloads,
+        requested_codes=stock_codes,
+        start_date=start_date,
+        end_date=end_date,
+        backtest_mode=backtest_mode,
+        layer_mode=layer_mode,
+        failures=failures,
+    )
+
+    if export_batch_validation_json_path:
+        output = export_batch_validation_json(batch_payload, export_batch_validation_json_path)
+        console.print(f"[green]✓[/green] 已导出批量验证 JSON: {output}")
+    if export_batch_validation_txt_path:
+        output = export_batch_validation_txt(batch_payload, export_batch_validation_txt_path)
+        console.print(f"[green]✓[/green] 已导出批量验证文本: {output}")
+    return batch_payload
 
 
 def display_backtest_result(result, backtest_mode: str = "framework_strict", layer_mode: str = "decision_strategy_execution"):
@@ -1052,6 +1177,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         table.add_column("仓位", justify="right")
         table.add_column("开仓价", justify="right")
         table.add_column("生命周期", style="yellow")
+        table.add_column("动作语义", style="magenta")
+        table.add_column("卖出路径", style="dim")
         table.add_column("开仓日期")
         table.add_column("上次操作")
 
@@ -1064,6 +1191,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                 ratio_str,
                 price_str,
                 pos.lifecycle,
+                pos.last_action_semantic or "-",
+                pos.last_sell_path or "-",
                 pos.entry_date or "-",
                 f"{pos.last_action} ({pos.last_action_date or '-'})",
             )
@@ -1729,6 +1858,11 @@ AI配置:
         help="回测模式，用历史数据验证策略"
     )
     parser.add_argument(
+        "--batch-backtest-codes",
+        metavar="CODES",
+        help="批量回测验证股票代码，使用逗号分隔，例如 002192,600519,000001"
+    )
+    parser.add_argument(
         "-s", "--start",
         metavar="DATE",
         help="回测起始日期 (YYYY-MM-DD)，默认为1年前"
@@ -1785,6 +1919,16 @@ AI配置:
         "--export-validation-txt",
         metavar="PATH",
         help="导出 lookahead / 样本内外 / walk-forward 验证文本"
+    )
+    parser.add_argument(
+        "--export-batch-validation-json",
+        metavar="PATH",
+        help="导出多标的批量验证 JSON 汇总"
+    )
+    parser.add_argument(
+        "--export-batch-validation-txt",
+        metavar="PATH",
+        help="导出多标的批量验证文本汇总"
     )
     parser.add_argument(
         "-v", "--version",
@@ -1975,6 +2119,25 @@ AI配置:
     elif hasattr(args, 'events') and args.events:
         # 事件驱动扫描
         scan_events(ai_debug=getattr(args, 'debug', False))
+    elif getattr(args, 'batch_backtest_codes', None):
+        # 批量回测验证模式
+        from datetime import datetime, timedelta
+        stock_codes = [normalize_stock_code(item) for item in args.batch_backtest_codes.split(",") if item.strip()]
+        if not stock_codes:
+            console.print("[red]批量回测验证至少需要一个股票代码[/red]")
+            sys.exit(1)
+        start_date = args.start or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end_date = args.end or datetime.now().strftime("%Y-%m-%d")
+        run_batch_validation(
+            stock_codes=stock_codes,
+            start_date=start_date,
+            end_date=end_date,
+            capital=args.capital,
+            backtest_mode=args.backtest_mode,
+            export_batch_validation_json_path=args.export_batch_validation_json,
+            export_batch_validation_txt_path=args.export_batch_validation_txt,
+            layer_mode=args.layer_mode,
+        )
     elif args.backtest:
         # 回测模式
         from datetime import datetime, timedelta

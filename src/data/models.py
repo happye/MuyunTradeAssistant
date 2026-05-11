@@ -31,6 +31,40 @@ class PositionAction(str, Enum):
     STAY_OUT = "STAY_OUT"            # 空仓观望
 
 
+def infer_action_semantic(
+    position_action: "PositionAction | str | None",
+    decision: "SignalType | str | None" = None,
+    reasons: list[str] | None = None,
+    trade_action: str | None = None,
+) -> Optional[str]:
+    """将旧仓位动作映射为收紧后的交易语义。"""
+    action_value = position_action.value if isinstance(position_action, PositionAction) else str(position_action or "").strip().upper()
+    decision_value = decision.value if isinstance(decision, SignalType) else str(decision or "").strip().upper()
+    reason_blob = " ".join(reasons or []).lower()
+    exit_markers = ("趋势退出", "trend_exit")
+    stop_markers = ("stop_loss", "止损", "panic", "black_swan", "风控", "极端")
+
+    if action_value == PositionAction.OPEN.value:
+        return "ENTRY"
+    if action_value == PositionAction.ADD.value:
+        return "ADD"
+    if action_value == PositionAction.REDUCE.value:
+        return "TRIM"
+    if action_value == PositionAction.CLOSE_ALL.value:
+        if any(marker in reason_blob for marker in exit_markers):
+            return "EXIT"
+        return "STOP" if any(marker in reason_blob for marker in stop_markers) else "EXIT"
+    if action_value == PositionAction.HOLD_POSITION.value:
+        return "HOLD"
+    if not action_value and str(trade_action or "").upper() == "SELL":
+        if any(marker in reason_blob for marker in exit_markers):
+            return "EXIT"
+        return "STOP" if any(marker in reason_blob for marker in stop_markers) else "EXIT"
+    if decision_value == SignalType.HOLD.value:
+        return "HOLD"
+    return None
+
+
 class TradeLifecycle(str, Enum):
     """交易生命周期状态（v0.7.2 Strategy Layer核心抽象）
 
@@ -229,6 +263,8 @@ class StrategyDecision(BaseModel):
     # 最终决策（经过策略层过滤后）
     decision: SignalType = Field(description="策略层最终决策")
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
+    action_semantic: Optional[str] = Field(default=None, description="收紧后的交易语义: ENTRY/ADD/HOLD/TRIM/EXIT/STOP")
+    sell_path: Optional[str] = Field(default=None, description="卖出路径: flat_sell/stop_loss_trim/stop_loss_exit/take_profit_trim/trend_exit/weak_sell")
     position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例")
 
     # 策略层过滤信息
@@ -317,6 +353,7 @@ class TradeRecord(BaseModel):
     reason: str = Field(default="", description="交易原因")
     signal_score: float = Field(default=0.0, description="信号评分")
     position_action: str = Field(default="", description="仓位动作: OPEN/ADD/REDUCE/CLOSE_ALL")
+    action_semantic: Optional[str] = Field(default=None, description="收紧后的交易语义: ENTRY/ADD/HOLD/TRIM/EXIT/STOP")
     position_ratio_after: float = Field(default=0.0, description="交易后仓位比例")
 
 

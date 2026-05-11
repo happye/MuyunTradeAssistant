@@ -43,6 +43,8 @@ class PositionRecord:
         entry_price: Optional[float] = None,
         current_ratio: float = 0.0,
         last_action: str = "OPEN",
+        last_action_semantic: Optional[str] = None,
+        last_sell_path: Optional[str] = None,
         last_action_date: Optional[str] = None,
         lifecycle: str = "FLAT",
         strategy_state: Optional[dict] = None,
@@ -53,6 +55,8 @@ class PositionRecord:
         self.entry_price = entry_price
         self.current_ratio = current_ratio
         self.last_action = last_action
+        self.last_action_semantic = last_action_semantic
+        self.last_sell_path = last_sell_path
         self.last_action_date = last_action_date
         self.lifecycle = lifecycle
         self.strategy_state = strategy_state or {}
@@ -65,6 +69,8 @@ class PositionRecord:
             "entry_price": self.entry_price,
             "current_ratio": self.current_ratio,
             "last_action": self.last_action,
+            "last_action_semantic": self.last_action_semantic,
+            "last_sell_path": self.last_sell_path,
             "last_action_date": self.last_action_date,
             "lifecycle": self.lifecycle,
             "strategy_state": self.strategy_state,
@@ -81,6 +87,8 @@ class PositionRecord:
             entry_price=data.get("entry_price"),
             current_ratio=data.get("current_ratio", 0.0),
             last_action=data.get("last_action", "OPEN"),
+            last_action_semantic=data.get("last_action_semantic"),
+            last_sell_path=data.get("last_sell_path"),
             last_action_date=data.get("last_action_date"),
             lifecycle=data.get("lifecycle", "FLAT"),
             strategy_state=data.get("strategy_state", {}),
@@ -316,6 +324,8 @@ class PortfolioManager:
             entry_price=entry_price,
             current_ratio=actual_ratio,
             last_action=pos_action,
+            last_action_semantic=strategy_decision.action_semantic,
+            last_sell_path=strategy_decision.sell_path,
             last_action_date=today,
             lifecycle=new_state.lifecycle.value,
             strategy_state={
@@ -384,6 +394,10 @@ class PortfolioManager:
         console.print(f"\n[bold cyan]📋 持仓更新建议[/bold cyan]")
         console.print(f"  股票: {stock_name} ({stock_code})")
         console.print(f"  动作: [bold]{action_display}[/bold]")
+        if strategy_decision.action_semantic:
+            console.print(f"  动作语义: {strategy_decision.action_semantic}")
+        if strategy_decision.sell_path:
+            console.print(f"  卖出路径: {strategy_decision.sell_path}")
         console.print(f"  生命周期: {strategy_decision.lifecycle_before.value} → {strategy_decision.lifecycle_after.value}")
         if new_state.cooldown_remaining > 0:
             console.print(f"  冷却期: 剩余{new_state.cooldown_remaining}天")

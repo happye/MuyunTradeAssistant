@@ -129,6 +129,10 @@ def format_analysis_result(
             f"  生命周期: {strategy_decision.lifecycle_before.value} "
             f"→ {strategy_decision.lifecycle_after.value}"
         )
+        if strategy_decision.action_semantic:
+            lines.append(f"  动作语义: {strategy_decision.action_semantic}")
+        if strategy_decision.sell_path:
+            lines.append(f"  卖出路径: {strategy_decision.sell_path}")
         lines.append(f"  信号稳定性: {strategy_decision.new_state.signal_stability_score:.0%}")
         if strategy_decision.strategy_reasons:
             lines.append(
