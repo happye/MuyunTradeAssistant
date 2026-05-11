@@ -801,25 +801,19 @@ def run_backtest(
         output = export_analysis_txt(result, backtest_mode, export_analysis_txt_path, layer_mode)
         console.print(f"[green]✓[/green] 已导出分析文本: {output}")
 
-    if export_layer_comparison_json_path:
+    if export_layer_comparison_json_path or export_layer_comparison_txt_path:
         comparison_results = {layer_mode: result}
         for compare_layer in ("decision_only", "decision_strategy", "decision_strategy_execution"):
             if compare_layer in comparison_results:
                 continue
             console.print(f"[bold yellow]正在生成三层对照: {compare_layer}[/bold yellow]")
             comparison_results[compare_layer] = build_engine(compare_layer).run()
-        output = export_layer_comparison_json(comparison_results, backtest_mode, export_layer_comparison_json_path)
-        console.print(f"[green]✓[/green] 已导出三层对照 JSON: {output}")
-
-    if export_layer_comparison_txt_path:
-        comparison_results = {layer_mode: result}
-        for compare_layer in ("decision_only", "decision_strategy", "decision_strategy_execution"):
-            if compare_layer in comparison_results:
-                continue
-            console.print(f"[bold yellow]正在生成三层对照: {compare_layer}[/bold yellow]")
-            comparison_results[compare_layer] = build_engine(compare_layer).run()
-        output = export_layer_comparison_txt(comparison_results, backtest_mode, export_layer_comparison_txt_path)
-        console.print(f"[green]✓[/green] 已导出三层对照文本: {output}")
+        if export_layer_comparison_json_path:
+            output = export_layer_comparison_json(comparison_results, backtest_mode, export_layer_comparison_json_path)
+            console.print(f"[green]✓[/green] 已导出三层对照 JSON: {output}")
+        if export_layer_comparison_txt_path:
+            output = export_layer_comparison_txt(comparison_results, backtest_mode, export_layer_comparison_txt_path)
+            console.print(f"[green]✓[/green] 已导出三层对照文本: {output}")
 
     if export_validation_json_path or export_validation_txt_path:
         console.print("[bold yellow]正在执行回测验证基线...[/bold yellow]")
@@ -1771,7 +1765,7 @@ AI配置:
     parser.add_argument(
         "--export-layer-comparison-txt",
         metavar="PATH",
-        help="导出 decision_only / decision_strategy / decision_strategy_execution 三层对照文本分析"
+        help="导出三层对照文本分析报告（含逐日层间分歧明细）"
     )
     parser.add_argument(
         "--export-validation-json",
