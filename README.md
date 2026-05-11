@@ -314,7 +314,7 @@ DataFeeder加载历史数据（Baostock）
 - 当前 JSON 载荷已包含 `layer_breakdown`、`action_source_table`、`hold_break_table`、`diagnostics`，其中动作/持仓破坏归因会额外标出 `trigger_layer` / `broken_layer`。
 - 若传入 `--export-layer-comparison-json <PATH>`，系统会顺序运行 `decision_only / decision_strategy / decision_strategy_execution` 三层，并导出单个对照 JSON。
 - 若传入 `--export-layer-comparison-txt <PATH>`，系统会导出三层对照的统一文本分析，便于直接给 AI 或人工复盘。
-- 若传入 `--export-validation-json <PATH>` / `--export-validation-txt <PATH>`，系统会执行基础研究验证：lookahead 时序检查、样本内/样本外拆分、walk-forward 窗口验证。
+- 若传入 `--export-validation-json <PATH>` / `--export-validation-txt <PATH>`，系统会执行基础研究验证：lookahead 时序检查、回测/准实时重放一致性检查、样本内/样本外拆分、walk-forward 窗口验证。
 - 若不传导出参数，终端展示结束后结果不会自动写入仓库固定目录。
 
 ### 条件注册表（ISS-002 参数化条件）

@@ -752,6 +752,7 @@ def run_backtest(
         export_layer_comparison_txt,
     )
     from src.core.backtest_validator import (
+        build_replay_consistency_check,
         build_validation_payload,
         build_validation_windows,
         export_validation_json,
@@ -819,6 +820,13 @@ def run_backtest(
         console.print("[bold yellow]正在执行回测验证基线...[/bold yellow]")
         trading_dates = load_trading_dates(stock_code, start_date, end_date)
         windows = build_validation_windows(trading_dates)
+        consistency_check = build_replay_consistency_check(
+            result,
+            stock_code=stock_code,
+            skills_dir=skills_dir,
+            signal_weights=weights,
+            skill_types=skill_types,
+        )
         in_sample = windows["in_sample"]
         out_of_sample = windows["out_of_sample"]
         in_sample_result = build_engine(layer_mode, in_sample["start_date"], in_sample["end_date"]).run()
@@ -834,6 +842,7 @@ def run_backtest(
             in_sample_result=in_sample_result,
             out_of_sample_result=out_of_sample_result,
             walk_forward_results=walk_forward_results,
+            consistency_check=consistency_check,
         )
         if export_validation_json_path:
             output = export_validation_json(validation_payload, export_validation_json_path)
