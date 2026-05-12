@@ -415,6 +415,7 @@ class BacktestResult(BaseModel):
     blocked_by_limit_up: int = Field(default=0, description="因涨停无法买入次数")
     blocked_by_limit_down: int = Field(default=0, description="因跌停无法卖出次数")
     blocked_by_liquidity: int = Field(default=0, description="因流动性不足被阻止交易次数")
+    blocked_by_no_open_price: int = Field(default=0, description="因开盘价缺失跳过执行次数（v0.8.2前视偏差修复）")
 
     # v0.8.2 诊断导出
     diagnostics: dict = Field(default_factory=dict, description="回测中间决策与执行诊断日志")

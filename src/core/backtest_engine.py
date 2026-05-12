@@ -31,6 +31,7 @@ from src.data.models import (
 from src.data.data_feeder import DataFeeder
 from src.core.orchestrator import Orchestrator
 from src.core.execution_layer import ExecutionLayer, ExecutionEvaluation
+from src.core.bias_auditor import BiasAuditor
 
 logger = logging.getLogger(__name__)
 
@@ -255,6 +256,7 @@ class BacktestEngine:
         blocked_limit_up = 0
         blocked_limit_down = 0
         blocked_liquidity = 0
+        blocked_no_open_price = 0
 
         # 决策方向变化计数（用于决策稳定性指标）
         decision_directions: list[str] = []
@@ -270,154 +272,191 @@ class BacktestEngine:
             # ===== 执行前日挂单 =====
             if pending_result is not None:
                 exec_price = stock_data.open
+
+                # v0.8.2 Phase 3: 开盘价缺失时跳过执行（消除前视偏差）
+                # 旧逻辑：降级用当日收盘价执行 → 使用了当日信息，属于前视偏差
+                # 新逻辑：标记为blocked，不执行交易
                 if exec_price is None:
-                    logger.warning(f"{date}: 开盘价不可用，降级使用前日收盘价")
-                    exec_price = current_price
+                    logger.warning(f"{date}: 开盘价不可用，跳过执行（消除前视偏差）")
+                    blocked_no_open_price += 1
 
-                # 按分层模式选择仓位动作来源
-                pos_action, pos_ratio, pending_signal = self._resolve_pending_action(
-                    pending_result, pending_decision
-                )
+                    # 记录一条blocked的execution_log
+                    pos_action, pos_ratio, pending_signal = self._resolve_pending_action(
+                        pending_result, pending_decision
+                    )
+                    position_ratio_before = round(account.position_ratio(current_price), 4) if account.has_position else 0.0
 
-                # v0.7.2: 执行层评估（按分层模式可跳过）
-                volume_ratio = None
-                if stock_data.avg_volume_20 and stock_data.avg_volume_20 > 0:
-                    volume_ratio = stock_data.volume / stock_data.avg_volume_20
+                    blocked_exec_eval = ExecutionEvaluation(
+                        original_action=pos_action,
+                        effective_action=PositionAction.STAY_OUT,
+                        blocked=True,
+                        block_reason="开盘价不可用",
+                        slippage_pct=0.0,
+                        impact_cost_pct=0.0,
+                        total_cost_pct=0.0,
+                    )
 
-                exec_eval = self._evaluate_execution_layer(stock_data, pos_action, volume_ratio)
+                    execution_logs.append(self._build_execution_log(
+                        execution_date=date,
+                        signal_date=pending_signal_date,
+                        decision_result=pending_result,
+                        strategy_decision=pending_decision,
+                        execution_eval=blocked_exec_eval,
+                        trade=None,
+                        position_ratio_before=position_ratio_before,
+                        position_ratio_after=round(account.position_ratio(current_price), 4),
+                    ))
 
-                # 被阻止的交易统计
-                if exec_eval.blocked:
-                    if "涨停" in exec_eval.block_reason:
-                        blocked_limit_up += 1
-                    elif "跌停" in exec_eval.block_reason:
-                        blocked_limit_down += 1
-                    elif "流动性" in exec_eval.block_reason:
-                        blocked_liquidity += 1
+                    # 清除挂单（该笔信号作废）
+                    pending_decision = None
+                    pending_result = None
+                    pending_signal_date = None
 
-                # 使用执行层修正后的动作
-                effective_action = exec_eval.effective_action
+                else:
+                    # 按分层模式选择仓位动作来源
+                    pos_action, pos_ratio, pending_signal = self._resolve_pending_action(
+                        pending_result, pending_decision
+                    )
 
-                # 使用执行层计算的实际滑点
-                actual_slippage = exec_eval.slippage_pct
+                    # v0.7.2: 执行层评估（按分层模式可跳过）
+                    volume_ratio = None
+                    if stock_data.avg_volume_20 and stock_data.avg_volume_20 > 0:
+                        volume_ratio = stock_data.volume / stock_data.avg_volume_20
 
-                trade = None
-                actual_pos_action = effective_action
-                position_ratio_before = round(account.position_ratio(exec_price), 4) if account.has_position else 0.0
+                    exec_eval = self._evaluate_execution_layer(stock_data, pos_action, volume_ratio)
 
-                if effective_action == PositionAction.OPEN:
-                    if not account.has_position and self._not_in_cooldown(date, last_sell_date):
-                        buy_price = exec_price * (1 + actual_slippage)
-                        trade = account.buy(buy_price, target_position_ratio=pos_ratio)
-                        if trade:
-                            account.buy_date = date
+                    # 被阻止的交易统计
+                    if exec_eval.blocked:
+                        if "涨停" in exec_eval.block_reason:
+                            blocked_limit_up += 1
+                        elif "跌停" in exec_eval.block_reason:
+                            blocked_limit_down += 1
+                        elif "流动性" in exec_eval.block_reason:
+                            blocked_liquidity += 1
 
-                elif effective_action == PositionAction.ADD:
-                    if account.has_position and self._can_sell(date, account.buy_date):
-                        buy_price = exec_price * (1 + actual_slippage)
-                        trade = account.buy(buy_price, target_position_ratio=pos_ratio)
-                    elif not account.has_position and self._not_in_cooldown(date, last_sell_date):
-                        buy_price = exec_price * (1 + actual_slippage)
-                        trade = account.buy(buy_price, target_position_ratio=min(pos_ratio, 0.20))
-                        if trade:
-                            account.buy_date = date
-                            actual_pos_action = PositionAction.OPEN
+                    # 使用执行层修正后的动作
+                    effective_action = exec_eval.effective_action
 
-                elif effective_action == PositionAction.REDUCE:
-                    if account.has_position and self._can_sell(date, account.buy_date):
-                        current_ratio = account.position_ratio(exec_price)
-                        if current_ratio < 0.05:
+                    # 使用执行层计算的实际滑点
+                    actual_slippage = exec_eval.slippage_pct
+
+                    trade = None
+                    actual_pos_action = effective_action
+                    position_ratio_before = round(account.position_ratio(exec_price), 4) if account.has_position else 0.0
+
+                    if effective_action == PositionAction.OPEN:
+                        if not account.has_position and self._not_in_cooldown(date, last_sell_date):
+                            buy_price = exec_price * (1 + actual_slippage)
+                            trade = account.buy(buy_price, target_position_ratio=pos_ratio)
+                            if trade:
+                                account.buy_date = date
+
+                    elif effective_action == PositionAction.ADD:
+                        if account.has_position and self._can_sell(date, account.buy_date):
+                            buy_price = exec_price * (1 + actual_slippage)
+                            trade = account.buy(buy_price, target_position_ratio=pos_ratio)
+                        elif not account.has_position and self._not_in_cooldown(date, last_sell_date):
+                            buy_price = exec_price * (1 + actual_slippage)
+                            trade = account.buy(buy_price, target_position_ratio=min(pos_ratio, 0.20))
+                            if trade:
+                                account.buy_date = date
+                                actual_pos_action = PositionAction.OPEN
+
+                    elif effective_action == PositionAction.REDUCE:
+                        if account.has_position and self._can_sell(date, account.buy_date):
+                            current_ratio = account.position_ratio(exec_price)
+                            if current_ratio < 0.05:
+                                sell_price = exec_price * (1 - actual_slippage)
+                                trade = account.sell(sell_price)
+                                if trade:
+                                    actual_pos_action = PositionAction.CLOSE_ALL
+                            elif pos_ratio > 0 and pos_ratio < current_ratio:
+                                total_val = account.total_value(exec_price)
+                                target_mv = total_val * pos_ratio
+                                current_mv = account.market_value(exec_price)
+                                sell_amount = current_mv - target_mv
+                                if sell_amount > 0:
+                                    sell_shares = int(sell_amount / exec_price / 100) * 100
+                                    if sell_shares <= 0:
+                                        sell_shares = 100
+                                    sell_shares = min(sell_shares, account.position)
+                                    remaining = account.position - sell_shares
+                                    remaining_ratio = (remaining * exec_price) / total_val if total_val > 0 else 0
+                                    if remaining_ratio < 0.05:
+                                        sell_shares = account.position
+                                        actual_pos_action = PositionAction.CLOSE_ALL
+                                    sell_price = exec_price * (1 - actual_slippage)
+                                    trade = account.sell(sell_price, shares=sell_shares)
+
+                    elif effective_action == PositionAction.CLOSE_ALL:
+                        if account.has_position and self._can_sell(date, account.buy_date):
                             sell_price = exec_price * (1 - actual_slippage)
                             trade = account.sell(sell_price)
                             if trade:
                                 actual_pos_action = PositionAction.CLOSE_ALL
-                        elif pos_ratio > 0 and pos_ratio < current_ratio:
-                            total_val = account.total_value(exec_price)
-                            target_mv = total_val * pos_ratio
-                            current_mv = account.market_value(exec_price)
-                            sell_amount = current_mv - target_mv
-                            if sell_amount > 0:
-                                sell_shares = int(sell_amount / exec_price / 100) * 100
-                                if sell_shares <= 0:
-                                    sell_shares = 100
-                                sell_shares = min(sell_shares, account.position)
-                                remaining = account.position - sell_shares
-                                remaining_ratio = (remaining * exec_price) / total_val if total_val > 0 else 0
-                                if remaining_ratio < 0.05:
-                                    sell_shares = account.position
-                                    actual_pos_action = PositionAction.CLOSE_ALL
-                                sell_price = exec_price * (1 - actual_slippage)
-                                trade = account.sell(sell_price, shares=sell_shares)
 
-                elif effective_action == PositionAction.CLOSE_ALL:
-                    if account.has_position and self._can_sell(date, account.buy_date):
-                        sell_price = exec_price * (1 - actual_slippage)
-                        trade = account.sell(sell_price)
-                        if trade:
-                            actual_pos_action = PositionAction.CLOSE_ALL
+                    elif effective_action == PositionAction.STAY_OUT:
+                        pass  # 不操作
 
-                elif effective_action == PositionAction.STAY_OUT:
-                    pass  # 不操作
+                    elif effective_action == PositionAction.HOLD_POSITION:
+                        pass  # 维持仓位
 
-                elif effective_action == PositionAction.HOLD_POSITION:
-                    pass  # 维持仓位
+                    # 兼容：信号BUY/SELL但无仓位动作时
+                    elif pending_signal == SignalType.BUY and not account.has_position:
+                        if self._not_in_cooldown(date, last_sell_date):
+                            buy_price = exec_price * (1 + actual_slippage)
+                            trade = account.buy(buy_price, target_position_ratio=0.20)
+                            if trade:
+                                account.buy_date = date
+                                actual_pos_action = PositionAction.OPEN
 
-                # 兼容：信号BUY/SELL但无仓位动作时
-                elif pending_signal == SignalType.BUY and not account.has_position:
-                    if self._not_in_cooldown(date, last_sell_date):
-                        buy_price = exec_price * (1 + actual_slippage)
-                        trade = account.buy(buy_price, target_position_ratio=0.20)
-                        if trade:
-                            account.buy_date = date
-                            actual_pos_action = PositionAction.OPEN
+                    elif pending_signal == SignalType.SELL and account.has_position:
+                        if self._can_sell(date, account.buy_date):
+                            sell_price = exec_price * (1 - actual_slippage)
+                            trade = account.sell(sell_price)
+                            if trade:
+                                actual_pos_action = PositionAction.CLOSE_ALL
 
-                elif pending_signal == SignalType.SELL and account.has_position:
-                    if self._can_sell(date, account.buy_date):
-                        sell_price = exec_price * (1 - actual_slippage)
-                        trade = account.sell(sell_price)
-                        if trade:
-                            actual_pos_action = PositionAction.CLOSE_ALL
+                    # 记录交易
+                    if trade:
+                        trade.date = date
+                        trade.reason = self._get_trade_reason(pending_result, pending_decision)
+                        trade.signal_score = pending_result.score if pending_result else 0.0
+                        trade.position_action = actual_pos_action.value
+                        trade.action_semantic = (
+                            pending_decision.action_semantic
+                            if pending_decision and pending_decision.action_semantic
+                            else infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
+                        )
+                        trade.sell_path = pending_decision.sell_path if pending_decision else None
+                        trade.position_ratio_after = round(account.position_ratio(current_price), 2)
 
-                # 记录交易
-                if trade:
-                    trade.date = date
-                    trade.reason = self._get_trade_reason(pending_result, pending_decision)
-                    trade.signal_score = pending_result.score if pending_result else 0.0
-                    trade.position_action = actual_pos_action.value
-                    trade.action_semantic = (
-                        pending_decision.action_semantic
-                        if pending_decision and pending_decision.action_semantic
-                        else infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
-                    )
-                    trade.sell_path = pending_decision.sell_path if pending_decision else None
-                    trade.position_ratio_after = round(account.position_ratio(current_price), 2)
+                        # 扣除交易成本
+                        if trade.action == "BUY":
+                            account.cash = self._deduct_buy_costs(account.cash, trade.amount)
+                        else:
+                            account.cash = self._deduct_sell_costs(account.cash, trade.amount)
 
-                    # 扣除交易成本
-                    if trade.action == "BUY":
-                        account.cash = self._deduct_buy_costs(account.cash, trade.amount)
-                    else:
-                        account.cash = self._deduct_sell_costs(account.cash, trade.amount)
+                        trades.append(trade)
 
-                    trades.append(trade)
+                        if trade.action == "SELL" and account.position == 0:
+                            last_sell_date = date
 
-                    if trade.action == "SELL" and account.position == 0:
-                        last_sell_date = date
+                    execution_logs.append(self._build_execution_log(
+                        execution_date=date,
+                        signal_date=pending_signal_date,
+                        decision_result=pending_result,
+                        strategy_decision=pending_decision,
+                        execution_eval=exec_eval,
+                        trade=trade,
+                        position_ratio_before=position_ratio_before,
+                        position_ratio_after=round(account.position_ratio(current_price), 4),
+                    ))
 
-                execution_logs.append(self._build_execution_log(
-                    execution_date=date,
-                    signal_date=pending_signal_date,
-                    decision_result=pending_result,
-                    strategy_decision=pending_decision,
-                    execution_eval=exec_eval,
-                    trade=trade,
-                    position_ratio_before=position_ratio_before,
-                    position_ratio_after=round(account.position_ratio(current_price), 4),
-                ))
-
-                # 清除挂单
-                pending_decision = None
-                pending_result = None
-                pending_signal_date = None
+                    # 清除挂单
+                    pending_decision = None
+                    pending_result = None
+                    pending_signal_date = None
 
             # ===== 生成今日信号（明日执行） =====
             current_pos_ratio = account.position_ratio(current_price) if account.has_position else 0.0
@@ -499,13 +538,19 @@ class BacktestEngine:
         result = self._calculate_stats(
             trades, daily_snapshots, first_price, feeder,
             decision_directions, blocked_limit_up,
-            blocked_limit_down, blocked_liquidity,
+            blocked_limit_down, blocked_liquidity, blocked_no_open_price,
         )
         result.diagnostics = {
             "daily_decisions": daily_decisions,
             "execution_logs": execution_logs,
         }
         result.layer_mode = self.layer_mode
+
+        # v0.8.2 Phase 3: 偏差审计
+        strategy_params = self._get_strategy_params()
+        auditor = BiasAuditor()
+        audit_result = auditor.audit(result, feeder=feeder, strategy_params=strategy_params)
+        result.diagnostics["bias_audit"] = audit_result.to_dict()
 
         return result
 
@@ -682,6 +727,7 @@ class BacktestEngine:
         blocked_limit_up: int = 0,
         blocked_limit_down: int = 0,
         blocked_liquidity: int = 0,
+        blocked_no_open_price: int = 0,
     ) -> BacktestResult:
         """计算回测统计指标（v0.7.2 含稳定性指标）"""
         if not daily_snapshots:
@@ -811,6 +857,7 @@ class BacktestEngine:
             blocked_by_limit_up=blocked_limit_up,
             blocked_by_limit_down=blocked_limit_down,
             blocked_by_liquidity=blocked_liquidity,
+            blocked_by_no_open_price=blocked_no_open_price,
         )
 
     def _empty_result(self, reason: str = "") -> BacktestResult:
@@ -823,6 +870,18 @@ class BacktestEngine:
             final_value=self.initial_capital,
             total_return_pct=0.0,
         )
+
+    def _get_strategy_params(self) -> dict:
+        """获取策略层参数快照（用于偏差审计）
+
+        从orchestrator中提取策略层参数，若无策略层则返回空dict。
+        """
+        try:
+            if hasattr(self.orchestrator, 'strategy_layer') and self.orchestrator.strategy_layer:
+                return self.orchestrator.strategy_layer.get_params()
+        except Exception:
+            pass
+        return {}
 
     def _build_daily_decision_log(
         self,

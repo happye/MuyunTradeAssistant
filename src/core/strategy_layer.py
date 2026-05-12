@@ -112,6 +112,46 @@ class StrategyLayer:
         """初始化策略层"""
         pass
 
+    def get_params(self) -> dict:
+        """返回策略层所有参数的快照（用于偏差审计）
+
+        Returns:
+            dict: 参数名→参数值映射
+        """
+        return {
+            "INERTIA_MIN_DAYS": self.INERTIA_MIN_DAYS,
+            "INERTIA_BUY_THRESHOLD_BUMP": self.INERTIA_BUY_THRESHOLD_BUMP,
+            "INERTIA_SELL_THRESHOLD_BUMP": self.INERTIA_SELL_THRESHOLD_BUMP,
+            "CONFIRMATION_MIN_CONSECUTIVE": self.CONFIRMATION_MIN_CONSECUTIVE,
+            "CONFIRMATION_WEAK_SIGNAL_THRESHOLD": self.CONFIRMATION_WEAK_SIGNAL_THRESHOLD,
+            "COOLDOWN_AFTER_CLOSE_DAYS": self.COOLDOWN_AFTER_CLOSE_DAYS,
+            "COOLDOWN_AFTER_REDUCE_DAYS": self.COOLDOWN_AFTER_REDUCE_DAYS,
+            "REVERSE_COST_BASE_PCT": self.REVERSE_COST_BASE_PCT,
+            "REVERSE_COST_PER_REVERSE": self.REVERSE_COST_PER_REVERSE,
+            "STABILITY_LOW_THRESHOLD": self.STABILITY_LOW_THRESHOLD,
+            "STABILITY_DISCOUNT": self.STABILITY_DISCOUNT,
+            "EXTREME_DROP_THRESHOLD": self.EXTREME_DROP_THRESHOLD,
+            "EXTREME_RISE_THRESHOLD": self.EXTREME_RISE_THRESHOLD,
+            "EXTREME_PANIC_SHORTEN_INERTIA": self.EXTREME_PANIC_SHORTEN_INERTIA,
+            "EXTREME_PANIC_SKIP_CONFIRM": self.EXTREME_PANIC_SKIP_CONFIRM,
+            "EXTREME_PANIC_SHORTEN_COOLDOWN": self.EXTREME_PANIC_SHORTEN_COOLDOWN,
+            "POSITION_CAPS": {k.value: v for k, v in self.POSITION_CAPS.items()},
+            "OPEN_RATIO": self.OPEN_RATIO,
+            "ADD_RATIO": self.ADD_RATIO,
+            "TAKE_PROFIT_KEEP": self.TAKE_PROFIT_KEEP,
+            "NORMAL_REDUCE_KEEP": self.NORMAL_REDUCE_KEEP,
+            "STOP_LOSS_REDUCE_THRESHOLD": self.STOP_LOSS_REDUCE_THRESHOLD,
+            "STOP_LOSS_EXIT_THRESHOLD": self.STOP_LOSS_EXIT_THRESHOLD,
+            "TAKE_PROFIT_TRIM_THRESHOLD": self.TAKE_PROFIT_TRIM_THRESHOLD,
+            "TAKE_PROFIT_MIN_GAIN_PCT": self.TAKE_PROFIT_MIN_GAIN_PCT,
+            "STOP_LOSS_EXIT_LOSS_PCT": self.STOP_LOSS_EXIT_LOSS_PCT,
+            "STRONG_SELL_EXIT_THRESHOLD": self.STRONG_SELL_EXIT_THRESHOLD,
+            "SELL_DOMINANCE_GAP": self.SELL_DOMINANCE_GAP,
+            "TREND_EXIT_BREAK_PCT": self.TREND_EXIT_BREAK_PCT,
+            "MIN_HOLD_DAYS": self.MIN_HOLD_DAYS,
+            "ADD_PROTECTION_DAYS": self.ADD_PROTECTION_DAYS,
+        }
+
     def process(
         self,
         decision_result: DecisionResult,
