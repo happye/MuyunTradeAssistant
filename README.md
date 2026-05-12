@@ -4,11 +4,26 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.0 Phase 5 完成** ✅ (AI调节层 + 全市场扫描 + 事件驱动 + 四维排名 + 对话模式)
+**v0.8.2 Phase 5 完成** ✅ (Phase 5: 中线持有机制增强)
 
 > 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**
 > 📖 **AI系统详解请参阅 [AI系统说明.md](docs/AI系统说明.md)** — AI的角色、影响范围和可控性
+> 📖 **里程碑与阶段详情请参阅 [v0.8.2 里程碑](docs/v0.8.2_里程碑.md)**
 > 本文档仅包含架构设计、技术实现与版本历史。
+
+## v0.8.x 技术边界
+
+v0.8.x 的职责拆分如下：
+
+- `README.md`：说明架构、模块关系、技术边界、导出结构与版本口径。
+- `使用手册.md`：说明怎么运行、怎么看输出、哪些行为会直接影响日常使用。
+- `docs/v0.8.2_里程碑.md`：说明每个 Phase 的交付状态、验收结果与下一阶段主线。
+
+Phase 5 在开发侧新增了三类核心逻辑：
+
+- 持仓窗口显式化：策略状态不再借生命周期间接表达限制，而是独立维护 `min_hold_remaining` 与 `add_protection_remaining`。
+- 卖出语义显式化：策略层把减仓、止损、趋势退出、弱卖出拆成独立 `sell_path`，并统一映射到 `action_semantic`。
+- 导出链路保真化：回测记录、CLI 展示、组合持久化、报告归因优先使用显式语义，而不是依赖事后字符串回推。
 
 ---
 
@@ -23,7 +38,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │   │   ├── event_layer.py       # 事件驱动层（关键词匹配+AI分类+持仓扫描）⭐v0.8.0
 │   │   ├── ranking_layer.py     # 排名引擎（四维评分+权重归一化+TOP3推荐）⭐v0.8.0
 │   │   ├── ai_modifier.py       # AI调节层（新闻→情绪→信号调节）⭐v0.8.0
-│   │   ├── strategy_layer.py    # 策略层（交易生命周期+惯性+确认+冷却+反转成本）⭐v0.7.2
+│   │   ├── strategy_layer.py    # 策略层（交易生命周期+持有窗口+卖出语义拆分）⭐v0.8.2
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
 │   │   ├── backtest_engine.py   # 回测引擎（模拟账户+统计指标+Monte Carlo+稳定性）
 │   │   └── orchestrator.py      # 编排层（七层架构：Signal→Decision→Event→AI→Strategy→Execution）
@@ -171,8 +186,10 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 │ 4. 冷却机制 → 清仓后5天/减仓后10天不允许反向操作                    │
 │ 5. 反转成本 → 每次方向反转需支付0.3%基础+0.2%×累计次数              │
 │ 6. 交易生命周期 → FLAT→OPEN→HOLD→EXIT→COOLDOWN→FLAT              │
-│ 7. 仓位管理 → 建仓20%+加仓20%+总仓上限60%(RISK_ON)                │
-│ 8. 极端行情感知 → 自动缩短惯性/跳过止损确认/缩短冷却期 ⭐v0.7.2    │
+│ 7. 持有窗口 → 显式维护 min_hold / add_protection，阻断过早战术卖出 │
+│ 8. 卖出语义 → TRIM / EXIT / STOP 与 sell_path 明确分离            │
+│ 9. 仓位管理 → 建仓20%+加仓20%+总仓上限60%(RISK_ON)                │
+│10. 极端行情感知 → 自动缩短惯性/跳过止损确认/缩短冷却期 ⭐v0.7.2    │
 ├─────────────────────────────────────────────────────────────────┤
 │ Execution Layer（执行层/现实约束）⭐v0.7.2核心                      │
 │ 1. 波动率滑点 → 滑点与ATR正相关，高波动=大滑点                     │
@@ -206,6 +223,12 @@ FLAT(空仓) → OPEN(新开仓) → HOLD(持仓) → EXIT(退出过程) → COO
 - **信号可以变，决策必须稳定**
 - **方向改变必须付出成本**
 - **优先避免错误交易，而非追求机会最大化**
+
+Phase 5 后，生命周期只负责描述持仓阶段，不再拿来偷代“刚建仓不能卖”或“刚加仓不能减”的限制。相关限制改由显式窗口字段承担：
+
+- `min_hold_remaining`：建仓后的最短持有窗口，阻断 `weak_sell`、`take_profit_trim`、`stop_loss_trim` 这类战术性卖出。
+- `add_protection_remaining`：加仓后的保护窗口，阻断刚加仓就立刻被短噪音打回去。
+- `trend_exit`：只在新的趋势破坏事实出现时触发，不再因为生命周期已进入 `EXIT` 就自动放大为清仓依据。
 
 ### 市场状态
 
@@ -311,7 +334,8 @@ DataFeeder加载历史数据（Baostock）
 - 回测运行时结果先聚合到 `BacktestResult`：`trades`、`daily_snapshots`、`diagnostics`、`layer_mode` 都在进程内可用。
 - 只有显式传入 `--export-analysis-json PATH` 或 `--export-analysis-txt PATH` 时，归因结果才会持久化落盘到指定路径。
 - JSON/TXT 导出由 `src/core/backtest_reporter.py` 负责组装，不改变回测统计口径，只做结构化分析输出。
-- 当前 JSON 载荷已包含 `layer_breakdown`、`action_source_table`、`hold_break_table`、`diagnostics`，其中动作/持仓破坏归因会额外标出 `trigger_layer` / `broken_layer`；Phase 4 已开始把旧动作收紧映射为 `action_semantic`（ENTRY/ADD/HOLD/TRIM/EXIT/STOP）。
+- 当前 JSON 载荷已包含 `layer_breakdown`、`action_source_table`、`hold_break_table`、`diagnostics`，其中动作/持仓破坏归因会额外标出 `trigger_layer` / `broken_layer`；Phase 4-5 已把旧动作收紧映射为 `action_semantic`（ENTRY/ADD/HOLD/TRIM/EXIT/STOP），并补齐 `sell_path`（`flat_sell / stop_loss_trim / stop_loss_exit / take_profit_trim / trend_exit / weak_sell`）。
+- `TradeRecord` 会优先持久化策略层给出的 `action_semantic` 与 `sell_path`，报告层仅在缺失时才做 fallback 推断，避免回测后处理把不同卖出原因重新混成一类。
 - 若传入 `--export-layer-comparison-json <PATH>`，系统会顺序运行 `decision_only / decision_strategy / decision_strategy_execution` 三层，并导出单个对照 JSON。
 - 若传入 `--export-layer-comparison-txt <PATH>`，系统会导出三层对照的统一文本分析，便于直接给 AI 或人工复盘。
 - 若传入 `--export-validation-json <PATH>` / `--export-validation-txt <PATH>`，系统会执行基础研究验证：lookahead 时序检查、回测/准实时重放一致性检查（含信号日到执行日的日志传播校验）、样本内/样本外拆分、walk-forward 窗口验证，以及趋势 / 震荡 / 极端行情分桶评估。
