@@ -189,6 +189,8 @@ class StrategyState(BaseModel):
     last_reduce_date: Optional[str] = Field(default=None, description="上次减仓日期")
     last_reduce_reason: Optional[str] = Field(default=None, description="上次减仓原因")
     reduce_protection_remaining: int = Field(default=0, description="减仓保护期剩余天数")
+    min_hold_remaining: int = Field(default=0, description="最短持有窗口剩余天数")
+    add_protection_remaining: int = Field(default=0, description="加仓保护期剩余天数")
 
     def push_signal(self, signal: SignalType):
         """记录今日信号，维护滑动窗口"""
@@ -229,6 +231,16 @@ class StrategyState(BaseModel):
             self.reduce_protection_remaining -= 1
             if self.reduce_protection_remaining == 0:
                 self.last_reduce_reason = None
+
+    def tick_min_hold(self):
+        """最短持有窗口递减"""
+        if self.min_hold_remaining > 0:
+            self.min_hold_remaining -= 1
+
+    def tick_add_protection(self):
+        """加仓保护期递减"""
+        if self.add_protection_remaining > 0:
+            self.add_protection_remaining -= 1
 
 
 class ExecutionConstraint(BaseModel):
@@ -354,6 +366,7 @@ class TradeRecord(BaseModel):
     signal_score: float = Field(default=0.0, description="信号评分")
     position_action: str = Field(default="", description="仓位动作: OPEN/ADD/REDUCE/CLOSE_ALL")
     action_semantic: Optional[str] = Field(default=None, description="收紧后的交易语义: ENTRY/ADD/HOLD/TRIM/EXIT/STOP")
+    sell_path: Optional[str] = Field(default=None, description="卖出路径: flat_sell/stop_loss_trim/stop_loss_exit/take_profit_trim/trend_exit/weak_sell")
     position_ratio_after: float = Field(default=0.0, description="交易后仓位比例")
 
 

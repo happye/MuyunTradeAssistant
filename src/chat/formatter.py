@@ -199,11 +199,14 @@ def format_portfolio(positions: list) -> str:
 
     for pos in positions:
         price_str = f"开仓价:{pos.entry_price:.2f}" if pos.entry_price else ""
+        semantic_str = f" 动作语义:{pos.last_action_semantic}" if pos.last_action_semantic else ""
+        sell_path_str = f" 卖出路径:{pos.last_sell_path}" if pos.last_sell_path else ""
         lines.append(
             f"  {pos.stock_code} {pos.stock_name or '-':8s} "
             f"仓位:{pos.current_ratio:.0%} {price_str} "
             f"生命周期:{pos.lifecycle} "
             f"上次操作:{pos.last_action}({pos.last_action_date or '-'})"
+            f"{semantic_str}{sell_path_str}"
         )
 
     return "\n".join(lines)

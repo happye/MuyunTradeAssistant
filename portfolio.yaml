@@ -16,94 +16,119 @@
 
 positions:
   '600546':
-    stock_name: '山煤国际'
+    stock_name: '600546'
     entry_date: '2026-04-25'
     entry_price: 10.63
     current_ratio: 0.05
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: '2026-05-12'
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 3
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - HOLD
+      - SELL
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+  '603063':
+    stock_name: '603063'
+    entry_date: '2026-04-25'
+    entry_price: 18.02
+    current_ratio: 0.4
     last_action: ADD
-    last_action_date: '2026-04-28'
+    last_action_semantic: ADD
+    last_sell_path: null
+    last_action_date: '2026-05-12'
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 3
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - SELL
+      - HOLD
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 5
+  '159201':
+    stock_name: '159201'
+    entry_date: '2026-04-25'
+    entry_price: 1.14
+    current_ratio: 0.4
+    last_action: ADD
+    last_action_semantic: ADD
+    last_sell_path: null
+    last_action_date: '2026-05-12'
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
       inertia_counter: 2
+      last_decision: BUY
+      recent_signals:
+      - BUY
+      - BUY
+      signal_stability_score: 1.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+  '159611':
+    stock_name: '159611'
+    entry_date: '2026-04-25'
+    entry_price: 1.03
+    current_ratio: 0.4
+    last_action: ADD
+    last_action_semantic: ADD
+    last_sell_path: null
+    last_action_date: '2026-05-12'
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
       last_decision: HOLD
       recent_signals:
       - BUY
       - HOLD
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
-  '603063':
-    stock_name: 禾望电气
-    entry_date: '2026-04-25'
-    entry_price: 18.02
-    current_ratio: 0.05
-    last_action: HOLD_POSITION
-    last_action_date: '2026-04-25'
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+  '605358':
+    stock_name: '605358'
+    entry_date: '2026-04-28'
+    entry_price: 39.18
+    current_ratio: 0.4
+    last_action: ADD
+    last_action_semantic: ADD
+    last_sell_path: null
+    last_action_date: '2026-05-12'
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 2
+      inertia_counter: 1
       last_decision: HOLD
       recent_signals:
       - BUY
-      - SELL
+      - HOLD
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
-  '159201':
-    stock_name: 自由现金流ETF华夏
-    entry_date: '2026-04-25'
-    entry_price: 1.14
-    current_ratio: 0.05
-    last_action: OPEN
-    last_action_date: '2026-04-25'
-    lifecycle: OPEN
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
-      reduce_protection_remaining: 0
-  '159611':
-    stock_name: 电力ETF广发
-    entry_date: '2026-04-25'
-    entry_price: 1.03
-    current_ratio: 0.04
-    last_action: OPEN
-    last_action_date: '2026-04-25'
-    lifecycle: OPEN
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
-      reduce_protection_remaining: 0
-  '605358':
-    stock_name: 立昂微
-    entry_date: '2026-04-28'
-    entry_price: 39.18
-    current_ratio: 0.11
-    last_action: OPEN
-    last_action_date: '2026-04-28'
-    lifecycle: OPEN
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
-      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0

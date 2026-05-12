@@ -87,7 +87,6 @@ class StrategyLayer:
     ADD_RATIO = 0.20
     TAKE_PROFIT_KEEP = 0.60
     NORMAL_REDUCE_KEEP = 0.65
-    LOW_POSITION_CLEAR = 0.05
     STOP_LOSS_REDUCE_THRESHOLD = 0.70
     STOP_LOSS_EXIT_THRESHOLD = 0.85
     TAKE_PROFIT_TRIM_THRESHOLD = 0.70
@@ -96,6 +95,18 @@ class StrategyLayer:
     STRONG_SELL_EXIT_THRESHOLD = 0.55
     SELL_DOMINANCE_GAP = 0.15
     TREND_EXIT_BREAK_PCT = -0.02
+    MIN_HOLD_DAYS = 5
+    ADD_PROTECTION_DAYS = 5
+    REDUCE_PROTECTION_DAYS = {
+        "stop_loss_trim": 15,
+        "take_profit_trim": 10,
+        "weak_sell": 15,
+    }
+    MIN_HOLD_BLOCK_SELL_PATHS = {
+        "stop_loss_trim",
+        "take_profit_trim",
+        "weak_sell",
+    }
 
     def __init__(self):
         """初始化策略层"""
@@ -133,6 +144,8 @@ class StrategyLayer:
         # 冷却期递减
         new_state.tick_cooldown()
         new_state.tick_reduce_protection()
+        new_state.tick_min_hold()
+        new_state.tick_add_protection()
 
         # 当前决策（Decision Layer输出）
         raw_decision = decision_result.decision
@@ -193,10 +206,44 @@ class StrategyLayer:
             adjusted_decision, market_state, decision_result, new_state
         )
 
+        sell_path = self._infer_sell_path(
+            adjusted_decision,
+            position_action,
+            decision_result,
+            strategy_state,
+        )
+        repeated_reduce_blocked = self._should_block_repeated_reduce(
+            new_state,
+            position_action,
+            sell_path,
+        )
+        early_tactical_sell_blocked = self._should_block_early_tactical_sell(
+            strategy_state,
+            position_action,
+            sell_path,
+        )
+        post_add_tactical_sell_blocked = self._should_block_post_add_tactical_sell(
+            new_state,
+            position_action,
+            sell_path,
+        )
+        if repeated_reduce_blocked:
+            position_action = PositionAction.HOLD_POSITION
+            position_ratio = new_state.current_position_ratio
+            sell_path = None
+        elif early_tactical_sell_blocked:
+            position_action = PositionAction.HOLD_POSITION
+            position_ratio = new_state.current_position_ratio
+            sell_path = None
+        elif post_add_tactical_sell_blocked:
+            position_action = PositionAction.HOLD_POSITION
+            position_ratio = new_state.current_position_ratio
+            sell_path = None
+
         # Step 8: 更新交易生命周期
         lifecycle_before = new_state.lifecycle
         new_state = self._update_lifecycle(
-            new_state, adjusted_decision, position_action, data, position_ratio
+            new_state, adjusted_decision, position_action, data, position_ratio, sell_path
         )
         lifecycle_after = new_state.lifecycle
 
@@ -215,12 +262,6 @@ class StrategyLayer:
             cooldown_blocked, reverse_cost_paid, stability_adjusted,
             is_extreme
         )
-        sell_path = self._infer_sell_path(
-            adjusted_decision,
-            position_action,
-            decision_result,
-            strategy_state,
-        )
         position_reason = self._describe_position_action(
             adjusted_decision,
             position_action,
@@ -231,6 +272,12 @@ class StrategyLayer:
         )
         if position_reason:
             strategy_reasons.append(position_reason)
+        if repeated_reduce_blocked:
+            strategy_reasons.append("减仓保护期: 同一减仓原因未重复执行")
+        if early_tactical_sell_blocked:
+            strategy_reasons.append("最短持有窗口: 新开仓阶段不执行战术性减仓")
+        if post_add_tactical_sell_blocked:
+            strategy_reasons.append("加仓保护窗口: 刚加仓后不执行战术性减仓")
 
         return StrategyDecision(
             decision=adjusted_decision,
@@ -447,9 +494,12 @@ class StrategyLayer:
         action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
         stop_loss_confidence = self._get_sell_action_confidence(action_signals, "stop_loss")
         take_profit_confidence = self._get_sell_action_confidence(action_signals, "take_profit")
-        has_stop_loss = stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD
-        has_take_profit = take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
         current_return_pct = self._get_unrealized_return_pct(strategy_state, decision_result.stock)
+        has_stop_loss = (
+            stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD
+            and self._has_stop_loss_trim_loss(current_return_pct)
+        )
+        has_take_profit = take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
         valid_take_profit = has_take_profit and self._has_take_profit_buffer(current_return_pct)
         stop_loss_exit = (
             stop_loss_confidence >= self.STOP_LOSS_EXIT_THRESHOLD
@@ -472,20 +522,16 @@ class StrategyLayer:
             if has_stop_loss:
                 if stop_loss_exit:
                     return PositionAction.CLOSE_ALL, 0.0
-                elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
-                    return PositionAction.CLOSE_ALL, 0.0
-                elif trend_exit and self._has_stop_loss_exit_loss(current_return_pct):
+                elif trend_exit:
                     return PositionAction.CLOSE_ALL, 0.0
                 else:
                     target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                     return PositionAction.REDUCE, target
-            elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+            elif trend_exit:
                 return PositionAction.CLOSE_ALL, 0.0
             elif valid_take_profit:
                 target = current_position_ratio * self.TAKE_PROFIT_KEEP
                 return PositionAction.REDUCE, target
-            elif trend_exit or strategy_state.lifecycle == TradeLifecycle.EXIT:
-                return PositionAction.CLOSE_ALL, 0.0
             else:
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                 return PositionAction.REDUCE, target
@@ -569,7 +615,11 @@ class StrategyLayer:
             and position_action == PositionAction.CLOSE_ALL
         ):
             return "stop_loss_exit"
-        if stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD and position_action == PositionAction.REDUCE:
+        if (
+            stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD
+            and self._has_stop_loss_trim_loss(current_return_pct)
+            and position_action == PositionAction.REDUCE
+        ):
             return "stop_loss_trim"
         if (
             take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
@@ -601,6 +651,9 @@ class StrategyLayer:
 
     def _has_stop_loss_exit_loss(self, current_return_pct: Optional[float]) -> bool:
         return current_return_pct is not None and current_return_pct <= self.STOP_LOSS_EXIT_LOSS_PCT
+
+    def _has_stop_loss_trim_loss(self, current_return_pct: Optional[float]) -> bool:
+        return current_return_pct is not None and current_return_pct < 0
 
     def _describe_trend_exit_reason(self, stock: StockData, strategy_state: StrategyState) -> str:
         current_return_pct = self._get_unrealized_return_pct(strategy_state, stock)
@@ -645,9 +698,9 @@ class StrategyLayer:
             and stock.price < stock.ma20
         )
         losing_hold = current_return_pct is not None and current_return_pct <= self.TREND_EXIT_BREAK_PCT
-        already_exiting = strategy_state.lifecycle == TradeLifecycle.EXIT
+        ma60_lost_trend = broke_ma60 and (ma20_lost_trend or losing_hold)
 
-        return broke_ma60 or ma20_lost_trend or (broke_ma20 and losing_hold) or already_exiting
+        return ma60_lost_trend or ma20_lost_trend or (broke_ma20 and losing_hold)
 
     # ===== 交易生命周期更新 =====
 
@@ -658,6 +711,7 @@ class StrategyLayer:
         position_action: PositionAction,
         data: StockData,
         position_ratio: float = 0.0,
+        sell_path: Optional[str] = None,
     ) -> StrategyState:
         """更新交易生命周期状态
 
@@ -683,6 +737,7 @@ class StrategyLayer:
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
                 new_state.current_position_ratio = position_ratio
+                new_state.min_hold_remaining = self.MIN_HOLD_DAYS
             elif position_action == PositionAction.OPEN:
                 # 防御：HOLD等信号但仓位动作为OPEN时，也应建仓
                 new_state.lifecycle = TradeLifecycle.OPEN
@@ -691,6 +746,7 @@ class StrategyLayer:
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
                 new_state.current_position_ratio = position_ratio
+                new_state.min_hold_remaining = self.MIN_HOLD_DAYS
             elif position_action == PositionAction.ADD:
                 # 防御：FLAT状态下不应出现ADD，修正为OPEN
                 new_state.lifecycle = TradeLifecycle.OPEN
@@ -699,6 +755,7 @@ class StrategyLayer:
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
                 new_state.current_position_ratio = position_ratio
+                new_state.min_hold_remaining = self.MIN_HOLD_DAYS
             # FLAT + 非BUY → 保持FLAT
 
         elif lifecycle == TradeLifecycle.OPEN:
@@ -707,6 +764,8 @@ class StrategyLayer:
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"
                 new_state.current_position_ratio = 0.0
+                new_state.min_hold_remaining = 0
+                new_state.add_protection_remaining = 0
             elif decision in (SignalType.HOLD, SignalType.BUY) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 new_state.lifecycle = TradeLifecycle.HOLD  # 确认建仓成功
                 new_state.current_position_ratio = position_ratio
@@ -722,13 +781,19 @@ class StrategyLayer:
                 new_state.current_position_ratio = 0.0
                 new_state.entry_date = None
                 new_state.entry_price = None
+                new_state.last_reduce_reason = None
+                new_state.reduce_protection_remaining = 0
+                new_state.min_hold_remaining = 0
+                new_state.add_protection_remaining = 0
             elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
-                new_state.lifecycle = TradeLifecycle.EXIT
+                new_state.lifecycle = TradeLifecycle.HOLD
                 new_state.last_reduce_date = data.stock_code  # 简化
-                new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+                new_state.last_reduce_reason = sell_path
+                new_state.reduce_protection_remaining = self._get_reduce_protection_days(sell_path)
                 new_state.current_position_ratio = position_ratio
             elif position_action == PositionAction.ADD:
                 new_state.current_position_ratio = position_ratio  # 加仓，继续HOLD
+                new_state.add_protection_remaining = self.ADD_PROTECTION_DAYS
 
         elif lifecycle == TradeLifecycle.EXIT:
             if position_action == PositionAction.CLOSE_ALL:
@@ -738,9 +803,15 @@ class StrategyLayer:
                 new_state.current_position_ratio = 0.0
                 new_state.entry_date = None
                 new_state.entry_price = None
+                new_state.last_reduce_reason = None
+                new_state.reduce_protection_remaining = 0
+                new_state.min_hold_remaining = 0
+                new_state.add_protection_remaining = 0
             elif position_action == PositionAction.REDUCE:
-                # 继续减仓过程
-                new_state.reduce_protection_remaining = self.COOLDOWN_AFTER_REDUCE_DAYS
+                # 兼容旧状态：继续减仓后回到持有态，由减仓保护期控制频率
+                new_state.lifecycle = TradeLifecycle.HOLD
+                new_state.last_reduce_reason = sell_path
+                new_state.reduce_protection_remaining = self._get_reduce_protection_days(sell_path)
                 new_state.current_position_ratio = position_ratio
             elif decision in (SignalType.BUY, SignalType.HOLD) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 # 方向转回看多 → 回到HOLD
@@ -760,6 +831,46 @@ class StrategyLayer:
                 new_state.total_commission_paid = 0.0
 
         return new_state
+
+    def _get_reduce_protection_days(self, sell_path: Optional[str]) -> int:
+        return self.REDUCE_PROTECTION_DAYS.get(sell_path or "", self.COOLDOWN_AFTER_REDUCE_DAYS)
+
+    def _should_block_repeated_reduce(
+        self,
+        strategy_state: StrategyState,
+        position_action: PositionAction,
+        sell_path: Optional[str],
+    ) -> bool:
+        return (
+            position_action == PositionAction.REDUCE
+            and bool(sell_path)
+            and strategy_state.reduce_protection_remaining > 0
+            and strategy_state.last_reduce_reason == sell_path
+        )
+
+    def _should_block_early_tactical_sell(
+        self,
+        strategy_state: StrategyState,
+        position_action: PositionAction,
+        sell_path: Optional[str],
+    ) -> bool:
+        return (
+            strategy_state.min_hold_remaining > 0
+            and position_action == PositionAction.REDUCE
+            and sell_path in self.MIN_HOLD_BLOCK_SELL_PATHS
+        )
+
+    def _should_block_post_add_tactical_sell(
+        self,
+        strategy_state: StrategyState,
+        position_action: PositionAction,
+        sell_path: Optional[str],
+    ) -> bool:
+        return (
+            strategy_state.add_protection_remaining > 0
+            and position_action == PositionAction.REDUCE
+            and sell_path in self.MIN_HOLD_BLOCK_SELL_PATHS
+        )
 
     # ===== 辅助方法 =====
 

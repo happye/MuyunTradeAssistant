@@ -534,6 +534,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     summary_table.add_column("仓位", justify="right", width=6)
     summary_table.add_column("决策", width=6)
     summary_table.add_column("动作", width=8)
+    summary_table.add_column("语义", width=6)
     summary_table.add_column("AI情绪", width=12)
 
     signal_colors = {
@@ -550,7 +551,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             summary_table.add_row(
                 pos.stock_code, pos.stock_name or "-",
                 "-", "-", "-", f"{pos.current_ratio:.0%}",
-                "-", "数据失败", "-"
+                "-", "数据失败", "-", "-"
             )
             continue
 
@@ -587,7 +588,9 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
                 f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
-                pos_action_cn, ai_str
+                pos_action_cn,
+                strategy_decision.action_semantic or "-",
+                ai_str
             )
         else:
             display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
@@ -595,7 +598,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
                 f"{pos.current_ratio:.0%}",
-                "-", "无指标", "-"
+                "-", "无指标", "-", "-"
             )
 
     console.print(summary_table)
@@ -1497,6 +1500,7 @@ def _display_ranked_results(success_results: list[dict]):
     table.add_column("波动", justify="right", width=5)
     table.add_column("决策", style="bold", width=6)
     table.add_column("仓位", width=8)
+    table.add_column("语义", width=6)
     table.add_column("AI情绪", width=10)
 
     buy_count = 0
@@ -1513,6 +1517,7 @@ def _display_ranked_results(success_results: list[dict]):
 
         decision = dr.decision.value if dr else "?"
         pos_action = sd.position_action.value if sd else "?"
+        action_semantic = sd.action_semantic if sd and sd.action_semantic else "-"
 
         # AI情绪（排名表格）
         ai_str = "无数据"
@@ -1573,6 +1578,7 @@ def _display_ranked_results(success_results: list[dict]):
                 vol_str,
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
+                action_semantic,
                 ai_str,
             )
         else:
@@ -1589,6 +1595,7 @@ def _display_ranked_results(success_results: list[dict]):
                 "-",
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
+                action_semantic,
                 ai_str,
             )
 
@@ -1627,6 +1634,7 @@ def _display_unranked_results(success_results: list[dict]):
     table.add_column("决策", style="bold", width=6)
     table.add_column("评分", justify="right", width=6)
     table.add_column("仓位", width=8)
+    table.add_column("语义", width=6)
     table.add_column("状态", width=10)
     table.add_column("AI情绪", width=10)
 
@@ -1643,6 +1651,7 @@ def _display_unranked_results(success_results: list[dict]):
         decision = dr.decision.value if dr else "?"
         score = dr.score if dr else 0
         pos_action = sd.position_action.value if sd else "?"
+        action_semantic = sd.action_semantic if sd and sd.action_semantic else "-"
         lifecycle = sd.lifecycle_after.value if sd else "?"
 
         # AI情绪（unranked表格）
@@ -1674,6 +1683,7 @@ def _display_unranked_results(success_results: list[dict]):
             f"[{decision_style}]{decision}[/{decision_style}]",
             f"{score:.2f}",
             pos_action,
+            action_semantic,
             lifecycle,
             ai_str,
         )

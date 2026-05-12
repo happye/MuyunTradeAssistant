@@ -117,6 +117,8 @@ class PortfolioManager:
         self._data: dict = {}
         self._load()
 
+    DEFAULT_MIN_HOLD_DAYS = 5
+
     def _load(self):
         """加载portfolio.yaml"""
         if not os.path.exists(self.portfolio_path):
@@ -230,6 +232,8 @@ class PortfolioManager:
             total_commission_paid=ss.get("total_commission_paid", 0.0),
             signal_stability_score=ss.get("signal_stability_score", 1.0),
             reduce_protection_remaining=ss.get("reduce_protection_remaining", 0),
+            min_hold_remaining=ss.get("min_hold_remaining", 0),
+            add_protection_remaining=ss.get("add_protection_remaining", 0),
         )
 
     # ===== 写入操作 =====
@@ -262,6 +266,8 @@ class PortfolioManager:
                 "recent_signals": ["BUY"],
                 "signal_stability_score": 1.0,
                 "reduce_protection_remaining": 0,
+                "min_hold_remaining": self.DEFAULT_MIN_HOLD_DAYS if lifecycle == "OPEN" else 0,
+                "add_protection_remaining": 0,
             }
         )
 
@@ -337,6 +343,8 @@ class PortfolioManager:
                 "recent_signals": new_state.recent_signals,
                 "signal_stability_score": new_state.signal_stability_score,
                 "reduce_protection_remaining": new_state.reduce_protection_remaining,
+                "min_hold_remaining": new_state.min_hold_remaining,
+                "add_protection_remaining": new_state.add_protection_remaining,
             }
         )
 

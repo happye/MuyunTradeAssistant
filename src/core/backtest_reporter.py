@@ -694,13 +694,17 @@ def _build_action_source_table(result: BacktestResult, diagnostics: dict[str, An
             "action": trade.get("action") if trade else None,
             "final_signal": strategy.get("decision") or decision.get("decision"),
             "position_action": (trade.get("position_action") if trade else None) or strategy.get("position_action") or execution.get("effective_action"),
-            "action_semantic": infer_action_semantic(
-                (trade.get("position_action") if trade else None) or strategy.get("position_action") or execution.get("effective_action"),
-                strategy.get("decision") or decision.get("decision"),
-                [reason],
-                trade.get("action") if trade else None,
+            "action_semantic": (
+                (trade.get("action_semantic") if trade else None)
+                or strategy.get("action_semantic")
+                or infer_action_semantic(
+                    (trade.get("position_action") if trade else None) or strategy.get("position_action") or execution.get("effective_action"),
+                    strategy.get("decision") or decision.get("decision"),
+                    [reason],
+                    trade.get("action") if trade else None,
+                )
             ),
-            "sell_path": strategy.get("sell_path"),
+            "sell_path": (trade.get("sell_path") if trade else None) or strategy.get("sell_path"),
             "trigger_layer": _infer_trigger_layer_from_log(log),
             "trigger_type": _infer_trigger_type_from_log(log),
             "trigger_source": _infer_trigger_source_from_log(log),
@@ -747,8 +751,16 @@ def _build_hold_break_table(result: BacktestResult, diagnostics: dict[str, Any])
             "stock_code": result.stock_code,
             "hold_context": _build_hold_context(log),
             "broken_by": pos_action,
-            "action_semantic": infer_action_semantic(pos_action, reasons=[trade.get("reason", "")], trade_action=trade.get("action")),
-            "sell_path": (log.get("strategy", {}) or {}).get("sell_path") if log else _infer_sell_path_from_payload(trade),
+            "action_semantic": (
+                trade.get("action_semantic")
+                or ((log.get("strategy", {}) or {}).get("action_semantic") if log else None)
+                or infer_action_semantic(pos_action, reasons=[trade.get("reason", "")], trade_action=trade.get("action"))
+            ),
+            "sell_path": (
+                trade.get("sell_path")
+                or ((log.get("strategy", {}) or {}).get("sell_path") if log else None)
+                or _infer_sell_path_from_payload(trade)
+            ),
             "broken_layer": _infer_trigger_layer_from_log(log) if log else _infer_trigger_layer_from_trade(trade),
             "trigger_source": _infer_trigger_source_from_log(log) if log else _infer_trigger_source(trade),
             "broken_reason": trade.get("reason", ""),

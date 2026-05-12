@@ -384,7 +384,12 @@ class BacktestEngine:
                     trade.reason = self._get_trade_reason(pending_result, pending_decision)
                     trade.signal_score = pending_result.score if pending_result else 0.0
                     trade.position_action = actual_pos_action.value
-                    trade.action_semantic = infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
+                    trade.action_semantic = (
+                        pending_decision.action_semantic
+                        if pending_decision and pending_decision.action_semantic
+                        else infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
+                    )
+                    trade.sell_path = pending_decision.sell_path if pending_decision else None
                     trade.position_ratio_after = round(account.position_ratio(current_price), 2)
 
                     # 扣除交易成本
