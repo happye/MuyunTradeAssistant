@@ -301,6 +301,43 @@ class YAMLBasedSkill(Skill):
                 return True
             return False
 
+        # ===== 多时间框架条件 =====
+        def _get_timeframe_bucket(d, timeframe: str):
+            return getattr(d, timeframe, None) or {}
+
+        def timeframe_trend(d, p):
+            timeframe = p.get("timeframe")
+            expected = str(p.get("trend", "")).upper()
+            bucket = _get_timeframe_bucket(d, timeframe)
+            actual = str(bucket.get("trend", "")).upper()
+            return bool(actual) and actual == expected
+
+        def timeframe_price_above_ma(d, p):
+            timeframe = p.get("timeframe")
+            ma_name = p.get("ma", "ma20")
+            bucket = _get_timeframe_bucket(d, timeframe)
+            close = bucket.get("close")
+            ma_val = bucket.get(ma_name)
+            if close is None or ma_val is None:
+                return False
+            pct = p.get("pct")
+            if pct is not None:
+                return close > ma_val * (1 + pct / 100)
+            return close > ma_val
+
+        def timeframe_price_below_ma(d, p):
+            timeframe = p.get("timeframe")
+            ma_name = p.get("ma", "ma20")
+            bucket = _get_timeframe_bucket(d, timeframe)
+            close = bucket.get("close")
+            ma_val = bucket.get(ma_name)
+            if close is None or ma_val is None:
+                return False
+            pct = p.get("pct")
+            if pct is not None:
+                return close < ma_val * (1 - pct / 100)
+            return close < ma_val
+
         # ===== 位置条件 =====
         def price_near_high(d, p):
             """价格接近N日高点，支持阈值"""
@@ -378,12 +415,23 @@ class YAMLBasedSkill(Skill):
         reg["ma5_above_ma20"] = lambda d, p: ma_cross(d, {**p, "fast": "ma5", "slow": "ma20", "direction": "above"})
         reg["ma5_below_ma20"] = lambda d, p: ma_cross(d, {**p, "fast": "ma5", "slow": "ma20", "direction": "below"})
         reg["ma20_above_ma60"] = lambda d, p: ma_cross(d, {**p, "fast": "ma20", "slow": "ma60", "direction": "above"})
+        reg["monthly_trend_bullish"] = lambda d, p: timeframe_trend(d, {**p, "timeframe": "monthly", "trend": "BULLISH"})
+        reg["monthly_trend_bearish"] = lambda d, p: timeframe_trend(d, {**p, "timeframe": "monthly", "trend": "BEARISH"})
+        reg["weekly_trend_bullish"] = lambda d, p: timeframe_trend(d, {**p, "timeframe": "weekly", "trend": "BULLISH"})
+        reg["weekly_trend_bearish"] = lambda d, p: timeframe_trend(d, {**p, "timeframe": "weekly", "trend": "BEARISH"})
+        reg["weekly_price_above_ma20"] = lambda d, p: timeframe_price_above_ma(d, {**p, "timeframe": "weekly", "ma": "ma20"})
+        reg["weekly_price_below_ma20"] = lambda d, p: timeframe_price_below_ma(d, {**p, "timeframe": "weekly", "ma": "ma20"})
+        reg["monthly_price_above_ma20"] = lambda d, p: timeframe_price_above_ma(d, {**p, "timeframe": "monthly", "ma": "ma20"})
+        reg["monthly_price_below_ma20"] = lambda d, p: timeframe_price_below_ma(d, {**p, "timeframe": "monthly", "ma": "ma20"})
 
         # 新通用条件名
         reg["price_above_ma"] = price_above_ma
         reg["price_below_ma"] = price_below_ma
         reg["ma_cross"] = ma_cross
         reg["ma_distance"] = ma_distance
+        reg["timeframe_trend"] = timeframe_trend
+        reg["timeframe_price_above_ma"] = timeframe_price_above_ma
+        reg["timeframe_price_below_ma"] = timeframe_price_below_ma
 
         # 涨跌幅
         reg["change_positive"] = change_positive

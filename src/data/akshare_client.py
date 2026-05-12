@@ -587,10 +587,20 @@ class AKShareClient:
 
         # 尝试获取历史K线计算技术指标
         df = None
+        weekly_df = None
+        monthly_df = None
         try:
             df = cls.get_historical_kline(stock_code, period="daily", adjust="qfq")
         except Exception as e:
             logger.warning(f"获取历史K线异常 {stock_code}: {e}")
+        try:
+            weekly_df = cls.get_historical_kline(stock_code, period="weekly", adjust="qfq")
+        except Exception as e:
+            logger.warning(f"获取周线K线异常 {stock_code}: {e}")
+        try:
+            monthly_df = cls.get_historical_kline(stock_code, period="monthly", adjust="qfq")
+        except Exception as e:
+            logger.warning(f"获取月线K线异常 {stock_code}: {e}")
 
         # 如果历史K线获取失败
         if df is None or df.empty:
@@ -708,6 +718,9 @@ class AKShareClient:
             except Exception as e:
                 logger.warning(f"大盘数据获取失败（不影响个股分析）: {e}")
 
+            stock_data.weekly = cls._build_timeframe_snapshot(weekly_df)
+            stock_data.monthly = cls._build_timeframe_snapshot(monthly_df)
+
             return stock_data
 
         except Exception as e:
@@ -735,6 +748,46 @@ class AKShareClient:
             else:
                 # 完全没有数据
                 return None
+
+    @staticmethod
+    def _build_timeframe_snapshot(df: Optional[pd.DataFrame]) -> Optional[dict]:
+        """将周线/月线K线转换为统一摘要。"""
+        if df is None or df.empty:
+            return None
+
+        frame = df.copy()
+        date_col = '日期' if '日期' in frame.columns else 'date' if 'date' in frame.columns else None
+        close_col = '收盘' if '收盘' in frame.columns else 'close' if 'close' in frame.columns else None
+        if close_col is None:
+            return None
+        if date_col is not None:
+            frame = frame.sort_values(date_col).reset_index(drop=True)
+
+        close = frame[close_col].astype(float)
+        frame['MA5_TF'] = close.rolling(window=5).mean()
+        frame['MA10_TF'] = close.rolling(window=10).mean()
+        frame['MA20_TF'] = close.rolling(window=20).mean()
+
+        latest = frame.iloc[-1]
+        close_val = float(latest[close_col])
+        ma5 = round(float(latest['MA5_TF']), 2) if pd.notna(latest['MA5_TF']) else None
+        ma10 = round(float(latest['MA10_TF']), 2) if pd.notna(latest['MA10_TF']) else None
+        ma20 = round(float(latest['MA20_TF']), 2) if pd.notna(latest['MA20_TF']) else None
+
+        trend = 'NEUTRAL'
+        if ma20 is not None:
+            if close_val > ma20 and (ma5 is None or ma10 is None or ma5 >= ma10):
+                trend = 'BULLISH'
+            elif close_val < ma20 and (ma5 is None or ma10 is None or ma5 <= ma10):
+                trend = 'BEARISH'
+
+        return {
+            'close': round(close_val, 2),
+            'ma5': ma5,
+            'ma10': ma10,
+            'ma20': ma20,
+            'trend': trend,
+        }
 
     @staticmethod
     def _calculate_macd(df: pd.DataFrame, fast: int = 12, slow: int = 26, signal: int = 9):

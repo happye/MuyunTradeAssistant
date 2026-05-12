@@ -1,97 +1,81 @@
 # 多时间框架技能
 # 来源：系统化交易大纲 第30章
 # 核心理念：月线定方向，周线定位置，日线找买卖点
-# 第30章原文：
-#   - "月线，是告诉你这座山往哪个方向走"
-#   - "周线，是告诉你现在爬到半山腰了，还是快到山顶了"
-#   - "日线，是告诉你今天该迈左脚还是右脚"
-#   - "月线向上，周线和日线的下跌大概率是回调"
-#   - "月线向下，周线和日线的上涨大概率是反弹"
-#   - "打架（月线向上周线向下）= 等"
 #
-# ⚠️ 实现限制说明：
-# 第30章核心是"月线→周线→日线"三层框架，但当前数据源(Baostock)
-# 仅提供日线数据，尚未集成周线/月线数据。因此本技能暂时用日线
-# MA5/MA20/MA60近似模拟"短/中/长"三个周期：
-#   - MA5 ≈ 日线短期（模拟原"日线"）
-#   - MA20 ≈ 日线中期（模拟原"周线"）
-#   - MA60 ≈ 日线长期（模拟原"月线"）
-# 这是一种妥协实现，不如真实月线/周线数据可靠。
-# 后续Phase升级将引入真正的周线/月线数据。
+# Phase 6 起改为真实多时间框架：
+# - 月线：判断大方向，只做方向过滤
+# - 周线：判断位置和中期结构，决定是顺势还是打架
+# - 日线：只负责具体触发，不再单独承担方向定义
 
 name: multi_timeframe
 alias: 多周期共振
-description: 综合多周期均线判断市场方向（当前为日线模拟版，待升级为真实周线/月线）
+description: 真实多时间框架过滤：月线定方向，周线定位置，日线只做触发
 
 rules:
-  # 规则1：短期+中期+长期均线全部多头 - 强烈买入
-  # 第30章："只要月线向上，那周线和日线的下跌，大概率是回调"
+  # 规则1：月线向上 + 周线同步向上 + 日线触发，才给BUY
   - condition:
-      price_above_ma5:
-        reason: "短期趋势向上（日线维度）"
+      monthly_trend_bullish:
+        reason: "月线方向向上，大方向仍在上行"
         weight: 1.0
-        confidence: 0.8
-      price_above_ma20:
-        reason: "中期趋势向上（周线维度近似）"
-        weight: 1.0
-        confidence: 0.8
-      price_above_ma60:
-        reason: "长期趋势向上（月线维度近似）"
-        weight: 1.5
         confidence: 0.9
+      weekly_trend_bullish:
+        reason: "周线位置仍在强势区，属于顺势结构"
+        weight: 1.0
+        confidence: 0.8
+      price_above_ma5:
+        reason: "日线完成向上触发，允许执行买点"
+        weight: 1.0
+        confidence: 0.7
     signal: BUY
     confidence: 0.85
     weight: 1.5
 
-  # 规则2：各周期方向不一致 - 谨慎观望
-  # 第30章："什么叫打架？就是月线向上，周线向下。这时候怎么办？等。"
+  # 规则2：月线上、周线下，典型打架，只能等
   - condition:
-      price_above_ma5:
-        reason: "短期偏多"
+      monthly_trend_bullish:
+        reason: "月线仍向上，大方向没有坏"
         weight: 1.0
-        confidence: 0.6
-      price_below_ma20:
-        reason: "中期偏空，周期打架"
+        confidence: 0.8
+      weekly_trend_bearish:
+        reason: "周线正在回落，月周打架，先等位置重新站稳"
         weight: 1.0
         confidence: 0.6
     signal: WATCH
     confidence: 0.5
     weight: 1.2
 
-  # 规则3：短期走弱但长期支撑 - 观望等确认
-  # 第30章："月线向上，大方向是好的。但周线向下，说明短期要调整"
+  # 规则3：月线向上、周线守住中枢，日线回踩，只当回调观察
   - condition:
-      price_below_ma5:
-        reason: "日线短期走弱"
+      monthly_trend_bullish:
+        reason: "月线方向仍向上"
         weight: 1.0
-        confidence: 0.7
-      price_below_ma20:
-        reason: "周线中期走弱"
-        weight: 1.0
-        confidence: 0.7
-      price_above_ma60:
-        reason: "但月线长期趋势仍向上，可能只是回调"
-        weight: 1.5
         confidence: 0.8
+      weekly_price_above_ma20:
+        reason: "周线仍在中期均线之上，位置没有走坏"
+        weight: 1.0
+        confidence: 0.7
+      price_below_ma5:
+        reason: "日线短期回踩，等待新的触发"
+        weight: 1.0
+        confidence: 0.7
     signal: WATCH
     confidence: 0.6
     weight: 1.0
 
-  # 规则4：三周期全部向下 - 卖出
-  # 第30章："月线向下，周线和日线的上涨大概率是反弹。反弹就是卖点"
+  # 规则4：月线和周线同时转弱，日线再给弱触发，才是SELL
   - condition:
-      price_below_ma5:
-        reason: "短期趋势向下（日线维度）"
+      monthly_trend_bearish:
+        reason: "月线方向向下，大级别进入防守"
         weight: 1.0
-        confidence: 0.8
-      price_below_ma20:
-        reason: "中期趋势向下（周线维度近似）"
-        weight: 1.0
-        confidence: 0.8
-      price_below_ma60:
-        reason: "长期趋势向下（月线维度近似）"
-        weight: 1.5
         confidence: 0.9
+      weekly_trend_bearish:
+        reason: "周线位置同步转弱，反弹更像卖点"
+        weight: 1.0
+        confidence: 0.8
+      price_below_ma5:
+        reason: "日线向下触发，允许执行卖点"
+        weight: 1.0
+        confidence: 0.7
     signal: SELL
     confidence: 0.85
     weight: 1.5

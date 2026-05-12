@@ -224,6 +224,8 @@ class DataFeeder:
 
         # 大盘趋势
         index_trend, index_ma20, index_ma60, index_ma250, index_close, index_change_pct, index_high_250d = self._get_index_at_date(date)
+        weekly_snapshot = self._build_timeframe_snapshot(cutoff, freq="W-FRI")
+        monthly_snapshot = self._build_timeframe_snapshot(cutoff, freq="ME")
 
         return StockData(
             stock_code=self.stock_code,
@@ -249,7 +251,55 @@ class DataFeeder:
             index_close=index_close,
             index_change_pct=index_change_pct,
             index_high_250d=index_high_250d,
+            weekly=weekly_snapshot,
+            monthly=monthly_snapshot,
         )
+
+    def _build_timeframe_snapshot(self, cutoff: pd.DataFrame, freq: str) -> Optional[dict]:
+        """将截止当前交易日的日线聚合为周线或月线摘要。"""
+        if cutoff is None or cutoff.empty:
+            return None
+
+        frame = cutoff.copy()
+        frame['date'] = pd.to_datetime(frame['date'])
+        frame = frame.set_index('date').sort_index()
+
+        aggregated = frame.resample(freq).agg({
+            'open': 'first',
+            'high': 'max',
+            'low': 'min',
+            'close': 'last',
+            'volume': 'sum',
+        }).dropna(subset=['close'])
+
+        if aggregated.empty:
+            return None
+
+        close = aggregated['close'].astype(float)
+        aggregated['ma5'] = close.rolling(5).mean()
+        aggregated['ma10'] = close.rolling(10).mean()
+        aggregated['ma20'] = close.rolling(20).mean()
+        latest = aggregated.iloc[-1]
+
+        close_val = float(latest['close'])
+        ma5 = round(float(latest['ma5']), 2) if pd.notna(latest['ma5']) else None
+        ma10 = round(float(latest['ma10']), 2) if pd.notna(latest['ma10']) else None
+        ma20 = round(float(latest['ma20']), 2) if pd.notna(latest['ma20']) else None
+
+        trend = 'NEUTRAL'
+        if ma20 is not None:
+            if close_val > ma20 and (ma5 is None or ma10 is None or ma5 >= ma10):
+                trend = 'BULLISH'
+            elif close_val < ma20 and (ma5 is None or ma10 is None or ma5 <= ma10):
+                trend = 'BEARISH'
+
+        return {
+            'close': round(close_val, 2),
+            'ma5': ma5,
+            'ma10': ma10,
+            'ma20': ma20,
+            'trend': trend,
+        }
 
     def _get_index_at_date(self, date: str) -> tuple:
         """获取指定日期的大盘趋势数据
