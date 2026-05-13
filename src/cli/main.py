@@ -1238,8 +1238,7 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
 def scan_market(
     rule_name: str = "default",
-    industry_filter: list[str] = None,
-    concept_filter: list[str] = None,
+    market_query: str = None,
     ai_debug: bool = False,
     deep: bool = False,
     ai_enabled: bool = True,
@@ -1252,8 +1251,7 @@ def scan_market(
 
     Args:
         rule_name: 扫描规则名称
-        industry_filter: 行业过滤白名单
-        concept_filter: 概念过滤白名单
+        market_query: 统一主题词，自动匹配相关行业/概念
         ai_debug: 是否开启AI调试模式
         deep: 是否自动执行深度分析（跳过用户选择）
         ai_enabled: 深度分析时是否启用AI
@@ -1293,11 +1291,21 @@ def scan_market(
         cache_ttl=scanner_cfg.get("cache_ttl", 300),
     )
 
+    theme_query = market_query
+    effective_rule = rule_name or "default"
+    if not theme_query:
+        resolved_rule = engine.resolve_rule_name(effective_rule)
+        if resolved_rule:
+            effective_rule = resolved_rule
+        else:
+            theme_query = effective_rule
+            effective_rule = "default"
+
     # ===== Step 1: 快速初筛 =====
     # 规则名模糊匹配
-    resolved_name = engine.resolve_rule_name(rule_name)
+    resolved_name = engine.resolve_rule_name(effective_rule)
     if not resolved_name:
-        console.print(f"[red]未找到规则 '{rule_name}'[/red]")
+        console.print(f"[red]未找到规则 '{effective_rule}'[/red]")
         console.print("\n可用规则:")
         for r in engine.get_available_rules():
             console.print(f"  [cyan]{r['name']:20s}[/cyan] ({r['display_name']}) - {r['description']}")
@@ -1320,16 +1328,13 @@ def scan_market(
     else:
         console.print("  行情缓存: [yellow]未命中，正在获取全市场数据（约4分钟）...[/yellow]")
 
-    if industry_filter:
-        console.print(f"  行业过滤: {', '.join(industry_filter)}")
-    if concept_filter:
-        console.print(f"  概念过滤: {', '.join(concept_filter)}")
+    if theme_query:
+        console.print(f"  主题词: {theme_query}")
 
     with console.status("扫描中..."):
         candidates, scan_info = engine.quick_scan(
-            rule_name=rule_name,
-            industry_filter=industry_filter,
-            concept_filter=concept_filter,
+            rule_name=effective_rule,
+            market_query=theme_query,
             exclude_codes=exclude_codes,
         )
 
@@ -1345,13 +1350,10 @@ def scan_market(
         # 给出详细信息帮助用户理解为什么没有结果
         total = scan_info.get("total_stocks", "?")
         after_exclude = scan_info.get("after_exclude", "?")
-        after_industry = scan_info.get("after_industry", "?")
         console.print(f"\n[yellow]未找到符合条件的股票[/yellow]")
         console.print(f"  过滤过程: 全市场 {total} 只 → 排除ST/停牌/北交所后 {after_exclude} 只", highlight=False)
-        if industry_filter:
-            console.print(f"  行业过滤后: {after_industry} 只", highlight=False)
-        if concept_filter:
-            console.print(f"  概念过滤后: {scan_info.get('after_concept', '?')} 只", highlight=False)
+        if theme_query:
+            console.print(f"  主题匹配后: {scan_info.get('after_theme', '?')} 只", highlight=False)
         console.print(f"  规则「{rule_display}」过滤后: 0 只", highlight=False)
         console.print(f"\n  [dim]可能原因:[/dim]")
         console.print(f"  [dim]1. 当前非交易时段，量比/换手率等实时指标可能为0或无效[/dim]")
@@ -1361,6 +1363,15 @@ def scan_market(
         for r in engine.get_available_rules():
             console.print(f"  [dim]  scan market {r['name']:20s} ({r['display_name']}) - {r['description']}[/dim]")
         return
+
+    if scan_info.get("market_query"):
+        matched_industries = scan_info.get("matched_industries") or []
+        matched_concepts = scan_info.get("matched_concepts") or []
+        source_label = "AI" if scan_info.get("match_source") == "ai" else "本地"
+        if matched_industries:
+            console.print(f"  行业匹配({source_label}): {', '.join(matched_industries)}")
+        if matched_concepts:
+            console.print(f"  概念匹配({source_label}): {', '.join(matched_concepts)}")
 
     # 展示候选池
     elapsed = scan_info.get("elapsed_seconds", 0)
@@ -1856,6 +1867,10 @@ def main():
 
 一键扫描:
   python -m src.cli.main --portfolio                                   # 分析所有持仓股
+    python -m src.cli.main --scan                                        # 全市场默认扫描
+    python -m src.cli.main --scan 缩量                                   # 按规则扫描（规则模糊匹配）
+    python -m src.cli.main --scan AI                                     # 单个主题词扫描
+    python -m src.cli.main --scan AI,半导体,机器人                        # 多个主题词扫描（英文逗号分隔）
 
 AI配置:
   在 configs/settings.yaml 的 ai 节填写 API Key
@@ -2028,23 +2043,13 @@ AI配置:
         "--scan",
         nargs="?",
         const="default",
-        metavar="RULE",
-        help="全市场扫描（默认规则: default，可指定规则名如: shrink_pullback）"
+        metavar="RULE_OR_QUERY",
+        help="全市场扫描。可传规则名/规则关键词，也可直接传单个或多个主题词；多个主题请用英文逗号分隔，如 AI,半导体,机器人"
     )
     scan_group.add_argument(
         "--scan-deep",
         action="store_true",
         help="扫描时自动执行深度分析（跳过用户选择）"
-    )
-    scan_group.add_argument(
-        "--scan-industry",
-        metavar="INDUSTRY",
-        help="限制扫描行业（逗号分隔，如: 半导体,锂电池）"
-    )
-    scan_group.add_argument(
-        "--scan-concept",
-        metavar="CONCEPT",
-        help="限制扫描概念（逗号分隔，如: AI算力,机器人,低空经济）"
     )
     scan_group.add_argument(
         "--scan-list-rules",
@@ -2155,16 +2160,9 @@ AI配置:
                 console.print(f"  [dim]... 共{len(concepts)}个概念，仅显示前50个[/dim]")
     elif hasattr(args, 'scan') and args.scan:
         # 全市场扫描
-        industry_filter = None
-        concept_filter = None
-        if hasattr(args, 'scan_industry') and args.scan_industry:
-            industry_filter = [s.strip() for s in args.scan_industry.split(",")]
-        if hasattr(args, 'scan_concept') and args.scan_concept:
-            concept_filter = [s.strip() for s in args.scan_concept.split(",")]
         scan_market(
             rule_name=args.scan or "default",
-            industry_filter=industry_filter,
-            concept_filter=concept_filter,
+            market_query=None,
             deep=getattr(args, 'scan_deep', False),
             ai_enabled=not _ai_override.get('disable_ai', False),
         )

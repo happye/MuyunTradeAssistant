@@ -46,7 +46,7 @@ def test_apply_concept_filter_keeps_only_concept_members():
         {"代码": "000003", "名称": "C"},
     ])
 
-    filtered = engine._apply_concept_filter(df, ["AI算力"])
+    filtered = engine._apply_market_theme_filter(df, [], ["AI算力"])
     codes = filtered["代码"].astype(str).tolist()
 
     assert codes == ["000001", "000002"]
@@ -61,11 +61,10 @@ def test_industry_and_concept_filter_can_be_combined_as_intersection():
         {"代码": "000003", "名称": "C"},
     ])
 
-    after_industry = engine._apply_industry_filter(df, ["半导体"])
-    filtered = engine._apply_concept_filter(after_industry, ["AI算力"])
+    filtered = engine._apply_market_theme_filter(df, ["半导体"], ["AI算力"])
     codes = filtered["代码"].astype(str).tolist()
 
-    assert codes == ["000001"]
+    assert codes == ["000001", "000002", "000003"]
 
 
 def test_get_concept_list_reads_board_names_and_change_pct():
@@ -88,7 +87,7 @@ def test_concept_filter_supports_fuzzy_matching():
         {"代码": "000003", "名称": "C"},
     ])
 
-    filtered = engine._apply_concept_filter(df, ["AI"])
+    filtered = engine._apply_market_theme_filter(df, [], ["AI"])
     codes = filtered["代码"].astype(str).tolist()
 
     assert codes == ["000001", "000002"]
@@ -103,10 +102,46 @@ def test_industry_filter_supports_fuzzy_matching():
         {"代码": "000003", "名称": "C"},
     ])
 
-    filtered = engine._apply_industry_filter(df, ["半导"])
+    filtered = engine._apply_market_theme_filter(df, ["半导"], [])
     codes = filtered["代码"].astype(str).tolist()
 
     assert codes == ["000001", "000003"]
+
+
+def test_resolve_market_theme_can_match_concepts_without_explicit_type():
+    engine = ScannerEngine(ai_config={"enabled": False})
+    engine.market_cache = _FakeMarketCache()
+
+    result = engine.resolve_market_theme("AI")
+
+    assert result["industries"] == []
+    assert result["concepts"] == ["AI算力"]
+    assert result["source"] == "local"
+
+
+def test_market_theme_filter_uses_union_not_intersection():
+    engine = ScannerEngine(ai_config={"enabled": False})
+    engine.market_cache = _FakeMarketCache()
+    df = pd.DataFrame([
+        {"代码": "000001", "名称": "A"},
+        {"代码": "000002", "名称": "B"},
+        {"代码": "000003", "名称": "C"},
+    ])
+
+    filtered = engine._apply_market_theme_filter(df, ["半导体"], ["AI算力"])
+    codes = filtered["代码"].astype(str).tolist()
+
+    assert codes == ["000001", "000002", "000003"]
+
+
+def test_market_query_supports_multiple_terms_split_by_comma():
+    engine = ScannerEngine(ai_config={"enabled": False})
+    engine.market_cache = _FakeMarketCache()
+
+    result = engine.resolve_market_theme("AI,半导体")
+
+    assert result["industries"] == ["半导体"]
+    assert result["concepts"] == ["AI算力"]
 
 
 if __name__ == "__main__":
@@ -115,4 +150,7 @@ if __name__ == "__main__":
     test_get_concept_list_reads_board_names_and_change_pct()
     test_concept_filter_supports_fuzzy_matching()
     test_industry_filter_supports_fuzzy_matching()
+    test_resolve_market_theme_can_match_concepts_without_explicit_type()
+    test_market_theme_filter_uses_union_not_intersection()
+    test_market_query_supports_multiple_terms_split_by_comma()
     print("ALL SCANNER CONCEPT FILTER TESTS PASSED")

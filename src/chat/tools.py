@@ -156,7 +156,7 @@ def analyze_stock(stock_code: str) -> str:
         return f"分析 {stock_code} 时出错: {e}"
 
 
-def scan_market(rule_name: str = "default", industry: Optional[str] = None, concept: Optional[str] = None) -> str:
+def scan_market(rule_name: str = "default", query: Optional[str] = None) -> str:
     """全市场扫描"""
     if not _scanner_engine:
         return "错误：扫描引擎未初始化"
@@ -174,12 +174,9 @@ def scan_market(rule_name: str = "default", industry: Optional[str] = None, conc
             pass
 
         # 初筛
-        industry_filter = [industry] if industry else None
-        concept_filter = [concept] if concept else None
         candidates, scan_info = _scanner_engine.quick_scan(
             rule_name=rule_name,
-            industry_filter=industry_filter,
-            concept_filter=concept_filter,
+            market_query=query,
             exclude_codes=exclude_codes,
         )
 

@@ -90,13 +90,9 @@ TOOL_DEFINITIONS = [
                         "description": "扫描策略名称，可选: default(放量突破), shrink_pullback(缩量回调), strong_momentum(强势动量), low_valuation(低估值), oversold_bounce(超跌反弹)。也可输入中文关键词如'放量'、'缩量'、'动量'",
                         "default": "default"
                     },
-                    "industry": {
+                    "query": {
                         "type": "string",
-                        "description": "可选的行业过滤，如'半导体'、'锂电池'"
-                    },
-                    "concept": {
-                        "type": "string",
-                        "description": "可选的概念过滤，如'AI算力'、'机器人'、'低空经济'"
+                        "description": "可选的主题词，如'半导体'、'AI算力'、'机器人'、'光模块'。支持多个主题，使用英文逗号分隔，如'AI,半导体,机器人'；系统会自动匹配相关行业和概念，无需区分类型。"
                     }
                 },
                 "required": []

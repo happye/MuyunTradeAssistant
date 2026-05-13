@@ -43,10 +43,9 @@ def show_help():
     print("│  输入股票代码        → 实时行情分析                │")
     print("│  scan                 → 一键扫描所有持仓股        │")
     print("│  scan market          → 全市场扫描(初筛)          │")
-    print("│  scan market <规则>   → 指定规则(支持模糊匹配)    │")
-    print("│  scan market -i <行业>→ 行业过滤扫描              │")
-    print("│  scan market -c <概念>→ 概念过滤扫描              │")
-    print("│  scan market -i/-c 可叠加 → 行业+概念交集扫描     │")
+    print("│  scan market <主题>   → 智能匹配相关概念/板块     │")
+    print("│  scan market <主题1,主题2> → 多主题并集扫描       │")
+    print("│  scan market <规则>   → 指定扫描规则              │")
     print("│  industries           → 列出行业板块              │")
     print("│  industries <关键词>  → 搜索行业板块              │")
     print("│  concepts             → 列出概念板块              │")
@@ -66,10 +65,11 @@ def show_help():
     print("│    000001              分析平安银行实时行情        │")
     print("│    scan                一键扫描所有持仓            │")
     print("│    scan market         全市场放量突破扫描          │")
-    print("│    scan market 缩量    缩量回调扫描(模糊匹配)     │")
+    print("│    scan market 缩量    缩量回调扫描(规则匹配)     │")
     print("│    events             事件驱动扫描(预警)          │")
-    print("│    scan market -i 半导 -c AI                      │")
-    print("│                        行业+概念模糊过滤扫描      │")
+    print("│    scan market AI算力  智能匹配 AI 相关板块/概念  │")
+    print("│    scan market AI,半导体,机器人                  │")
+    print("│                        多主题并集扫描(英文逗号)  │")
     print("│    industries 半导体   搜索半导体相关板块         │")
     print("│    concepts AI         搜索AI相关概念板块         │")
     print("│    b 000001            回测平安银行(近1年)         │")
@@ -111,20 +111,11 @@ def parse_input(user_input: str):
 
     # 一键扫描持仓
     if parts[0].lower() in ("scan", "s"):
-        # scan market [规则名] [-i 行业] [-c 概念]
+        # scan market [规则名/主题词]
         if len(parts) >= 2 and parts[1].lower() in ("market", "m"):
-            args = {"rule_name": "default"}
-            i = 2
-            while i < len(parts):
-                if parts[i].lower() in ("-i", "--industry") and i + 1 < len(parts):
-                    args["industry_filter"] = parts[i + 1].split(",")
-                    i += 2
-                elif parts[i].lower() in ("-c", "--concept") and i + 1 < len(parts):
-                    args["concept_filter"] = parts[i + 1].split(",")
-                    i += 2
-                else:
-                    args["rule_name"] = parts[i]
-                    i += 1
+            args = {"rule_name": "default", "market_query": None}
+            if len(parts) > 2:
+                args["market_query"] = " ".join(parts[2:]).strip()
             return ("scan_market", args)
         return ("scan", {})
 
@@ -225,8 +216,7 @@ def run_cli(mode: str, args: dict):
     elif mode == "scan_market":
         scan_market(
             rule_name=args.get("rule_name", "default"),
-            industry_filter=args.get("industry_filter"),
-            concept_filter=args.get("concept_filter"),
+            market_query=args.get("market_query"),
             ai_debug=_ai_debug,
         )
 

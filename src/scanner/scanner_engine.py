@@ -15,7 +15,9 @@
 """
 
 import os
+import json
 import logging
+from difflib import SequenceMatcher
 from typing import Optional, Callable
 
 import yaml
@@ -64,6 +66,11 @@ class ScannerEngine:
         self.market_cache = MarketCache(ttl_seconds=cache_ttl)
         self.rules = self._load_rules(rules_path)
         self._rules_path = rules_path
+        self._ai_config = ai_config or {}
+        self._match_client = None
+        self._match_model = ""
+        self._match_provider = ""
+        self._init_match_client()
 
         # 深度分析用的Orchestrator（延迟初始化，只在deep_analyze时创建）
         self._orchestrator = None
@@ -81,11 +88,33 @@ class ScannerEngine:
             self._orchestrator = Orchestrator(**self._orchestrator_args)
         return self._orchestrator
 
+    def _init_match_client(self):
+        """初始化用于板块/概念纠偏的AI客户端。"""
+        if not self._ai_config or not self._ai_config.get("enabled", True):
+            return
+
+        provider = self._ai_config.get("provider", "deepseek")
+        provider_cfg = self._ai_config.get(provider, {})
+        api_key = provider_cfg.get("api_key") or os.environ.get(f"{provider.upper()}_API_KEY", "")
+        base_url = provider_cfg.get("base_url", "")
+        model = provider_cfg.get("model", "")
+
+        if not api_key or not model:
+            return
+
+        try:
+            from openai import OpenAI
+
+            self._match_client = OpenAI(api_key=api_key, base_url=base_url)
+            self._match_model = model
+            self._match_provider = provider
+        except Exception as exc:
+            logger.debug(f"ScannerEngine: 初始化主题匹配AI失败: {exc}")
+
     def quick_scan(
         self,
         rule_name: str = "default",
-        industry_filter: list[str] = None,
-        concept_filter: list[str] = None,
+        market_query: str = None,
         exclude_codes: set[str] = None,
     ) -> tuple[list[ScanCandidate], dict]:
         """快速扫描（仅初筛，不深度分析）
@@ -95,8 +124,7 @@ class ScannerEngine:
 
         Args:
             rule_name: 使用的规则集名称（支持模糊匹配）
-            industry_filter: 行业过滤白名单
-            concept_filter: 概念过滤白名单
+            market_query: 统一主题词，自动匹配相关行业/概念并按并集过滤
             exclude_codes: 排除的股票代码集合
 
         Returns:
@@ -135,17 +163,26 @@ class ScannerEngine:
         df = ScannerFilter.apply_global_exclude(df, global_excludes)
         after_exclude = len(df)
 
-        # 行业过滤（可选）
-        if industry_filter:
-            df = self._apply_industry_filter(df, industry_filter)
-            after_industry = len(df)
+        theme_info = None
+        if market_query:
+            theme_info = self.resolve_market_theme(market_query)
+            if not theme_info["industries"] and not theme_info["concepts"]:
+                return [], {
+                    "error": f"未找到与 '{market_query}' 相关的行业或概念",
+                    "market_query": market_query,
+                }
+
+            df = self._apply_market_theme_filter(
+                df,
+                theme_info["industries"],
+                theme_info["concepts"],
+            )
+            after_theme = len(df)
+            after_industry = after_theme
+            after_concept = after_theme
         else:
             after_industry = after_exclude
-
-        if concept_filter:
-            df = self._apply_concept_filter(df, concept_filter)
-            after_concept = len(df)
-        else:
+            after_theme = after_exclude
             after_concept = after_industry
 
         # 排除已持仓股票
@@ -183,6 +220,7 @@ class ScannerEngine:
             "rule_display_name": rule.get("name", resolved),
             "total_stocks": total_count,
             "after_exclude": after_exclude,
+            "after_theme": after_theme,
             "after_industry": after_industry,
             "after_concept": after_concept,
             "filtered": len(df),
@@ -190,6 +228,13 @@ class ScannerEngine:
             "elapsed_seconds": round(elapsed, 2),
             "cache_status": self.market_cache.get_cache_status(),
         }
+        if theme_info:
+            scan_info.update({
+                "market_query": market_query,
+                "matched_industries": theme_info["industries"],
+                "matched_concepts": theme_info["concepts"],
+                "match_source": theme_info["source"],
+            })
 
         logger.info(
             f"ScannerEngine: 初筛完成 "
@@ -504,6 +549,147 @@ class ScannerEngine:
             result.append(item)
         return result
 
+    def resolve_market_theme(self, query: str) -> dict:
+        """将统一主题词解析为相关行业/概念。
+
+        优先本地模糊匹配；若AI可用，则用AI在候选池里做一次纠偏。
+        """
+        terms = self._split_market_query(query)
+        if not terms:
+            return {"query": "", "industries": [], "concepts": [], "source": "none"}
+
+        industries = self.get_industry_list()
+        concepts = self.get_concept_list()
+        board_entries = [
+            *[{"name": item["name"], "type": "industry"} for item in industries],
+            *[{"name": item["name"], "type": "concept"} for item in concepts],
+        ]
+
+        selected = []
+        source = "local"
+        for term in terms:
+            local_matches = self._find_board_candidates(term, board_entries)
+            term_matches = local_matches
+            ai_matches = self._resolve_market_theme_with_ai(term, board_entries, local_matches)
+            if ai_matches:
+                term_matches = ai_matches
+                source = "ai"
+            selected.extend(term_matches)
+
+        result = {"query": ",".join(terms), "industries": [], "concepts": [], "source": source}
+        seen_industries = set()
+        seen_concepts = set()
+        for item in selected:
+            if item["type"] == "industry" and item["name"] not in seen_industries:
+                seen_industries.add(item["name"])
+                result["industries"].append(item["name"])
+            elif item["type"] == "concept" and item["name"] not in seen_concepts:
+                seen_concepts.add(item["name"])
+                result["concepts"].append(item["name"])
+        return result
+
+    @staticmethod
+    def _split_market_query(query: str) -> list[str]:
+        """按英文逗号拆分多个主题词。"""
+        raw = (query or "").strip()
+        if not raw:
+            return []
+        return [part.strip() for part in raw.split(",") if part.strip()]
+
+    def _find_board_candidates(self, query: str, board_entries: list[dict], limit: int = 12) -> list[dict]:
+        """按本地规则选出最相关的行业/概念候选。"""
+        query = query.strip()
+        if not query:
+            return []
+
+        scored = []
+        query_lower = query.lower()
+        for item in board_entries:
+            name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+
+            score = 0.0
+            name_lower = name.lower()
+            if name == query:
+                score = 100.0
+            elif name_lower == query_lower:
+                score = 95.0
+            elif query_lower in name_lower:
+                score = 80.0 + min(len(query_lower), 10)
+            else:
+                similarity = SequenceMatcher(None, query_lower, name_lower).ratio()
+                if similarity >= 0.35:
+                    score = similarity * 100
+
+            if score > 0:
+                scored.append((score, item))
+
+        scored.sort(key=lambda pair: (-pair[0], pair[1]["name"]))
+        deduped = []
+        seen = set()
+        for _, item in scored:
+            key = (item["type"], item["name"])
+            if key in seen:
+                continue
+            seen.add(key)
+            deduped.append(item)
+            if len(deduped) >= limit:
+                break
+        return deduped
+
+    def _resolve_market_theme_with_ai(
+        self,
+        query: str,
+        board_entries: list[dict],
+        local_matches: list[dict],
+    ) -> list[dict]:
+        """使用AI从候选行业/概念中纠偏匹配名称。"""
+        if not self._match_client or not board_entries:
+            return []
+
+        candidate_pool = local_matches or board_entries[:120]
+        if not candidate_pool:
+            return []
+
+        prompt_lines = [f"{item['type']}: {item['name']}" for item in candidate_pool[:120]]
+        system_prompt = (
+            "你是A股行业和概念板块名称纠偏助手。"
+            "用户会给一个主题词，你需要从候选名单里选出最相关的行业或概念名称。"
+            "只能从候选名单里选择，输出严格 JSON："
+            '{"industries": ["行业名"], "concepts": ["概念名"]}'
+        )
+        user_prompt = (
+            f"用户主题词: {query}\n"
+            "候选名单:\n"
+            + "\n".join(prompt_lines)
+            + "\n请返回最相关的行业和概念，可为空数组。"
+        )
+
+        try:
+            response = self._match_client.chat.completions.create(
+                model=self._match_model,
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                response_format={"type": "json_object"},
+            )
+            content = response.choices[0].message.content or "{}"
+            parsed = json.loads(content)
+            industries = set(parsed.get("industries", []) or [])
+            concepts = set(parsed.get("concepts", []) or [])
+            selected = []
+            for item in candidate_pool:
+                if item["type"] == "industry" and item["name"] in industries:
+                    selected.append(item)
+                if item["type"] == "concept" and item["name"] in concepts:
+                    selected.append(item)
+            return selected
+        except Exception as exc:
+            logger.debug(f"ScannerEngine: AI主题纠偏失败，回退本地匹配: {exc}")
+            return []
+
     def _load_rules(self, rules_path: str) -> dict:
         """加载扫描规则YAML
 
@@ -526,70 +712,36 @@ class ScannerEngine:
             logger.error(f"ScannerEngine: 规则加载失败: {e}")
             return {"rules": {}}
 
-    def _apply_industry_filter(
-        self, df: pd.DataFrame, industries: list[str]
+    def _apply_market_theme_filter(
+        self,
+        df: pd.DataFrame,
+        industries: list[str],
+        concepts: list[str],
     ) -> pd.DataFrame:
-        """行业板块过滤
-
-        通过行业板块的成分股列表过滤DataFrame。
-        只保留属于指定行业的股票。
-
-        Args:
-            df: 全市场行情DataFrame
-            industries: 行业名称列表
-
-        Returns:
-            过滤后的DataFrame
-        """
-        if not industries:
+        """统一主题过滤：行业和概念按并集筛选。"""
+        if not industries and not concepts:
             return df
 
-        resolved_industries = self._resolve_industry_names(industries)
-
-        # 收集所有指定行业的成分股代码
         all_codes = set()
+        resolved_industries = self._resolve_industry_names(industries) if industries else []
+        resolved_concepts = self._resolve_concept_names(concepts) if concepts else []
+
         for industry_name in resolved_industries:
-            codes = self.market_cache.get_stocks_by_industry(industry_name)
-            all_codes.update(codes)
-
-        if not all_codes:
-            logger.warning(f"ScannerEngine: 行业过滤无结果，行业: {industries}")
-            return df
-
-        # 在DataFrame中过滤
-        if "代码" in df.columns:
-            result = df[df["代码"].astype(str).isin(all_codes)]
-            logger.info(
-                f"ScannerEngine: 行业过滤 "
-                f"{industries} -> {resolved_industries} -> {len(all_codes)}只成分股 -> 匹配{len(result)}只"
-            )
-            return result
-
-        return df
-
-    def _apply_concept_filter(
-        self, df: pd.DataFrame, concepts: list[str]
-    ) -> pd.DataFrame:
-        """概念板块过滤"""
-        if not concepts:
-            return df
-
-        resolved_concepts = self._resolve_concept_names(concepts)
-
-        all_codes = set()
+            all_codes.update(self.market_cache.get_stocks_by_industry(industry_name))
         for concept_name in resolved_concepts:
-            codes = self.market_cache.get_stocks_by_concept(concept_name)
-            all_codes.update(codes)
+            all_codes.update(self.market_cache.get_stocks_by_concept(concept_name))
 
         if not all_codes:
-            logger.warning(f"ScannerEngine: 概念过滤无结果，概念: {concepts}")
+            logger.warning(
+                f"ScannerEngine: 统一主题过滤无结果，行业={industries}，概念={concepts}"
+            )
             return df
 
         if "代码" in df.columns:
             result = df[df["代码"].astype(str).isin(all_codes)]
             logger.info(
-                f"ScannerEngine: 概念过滤 "
-                f"{concepts} -> {resolved_concepts} -> {len(all_codes)}只成分股 -> 匹配{len(result)}只"
+                "ScannerEngine: 统一主题过滤 "
+                f"行业={resolved_industries}, 概念={resolved_concepts} -> {len(all_codes)}只成分股 -> 匹配{len(result)}只"
             )
             return result
 
