@@ -5,6 +5,7 @@
 
 import sys
 import os
+import subprocess
 
 # 确保工作目录为脚本所在目录
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -44,8 +45,12 @@ def show_help():
     print("│  scan market          → 全市场扫描(初筛)          │")
     print("│  scan market <规则>   → 指定规则(支持模糊匹配)    │")
     print("│  scan market -i <行业>→ 行业过滤扫描              │")
+    print("│  scan market -c <概念>→ 概念过滤扫描              │")
+    print("│  scan market -i/-c 可叠加 → 行业+概念交集扫描     │")
     print("│  industries           → 列出行业板块              │")
     print("│  industries <关键词>  → 搜索行业板块              │")
+    print("│  concepts             → 列出概念板块              │")
+    print("│  concepts <关键词>    → 搜索概念板块              │")
     print("│  events               → 事件驱动扫描(预警)        │")
     print("│  b  <代码> [起止日期] → 回测模式                  │")
     print("│  pos                  → 查看持仓列表              │")
@@ -63,7 +68,10 @@ def show_help():
     print("│    scan market         全市场放量突破扫描          │")
     print("│    scan market 缩量    缩量回调扫描(模糊匹配)     │")
     print("│    events             事件驱动扫描(预警)          │")
+    print("│    scan market -i 半导 -c AI                      │")
+    print("│                        行业+概念模糊过滤扫描      │")
     print("│    industries 半导体   搜索半导体相关板块         │")
+    print("│    concepts AI         搜索AI相关概念板块         │")
     print("│    b 000001            回测平安银行(近1年)         │")
     print("│    b 000001 2025-01-01 2026-01-01                 │")
     print("│                        回测指定区间                │")
@@ -103,13 +111,16 @@ def parse_input(user_input: str):
 
     # 一键扫描持仓
     if parts[0].lower() in ("scan", "s"):
-        # scan market [规则名] [-i 行业]
+        # scan market [规则名] [-i 行业] [-c 概念]
         if len(parts) >= 2 and parts[1].lower() in ("market", "m"):
             args = {"rule_name": "default"}
             i = 2
             while i < len(parts):
                 if parts[i].lower() in ("-i", "--industry") and i + 1 < len(parts):
                     args["industry_filter"] = parts[i + 1].split(",")
+                    i += 2
+                elif parts[i].lower() in ("-c", "--concept") and i + 1 < len(parts):
+                    args["concept_filter"] = parts[i + 1].split(",")
                     i += 2
                 else:
                     args["rule_name"] = parts[i]
@@ -121,6 +132,11 @@ def parse_input(user_input: str):
     if parts[0].lower() in ("industries", "industry"):
         keyword = parts[1] if len(parts) >= 2 else None
         return ("industries", {"keyword": keyword})
+
+    # 概念板块列表（支持关键词搜索）
+    if parts[0].lower() in ("concepts", "concept"):
+        keyword = parts[1] if len(parts) >= 2 else None
+        return ("concepts", {"keyword": keyword})
 
     # 事件驱动扫描
     if parts[0].lower() == "events":
@@ -210,6 +226,7 @@ def run_cli(mode: str, args: dict):
         scan_market(
             rule_name=args.get("rule_name", "default"),
             industry_filter=args.get("industry_filter"),
+            concept_filter=args.get("concept_filter"),
             ai_debug=_ai_debug,
         )
 
@@ -239,6 +256,31 @@ def run_cli(mode: str, args: dict):
                 print(f"  未找到包含 \"{keyword}\" 的行业板块")
             else:
                 print("  行业板块数据获取失败")
+
+    elif mode == "concepts":
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        keyword = args.get("keyword")
+        concepts = engine.get_concept_list(keyword=keyword)
+        if concepts:
+            if keyword:
+                print(f"\n  概念板块 (搜索 \"{keyword}\", {len(concepts)}个):")
+            else:
+                print(f"\n  概念板块 ({len(concepts)}个, 输入 concepts <关键词> 搜索):")
+            for concept in concepts[:50]:
+                change = concept.get("change_pct", 0)
+                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+                lead = concept.get("lead_stock", "")
+                lead_str = f" 领涨:{lead}" if lead else ""
+                print(f"    {concept['name']:16s} {change:+6.2f}% {arrow}{lead_str}")
+            if len(concepts) > 50:
+                print(f"    ... 共{len(concepts)}个，仅显示前50个")
+            print()
+        else:
+            if keyword:
+                print(f"  未找到包含 \"{keyword}\" 的概念板块")
+            else:
+                print("  概念板块数据获取失败")
 
     elif mode == "events":
         scan_events(ai_debug=_ai_debug)
@@ -282,6 +324,12 @@ def run_cli(mode: str, args: dict):
 
 def main():
     global _ai_debug
+
+    cli_args = sys.argv[1:]
+    if cli_args and cli_args != ["--debug"]:
+        python_exec = find_python()
+        completed = subprocess.run([python_exec, "-m", "src.cli.main", *cli_args], cwd=os.getcwd())
+        raise SystemExit(completed.returncode)
 
     # 检查命令行参数
     if "--debug" in sys.argv:

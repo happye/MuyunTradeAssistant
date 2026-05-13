@@ -141,7 +141,11 @@ def analyze_interactive():
         console.print(f"[dim]AI调节层: 未配置（可在 configs/settings.yaml 中启用）[/dim]")
 
     # 获取股票数据
-    data = create_sample_data()
+    try:
+        data = create_sample_data()
+    except KeyboardInterrupt:
+        console.print("\n[yellow]已取消输入[/yellow]")
+        return None
 
     # 执行分析
     console.print("\n[bold yellow]🔄 正在分析...[/bold yellow]")
@@ -2222,7 +2226,10 @@ AI配置:
         run_chat_repl(config)
     else:
         # 交互模式
-        analyze_interactive()
+        try:
+            analyze_interactive()
+        except KeyboardInterrupt:
+            console.print("\n[yellow]已取消操作[/yellow]")
 
 
 if __name__ == "__main__":

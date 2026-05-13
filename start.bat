@@ -2,7 +2,7 @@
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
 if exist ".venv\Scripts\python.exe" (
-	.venv\Scripts\python.exe -m src.cli.main %*
+	.venv\Scripts\python.exe start.py %*
 ) else (
-	python -m src.cli.main %*
+	python start.py %*
 )
