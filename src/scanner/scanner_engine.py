@@ -167,19 +167,22 @@ class ScannerEngine:
         if market_query:
             theme_info = self.resolve_market_theme(market_query)
             if not theme_info["industries"] and not theme_info["concepts"]:
-                return [], {
-                    "error": f"未找到与 '{market_query}' 相关的行业或概念",
-                    "market_query": market_query,
-                }
-
-            df = self._apply_market_theme_filter(
-                df,
-                theme_info["industries"],
-                theme_info["concepts"],
-            )
-            after_theme = len(df)
-            after_industry = after_theme
-            after_concept = after_theme
+                logger.warning(
+                    f"ScannerEngine: 主题词 '{market_query}' 未匹配到行业/概念，回退为全市场规则扫描"
+                )
+                theme_info["fallback_unfiltered"] = True
+                after_theme = after_exclude
+                after_industry = after_exclude
+                after_concept = after_exclude
+            else:
+                df = self._apply_market_theme_filter(
+                    df,
+                    theme_info["industries"],
+                    theme_info["concepts"],
+                )
+                after_theme = len(df)
+                after_industry = after_theme
+                after_concept = after_theme
         else:
             after_industry = after_exclude
             after_theme = after_exclude
@@ -234,6 +237,7 @@ class ScannerEngine:
                 "matched_industries": theme_info["industries"],
                 "matched_concepts": theme_info["concepts"],
                 "match_source": theme_info["source"],
+                "fallback_unfiltered": theme_info.get("fallback_unfiltered", False),
             })
 
         logger.info(
@@ -574,6 +578,10 @@ class ScannerEngine:
             if ai_matches:
                 term_matches = ai_matches
                 source = "ai"
+            if not term_matches:
+                term_matches = self._resolve_market_theme_direct(term)
+                if term_matches:
+                    source = "direct"
             selected.extend(term_matches)
 
         result = {"query": ",".join(terms), "industries": [], "concepts": [], "source": source}
@@ -587,6 +595,31 @@ class ScannerEngine:
                 seen_concepts.add(item["name"])
                 result["concepts"].append(item["name"])
         return result
+
+    def _resolve_market_theme_direct(self, query: str) -> list[dict]:
+        """当板块列表不可用时，直接探测行业/概念成分股接口。"""
+        query = (query or "").strip()
+        if not query:
+            return []
+
+        selected = []
+        try:
+            industry_codes = self.market_cache.get_stocks_by_industry(query)
+            if industry_codes:
+                selected.append({"name": query, "type": "industry"})
+        except Exception as exc:
+            logger.debug(f"ScannerEngine: 直接探测行业失败 {query}: {exc}")
+
+        try:
+            concept_codes = self.market_cache.get_stocks_by_concept(query)
+            if concept_codes:
+                selected.append({"name": query, "type": "concept"})
+        except Exception as exc:
+            logger.debug(f"ScannerEngine: 直接探测概念失败 {query}: {exc}")
+
+        if selected:
+            logger.info(f"ScannerEngine: 直接探测主题词 {query} -> {selected}")
+        return selected
 
     @staticmethod
     def _split_market_query(query: str) -> list[str]:

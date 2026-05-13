@@ -1367,11 +1367,16 @@ def scan_market(
     if scan_info.get("market_query"):
         matched_industries = scan_info.get("matched_industries") or []
         matched_concepts = scan_info.get("matched_concepts") or []
-        source_label = "AI" if scan_info.get("match_source") == "ai" else "本地"
+        source_label = {
+            "ai": "AI",
+            "direct": "直连",
+        }.get(scan_info.get("match_source"), "本地")
         if matched_industries:
             console.print(f"  行业匹配({source_label}): {', '.join(matched_industries)}")
         if matched_concepts:
             console.print(f"  概念匹配({source_label}): {', '.join(matched_concepts)}")
+        if scan_info.get("fallback_unfiltered"):
+            console.print("  [yellow]主题匹配失败，已回退为全市场规则扫描[/yellow]")
 
     # 展示候选池
     elapsed = scan_info.get("elapsed_seconds", 0)
