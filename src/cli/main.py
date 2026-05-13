@@ -1235,6 +1235,7 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 def scan_market(
     rule_name: str = "default",
     industry_filter: list[str] = None,
+    concept_filter: list[str] = None,
     ai_debug: bool = False,
     deep: bool = False,
     ai_enabled: bool = True,
@@ -1248,6 +1249,7 @@ def scan_market(
     Args:
         rule_name: 扫描规则名称
         industry_filter: 行业过滤白名单
+        concept_filter: 概念过滤白名单
         ai_debug: 是否开启AI调试模式
         deep: 是否自动执行深度分析（跳过用户选择）
         ai_enabled: 深度分析时是否启用AI
@@ -1316,11 +1318,14 @@ def scan_market(
 
     if industry_filter:
         console.print(f"  行业过滤: {', '.join(industry_filter)}")
+    if concept_filter:
+        console.print(f"  概念过滤: {', '.join(concept_filter)}")
 
     with console.status("扫描中..."):
         candidates, scan_info = engine.quick_scan(
             rule_name=rule_name,
             industry_filter=industry_filter,
+            concept_filter=concept_filter,
             exclude_codes=exclude_codes,
         )
 
@@ -1341,6 +1346,8 @@ def scan_market(
         console.print(f"  过滤过程: 全市场 {total} 只 → 排除ST/停牌/北交所后 {after_exclude} 只", highlight=False)
         if industry_filter:
             console.print(f"  行业过滤后: {after_industry} 只", highlight=False)
+        if concept_filter:
+            console.print(f"  概念过滤后: {scan_info.get('after_concept', '?')} 只", highlight=False)
         console.print(f"  规则「{rule_display}」过滤后: 0 只", highlight=False)
         console.print(f"\n  [dim]可能原因:[/dim]")
         console.print(f"  [dim]1. 当前非交易时段，量比/换手率等实时指标可能为0或无效[/dim]")
@@ -2031,6 +2038,11 @@ AI配置:
         help="限制扫描行业（逗号分隔，如: 半导体,锂电池）"
     )
     scan_group.add_argument(
+        "--scan-concept",
+        metavar="CONCEPT",
+        help="限制扫描概念（逗号分隔，如: AI算力,机器人,低空经济）"
+    )
+    scan_group.add_argument(
         "--scan-list-rules",
         action="store_true",
         help="列出所有可用的扫描规则"
@@ -2039,6 +2051,11 @@ AI配置:
         "--scan-list-industries",
         action="store_true",
         help="列出所有行业板块（含涨跌幅）"
+    )
+    scan_group.add_argument(
+        "--scan-list-concepts",
+        action="store_true",
+        help="列出所有概念板块（含涨跌幅）"
     )
 
     # ===== 事件驱动参数（v0.8.0 Phase 3）=====
@@ -2115,14 +2132,35 @@ AI配置:
             console.print(table)
             if len(industries) > 50:
                 console.print(f"  [dim]... 共{len(industries)}个行业，仅显示前50个[/dim]")
+    elif hasattr(args, 'scan_list_concepts') and args.scan_list_concepts:
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        concepts = engine.get_concept_list()
+        if not concepts:
+            console.print("[yellow]概念板块数据获取失败[/yellow]")
+        else:
+            table = Table(title=f"概念板块 ({len(concepts)}个)")
+            table.add_column("概念", style="cyan")
+            table.add_column("涨跌幅%", justify="right")
+            for item in concepts[:50]:
+                change = item.get("change_pct", 0)
+                style = "red" if change > 0 else "green" if change < 0 else "white"
+                table.add_row(item["name"], f"[{style}]{change:+.2f}[/{style}]")
+            console.print(table)
+            if len(concepts) > 50:
+                console.print(f"  [dim]... 共{len(concepts)}个概念，仅显示前50个[/dim]")
     elif hasattr(args, 'scan') and args.scan:
         # 全市场扫描
         industry_filter = None
+        concept_filter = None
         if hasattr(args, 'scan_industry') and args.scan_industry:
             industry_filter = [s.strip() for s in args.scan_industry.split(",")]
+        if hasattr(args, 'scan_concept') and args.scan_concept:
+            concept_filter = [s.strip() for s in args.scan_concept.split(",")]
         scan_market(
             rule_name=args.scan or "default",
             industry_filter=industry_filter,
+            concept_filter=concept_filter,
             deep=getattr(args, 'scan_deep', False),
             ai_enabled=not _ai_override.get('disable_ai', False),
         )

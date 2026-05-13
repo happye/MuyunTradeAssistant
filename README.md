@@ -31,6 +31,12 @@ Phase 6 在开发侧完成了真实多时间框架接入：
 - `multi_timeframe` 技能不再用日线 `MA5/MA20/MA60` 近似月周，而是按“月线方向过滤、周线位置确认、日线触发执行”工作。
 - 实时分析与回测重放共享这套时间框架摘要，避免实盘分析和历史回测在多周期逻辑上出现两套口径。
 
+Scanner 近期在开发侧新增了板块限制能力：
+
+- `quick_scan` 现在支持行业过滤、概念过滤，以及行业+概念叠加过滤（交集筛选）。
+- CLI 已支持 `--scan-industry`、`--scan-concept`、`--scan-list-industries`、`--scan-list-concepts`；Chat 工具 `scan_market(rule_name, industry, concept)` 也已接入概念参数。
+- 扫描规则名、行业过滤、概念过滤现在都支持模糊匹配；行业/概念命中多个板块时会自动取并集。若要严格控制范围，仍建议先用列表命令确认精确名称。
+
 ---
 
 ## 项目结构

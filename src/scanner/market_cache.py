@@ -3,7 +3,7 @@
 核心职责：
 1. 获取全市场A股/ETF行情数据（efinance批量接口）
 2. 内存缓存 + TTL过期策略
-3. 行业板块数据缓存
+3. 行业板块 / 概念板块数据缓存
 4. 盘中/盘后/非交易日区分
 
 数据源（v0.8.0 Phase 2 更新）：
@@ -56,6 +56,8 @@ class MarketCache:
     - L1 全市场ETF: ak.fund_etf_spot_em() ~5s, 同上
     - L2 行业板块列表: ak.stock_board_industry_name_em() ~3s, 10min
     - L2 行业成分股: ak.stock_board_industry_cons_em() ~1s/行业, 30min
+    - L2 概念板块列表: ak.stock_board_concept_name_em() ~3s, 10min
+    - L2 概念成分股: ak.stock_board_concept_cons_em() ~1s/概念, 30min
     """
 
     # 默认盘中缓存TTL（秒）
@@ -83,10 +85,19 @@ class MarketCache:
         self._industry_df: Optional[pd.DataFrame] = None
         self._industry_timestamp: float = 0.0
 
+        # L2 缓存: 概念板块列表
+        self._concept_df: Optional[pd.DataFrame] = None
+        self._concept_timestamp: float = 0.0
+
         # L2 缓存: 行业成分股（按行业名缓存）
         self._industry_stocks: dict[str, list[str]] = {}
         self._industry_stocks_ts: dict[str, float] = {}
         self._industry_stocks_ttl = 1800  # 30分钟
+
+        # L2 缓存: 概念成分股（按概念名缓存）
+        self._concept_stocks: dict[str, list[str]] = {}
+        self._concept_stocks_ts: dict[str, float] = {}
+        self._concept_stocks_ttl = 1800  # 30分钟
 
     @staticmethod
     def _without_proxy():
@@ -446,6 +457,64 @@ class MarketCache:
             # 返回过期缓存（如果有）
             return self._industry_stocks.get(industry_name, [])
 
+    def get_concept_boards(self, force_refresh: bool = False) -> pd.DataFrame:
+        """获取概念板块列表（带缓存）"""
+        ttl = 600  # 概念板块10分钟TTL
+        if (not force_refresh
+                and self._concept_df is not None
+                and (time.time() - self._concept_timestamp) < ttl):
+            logger.info("MarketCache: 概念板块缓存命中")
+            return self._concept_df
+
+        logger.info("MarketCache: 获取概念板块列表...")
+        try:
+            import akshare as ak
+            with self._without_proxy():
+                df = ak.stock_board_concept_name_em()
+            if df is not None and not df.empty:
+                self._concept_df = df
+                self._concept_timestamp = time.time()
+                logger.info(f"MarketCache: 概念板块获取成功({len(df)}个)")
+                return df
+            return pd.DataFrame()
+        except Exception as e:
+            logger.error(f"MarketCache: 概念板块获取失败: {e}")
+            if self._concept_df is not None:
+                return self._concept_df
+            return pd.DataFrame()
+
+    def get_stocks_by_concept(self, concept_name: str) -> list[str]:
+        """获取指定概念的成分股代码列表（带缓存）"""
+        if concept_name in self._concept_stocks:
+            ts = self._concept_stocks_ts.get(concept_name, 0)
+            if (time.time() - ts) < self._concept_stocks_ttl:
+                logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
+                return self._concept_stocks[concept_name]
+
+        logger.info(f"MarketCache: 获取概念成分股({concept_name})...")
+        try:
+            import akshare as ak
+            with self._without_proxy():
+                df = ak.stock_board_concept_cons_em(symbol=concept_name)
+            if df is not None and not df.empty:
+                code_col = None
+                for col in ["代码", "code", "symbol"]:
+                    if col in df.columns:
+                        code_col = col
+                        break
+
+                if code_col:
+                    codes = df[code_col].astype(str).tolist()
+                    self._concept_stocks[concept_name] = codes
+                    self._concept_stocks_ts[concept_name] = time.time()
+                    logger.info(f"MarketCache: 概念成分股获取成功({concept_name}, {len(codes)}只)")
+                    return codes
+
+            return []
+        except Exception as e:
+            logger.error(f"MarketCache: 概念成分股获取失败({concept_name}): {e}")
+            return self._concept_stocks.get(concept_name, [])
+
     def is_trading_hours(self) -> bool:
         """判断当前是否在A股交易时段
 
@@ -501,8 +570,12 @@ class MarketCache:
         self._etf_timestamp = 0.0
         self._industry_df = None
         self._industry_timestamp = 0.0
+        self._concept_df = None
+        self._concept_timestamp = 0.0
         self._industry_stocks.clear()
         self._industry_stocks_ts.clear()
+        self._concept_stocks.clear()
+        self._concept_stocks_ts.clear()
         logger.info("MarketCache: 所有缓存已清除")
 
     def get_cache_status(self) -> dict:
@@ -528,6 +601,10 @@ class MarketCache:
             "industries": {
                 "cached": self._industry_df is not None,
                 "count": len(self._industry_df) if self._industry_df is not None else 0,
+            },
+            "concepts": {
+                "cached": self._concept_df is not None,
+                "count": len(self._concept_df) if self._concept_df is not None else 0,
             },
         }
         return status

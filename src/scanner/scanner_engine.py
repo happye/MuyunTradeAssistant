@@ -85,6 +85,7 @@ class ScannerEngine:
         self,
         rule_name: str = "default",
         industry_filter: list[str] = None,
+        concept_filter: list[str] = None,
         exclude_codes: set[str] = None,
     ) -> tuple[list[ScanCandidate], dict]:
         """快速扫描（仅初筛，不深度分析）
@@ -95,6 +96,7 @@ class ScannerEngine:
         Args:
             rule_name: 使用的规则集名称（支持模糊匹配）
             industry_filter: 行业过滤白名单
+            concept_filter: 概念过滤白名单
             exclude_codes: 排除的股票代码集合
 
         Returns:
@@ -140,6 +142,12 @@ class ScannerEngine:
         else:
             after_industry = after_exclude
 
+        if concept_filter:
+            df = self._apply_concept_filter(df, concept_filter)
+            after_concept = len(df)
+        else:
+            after_concept = after_industry
+
         # 排除已持仓股票
         if exclude_codes:
             if "代码" in df.columns:
@@ -176,6 +184,7 @@ class ScannerEngine:
             "total_stocks": total_count,
             "after_exclude": after_exclude,
             "after_industry": after_industry,
+            "after_concept": after_concept,
             "filtered": len(df),
             "candidates_count": len(candidates),
             "elapsed_seconds": round(elapsed, 2),
@@ -450,6 +459,51 @@ class ScannerEngine:
 
         return result
 
+    def get_concept_list(self, keyword: str = None) -> list[dict]:
+        """获取概念板块列表（含涨跌幅）"""
+        df = self.market_cache.get_concept_boards()
+        if df.empty:
+            return []
+
+        name_col = None
+        change_col = None
+        lead_col = None
+        for col in df.columns:
+            if col == "板块名称":
+                name_col = col
+            if col == "涨跌幅":
+                change_col = col
+            if col == "领涨股":
+                lead_col = col
+        if name_col is None:
+            for col in df.columns:
+                if "名称" in col:
+                    name_col = col
+                    break
+                if "板块" in col and "代码" not in col:
+                    name_col = col
+                    break
+
+        if not name_col:
+            return []
+
+        if keyword:
+            mask = df[name_col].astype(str).str.contains(keyword, case=False, na=False)
+            df = df[mask]
+
+        result = []
+        for _, row in df.iterrows():
+            item = {"name": str(row[name_col])}
+            if change_col:
+                try:
+                    item["change_pct"] = float(row[change_col])
+                except (ValueError, TypeError):
+                    item["change_pct"] = 0.0
+            if lead_col:
+                item["lead_stock"] = str(row[lead_col])
+            result.append(item)
+        return result
+
     def _load_rules(self, rules_path: str) -> dict:
         """加载扫描规则YAML
 
@@ -490,9 +544,11 @@ class ScannerEngine:
         if not industries:
             return df
 
+        resolved_industries = self._resolve_industry_names(industries)
+
         # 收集所有指定行业的成分股代码
         all_codes = set()
-        for industry_name in industries:
+        for industry_name in resolved_industries:
             codes = self.market_cache.get_stocks_by_industry(industry_name)
             all_codes.update(codes)
 
@@ -505,11 +561,100 @@ class ScannerEngine:
             result = df[df["代码"].astype(str).isin(all_codes)]
             logger.info(
                 f"ScannerEngine: 行业过滤 "
-                f"{industries} → {len(all_codes)}只成分股 → 匹配{len(result)}只"
+                f"{industries} -> {resolved_industries} -> {len(all_codes)}只成分股 -> 匹配{len(result)}只"
             )
             return result
 
         return df
+
+    def _apply_concept_filter(
+        self, df: pd.DataFrame, concepts: list[str]
+    ) -> pd.DataFrame:
+        """概念板块过滤"""
+        if not concepts:
+            return df
+
+        resolved_concepts = self._resolve_concept_names(concepts)
+
+        all_codes = set()
+        for concept_name in resolved_concepts:
+            codes = self.market_cache.get_stocks_by_concept(concept_name)
+            all_codes.update(codes)
+
+        if not all_codes:
+            logger.warning(f"ScannerEngine: 概念过滤无结果，概念: {concepts}")
+            return df
+
+        if "代码" in df.columns:
+            result = df[df["代码"].astype(str).isin(all_codes)]
+            logger.info(
+                f"ScannerEngine: 概念过滤 "
+                f"{concepts} -> {resolved_concepts} -> {len(all_codes)}只成分股 -> 匹配{len(result)}只"
+            )
+            return result
+
+        return df
+
+    def _resolve_industry_names(self, industries: list[str]) -> list[str]:
+        """将行业过滤词解析为准确行业名，支持模糊匹配。"""
+        industry_list = self.get_industry_list()
+        return self._resolve_board_names(industries, industry_list, "行业")
+
+    def _resolve_concept_names(self, concepts: list[str]) -> list[str]:
+        """将概念过滤词解析为准确概念名，支持模糊匹配。"""
+        concept_list = self.get_concept_list()
+        return self._resolve_board_names(concepts, concept_list, "概念")
+
+    @staticmethod
+    def _resolve_board_names(inputs: list[str], board_list: list[dict], board_type: str) -> list[str]:
+        """将用户输入解析为板块精确名称。
+
+        匹配顺序：
+        1. 精确匹配
+        2. 忽略大小写精确匹配
+        3. 包含匹配（关键词命中多个板块时取并集）
+
+        如果板块列表为空，或某个输入没有匹配项，则保留原始输入，避免因缓存/接口异常导致误伤。
+        """
+        if not inputs:
+            return []
+        if not board_list:
+            return inputs
+
+        names = [str(item.get("name", "")).strip() for item in board_list if item.get("name")]
+        resolved = []
+
+        for raw_input in inputs:
+            query = str(raw_input).strip()
+            if not query:
+                continue
+
+            exact = [name for name in names if name == query]
+            if exact:
+                resolved.extend(exact)
+                continue
+
+            query_lower = query.lower()
+            exact_casefold = [name for name in names if name.lower() == query_lower]
+            if exact_casefold:
+                resolved.extend(exact_casefold)
+                continue
+
+            fuzzy = [name for name in names if query_lower in name.lower()]
+            if fuzzy:
+                logger.info(f"ScannerEngine: {board_type}过滤模糊匹配 {query} -> {fuzzy}")
+                resolved.extend(fuzzy)
+                continue
+
+            resolved.append(query)
+
+        deduped = []
+        seen = set()
+        for name in resolved:
+            if name not in seen:
+                seen.add(name)
+                deduped.append(name)
+        return deduped
 
     def _df_to_candidates(
         self, df: pd.DataFrame, rule_name: str

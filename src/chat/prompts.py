@@ -93,6 +93,10 @@ TOOL_DEFINITIONS = [
                     "industry": {
                         "type": "string",
                         "description": "可选的行业过滤，如'半导体'、'锂电池'"
+                    },
+                    "concept": {
+                        "type": "string",
+                        "description": "可选的概念过滤，如'AI算力'、'机器人'、'低空经济'"
                     }
                 },
                 "required": []

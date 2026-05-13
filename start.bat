@@ -1,5 +1,8 @@
 @echo off
 chcp 65001 >nul 2>&1
 cd /d "%~dp0"
-.venv\Scripts\python.exe start.py %*
-pause
+if exist ".venv\Scripts\python.exe" (
+	.venv\Scripts\python.exe -m src.cli.main %*
+) else (
+	python -m src.cli.main %*
+)
