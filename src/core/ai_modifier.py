@@ -33,11 +33,18 @@ from openai import OpenAI
 
 from src.data.models import AIModifierResult, StockData, MarketState
 from src.data.news_client import NewsClient
+from src.core.tech_context import TechContextBuilder
 
 logger = logging.getLogger(__name__)
 
-# AI分析的系统提示词
-SYSTEM_PROMPT = """你是一个专业的A股市场分析师。你的任务是根据提供的新闻数据，分析市场情绪和事件影响。
+# AI分析的系统提示词（v0.8.3 增强：技术面背景感知）
+SYSTEM_PROMPT = """你是一个专业的A股市场分析师。你的任务是根据提供的新闻数据，结合当前技术面背景，分析市场情绪和事件影响。
+
+重要：你必须结合技术面背景来判断新闻的真实影响程度：
+- 如果技术面与新闻方向一致（如上升趋势+利好新闻），影响放大
+- 如果技术面与新闻方向相反（如上升趋势+利空新闻），影响削弱，需在理由中说明
+- 如果新闻与技术面方向矛盾且技术面趋势明确，以技术面为准
+- 新闻情绪分析不能脱离技术面背景——同样的新闻在不同技术面下影响可能截然不同
 
 你必须严格按照以下JSON格式输出分析结果，不要输出任何其他内容：
 
@@ -47,8 +54,10 @@ SYSTEM_PROMPT = """你是一个专业的A股市场分析师。你的任务是根
   "risk_level": "low/medium/high",
   "narrative_shift": true/false,
   "event_type": "policy/war/earnings/macro/black_swan/none",
-  "summary": "一句话摘要",
-  "key_events": ["事件1", "事件2"]
+  "summary": "一句话摘要（必须提及新闻与技术面的关系）",
+  "key_events": ["事件1", "事件2"],
+  "tech_context_awareness": true/false,
+  "tech_context_used": ["趋势方向", "成交量", "大盘环境"]
 }
 
 分析要点：
@@ -63,8 +72,11 @@ SYSTEM_PROMPT = """你是一个专业的A股市场分析师。你的任务是根
    - macro: 宏观经济数据（GDP/CPI/PMI/进出口）
    - black_swan: 黑天鹅事件（极端罕见，只用于真正的系统性风险）
    - none: 无重大事件
-6. summary: 用一句中文概括核心影响
+6. summary: 用一句中文概括核心影响，必须明确说明你是如何结合技术面背景的
 7. key_events: 列出最关键的1-3个事件
+8. tech_context_awareness: 你是否在分析中使用了技术面背景信息（true/false）
+9. tech_context_used: 你使用了哪些技术面要素（从以下选: 趋势方向, 均线排列, 价格位置, 成交量, 动量指标, 大盘环境）
+   如果未使用任何技术面要素，填 []
 
 注意：宁可低估影响也不要夸大。只有真正重大的事件才标记为high risk或black_swan。"""
 
@@ -94,6 +106,7 @@ class AIModifier:
         self.risk_position_cap = modifier_cfg.get("risk_position_cap", 0.7)
         self.max_news = modifier_cfg.get("max_news_per_stock", 10)
         self.cache_ttl = modifier_cfg.get("cache_ttl", 3600)
+        self.tech_context_enabled = modifier_cfg.get("tech_context_enabled", True)
 
         # 配置新闻客户端缓存
         NewsClient.configure(cache_ttl=self.cache_ttl, debug=self.debug)
@@ -219,9 +232,17 @@ class AIModifier:
                     logger.debug(f"AI Modifier: RAG检索异常(不影响主流程): {e}")
 
             # Step 3: 构建用户提示
+            # v0.8.3 Phase B: 注入技术面上下文
+            tech_context_text = ""
+            tech_context_data = None
+            if self.tech_context_enabled:
+                tech_context_data = TechContextBuilder().build(stock_data)
+                tech_context_text = TechContextBuilder.to_text(tech_context_data)
+
             user_prompt = (
                 f"请分析以下关于 {stock_name}（{stock_data.stock_code}）的新闻数据：\n\n"
                 f"{news_text}\n\n"
+                f"## 当前技术面背景\n{tech_context_text}\n\n"
                 f"当前股价: {stock_data.price}"
             )
 
@@ -236,6 +257,10 @@ class AIModifier:
             if self.debug:
                 print("\n" + "=" * 60)
                 print(f"[AI DEBUG] Provider: {self.provider}, Model: {self._model}")
+                print(f"[AI DEBUG] Tech Context: "
+                      f"trend={tech_context_data['trend']['direction'] if tech_context_data else 'N/A'}, "
+                      f"MA={tech_context_data['trend']['ma_arrangement'] if tech_context_data else 'N/A'}, "
+                      f"vol={tech_context_data['volume']['vol_trend'] if tech_context_data else 'N/A'}")
                 print(f"[AI DEBUG] System Prompt ({len(SYSTEM_PROMPT)}字):")
                 print(SYSTEM_PROMPT[:500] + ("..." if len(SYSTEM_PROMPT) > 500 else ""))
                 print(f"\n[AI DEBUG] User Prompt ({len(user_prompt)}字):")
@@ -421,6 +446,9 @@ class AIModifier:
                 event_type=event_type,
                 summary=str(data.get("summary", "")),
                 key_events=data.get("key_events", []),
+                # v0.8.3 Phase B: 技术面感知
+                tech_context_awareness=bool(data.get("tech_context_awareness", False)),
+                tech_context_used=data.get("tech_context_used", []),
             )
 
         except (json.JSONDecodeError, KeyError, ValueError) as e:
@@ -471,6 +499,8 @@ class AIModifier:
             risk_level="low",
             adjusted=False,
             summary="AI调节未启用",
+            tech_context_awareness=False,
+            tech_context_used=[],
         )
 
     def switch_provider(self, provider: str):

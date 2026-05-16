@@ -116,6 +116,7 @@ ai:
     risk_position_cap: 0.7   # 高风险时仓位上限打7折
     max_news_per_stock: 10   # 每只股票最多抓取新闻条数
     cache_ttl: 3600          # 新闻缓存1小时（秒）
+    tech_context_enabled: true  # v0.8.3: 是否注入技术面背景给AI
 
 # 全市场扫描配置（v0.8.0 Phase 2）
 scanner:

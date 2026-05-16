@@ -296,13 +296,17 @@ class StrategyDecision(BaseModel):
 
 
 class AIModifierResult(BaseModel):
-    """AI调节层输出（v0.8.0）
+    """AI调节层输出（v0.8.3）
 
     AI只负责信息理解和情绪判断，不负责决策输出和交易执行。
     三层调节机制：
     1. 信号调节: buy_score *= (1 - confidence × sentiment_weight)
     2. 仓位调节: 高风险→max_position *= risk_position_cap
     3. 状态干预: event_type == "black_swan" → force PANIC
+
+    v0.8.3 新增：
+    4. tech_context_awareness: AI 是否结合技术面背景分析新闻
+    5. tech_context_used: AI 引用了哪些技术面要素
     """
     sentiment: str = Field(default="neutral", description="情绪倾向: bullish/bearish/neutral")
     confidence: float = Field(default=0.0, ge=0.0, le=1.0, description="置信度 0-1")
@@ -318,6 +322,16 @@ class AIModifierResult(BaseModel):
     score_adjustment: float = Field(default=0.0, description="信号评分调节量（负数=压制买入/加强卖出）")
     position_cap: float = Field(default=1.0, ge=0.0, le=1.0, description="仓位上限调节（1.0=不限制）")
     force_state: Optional[str] = Field(default=None, description="强制市场状态（如PANIC），None=不干预")
+
+    # 技术面感知（v0.8.3 Phase B）
+    tech_context_awareness: bool = Field(
+        default=False,
+        description="AI 是否在分析中结合了技术面背景"
+    )
+    tech_context_used: list[str] = Field(
+        default_factory=list,
+        description="AI 分析中引用的技术面要素（如: 趋势方向, 均线位置, 成交量, 大盘环境）"
+    )
 
 
 class SkillSignal(BaseModel):

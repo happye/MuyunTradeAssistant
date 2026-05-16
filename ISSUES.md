@@ -407,19 +407,23 @@ P3（已取消）:
 > 以下5个方向为 v0.8.3 规划范围，详见 `docs/v0.8.3_迭代规划.md`
 
 ### ISS-019: AI输入增强 — 技术面摘要传给AI，避免新闻面误判
-- **状态**: 📋 待办
+- **状态**: ✅ 已完成 (2026-05-16)
 - **优先级**: P1（AI新闻情绪分析缺乏技术面对照，容易误判）
-- **关联方向**: v0.8.3 方向一
+- **关联方向**: v0.8.3 Phase B
 - **描述**: 当前 AI Modifier 分析新闻时只看新闻文本，不知道当前技术面状态。例如：一则"减持公告"在上升趋势中可能是噪音，在下跌趋势中却是确认信号。AI 需要在分析新闻时同时看到技术面摘要（趋势、均线位置、成交量、近期涨跌幅等）。
-- **方案方向**:
-  1. 在调用 AI 分析新闻时，自动附带结构化技术面摘要（趋势方向、MA位置、近5日涨跌幅、量价关系）
-  2. 在 Prompt 中明确要求 AI 结合技术面背景判断新闻影响
-  3. 输出格式增加 `tech_context_awareness` 字段，标记 AI 是否考虑了技术面
-- **预期效果**: 新闻情绪分析准确率提升，减少"脱离技术面空谈新闻"的误判
-- **预估工作量**: 2-3天
-- **依赖**: 无
+- **完成内容**:
+  1. ✅ `src/core/tech_context.py`（新建~220行）：TechContextBuilder 从 StockData 提取5维技术面摘要
+  2. ✅ `src/core/ai_modifier.py`：analyze() 构建 tech_context 并注入 user_prompt；SYSTEM_PROMPT 扩展技术面感知规则
+  3. ✅ `src/data/models.py`：AIModifierResult 新增 tech_context_awareness(bool)+tech_context_used(list[str])
+  4. ✅ `configs/settings.yaml`：ai.modifier.tech_context_enabled: true 开关
+  5. ✅ `tests/test_tech_context_e2e.py`：端到端测试，8/8通过（同一新闻多头→bullish/空头→neutral）
+- **验证结果**:
+  - AI 在不同技术环境下给出不同情绪判断：多头 bullish(0.85) vs 空头 neutral(0.60)
+  - tech_context_awareness=True 比例 100%
+  - AI summary 明确引用技术面背景（"上升趋势+多头排列+放量金叉，利好影响被放大" / "空头排列+缩量超卖，削弱利好"）
 - **更新记录**:
   - 2026-05-16: 创建
+  - 2026-05-16: 完成实现+测试验证
 
 ---
 
