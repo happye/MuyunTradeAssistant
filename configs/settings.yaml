@@ -153,6 +153,11 @@ ranking:
     top_n: 10                    # 默认展示前N名（高亮）
     show_dimensions: true        # 是否展示各维度得分明细
 
+
+# 买卖点精确触发配置（v0.8.3 Phase C）
+entry_exit:
+  enabled: true
+  config_path: "./src/core/entry_exit/config.yaml"
 # Chat Agent配置（v0.8.0 Phase 5）
 chat:
   enabled: true                    # 是否启用Chat模式

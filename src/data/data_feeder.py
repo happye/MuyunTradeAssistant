@@ -222,6 +222,11 @@ class DataFeeder:
         if len(cutoff) >= 9:
             kdj_k, kdj_d, kdj_j = self._calc_kdj(cutoff)
 
+        # ATR
+        atr_14 = None
+        if len(cutoff) >= 14:
+            atr_14 = self._calc_atr(cutoff, period=14)
+
         # 大盘趋势
         index_trend, index_ma20, index_ma60, index_ma250, index_close, index_change_pct, index_high_250d = self._get_index_at_date(date)
         weekly_snapshot = self._build_timeframe_snapshot(cutoff, freq="W-FRI")
@@ -244,6 +249,7 @@ class DataFeeder:
             rsi_6=rsi_6, rsi_12=rsi_12, rsi_24=rsi_24,
             boll_upper=boll_upper, boll_mid=boll_mid, boll_lower=boll_lower,
             kdj_k=kdj_k, kdj_d=kdj_d, kdj_j=kdj_j,
+            atr_14=atr_14,
             index_trend=index_trend,
             index_ma20=index_ma20,
             index_ma60=index_ma60,
@@ -494,6 +500,28 @@ class DataFeeder:
         d = k.ewm(com=m2 - 1, adjust=False).mean()
         j = 3 * k - 2 * d
         return round(float(k.iloc[-1]), 2), round(float(d.iloc[-1]), 2), round(float(j.iloc[-1]), 2)
+
+    
+    @staticmethod
+    def _calc_atr(df: pd.DataFrame, period: int = 14) -> Optional[float]:
+        """计算 Average True Range
+
+        ATR 基于截止日前的历史数据计算，使用 shift(1) 避免前视偏差：
+        true_range = max(high-low, |high-prev_close|, |low-prev_close|)
+        """
+        high = df['high'].astype(float)
+        low = df['low'].astype(float)
+        close = df['close'].astype(float)
+
+        tr1 = high - low
+        tr2 = (high - close.shift(1)).abs()
+        tr3 = (low - close.shift(1)).abs()
+        true_range = pd.concat([tr1, tr2, tr3], axis=1).max(axis=1)
+
+        if len(true_range) < period:
+            return None
+        atr = true_range.rolling(window=period).mean().iloc[-1]
+        return round(float(atr), 2) if pd.notna(atr) else None
 
     @staticmethod
     def _shift_date(date_str: str, days: int) -> str:

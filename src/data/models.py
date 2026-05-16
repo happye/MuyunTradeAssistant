@@ -1,4 +1,4 @@
-"""数据模型定义 - Pydantic"""
+﻿"""数据模型定义 - Pydantic"""
 
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -134,6 +134,11 @@ class StockData(BaseModel):
     kdj_k: Optional[float] = Field(default=None, description="KDJ-K值")
     kdj_d: Optional[float] = Field(default=None, description="KDJ-D值")
     kdj_j: Optional[float] = Field(default=None, description="KDJ-J值")
+
+
+    # ===== ATR 波动率指标 =====
+    atr_14: Optional[float] = Field(default=None, description="ATR(14) 平均真实波幅")
+    high_since_entry: Optional[float] = Field(default=None, description="持仓期间最高价（追踪止损用，DataFeeder置None，回测引擎填充）")
 
     # 多时间框架数据
     monthly: Optional[dict] = Field(default=None, description="月线数据")
@@ -294,6 +299,9 @@ class StrategyDecision(BaseModel):
     # 决策理由
     strategy_reasons: list[str] = Field(default_factory=list, description="策略层决策理由")
 
+    # v0.8.3 Phase C: 买卖点计算结果
+    entry_exit: Optional[dict] = Field(default=None, description="买卖点计算结果（EntryExitResult序列化）")
+
 
 class AIModifierResult(BaseModel):
     """AI调节层输出（v0.8.3）
@@ -365,6 +373,10 @@ class DecisionResult(BaseModel):
     trace: list[DecisionTrace] = Field(default_factory=list, description="决策追溯路径")
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
     position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例(0-1)")
+
+    # v0.8.3 Phase C: 买卖点覆盖标记
+    overridden_by: Optional[str] = Field(default=None, description="被覆盖来源（entry_exit/ai_modifier/stop_loss等）")
+    overridden_reason: str = Field(default="", description="覆盖原因")
 
 
 # ===== 回测相关模型 =====

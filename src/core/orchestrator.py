@@ -39,6 +39,7 @@ class Orchestrator:
 
     def __init__(
         self,
+        entry_exit_config: Optional[dict] = None,
         skills_dir: str = "./src/skills",
         enabled_skills: Optional[list[str]] = None,
         signal_weights: Optional[dict[str, float]] = None,
@@ -90,6 +91,16 @@ class Orchestrator:
         # 初始化执行层（Execution Layer）
         self.execution_layer = ExecutionLayer(execution_constraint)
 
+        # v0.8.3 Phase C: 买卖点计算器
+        self.entry_exit_calc = None
+        if entry_exit_config and entry_exit_config.get("enabled", False):
+            try:
+                from src.core.entry_exit import EntryExitCalculator
+                self.entry_exit_calc = EntryExitCalculator(entry_exit_config)
+                logger.info("EntryExitCalculator initialized")
+            except Exception as e:
+                logger.warning(f"EntryExitCalculator init error: {e}")
+
         ai_status = "enabled" if self.ai_modifier else "disabled"
         event_status = "enabled" if self.event_layer else "disabled"
         rag_status = "enabled" if self.rag_service else "disabled"
@@ -102,6 +113,10 @@ class Orchestrator:
         current_position_ratio: float = 0.0,
         strategy_state: Optional[StrategyState] = None,
         ai_enabled: bool = True,
+        has_position: bool = False,
+        entry_price: Optional[float] = None,
+        position_tier: str = "pilot",
+        high_since_entry: Optional[float] = None,
     ) -> tuple[DecisionResult, StrategyDecision, ExecutionEvaluation, Optional[AIModifierResult]]:
         """执行完整分析流程（v0.8.0 六层架构）
 
@@ -234,6 +249,19 @@ class Orchestrator:
                     decision_result.state = state
                     logger.warning(f"Event Layer forced state: {state.value}")
 
+        # Layer 3.75: 买卖点精确触发（Entry/Exit Calculator, v0.8.3 Phase C）
+        entry_exit_result = None
+        if self.entry_exit_calc and self.entry_exit_calc.enabled:
+            entry_exit_result = self.entry_exit_calc.calculate(
+                data, has_position, entry_price, position_tier, high_since_entry
+            )
+            if entry_exit_result.override_decision:
+                decision_result.overridden_by = "entry_exit"
+                decision_result.overridden_reason = (
+                    entry_exit_result.entry_reason or entry_exit_result.exit_reason
+                )
+                logger.info(f"[EntryExit] Override: {decision_result.overridden_reason}")
+
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:
             strategy_state = StrategyState(
@@ -244,6 +272,10 @@ class Orchestrator:
         strategy_decision = self.strategy_layer.process(
             decision_result, strategy_state, data
         )
+
+        # v0.8.3 Phase C: 将买卖点结果附加到策略决策
+        if entry_exit_result:
+            strategy_decision.entry_exit = entry_exit_result.model_dump()
 
         # AI仓位上限影响Strategy Layer的仓位建议
         if ai_result and ai_result.position_cap < 1.0:

@@ -1,0 +1,31 @@
+entry_exit:
+  enabled: true
+  atr:
+    period: 14
+  breakout:
+    high_window: 20
+    volume_ratio: 1.5
+    atr_tolerance: 0.3
+  pullback:
+    ma_near_pct: 0.03
+    volume_ratio_max: 0.8
+    prior_gain_pct: 10
+  chandelier:
+    n_pilot: 4
+    n_base: 3
+    n_full: 2
+    atr_period: 14
+  trend_break:
+    short_ma_fast: 5
+    short_ma_slow: 20
+    mid_ma_fast: 10
+    mid_ma_slow: 60
+    trim_ratio: 0.4
+  take_profit:
+    tier1_pct: 10
+    tier1_trim: 0.3
+    tier2_pct: 20
+    tier2_trim: 0.4
+    trail_pct: 0.3
+  northbound:
+    consecutive_days: 3

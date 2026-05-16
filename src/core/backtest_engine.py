@@ -186,6 +186,7 @@ class BacktestEngine:
         signal_weights: Optional[dict[str, float]] = None,
         skill_types: Optional[dict[str, str]] = None,
         execution_constraint: Optional[ExecutionConstraint] = None,
+        entry_exit_config: Optional[dict] = None,
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -214,8 +215,9 @@ class BacktestEngine:
 
         # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
-            skills_dir, enabled_skills, signal_weights,
-            skill_types, execution_constraint
+            entry_exit_config=entry_exit_config,
+            skills_dir=skills_dir, enabled_skills=enabled_skills, signal_weights=signal_weights,
+            skill_types=skill_types, execution_constraint=execution_constraint
         )
 
     def run(self) -> BacktestResult:
@@ -262,6 +264,7 @@ class BacktestEngine:
         decision_directions: list[str] = []
 
         total_days = feeder.get_date_count()
+        high_since_entry = None  # v0.8.3: 持仓期间最高价（Chandelier Exit用）
 
         for i, (date, stock_data) in enumerate(feeder.iterate()):
             if first_price is None:
@@ -465,10 +468,17 @@ class BacktestEngine:
             strategy_state.current_position_ratio = current_pos_ratio
 
             try:
+                # v0.8.3: 买卖点上下文
+                _has_pos = account.has_position
+                _entry_price = account.avg_cost if _has_pos else None
                 decision_result, strategy_decision, execution_eval, _ = self.orchestrator.analyze(
                     stock_data, current_position_ratio=current_pos_ratio,
                     strategy_state=strategy_state,
-                    ai_enabled=False,  # 回测不使用AI实时新闻
+                    ai_enabled=False,
+                    has_position=_has_pos,
+                    entry_price=_entry_price,
+                    position_tier="pilot",
+                    high_since_entry=high_since_entry,
                 )
             except Exception as e:
                 logger.warning(f"分析异常 {date}: {e}")
@@ -511,6 +521,15 @@ class BacktestEngine:
                 total_value=round(total_val, 2),
                 return_pct=round(return_pct, 2),
             ))
+
+            # v0.8.3: 更新持仓期间最高价
+            if account.has_position:
+                if high_since_entry is None:
+                    high_since_entry = current_price
+                else:
+                    high_since_entry = max(high_since_entry, current_price)
+            else:
+                high_since_entry = None
 
             if (i + 1) % max(1, total_days // 5) == 0:
                 pct = (i + 1) / total_days * 100
