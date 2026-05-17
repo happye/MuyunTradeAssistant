@@ -278,7 +278,29 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         elif ai_result.adjusted:
             console.print(f"  [dim]📊 技术面感知: ❌ 未引用技术面[/dim]")
 
-    # v0.7.2: 策略层信息
+    # v0.8.3: 买卖点信息
+    if strategy_decision and hasattr(strategy_decision, "entry_exit") and strategy_decision.entry_exit:
+        ee = strategy_decision.entry_exit
+        console.print(f"\n[bold yellow]买卖点：[/bold yellow]")
+        if ee.get("entry_triggered"):
+            console.print(f"  [green]买点触发:[/green] {ee.get('entry_price', 'N/A')} ({ee.get('entry_type', '')} | {ee.get('entry_reason', '')})")
+        if ee.get("exit_triggered"):
+            exit_type = ee.get('exit_type', '')
+            exit_action = ee.get('exit_action', '')
+            exit_price = ee.get('exit_price', 'N/A')
+            exit_reason = ee.get('exit_reason', '')
+            chandelier_stop = ee.get('chandelier_stop_price')
+            if chandelier_stop:
+                console.print(f"  [red]卖点触发:[/red] {exit_price} | 止损价: {chandelier_stop} | {exit_reason}")
+            else:
+                console.print(f"  [red]卖点触发:[/red] {exit_price} ({exit_type} | {exit_action}) | {exit_reason}")
+        if ee.get("override_decision"):
+            action = ee.get('override_action', '')
+            console.print(f"  [bold]买卖点覆盖决策 → {action}[/bold]")
+        if not ee.get("entry_triggered") and not ee.get("exit_triggered"):
+            console.print(f"  [dim]无触发 (价格在买卖点之间)[/dim]")
+
+# v0.7.2: 策略层信息
     if strategy_decision:
         console.print(f"\n[bold magenta]策略层：[/bold magenta]")
         lifecycle_colors = {
