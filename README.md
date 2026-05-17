@@ -4,9 +4,10 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.3 Phase D 完成** ✅ (买卖点精确触发 + 金字塔仓位管理)
+**v0.8.3 全部完成** ✅ (AI增强 + 买卖点精确触发 + 金字塔仓位管理 + RAG评估 + 案例验证)
 
 > 📖 **里程碑与阶段详情请参阅 [v0.8.3 里程碑](docs/v0.8.3_里程碑.md)**
+> 📖 **案例验证报告请参阅 [v0.8.3 C4 案例验证](docs/v0.8.3_C4_案例验证报告.md)**
 
 > 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**
 > 📖 **AI系统详解请参阅 [AI系统说明.md](docs/AI系统说明.md)** — AI的角色、影响范围和可控性
@@ -95,7 +96,10 @@ Scanner 近期改成了统一主题词扫描：
 │   └── settings.yaml            # 全局配置（含技能分类）
 ├── tests/
 │   ├── test_conditions.py       # 参数化条件单元测试
-│   └── test_index_data.py       # 大盘数据可行性测试
+│   ├── test_index_data.py       # 大盘数据可行性测试
+│   ├── test_tech_context_e2e.py # 技术面摘要端到端测试 ⭐v0.8.3
+│   ├── test_entry_exit/         # 买卖点模块测试套件 ⭐v0.8.3
+│   └── rag_eval/                # RAG检索质量评估 ⭐v0.8.3
 ├── requirements.txt
 ├── sample_data.json             # 示例数据（含完整技术指标）
 ├── ISSUES.md                    # 问题追踪与待办
