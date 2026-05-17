@@ -271,6 +271,13 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         if ai_result.force_state:
             console.print(f"  [bold red]⚠ 状态干预: {ai_result.force_state}[/bold red]")
 
+        # v0.8.3: 技术面感知状态
+        if ai_result.tech_context_awareness:
+            used_items = ", ".join(ai_result.tech_context_used) if ai_result.tech_context_used else "无具体要素"
+            console.print(f"  [dim]📊 技术面感知: ✅ ({used_items})[/dim]")
+        elif ai_result.adjusted:
+            console.print(f"  [dim]📊 技术面感知: ❌ 未引用技术面[/dim]")
+
     # v0.7.2: 策略层信息
     if strategy_decision:
         console.print(f"\n[bold magenta]策略层：[/bold magenta]")
@@ -497,6 +504,10 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 ai_str = f"  🤖[{sent_color}]{sent_cn}[/{sent_color}]({ai_result.confidence:.0%})"
                 if ai_result.summary:
                     ai_str += f" {ai_result.summary}"
+                if ai_result.tech_context_awareness:
+                    used_short = ",".join(ai_result.tech_context_used[:3]) if ai_result.tech_context_used else ""
+                    if used_short:
+                        ai_str += f" [dim]📊{used_short}[/dim]"
 
             # 优先用portfolio.yaml中的stock_name（用户手动维护），备选stock_data
             display_name = pos.stock_name or stock_data.stock_name or stock_data.stock_code
@@ -581,6 +592,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             ai_str = f"[{sent_color}]{sent_cn}[/{sent_color}]({ai_result.confidence:.0%})"
         elif ai_result and not ai_result.adjusted:
             ai_str = f"[dim]未生效({ai_result.summary or '未知'})[/dim]"
+        if ai_result and ai_result.tech_context_awareness:
+            ai_str += " [dim]📊[/dim]"
 
         if decision_result and strategy_decision:
             sig_color = signal_colors.get(decision_result.decision, "white")

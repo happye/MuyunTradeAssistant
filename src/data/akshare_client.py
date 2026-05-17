@@ -420,7 +420,7 @@ class AKShareClient:
 
             rs = bs.query_history_k_data_plus(
                 bs_code,
-                "date,code,open,high,low,close,volume,amount",
+                "date,code,open,high,low,close,preclose,volume,amount",
                 start_date=start_date,
                 end_date=end_date,
                 frequency="d"
@@ -439,18 +439,24 @@ class AKShareClient:
 
             # 取最近一条（最后一行）
             latest = data_list[-1]
-            fields = rs.fields  # ['date', 'code', 'open', 'high', 'low', 'close', 'volume', 'amount']
+            fields = rs.fields  # ['date', 'code', 'open', 'high', 'low', 'close', 'preclose', 'volume', 'amount']
+
+            close_val = float(latest[fields.index('close')])
+            preclose_val = float(latest[fields.index('preclose')])
+            change_pct_val = 0.0
+            if preclose_val != 0:
+                change_pct_val = round((close_val - preclose_val) / preclose_val * 100, 2)
 
             return {
                 "stock_code": code,
                 "stock_name": code,  # Baostock日K线不含名称，由上层用候选股数据补充
-                "price": float(latest[fields.index('close')]),
+                "price": close_val,
                 "open": float(latest[fields.index('open')]),
                 "high": float(latest[fields.index('high')]),
                 "low": float(latest[fields.index('low')]),
-                "close_yesterday": float(latest[fields.index('close')]),  # Baostock无昨收，用收盘代替
+                "close_yesterday": preclose_val,
                 "volume": int(float(latest[fields.index('volume')])),
-                "change_pct": 0.0,  # Baostock日K无涨跌幅，由上层用实时行情补充
+                "change_pct": change_pct_val,
                 "source": "baostock"
             }
 
@@ -496,7 +502,7 @@ class AKShareClient:
             }
             freq = freq_map.get(period, "d")
 
-            fields = "date,code,open,high,low,close,volume,amount"
+            fields = "date,code,open,high,low,close,preclose,volume,amount"
             rs = bs.query_history_k_data_plus(
                 bs_code,
                 fields,
@@ -530,7 +536,10 @@ class AKShareClient:
                 'amount': '成交额'
             })
 
-            # 转换数据类型
+            # 转换数据类型（preclose保持英文列名供下游使用）
+            for col_name in ['preclose']:
+                if col_name in df.columns:
+                    df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
             for col in ['开盘', '最高', '最低', '收盘', '成交量', '成交额']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
@@ -662,7 +671,11 @@ class AKShareClient:
                 open_val = float(latest['开盘']) if '开盘' in latest else None
                 high_val = float(latest['最高']) if '最高' in latest else None
                 low_val = float(latest['最低']) if '最低' in latest else None
-                change_pct_val = float(latest.get('涨跌幅', 0)) if latest.get('涨跌幅') else 0
+                # 优先使用preclose计算涨跌幅，备选使用涨跌幅字段
+                if 'preclose' in latest and pd.notna(latest['preclose']) and latest['preclose'] != 0:
+                    change_pct_val = round((price_val - float(latest['preclose'])) / float(latest['preclose']) * 100, 2)
+                else:
+                    change_pct_val = float(latest.get('涨跌幅', 0)) if latest.get('涨跌幅') else 0
                 volume_val = int(float(latest['成交量'])) if '成交量' in latest else 0
 
             stock_data = StockData(

@@ -11,10 +11,13 @@ entry_exit:
     volume_ratio_max: 0.8
     prior_gain_pct: 10
   chandelier:
-    n_pilot: 4
-    n_base: 3
+    n_pilot: 3
+    n_base: 2.5
     n_full: 2
     atr_period: 14
+    require_ma_confirm: true
+    adaptive_n: true
+    adaptive_n_cap: 2.0
   trend_break:
     short_ma_fast: 5
     short_ma_slow: 20

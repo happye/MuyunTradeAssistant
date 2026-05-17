@@ -25,6 +25,31 @@ import pandas as pd
 
 logger = logging.getLogger(__name__)
 
+
+def _retry_akshare(func, max_retries=3, base_delay=1.0):
+    """AKShare API调用重试装饰器（指数退避）
+    
+    AKShare偶尔返回 Connection aborted 等网络错误，
+    此装饰器提供最多3次重试，间隔 1s/2s/4s。
+    """
+    def wrapper(*args, **kwargs):
+        last_exc = None
+        for attempt in range(max_retries):
+            try:
+                return func(*args, **kwargs)
+            except Exception as exc:
+                last_exc = exc
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt)
+                    logger.warning(
+                        f"AKShare API调用失败(第{attempt+1}次): {exc}，"
+                        f"{delay:.0f}s后重试..."
+                    )
+                    time.sleep(delay)
+        raise last_exc
+    return wrapper
+
+
 # efinance原始列名 → 标准化列名（与原AKShare列名一致，下游无需改动）
 _EFINANCE_COLUMN_MAP = {
     "股票代码": "代码",
@@ -399,7 +424,7 @@ class MarketCache:
         try:
             import akshare as ak
             with self._without_proxy():
-                df = ak.stock_board_industry_name_em()
+                df = _retry_akshare(ak.stock_board_industry_name_em)()
             if df is not None and not df.empty:
                 self._industry_df = df
                 self._industry_timestamp = time.time()
@@ -435,7 +460,7 @@ class MarketCache:
         try:
             import akshare as ak
             with self._without_proxy():
-                df = ak.stock_board_industry_cons_em(symbol=industry_name)
+                df = _retry_akshare(lambda: ak.stock_board_industry_cons_em(symbol=industry_name))()
             if df is not None and not df.empty:
                 # 查找代码列
                 code_col = None
@@ -470,7 +495,7 @@ class MarketCache:
         try:
             import akshare as ak
             with self._without_proxy():
-                df = ak.stock_board_concept_name_em()
+                df = _retry_akshare(ak.stock_board_concept_name_em)()
             if df is not None and not df.empty:
                 self._concept_df = df
                 self._concept_timestamp = time.time()
@@ -495,7 +520,7 @@ class MarketCache:
         try:
             import akshare as ak
             with self._without_proxy():
-                df = ak.stock_board_concept_cons_em(symbol=concept_name)
+                df = _retry_akshare(lambda: ak.stock_board_concept_cons_em(symbol=concept_name))()
             if df is not None and not df.empty:
                 code_col = None
                 for col in ["代码", "code", "symbol"]:

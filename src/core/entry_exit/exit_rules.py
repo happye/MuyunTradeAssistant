@@ -31,7 +31,11 @@ def check_chandelier(
     """Chandelier Exit 移动止损检查
 
     规则: 若 price <= highest_since_entry - N * ATR，则触发卖出
-    三重 N 值：试探=4 / 基础=3 / 重仓=2
+    三重 N 值：试探=3 / 基础=2.5 / 重仓=2（v0.8.3收尾优化后）
+
+    新增（ISS-027）：
+    - require_ma_confirm: 仅 MA5<MA20 时才允许触发，避免正常回调误判
+    - adaptive_n: N值按 (1 + ATR/close) 自适应放大，高波动股更宽容
 
     Args:
         data: 股票数据（含 atr_14）
@@ -42,15 +46,30 @@ def check_chandelier(
     """
     chandelier_cfg = config.get("chandelier", {})
     n_map = {
-        "pilot": chandelier_cfg.get("n_pilot", 4),
-        "base": chandelier_cfg.get("n_base", 3),
+        "pilot": chandelier_cfg.get("n_pilot", 3),
+        "base": chandelier_cfg.get("n_base", 2.5),
         "full": chandelier_cfg.get("n_full", 2),
     }
-    n_mult = n_map.get(position_tier, 4)
+    n_mult = n_map.get(position_tier, 3)
+
+    # v0.8.3: MA确认条件
+    require_ma_confirm = chandelier_cfg.get("require_ma_confirm", True)
+    if require_ma_confirm:
+        if data.ma5 is not None and data.ma20 is not None:
+            if data.ma5 >= data.ma20:
+                # MA5还>=MA20，短期趋势未破坏，跳过Chandelier检查
+                return None
+        # 无MA数据时不检查（与旧行为一致）
 
     atr = data.atr_14
     if atr is None:
         return None
+
+    # v0.8.3: 自适应N值 — 高波动股放大N值
+    adaptive_n = chandelier_cfg.get("adaptive_n", True)
+    if adaptive_n and data.price and data.price > 0:
+        atr_ratio = atr / data.price
+        n_mult = min(n_mult * (1 + atr_ratio * 5), chandelier_cfg.get("adaptive_n_cap", 2.0) * n_map.get(position_tier, 3))
 
     # 持仓期间最高价
     highest = high_since_entry or entry_price or data.high or data.price
@@ -66,6 +85,10 @@ def check_chandelier(
     exit_action = "EXIT" if position_tier == "pilot" else "TRIM"
     exit_ratio = 1.0 if exit_action == "EXIT" else 0.5
 
+    ma_info = ""
+    if require_ma_confirm and data.ma5 and data.ma20 and data.ma5 < data.ma20:
+        ma_info = f", MA5({data.ma5:.2f})<MA20({data.ma20:.2f})确认"
+
     return ExitSignal(
         triggered=True,
         exit_type="chandelier_stop",
@@ -73,7 +96,7 @@ def check_chandelier(
         exit_action=exit_action,
         exit_ratio=exit_ratio,
         reason=f"Chandelier Exit触发: 价格{data.price:.2f}<=止损价{stop_price:.2f} "
-               f"(最高{highest:.2f}-{n_mult}×ATR{atr:.2f})",
+               f"(最高{highest:.2f}-{n_mult:.1f}×ATR{atr:.2f}){ma_info}",
         atr_value=atr,
         highest_since_entry=highest,
         chandelier_stop_price=round(stop_price, 2),
