@@ -40,8 +40,6 @@ class Orchestrator:
 
     def __init__(
         self,
-        entry_exit_config: Optional[dict] = None,
-        pyramid_config: Optional[dict] = None,
         skills_dir: str = "./src/skills",
         enabled_skills: Optional[list[str]] = None,
         signal_weights: Optional[dict[str, float]] = None,
@@ -50,6 +48,8 @@ class Orchestrator:
         ai_config: Optional[dict] = None,
         event_config: Optional[dict] = None,
         rag_service=None,  # v0.8.1: RAG服务实例
+        entry_exit_config: Optional[dict] = None,  # v0.8.3 Phase C
+        pyramid_config: Optional[dict] = None,     # v0.8.3 Phase D
     ):
         # v0.8.1: RAG服务（可选，用于策略知识增强）
         self.rag_service = rag_service

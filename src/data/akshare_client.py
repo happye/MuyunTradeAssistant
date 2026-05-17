@@ -502,7 +502,11 @@ class AKShareClient:
             }
             freq = freq_map.get(period, "d")
 
-            fields = "date,code,open,high,low,close,preclose,volume,amount"
+            # preclose仅日线支持，周线/月线使用原字段
+            if freq == "d":
+                fields = "date,code,open,high,low,close,preclose,volume,amount"
+            else:
+                fields = "date,code,open,high,low,close,volume,amount"
             rs = bs.query_history_k_data_plus(
                 bs_code,
                 fields,
@@ -536,7 +540,7 @@ class AKShareClient:
                 'amount': '成交额'
             })
 
-            # 转换数据类型（preclose保持英文列名供下游使用）
+            # 转换数据类型（preclose仅日线有，保持英文列名供下游使用）
             for col_name in ['preclose']:
                 if col_name in df.columns:
                     df[col_name] = pd.to_numeric(df[col_name], errors='coerce')
