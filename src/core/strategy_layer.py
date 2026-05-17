@@ -25,7 +25,7 @@ import logging
 from typing import Optional
 from copy import deepcopy
 
-from src.data.models import (
+from src.data.models import (PositionTier,
     SignalType, MarketState, PositionAction,
     TradeLifecycle, StrategyState, StrategyDecision,
     infer_action_semantic,
@@ -108,9 +108,13 @@ class StrategyLayer:
         "weak_sell",
     }
 
-    def __init__(self):
+    def __init__(self, pyramid_config: Optional[dict] = None):
         """初始化策略层"""
-        pass
+        self.pyramid = None
+        if pyramid_config:
+            from src.core.position_tier import PyramidPositionManager
+            self.pyramid = PyramidPositionManager(pyramid_config)
+
 
     def get_params(self) -> dict:
         """返回策略层所有参数的快照（用于偏差审计）

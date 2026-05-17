@@ -1,4 +1,4 @@
-﻿"""数据模型定义 - Pydantic"""
+"""数据模型定义 - Pydantic"""
 
 from typing import Optional
 from pydantic import BaseModel, Field
@@ -63,6 +63,14 @@ def infer_action_semantic(
     if decision_value == SignalType.HOLD.value:
         return "HOLD"
     return None
+
+
+class PositionTier(str, Enum):
+    """仓位档位（v0.8.3 Phase D 金字塔仓位管理）"""
+    FLAT = "FLAT"        # 空仓
+    PILOT = "PILOT"      # 试探仓（10-15%，首次入场）
+    BASE = "BASE"        # 基础仓（25-30%，趋势确认+试探盈利>3%）
+    FULL = "FULL"        # 重仓（40-50%，强趋势+基础盈利>5%）
 
 
 class TradeLifecycle(str, Enum):
@@ -171,7 +179,7 @@ class StrategyState(BaseModel):
     entry_price: Optional[float] = Field(default=None, description="开仓均价")
     current_position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例")
 
-    # 信号历史（用于信号确认和稳定性评估）
+    # v0.8.3 Phase D: 金字塔仓位档位`n    position_tier: PositionTier = Field(default=PositionTier.FLAT, description=`"当前仓位档位（试探/基础/重仓）`")`n    unrealized_profit_pct: float = Field(default=0.0, description=`"浮动盈亏百分比`")`n    days_held: int = Field(default=0, description=`"持仓天数`")`n`n    # 信号历史（用于信号确认和稳定性评估）
     recent_signals: list[str] = Field(default_factory=list, description="最近N个交易日的信号序列(BUY/SELL/HOLD/WATCH)")
     signal_history_maxlen: int = Field(default=5, description="信号历史最大长度")
 

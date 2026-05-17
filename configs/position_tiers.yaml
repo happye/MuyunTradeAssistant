@@ -1,0 +1,45 @@
+# 金字塔仓位管理配置（v0.8.3 Phase D）
+# 参考：Van Tharp R倍数法 + Elder金字塔加仓 + Guppy倒金字塔减仓
+
+position_tiers:
+  # 仓位档位定义
+  pilot:
+    ratio: 0.15               # 试探仓比例（10-15%）
+    stop_loss_pct: 0.10       # 止损线 10%
+    atr_n: 4                  # Chandelier Exit N值（宽松）
+  base:
+    ratio: 0.30               # 基础仓比例（25-30%）
+    stop_loss_pct: 0.08       # 止损线 8%
+    atr_n: 3                  # Chandelier Exit N值
+  full:
+    ratio: 0.50               # 重仓比例（40-50%）
+    stop_loss_pct: 0.05       # 止损线 5%（收紧）
+    atr_n: 2                  # Chandelier Exit N值（最紧）
+
+  # 升级条件
+  upgrade:
+    pilot_to_base:
+      min_profit_pct: 3.0     # 浮动盈利 > 3%
+      require_ma_bullish: true # 需要MA多头排列
+      min_hold_days: 5         # 至少持有5天
+    base_to_full:
+      min_profit_pct: 5.0     # 浮动盈利 > 5%
+      require_macd_above_zero: true  # MACD在零轴上
+      min_hold_days: 10        # 至少持有10天
+
+  # 降级条件
+  downgrade:
+    full_to_base:
+      ma5_below_ma10: true     # MA5下穿MA10
+      max_drawdown_pct: 5.0    # 回撤 > 5%
+    base_to_pilot:
+      ma10_below_ma20: true    # MA10下穿MA20
+      max_drawdown_pct: 8.0    # 回撤 > 8%
+
+  # 倒金字塔减仓
+  take_profit:
+    tier1_profit_pct: 10       # 盈利>10%
+    tier1_reduce_ratio: 0.40   # 先减40%
+    tier2_profit_pct: 20       # 盈利>20%
+    tier2_reduce_ratio: 0.30   # 再减30%
+    trail_keep_ratio: 0.30     # 留30%跟踪

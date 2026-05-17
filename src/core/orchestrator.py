@@ -24,7 +24,8 @@ from typing import Optional
 
 from src.data.models import (
     StockData, DecisionResult, StrategyState, StrategyDecision,
-    ExecutionConstraint, TradeLifecycle, AIModifierResult, MarketEvent
+    ExecutionConstraint, TradeLifecycle, AIModifierResult, MarketEvent,
+    SignalType, PositionAction
 )
 from src.core.skill_engine import SkillEngine
 from src.core.decision_engine import DecisionEngine, StateMachine
@@ -40,6 +41,7 @@ class Orchestrator:
     def __init__(
         self,
         entry_exit_config: Optional[dict] = None,
+        pyramid_config: Optional[dict] = None,
         skills_dir: str = "./src/skills",
         enabled_skills: Optional[list[str]] = None,
         signal_weights: Optional[dict[str, float]] = None,
@@ -86,7 +88,7 @@ class Orchestrator:
                 self.event_layer = None
 
         # 初始化策略层（Strategy Layer）
-        self.strategy_layer = StrategyLayer()
+        self.strategy_layer = StrategyLayer(pyramid_config=pyramid_config if pyramid_config is not None else None)
 
         # 初始化执行层（Execution Layer）
         self.execution_layer = ExecutionLayer(execution_constraint)
@@ -260,7 +262,28 @@ class Orchestrator:
                 decision_result.overridden_reason = (
                     entry_exit_result.entry_reason or entry_exit_result.exit_reason
                 )
-                logger.info(f"[EntryExit] Override: {decision_result.overridden_reason}")
+                # v0.8.3 Phase C: 买点仅精化BUY，卖点可覆盖HOLD（Chandelier/趋势破坏是安全网）
+                current_decision = decision_result.decision
+                action = entry_exit_result.override_action
+                exit_type = entry_exit_result.exit_type
+                if action in ("ENTRY", "ADD") and current_decision == SignalType.BUY:
+                    decision_result.position_action = PositionAction.OPEN if action == "ENTRY" else PositionAction.ADD
+                    decision_result.reason.append(f"[EntryExit] {decision_result.overridden_reason}")
+                    logger.info(f"[EntryExit] Refine entry: {decision_result.overridden_reason}")
+                elif action in ("EXIT", "STOP", "TRIM"):
+                    # 卖点覆盖条件：决策已SELL，或Chandelier/趋势破坏安全网触发（覆盖HOLD）
+                    force_exit = exit_type in ("chandelier_stop", "trend_break")
+                    if current_decision == SignalType.SELL or (has_position and force_exit):
+                        decision_result.decision = SignalType.SELL
+                        decision_result.position_action = PositionAction.CLOSE_ALL if action in ("EXIT", "STOP") else PositionAction.REDUCE
+                        decision_result.reason.append(f"[EntryExit] {decision_result.overridden_reason}")
+                        logger.info(f"[EntryExit] Force exit: {decision_result.overridden_reason}")
+                    else:
+                        logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value}")
+                elif action in ("ENTRY", "ADD"):
+                    logger.debug(f"[EntryExit] Entry blocked: decision={current_decision.value} != BUY")
+                elif action in ("EXIT", "STOP", "TRIM"):
+                    logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value} != SELL")
 
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:

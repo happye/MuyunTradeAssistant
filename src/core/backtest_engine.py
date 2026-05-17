@@ -187,6 +187,7 @@ class BacktestEngine:
         skill_types: Optional[dict[str, str]] = None,
         execution_constraint: Optional[ExecutionConstraint] = None,
         entry_exit_config: Optional[dict] = None,
+        pyramid_config: Optional[dict] = None,
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -216,6 +217,7 @@ class BacktestEngine:
         # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
             entry_exit_config=entry_exit_config,
+            pyramid_config=pyramid_config,
             skills_dir=skills_dir, enabled_skills=enabled_skills, signal_weights=signal_weights,
             skill_types=skill_types, execution_constraint=execution_constraint
         )
