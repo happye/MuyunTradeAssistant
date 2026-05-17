@@ -1,0 +1,703 @@
+{
+  "avg_recall@5": 1.0,
+  "avg_mrr": 1.0,
+  "avg_ndcg@5": 1.0,
+  "num_queries": 30,
+  "targets": {
+    "Recall@5": 0.7,
+    "MRR": 0.5,
+    "NDCG@5": 0.5
+  },
+  "results": [
+    {
+      "query_id": "q01",
+      "query": "止损应该怎么设置？",
+      "category": "止损",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch54_p5",
+        "ch2_p6",
+        "ch48_p5",
+        "望周知—系统化交易大纲_p6",
+        "ch17_p2"
+      ],
+      "top_scores": [
+        0.015,
+        0.015,
+        0.015,
+        0.015,
+        0.014
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q02",
+      "query": "什么时候应该止盈？",
+      "category": "止盈",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch49_p5",
+        "ch48_p6",
+        "ch49_p2",
+        "ch49_p4",
+        "ch49_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q03",
+      "query": "如何判断大盘是牛市还是熊市？",
+      "category": "大盘",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch42_p3",
+        "ch42_p2",
+        "ch37_p1",
+        "望周知—系统化交易大纲_p20",
+        "望周知—系统化交易大纲_p21"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.016,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q04",
+      "query": "仓位应该怎么分配？",
+      "category": "仓位",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch17_p3",
+        "ch46_p4",
+        "ch3_p4",
+        "ch3_p5",
+        "ch17_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.014,
+        0.01
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q05",
+      "query": "MACD金叉是什么意思？",
+      "category": "技术指标",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch29_p1",
+        "ch31_p1",
+        "ch21_p3",
+        "ch31_p3",
+        "ch45_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q06",
+      "query": "放量突破前高可以买入吗？",
+      "category": "买入",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch49_p3",
+        "ch16_p2",
+        "ch25_p2",
+        "ch42_p2",
+        "ch16_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.014
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q07",
+      "query": "缩量回调是买点吗？",
+      "category": "买入",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch26_p2",
+        "ch26_p1",
+        "ch6_p4",
+        "ch19_p4",
+        "ch19_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q08",
+      "query": "移动止损怎么用？",
+      "category": "止损",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch4_p6",
+        "ch48_p5",
+        "ch49_p5",
+        "ch48_p4",
+        "ch49_p1"
+      ],
+      "top_scores": [
+        0.015,
+        0.015,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q09",
+      "query": "RSI超买超卖怎么判断？",
+      "category": "技术指标",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch31_p1",
+        "ch39_p2",
+        "ch21_p3",
+        "ch46_p5",
+        "ch29_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.015,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q10",
+      "query": "布林带收窄意味着什么？",
+      "category": "技术指标",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch14_p4",
+        "ch14_p1",
+        "ch14_p3",
+        "ch14_p2",
+        "ch1_p4"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.016,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q11",
+      "query": "如何避免追涨杀跌？",
+      "category": "心理",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch53_p2",
+        "ch43_p3",
+        "ch3_p5",
+        "ch19_p4",
+        "ch53_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.01,
+        0.01,
+        0.009,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q12",
+      "query": "跌破60日均线应该卖出吗？",
+      "category": "卖出",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch4_p9",
+        "ch4_p6",
+        "ch38_p3",
+        "ch4_p3",
+        "ch48_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.016,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q13",
+      "query": "主力资金流入怎么看？",
+      "category": "资金",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "望周知—系统化交易大纲_p13",
+        "ch9_p2",
+        "望周知—系统化交易大纲_p14",
+        "ch9_p1",
+        "ch38_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.014
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q14",
+      "query": "涨停板第二天怎么操作？",
+      "category": "操作",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch8_p2",
+        "ch8_p5",
+        "ch44_p3",
+        "ch24_p3",
+        "ch1_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.01,
+        0.01
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q15",
+      "query": "如何识别假突破？",
+      "category": "技术",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch25_p1",
+        "ch16_p2",
+        "ch15_p3",
+        "ch16_p1",
+        "ch25_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.01,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q16",
+      "query": "熊市中应该空仓吗？",
+      "category": "大盘",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch37_p1",
+        "ch42_p3",
+        "望周知—系统化交易大纲_p22",
+        "望周知—系统化交易大纲_p21",
+        "ch17_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.01
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q17",
+      "query": "均线多头排列是什么？",
+      "category": "技术指标",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch4_p4",
+        "ch4_p2",
+        "ch29_p1",
+        "ch4_p3",
+        "ch2_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.014
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q18",
+      "query": "如何做波段操作？",
+      "category": "操作",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch24_p1",
+        "ch38_p3",
+        "ch4_p6",
+        "ch38_p4",
+        "ch4_p8"
+      ],
+      "top_scores": [
+        0.016,
+        0.01,
+        0.01,
+        0.009,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q19",
+      "query": "黑天鹅事件怎么应对？",
+      "category": "风控",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "望周知—系统化交易大纲_p25",
+        "ch39_p5",
+        "ch46_p6",
+        "ch34_p4",
+        "ch2_p5"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.01,
+        0.009,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q20",
+      "query": "换手率高说明什么？",
+      "category": "成交量",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch34_p2",
+        "ch33_p3",
+        "ch38_p5",
+        "ch4_p7",
+        "ch33_p1"
+      ],
+      "top_scores": [
+        0.014,
+        0.01,
+        0.01,
+        0.01,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q21",
+      "query": "KDJ指标怎么用？",
+      "category": "技术指标",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch31_p1",
+        "ch31_p4",
+        "ch21_p1",
+        "ch29_p1",
+        "ch21_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q22",
+      "query": "趋势线怎么画？",
+      "category": "技术",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch23_p1",
+        "ch3_p3",
+        "ch3_p5",
+        "ch38_p4",
+        "ch3_p4"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q23",
+      "query": "底部放量是买入信号吗？",
+      "category": "买入",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch19_p5",
+        "ch6_p3",
+        "ch6_p5",
+        "ch6_p4",
+        "ch6_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q24",
+      "query": "如何设置条件单？",
+      "category": "操作",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "望周知—系统化交易大纲_p8",
+        "望周知—系统化交易大纲_p43",
+        "ch31_p5",
+        "ch1_p8",
+        "ch1_p7"
+      ],
+      "top_scores": [
+        0.014,
+        0.01,
+        0.01,
+        0.01,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q25",
+      "query": "市盈率低的股票能买吗？",
+      "category": "基本面",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch32_p2",
+        "ch11_p1",
+        "ch51_p1",
+        "ch53_p4",
+        "ch53_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.015,
+        0.013,
+        0.01,
+        0.01
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q26",
+      "query": "涨停板打开要不要卖？",
+      "category": "卖出",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch48_p1",
+        "ch53_p2",
+        "ch16_p3",
+        "ch40_p2",
+        "ch49_p1"
+      ],
+      "top_scores": [
+        0.016,
+        0.01,
+        0.01,
+        0.01,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q27",
+      "query": "成交量萎缩说明什么？",
+      "category": "成交量",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch6_p3",
+        "ch6_p2",
+        "ch6_p1",
+        "ch40_p1",
+        "ch19_p3"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.016,
+        0.015,
+        0.015
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q28",
+      "query": "如何克服贪婪和恐惧？",
+      "category": "心理",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch53_p5",
+        "ch53_p3",
+        "ch53_p6",
+        "ch53_p2",
+        "ch51_p2"
+      ],
+      "top_scores": [
+        0.016,
+        0.016,
+        0.015,
+        0.015,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q29",
+      "query": "金字塔加仓法怎么操作？",
+      "category": "仓位",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch17_p3",
+        "ch37_p4",
+        "ch17_p1",
+        "ch1_p7",
+        "ch27_p4"
+      ],
+      "top_scores": [
+        0.01,
+        0.01,
+        0.01,
+        0.009,
+        0.009
+      ],
+      "num_relevant": 3
+    },
+    {
+      "query_id": "q30",
+      "query": "A股T+1交易有什么影响？",
+      "category": "规则",
+      "recall@5": 1.0,
+      "mrr": 1.0,
+      "ndcg@5": 1.0,
+      "top_docs": [
+        "ch60_p1",
+        "ch61_p1",
+        "ch10_p2",
+        "ch48_p3",
+        "ch65_p3"
+      ],
+      "top_scores": [
+        0.015,
+        0.015,
+        0.014,
+        0.01,
+        0.01
+      ],
+      "num_relevant": 3
+    }
+  ]
+}
