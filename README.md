@@ -4,11 +4,12 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.2 Phase 6 完成** ✅ (回测归因 + 交易语义 + 中线持有 + 多时间框架集成)
+**v0.8.3 Phase D 完成** ✅ (买卖点精确触发 + 金字塔仓位管理)
+
+> 📖 **里程碑与阶段详情请参阅 [v0.8.3 里程碑](docs/v0.8.3_里程碑.md)**
 
 > 📖 **使用方法请参阅 [使用手册.md](使用手册.md)**
 > 📖 **AI系统详解请参阅 [AI系统说明.md](docs/AI系统说明.md)** — AI的角色、影响范围和可控性
-> 📖 **里程碑与阶段详情请参阅 [v0.8.2 里程碑](docs/v0.8.2_里程碑.md)**
 > 本文档仅包含架构设计、技术实现与版本历史。
 
 ## v0.8.x 技术边界
@@ -17,7 +18,7 @@ v0.8.x 的职责拆分如下：
 
 - `README.md`：说明架构、模块关系、技术边界、导出结构与版本口径。
 - `使用手册.md`：说明怎么运行、怎么看输出、哪些行为会直接影响日常使用。
-- `docs/v0.8.2_里程碑.md`：说明每个 Phase 的交付状态、验收结果与下一阶段主线。
+- `docs/v0.8.3_里程碑.md`：说明每个 Phase 的交付状态、验收结果与下一阶段主线。
 
 Phase 5 在开发侧新增了三类核心逻辑：
 
@@ -48,7 +49,9 @@ Scanner 近期改成了统一主题词扫描：
 │   │   ├── skill_engine.py      # YAML规则执行器 + 条件注册表
 │   │   ├── decision_engine.py   # 信号聚合器（投票→调节→覆盖+追溯）
 │   │   ├── event_layer.py       # 事件驱动层（关键词匹配+AI分类+持仓扫描）⭐v0.8.0
+│   │   ├── entry_exit/             # 买卖点精确触发模块 ⭐v0.8.3 (Chandelier/ATR/海龟)
 │   │   ├── ranking_layer.py     # 排名引擎（四维评分+权重归一化+TOP3推荐）⭐v0.8.0
+│   │   ├── position_tier.py       # 金字塔仓位管理 ⭐v0.8.3 (试探→基础→重仓)
 │   │   ├── ai_modifier.py       # AI调节层（新闻→情绪→信号调节）⭐v0.8.0
 │   │   ├── strategy_layer.py    # 策略层（交易生命周期+持有窗口+卖出语义拆分）⭐v0.8.2
 │   │   ├── execution_layer.py   # 执行层（波动率滑点+流动性+涨跌停+冲击成本）⭐v0.7.2
@@ -381,6 +384,17 @@ volume_ratio:
 ## 版本历史
 
 ### v0.8.2 (回测归因 + 交易语义 + 中线持有 + 多时间框架集成) - 2026-05-12
+
+### v0.8.3 (AI增强 + 买卖点精确触发 + 金字塔仓位管理) - 2026-05-17
+
+- **Phase A**: MEMORY.md中长期路线清理 ✅
+- **Phase B**: AI输入增强 — tech_context.py技术面摘要注入AI ✅
+- **Phase C**: 买点/卖点精确触发 — ATR+EntryExit模块（Chandelier/海龟/CANSLIM）+Orchestrator/回测集成 ✅
+- **Phase D**: 金字塔仓位管理 — PositionTier三档体系+升级降级+倒金字塔减仓 ✅
+- 新增模块: `src/core/entry_exit/`(6文件), `src/core/position_tier.py`
+- 新增配置: `src/core/entry_exit/config.yaml`, `configs/position_tiers.yaml`
+- StockData新增atr_14字段，StrategyState新增position_tier/unrealized_profit_pct/days_held
+- 架构升级: AI Modifier之后插入EntryExitCalculator（Layer 3.75），最高优先级覆盖
 
 **本轮版本目标：从“可解释的中线系统”继续收口到“真实多时间框架的中线系统”**
 
