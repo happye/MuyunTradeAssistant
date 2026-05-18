@@ -308,6 +308,16 @@ class MarketCache:
             if col in df.columns:
                 df[col] = pd.to_numeric(df[col], errors="coerce") * 10000
 
+        # 涨跌幅：Sina非交易时段返回0；如全为0则本地用(trade-settlement)/settlement计算
+        if "涨跌幅" in df.columns and "最新价" in df.columns and "昨收" in df.columns:
+            change = pd.to_numeric(df["涨跌幅"], errors="coerce")
+            if change.fillna(0).abs().gt(1e-9).sum() == 0:
+                latest = pd.to_numeric(df["最新价"], errors="coerce")
+                prev = pd.to_numeric(df["昨收"], errors="coerce")
+                computed = ((latest - prev) / prev * 100).round(2)
+                df["涨跌幅"] = computed
+                logger.info("MarketCache: Sina changepercent全为0，改用本地计算涨跌幅")
+
         # 只保留标准列
         df = df[[c for c in keep_cols if c in df.columns]]
 

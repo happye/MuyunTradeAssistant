@@ -284,7 +284,7 @@ class AIModifier:
             # max_completion_tokens: Kimi官方推荐替代已弃用的max_tokens
             if self._should_pass_temperature(model):
                 api_params["temperature"] = 0.1  # 低温度=更确定性输出
-            api_params["max_completion_tokens"] = 500
+            api_params["max_completion_tokens"] = 800
             api_params["timeout"] = 30
 
             if self.debug:
@@ -419,6 +419,9 @@ class AIModifier:
         elif "```" in content:
             json_str = content.split("```")[1].split("```")[0].strip()
 
+        # 修复截断的JSON（token耗尽时AI可能返回不完整JSON）
+        json_str = self._repair_truncated_json(json_str)
+
         try:
             data = json.loads(json_str)
 
@@ -454,6 +457,60 @@ class AIModifier:
         except (json.JSONDecodeError, KeyError, ValueError) as e:
             logger.warning(f"AI响应解析失败: {e}, content={content[:200]}")
             return None
+
+    @staticmethod
+    def _repair_truncated_json(s: str) -> str:
+        """尝试修复被截断的JSON字符串。
+
+        常见截断场景：key_events数组中最后一个字符串未关闭，整个JSON未收尾。
+        策略：用括号/引号计数法补全缺失的关闭符号。
+        """
+        import json as _json
+        s = s.strip()
+        if not s:
+            return s
+        try:
+            _json.loads(s)
+            return s
+        except _json.JSONDecodeError:
+            pass
+
+        # 去掉末尾可能的逗号，再计数未关闭的括号和引号
+        repaired = s.rstrip().rstrip(',').rstrip()
+        depth_brace = 0
+        depth_bracket = 0
+        in_string = False
+        escape_next = False
+        for ch in repaired:
+            if escape_next:
+                escape_next = False
+                continue
+            if ch == '\\' and in_string:
+                escape_next = True
+                continue
+            if ch == '"':
+                in_string = not in_string
+                continue
+            if in_string:
+                continue
+            if ch == '{':
+                depth_brace += 1
+            elif ch == '}':
+                depth_brace -= 1
+            elif ch == '[':
+                depth_bracket += 1
+            elif ch == ']':
+                depth_bracket -= 1
+
+        suffix = '"' if in_string else ''
+        suffix += ']' * max(depth_bracket, 0)
+        suffix += '}' * max(depth_brace, 0)
+        candidate = repaired + suffix
+        try:
+            _json.loads(candidate)
+            return candidate
+        except _json.JSONDecodeError:
+            return s
 
     @staticmethod
     def _extract_json_from_reasoning(reasoning: str) -> str:
