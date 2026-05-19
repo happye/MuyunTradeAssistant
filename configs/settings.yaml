@@ -100,7 +100,7 @@ skills:
 ai:
   enabled: true
   debug: false               # debug模式：打印AI交互的完整输入输出
-  provider: "deepseek"       # deepseek / kimi
+  provider: "kimi"       # deepseek / kimi
   deepseek:
     api_key: "sk-1f0ed445f13e4ab58514e9948904a515"              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
     base_url: "https://api.deepseek.com"
@@ -157,7 +157,38 @@ ranking:
 # 买卖点精确触发配置（v0.8.3 Phase C）
 entry_exit:
   enabled: true
-  config_path: "./src/core/entry_exit/config.yaml"
+  atr:
+    period: 14
+  breakout:
+    high_window: 20
+    volume_ratio: 1.5
+    atr_tolerance: 0.3
+  pullback:
+    ma_near_pct: 0.03
+    volume_ratio_max: 0.8
+    prior_gain_pct: 10
+  chandelier:
+    n_pilot: 3
+    n_base: 2.5
+    n_full: 2
+    atr_period: 14
+    require_ma_confirm: true
+    adaptive_n: true
+    adaptive_n_cap: 2.0
+  trend_break:
+    short_ma_fast: 5
+    short_ma_slow: 20
+    mid_ma_fast: 10
+    mid_ma_slow: 60
+    trim_ratio: 0.4
+  take_profit:
+    tier1_pct: 10
+    tier1_trim: 0.3
+    tier2_pct: 20
+    tier2_trim: 0.4
+    trail_pct: 0.3
+  northbound:
+    consecutive_days: 3
 # Chat Agent配置（v0.8.0 Phase 5）
 chat:
   enabled: true                    # 是否启用Chat模式

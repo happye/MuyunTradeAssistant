@@ -131,8 +131,10 @@ def analyze_interactive():
     else:
         console.print("[yellow]⚠[/yellow] 将加载所有可用技能")
 
+    entry_exit_config = config.get("entry_exit", None)
+
     # 创建编排器（含AI调节层+事件层）
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     console.print(f"[green]✓[/green] 已加载技能: {', '.join(orchestrator.get_available_skills())}")
     if orchestrator.ai_modifier and orchestrator.ai_modifier.is_available():
@@ -171,8 +173,9 @@ def analyze_json(json_path: str):
     skill_types = config.get("skills", {}).get("types", None)
     ai_config = config.get("ai", None)
     event_config = config.get("event", None)
+    entry_exit_config = config.get("entry_exit", None)
 
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(stock_data, ai_enabled=False)
 
@@ -407,7 +410,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     if ai_debug and ai_config:
         ai_config["debug"] = True
     event_config = config.get("event", None)
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
+    entry_exit_config = config.get("entry_exit", None)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -487,11 +491,14 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             continue
 
         try:
+            has_position = pos is not None and pos.current_ratio > 0
             decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                 stock_data,
                 current_position_ratio=strategy_state.current_position_ratio,
                 strategy_state=strategy_state,
                 ai_enabled=True,
+                has_position=has_position,
+                entry_price=pos.entry_price if pos else None,
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
 
@@ -541,6 +548,18 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             )
             if ai_str:
                 console.print(f"  {ai_str}")
+
+            # 买卖点信息
+            if strategy_decision and strategy_decision.entry_exit:
+                ee = strategy_decision.entry_exit
+                if ee.get("entry_triggered"):
+                    console.print(f"  [green]▶ 买点触发:[/green] {ee.get('entry_price', 'N/A')} ({ee.get('entry_type', '')} | {ee.get('entry_reason', '')})")
+                elif ee.get("exit_triggered"):
+                    chandelier_stop = ee.get('chandelier_stop_price')
+                    if chandelier_stop:
+                        console.print(f"  [red]◀ 卖点触发:[/red] {ee.get('exit_price', 'N/A')} | 止损价:{chandelier_stop} | {ee.get('exit_reason', '')}")
+                    else:
+                        console.print(f"  [red]◀ 卖点触发:[/red] {ee.get('exit_price', 'N/A')} ({ee.get('exit_type', '')} | {ee.get('exit_action', '')}) | {ee.get('exit_reason', '')}")
 
             # 更新持仓
             pm.suggest_update(
@@ -763,13 +782,17 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         if ai_debug and ai_config:
             ai_config["debug"] = True
         event_config = config.get("event", None)
+        entry_exit_config = config.get("entry_exit", None)
 
-        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config)
+        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
+        has_position = pos is not None and pos.current_ratio > 0
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
             current_position_ratio=strategy_state.current_position_ratio,
             strategy_state=strategy_state,
             ai_enabled=True,
+            has_position=has_position,
+            entry_price=pos.entry_price if pos else None,
         )
         display_result(result, strategy_decision, execution_eval, ai_result)
 

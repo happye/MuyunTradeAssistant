@@ -28,9 +28,12 @@ logger = logging.getLogger(__name__)
 
 def _retry_akshare(func, max_retries=3, base_delay=1.0):
     """AKShare API调用重试装饰器（指数退避）
-    
+
     AKShare偶尔返回 Connection aborted 等网络错误，
     此装饰器提供最多3次重试，间隔 1s/2s/4s。
+
+    注意：RemoteDisconnected（服务器 TCP 层直接断开）通常是服务端封禁，
+    多次重试不会有效，但保留重试逻辑以兼容偶发性网络抖动。
     """
     def wrapper(*args, **kwargs):
         last_exc = None
@@ -39,6 +42,18 @@ def _retry_akshare(func, max_retries=3, base_delay=1.0):
                 return func(*args, **kwargs)
             except Exception as exc:
                 last_exc = exc
+                # RemoteDisconnected 是服务端主动断开，无需多次重试，减少等待
+                exc_str = str(exc)
+                if "RemoteDisconnected" in exc_str or "Connection aborted" in exc_str:
+                    if attempt == 0:
+                        logger.warning(
+                            f"AKShare API调用失败(第{attempt+1}次): {exc}，"
+                            f"1s后重试（RemoteDisconnected，可能为服务端封禁）..."
+                        )
+                        time.sleep(1.0)
+                        continue
+                    else:
+                        break  # RemoteDisconnected 第二次还失败，直接放弃
                 if attempt < max_retries - 1:
                     delay = base_delay * (2 ** attempt)
                     logger.warning(
@@ -411,17 +426,124 @@ class MarketCache:
                 return self._etf_df
             return pd.DataFrame()
 
+    def _get_ths_board_stocks_by_name(self, board_name: str, board_type: str) -> list:
+        """通过同花顺HTML翻页获取板块成分股代码列表（THS备用数据源）
+
+        Args:
+            board_name: 板块名称（如"半导体"）
+            board_type: "industry"（行业板块）或"concept"（概念板块）
+
+        Returns:
+            股票代码列表（如["688981", "002049", ...]），失败返回[]
+        """
+        import requests
+        import random
+        import py_mini_racer
+        from bs4 import BeautifulSoup
+        from io import StringIO
+        from akshare.datasets import get_ths_js
+        import akshare as ak
+
+        if board_type == "industry":
+            board_list = ak.stock_board_industry_name_ths()
+            base_url = "https://q.10jqka.com.cn/thshy/detail/code/"
+        else:
+            board_list = ak.stock_board_concept_name_ths()
+            base_url = "https://q.10jqka.com.cn/gn/detail/code/"
+
+        row = board_list[board_list["name"] == board_name]
+        if row.empty:
+            logger.warning(f"MarketCache: THS板块未找到: {board_name}")
+            return []
+
+        code = str(row.iloc[0]["code"])
+
+        # 生成 THS v_code 认证 cookie（与 AKShare 内置 THS 函数使用相同机制）
+        js_racer = py_mini_racer.MiniRacer()
+        with open(get_ths_js("ths.js"), encoding="utf-8") as f:
+            js_content = f.read()
+        js_racer.eval(js_content)
+
+        def _fresh_v_code() -> str:
+            return js_racer.call("v")
+
+        def _make_headers(v: str) -> dict:
+            """构造拟人化请求头，降低被识别为爬虫的概率"""
+            return {
+                "User-Agent": (
+                    "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                    "(KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+                ),
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "zh-CN,zh;q=0.9",
+                "Accept-Encoding": "gzip, deflate, br",
+                "Cookie": f"v={v}",
+                "Referer": f"https://q.10jqka.com.cn/",
+            }
+
+        v_code = _fresh_v_code()
+        all_codes = []
+        max_pages = 8  # 每页20只，最多获取160只
+
+        for page in range(1, max_pages + 1):
+            # 页间随机延迟，避免过快请求触发限速（测试发现第6页后可能拿不到表格）
+            if page > 1:
+                time.sleep(random.uniform(0.4, 0.9))
+
+            url = base_url + code + "/" if page == 1 else base_url + code + "/page/" + str(page) + "/"
+            try:
+                r = requests.get(url, headers=_make_headers(v_code), timeout=12)
+                if r.status_code != 200:
+                    logger.debug(f"MarketCache: THS第{page}页HTTP {r.status_code}，停止翻页")
+                    break
+
+                soup = BeautifulSoup(r.text, "lxml")
+                table = soup.find("table", class_="m-table")
+
+                if not table:
+                    # 表格消失通常是限速触发——刷新 v_code 后重试一次
+                    logger.debug(f"MarketCache: THS第{page}页未返回表格，刷新v_code重试...")
+                    v_code = _fresh_v_code()
+                    time.sleep(random.uniform(1.0, 2.0))
+                    r2 = requests.get(url, headers=_make_headers(v_code), timeout=12)
+                    if r2.status_code == 200:
+                        soup = BeautifulSoup(r2.text, "lxml")
+                        table = soup.find("table", class_="m-table")
+                    if not table:
+                        logger.debug(f"MarketCache: THS重试后仍无表格，停止翻页于第{page}页")
+                        break
+
+                df_page = pd.read_html(StringIO(str(table)))[0]
+                if df_page.empty or "代码" not in df_page.columns:
+                    break
+                page_codes = df_page["代码"].astype(str).str.zfill(6).tolist()
+                all_codes.extend(page_codes)
+
+                if page == 1:
+                    page_info = soup.find("span", class_="page_info")
+                    if page_info:
+                        total_pages = int(page_info.text.split("/")[1])
+                        max_pages = min(max_pages, total_pages)
+                    else:
+                        break  # 无分页信息，单页结束
+
+            except Exception as e:
+                logger.debug(f"MarketCache: THS成分股第{page}页获取失败: {e}")
+                break
+
+        return all_codes
+
     def get_industry_boards(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取行业板块列表（带缓存）
 
-        数据源: ak.stock_board_industry_name_em()
-        返回496个行业板块，含涨跌幅、总市值、换手率等。
+        主数据源: ak.stock_board_industry_name_em()（东方财富）
+        备用数据源: ak.stock_board_industry_name_ths()（同花顺）
 
         Args:
             force_refresh: 是否强制刷新
 
         Returns:
-            行业板块DataFrame
+            行业板块DataFrame（含"板块名称"列）
         """
         ttl = 600  # 行业板块10分钟TTL
         if (not force_refresh
@@ -430,15 +552,16 @@ class MarketCache:
             logger.info("MarketCache: 行业板块缓存命中")
             return self._industry_df
 
-        logger.info("MarketCache: 获取行业板块列表...")
+        logger.info("MarketCache: 获取行业板块列表(THS)...")
         try:
             import akshare as ak
             with self._without_proxy():
-                df = _retry_akshare(ak.stock_board_industry_name_em)()
+                df = ak.stock_board_industry_name_ths()
             if df is not None and not df.empty:
+                df = df.rename(columns={"name": "板块名称"})
                 self._industry_df = df
                 self._industry_timestamp = time.time()
-                logger.info(f"MarketCache: 行业板块获取成功({len(df)}个)")
+                logger.info(f"MarketCache: 行业板块获取成功(THS, {len(df)}个)")
                 return df
             return pd.DataFrame()
         except Exception as e:
@@ -450,8 +573,8 @@ class MarketCache:
     def get_stocks_by_industry(self, industry_name: str) -> list[str]:
         """获取指定行业的成分股代码列表（带缓存）
 
-        数据源: ak.stock_board_industry_cons_em(symbol=行业名)
-        单个行业约1秒，结果缓存30分钟。
+        主数据源: ak.stock_board_industry_cons_em()（东方财富）
+        备用数据源: 同花顺HTML翻页爬取
 
         Args:
             industry_name: 行业名称（如"半导体"）
@@ -466,34 +589,25 @@ class MarketCache:
                 logger.info(f"MarketCache: 行业成分股缓存命中({industry_name})")
                 return self._industry_stocks[industry_name]
 
-        logger.info(f"MarketCache: 获取行业成分股({industry_name})...")
+        logger.info(f"MarketCache: 获取行业成分股(THS, {industry_name})...")
         try:
-            import akshare as ak
-            with self._without_proxy():
-                df = _retry_akshare(lambda: ak.stock_board_industry_cons_em(symbol=industry_name))()
-            if df is not None and not df.empty:
-                # 查找代码列
-                code_col = None
-                for col in ["代码", "code", "symbol"]:
-                    if col in df.columns:
-                        code_col = col
-                        break
-
-                if code_col:
-                    codes = df[code_col].astype(str).tolist()
-                    self._industry_stocks[industry_name] = codes
-                    self._industry_stocks_ts[industry_name] = time.time()
-                    logger.info(f"MarketCache: 行业成分股获取成功({industry_name}, {len(codes)}只)")
-                    return codes
-
+            codes = self._get_ths_board_stocks_by_name(industry_name, "industry")
+            if codes:
+                self._industry_stocks[industry_name] = codes
+                self._industry_stocks_ts[industry_name] = time.time()
+                logger.info(f"MarketCache: 行业成分股获取成功(THS, {industry_name}, {len(codes)}只)")
+                return codes
             return []
         except Exception as e:
             logger.error(f"MarketCache: 行业成分股获取失败({industry_name}): {e}")
-            # 返回过期缓存（如果有）
             return self._industry_stocks.get(industry_name, [])
 
     def get_concept_boards(self, force_refresh: bool = False) -> pd.DataFrame:
-        """获取概念板块列表（带缓存）"""
+        """获取概念板块列表（带缓存）
+
+        主数据源: ak.stock_board_concept_name_em()（东方财富）
+        备用数据源: ak.stock_board_concept_name_ths()（同花顺）
+        """
         ttl = 600  # 概念板块10分钟TTL
         if (not force_refresh
                 and self._concept_df is not None
@@ -501,15 +615,16 @@ class MarketCache:
             logger.info("MarketCache: 概念板块缓存命中")
             return self._concept_df
 
-        logger.info("MarketCache: 获取概念板块列表...")
+        logger.info("MarketCache: 获取概念板块列表(THS)...")
         try:
             import akshare as ak
             with self._without_proxy():
-                df = _retry_akshare(ak.stock_board_concept_name_em)()
+                df = ak.stock_board_concept_name_ths()
             if df is not None and not df.empty:
+                df = df.rename(columns={"name": "板块名称"})
                 self._concept_df = df
                 self._concept_timestamp = time.time()
-                logger.info(f"MarketCache: 概念板块获取成功({len(df)}个)")
+                logger.info(f"MarketCache: 概念板块获取成功(THS, {len(df)}个)")
                 return df
             return pd.DataFrame()
         except Exception as e:
@@ -519,35 +634,27 @@ class MarketCache:
             return pd.DataFrame()
 
     def get_stocks_by_concept(self, concept_name: str) -> list[str]:
-        """获取指定概念的成分股代码列表（带缓存）"""
+        """获取指定概念的成分股代码列表（带缓存）
+
+        数据源: 同花顺HTML翻页爬取
+        """
         if concept_name in self._concept_stocks:
             ts = self._concept_stocks_ts.get(concept_name, 0)
             if (time.time() - ts) < self._concept_stocks_ttl:
                 logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
                 return self._concept_stocks[concept_name]
 
-        logger.info(f"MarketCache: 获取概念成分股({concept_name})...")
+        logger.info(f"MarketCache: 获取概念成分股(THS, {concept_name})...")
         try:
-            import akshare as ak
-            with self._without_proxy():
-                df = _retry_akshare(lambda: ak.stock_board_concept_cons_em(symbol=concept_name))()
-            if df is not None and not df.empty:
-                code_col = None
-                for col in ["代码", "code", "symbol"]:
-                    if col in df.columns:
-                        code_col = col
-                        break
-
-                if code_col:
-                    codes = df[code_col].astype(str).tolist()
-                    self._concept_stocks[concept_name] = codes
-                    self._concept_stocks_ts[concept_name] = time.time()
-                    logger.info(f"MarketCache: 概念成分股获取成功({concept_name}, {len(codes)}只)")
-                    return codes
-
+            codes = self._get_ths_board_stocks_by_name(concept_name, "concept")
+            if codes:
+                self._concept_stocks[concept_name] = codes
+                self._concept_stocks_ts[concept_name] = time.time()
+                logger.info(f"MarketCache: 概念成分股获取成功(THS, {concept_name}, {len(codes)}只)")
+                return codes
             return []
         except Exception as e:
-            logger.error(f"MarketCache: 概念成分股获取失败({concept_name}): {e}")
+            logger.error(f"MarketCache: 概念成分股(THS)获取失败({concept_name}): {e}")
             return self._concept_stocks.get(concept_name, [])
 
     def is_trading_hours(self) -> bool:
