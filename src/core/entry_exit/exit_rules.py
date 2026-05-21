@@ -119,30 +119,42 @@ def check_trend_break(data: StockData, config: dict) -> Optional[ExitSignal]:
     """
     trend_cfg = config.get("trend_break", {})
     trim_ratio = trend_cfg.get("trim_ratio", 0.4)
+    # 死叉间距阈值：
+    # 这里只看“已经死叉”还不够，因为一旦 MA10 < MA60 或 MA5 < MA20 成立，
+    # 这个状态会持续很多天。如果不做额外过滤，scan 每次都会把同一批老死叉
+    # 股票反复列为卖点，用户看到的会是重复告警，而不是“今天刚坏掉”的有效提示。
+    # 因此这里再用两条均线的偏离幅度做一次新鲜度判断，只有偏离还不算太大时才触发。
+    max_gap_pct = trend_cfg.get("max_gap_pct", 3.0)
 
     # 中期趋势破坏: EXIT
     if (data.ma10 is not None and data.ma60 is not None
             and data.ma10 < data.ma60):
-        return ExitSignal(
-            triggered=True,
-            exit_type="trend_break",
-            exit_price=data.price,
-            exit_action="EXIT",
-            exit_ratio=1.0,
-            reason=f"中期趋势破坏: MA10({data.ma10:.2f})<MA60({data.ma60:.2f})"
-        )
+        # 中期趋势破坏：以 MA60 为基准，确认这不是一个早已形成的长期死叉。
+        gap_pct = (data.ma60 - data.ma10) / data.ma60 * 100
+        if gap_pct <= max_gap_pct:
+            return ExitSignal(
+                triggered=True,
+                exit_type="trend_break",
+                exit_price=data.price,
+                exit_action="EXIT",
+                exit_ratio=1.0,
+                reason=f"中期趋势破坏: MA10({data.ma10:.2f})<MA60({data.ma60:.2f}), 偏离{gap_pct:.1f}%"
+            )
 
     # 短期趋势破坏: TRIM
     if (data.ma5 is not None and data.ma20 is not None
             and data.ma5 < data.ma20):
-        return ExitSignal(
-            triggered=True,
-            exit_type="trend_break",
-            exit_price=data.price,
-            exit_action="TRIM",
-            exit_ratio=trim_ratio,
-            reason=f"短期趋势破坏: MA5({data.ma5:.2f})<MA20({data.ma20:.2f})"
-        )
+        # 短期趋势破坏：同样以 MA20 为基准，避免短期死叉长期刷屏。
+        gap_pct = (data.ma20 - data.ma5) / data.ma20 * 100
+        if gap_pct <= max_gap_pct:
+            return ExitSignal(
+                triggered=True,
+                exit_type="trend_break",
+                exit_price=data.price,
+                exit_action="TRIM",
+                exit_ratio=trim_ratio,
+                reason=f"短期趋势破坏: MA5({data.ma5:.2f})<MA20({data.ma20:.2f}), 偏离{gap_pct:.1f}%"
+            )
 
     return None
 

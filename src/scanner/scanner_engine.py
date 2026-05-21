@@ -51,6 +51,7 @@ class ScannerEngine:
         skill_types: dict = None,
         ai_config: dict = None,
         cache_ttl: int = 300,
+        entry_exit_config: dict = None,
     ):
         """初始化Scanner引擎
 
@@ -62,6 +63,7 @@ class ScannerEngine:
             skill_types: 技能类型映射
             ai_config: AI调节层配置
             cache_ttl: 行情缓存TTL(秒)
+            entry_exit_config: 买卖点计算器配置
         """
         self.market_cache = MarketCache(ttl_seconds=cache_ttl)
         self.rules = self._load_rules(rules_path)
@@ -80,6 +82,7 @@ class ScannerEngine:
             "signal_weights": signal_weights,
             "skill_types": skill_types,
             "ai_config": ai_config,
+            "entry_exit_config": entry_exit_config,
         }
 
     def _get_orchestrator(self) -> Orchestrator:
@@ -335,19 +338,25 @@ class ScannerEngine:
                 # 获取持仓状态（如果有）
                 current_ratio = 0.0
                 strategy_state = None
+                has_position = False
+                entry_price = None
                 positions = pm.list_positions()
                 for pos in positions:
                     if pos.stock_code == code:
                         current_ratio = pos.current_ratio
                         strategy_state = pm.to_strategy_state(code)
+                        has_position = pos.current_ratio > 0
+                        entry_price = pos.entry_price
                         break
 
-                # 调用Orchestrator六层分析
+                # 调用Orchestrator七层分析（含买卖点 Layer 3.75）
                 decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                     data=stock_data,
                     current_position_ratio=current_ratio,
                     strategy_state=strategy_state,
                     ai_enabled=ai_enabled,
+                    has_position=has_position,
+                    entry_price=entry_price,
                 )
 
                 result.update({

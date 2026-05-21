@@ -64,3 +64,32 @@ PowerShell 中提交复杂多段消息时，优先使用单引号包裹每个 -m
 - See Also: ERR-20260515-001
 
 ---
+
+## [ERR-20260521-001] main.py syntax regression
+
+**Logged**: 2026-05-21T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: tests
+
+### Summary
+The sell-point display edit accidentally truncated the `pm.suggest_update(...)` call in `src/cli/main.py`, leaving an unmatched closing parenthesis.
+
+### Error
+```text
+SyntaxError in main.py at line 565: unmatched ')'.
+```
+
+### Context
+- Attempted to revise portfolio sell-point text to show清仓/减仓 meaning.
+- The surrounding `pm.suggest_update(...)` block was partially overwritten.
+- Syntax check on `src/cli/main.py` failed immediately after the edit.
+
+### Suggested Fix
+Restore the full `pm.suggest_update(pos.stock_code, stock_data.stock_name, strategy_decision, stock_data, console)` call and rerun syntax validation.
+
+### Metadata
+- Reproducible: yes
+- Related Files: src/cli/main.py
+
+---

@@ -286,17 +286,16 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         ee = strategy_decision.entry_exit
         console.print(f"\n[bold yellow]买卖点：[/bold yellow]")
         if ee.get("entry_triggered"):
-            console.print(f"  [green]买点触发:[/green] {ee.get('entry_price', 'N/A')} ({ee.get('entry_type', '')} | {ee.get('entry_reason', '')})")
+            entry_ratio_pct = int(ee.get('entry_ratio', 0) * 100)
+            console.print(f"  [green]▶ 买点·建仓{entry_ratio_pct}%:[/green] {ee.get('entry_reason', '')}")
         if ee.get("exit_triggered"):
-            exit_type = ee.get('exit_type', '')
-            exit_action = ee.get('exit_action', '')
-            exit_price = ee.get('exit_price', 'N/A')
+            action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
             exit_reason = ee.get('exit_reason', '')
             chandelier_stop = ee.get('chandelier_stop_price')
             if chandelier_stop:
-                console.print(f"  [red]卖点触发:[/red] {exit_price} | 止损价: {chandelier_stop} | {exit_reason}")
+                console.print(f"  [red]◀ 卖点·{action_cn}:[/red] 止损价 {chandelier_stop} | {exit_reason}")
             else:
-                console.print(f"  [red]卖点触发:[/red] {exit_price} ({exit_type} | {exit_action}) | {exit_reason}")
+                console.print(f"  [red]◀ 卖点·{action_cn}:[/red] {exit_reason}")
         if ee.get("override_decision"):
             action = ee.get('override_action', '')
             console.print(f"  [bold]买卖点覆盖决策 → {action}[/bold]")
@@ -552,14 +551,18 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             # 买卖点信息
             if strategy_decision and strategy_decision.entry_exit:
                 ee = strategy_decision.entry_exit
+                # 持仓分析里直接输出“建仓/清仓/减仓”的中文语义，不再把内部字段原样暴露给用户。
+                # 用户关心的是“现在该怎么做”，不是内部动作枚举叫什么。
                 if ee.get("entry_triggered"):
-                    console.print(f"  [green]▶ 买点触发:[/green] {ee.get('entry_price', 'N/A')} ({ee.get('entry_type', '')} | {ee.get('entry_reason', '')})")
+                    entry_ratio_pct = int(ee.get('entry_ratio', 0) * 100)
+                    console.print(f"  [green]▶ 买点·建仓{entry_ratio_pct}%:[/green] {ee.get('entry_reason', '')}")
                 elif ee.get("exit_triggered"):
+                    action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
                     chandelier_stop = ee.get('chandelier_stop_price')
                     if chandelier_stop:
-                        console.print(f"  [red]◀ 卖点触发:[/red] {ee.get('exit_price', 'N/A')} | 止损价:{chandelier_stop} | {ee.get('exit_reason', '')}")
+                        console.print(f"  [red]◀ 卖点·{action_cn}:[/red] 止损价{chandelier_stop} | {ee.get('exit_reason', '')}")
                     else:
-                        console.print(f"  [red]◀ 卖点触发:[/red] {ee.get('exit_price', 'N/A')} ({ee.get('exit_type', '')} | {ee.get('exit_action', '')}) | {ee.get('exit_reason', '')}")
+                        console.print(f"  [red]◀ 卖点·{action_cn}:[/red] {ee.get('exit_reason', '')}")
 
             # 更新持仓
             pm.suggest_update(
@@ -1339,6 +1342,7 @@ def scan_market(
             pass
 
     # 创建Scanner引擎
+    entry_exit_config = config.get("entry_exit", None)
     engine = ScannerEngine(
         rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),
         skills_dir=skills_dir,
@@ -1347,6 +1351,7 @@ def scan_market(
         skill_types=skill_types,
         ai_config=ai_config,
         cache_ttl=scanner_cfg.get("cache_ttl", 300),
+        entry_exit_config=entry_exit_config,
     )
 
     theme_query = market_query
@@ -1586,6 +1591,7 @@ def _display_ranked_results(success_results: list[dict]):
     table.add_column("决策", style="bold", width=6)
     table.add_column("仓位", width=8)
     table.add_column("语义", width=6)
+    table.add_column("买卖点", width=18)
     table.add_column("AI情绪", width=10)
 
     buy_count = 0
@@ -1652,6 +1658,9 @@ def _display_ranked_results(success_results: list[dict]):
                 rank_str = f"[bold]{rank_str}[/bold]"
                 top3_stocks.append(f"{r['stock_code']} {r.get('stock_name', '')}({total_score}分)")
 
+            # 买卖点摘要
+            ee_str = _format_entry_exit_brief(sd)
+
             table.add_row(
                 rank_str,
                 r["stock_code"],
@@ -1664,11 +1673,13 @@ def _display_ranked_results(success_results: list[dict]):
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
                 action_semantic,
+                ee_str,
                 ai_str,
             )
         else:
             # 无排名数据时用旧格式
             score = dr.score if dr else 0
+            ee_str = _format_entry_exit_brief(sd)
             table.add_row(
                 "-",
                 r["stock_code"],
@@ -1681,6 +1692,7 @@ def _display_ranked_results(success_results: list[dict]):
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
                 action_semantic,
+                ee_str,
                 ai_str,
             )
 
@@ -1711,6 +1723,36 @@ def _display_ranked_results(success_results: list[dict]):
     )
 
 
+def _exit_action_cn(exit_action: str, exit_ratio: float) -> str:
+    """把内部动作枚举翻译成中文执行语义，便于用户快速判断是清仓还是减仓。"""
+    if exit_action == "EXIT" or exit_ratio >= 1.0:
+        return "清仓"
+    pct = int(exit_ratio * 100)
+    return f"减仓{pct}%"
+
+
+def _format_entry_exit_brief(sd) -> str:
+    """买卖点简要摘要，用于扫描表格列。
+
+    这里不是要把所有细节都塞进一列，而是给 scan 结果提供一个高密度、低噪音的摘要：
+    - 买点：只保留“建仓 + 关键理由截断”
+    - 卖点：只保留“清仓/减仓 + 关键理由截断”
+    - 无触发：统一显示为空，避免让用户误以为漏了信号
+    """
+    if not sd or not getattr(sd, "entry_exit", None):
+        return "[dim]-[/dim]"
+    ee = sd.entry_exit
+    if ee.get("entry_triggered"):
+        reason = ee.get("entry_reason", "")[:16]
+        return f"[green]▶建仓: {reason}[/green]"
+    if ee.get("exit_triggered"):
+        # exit_action 是内部枚举（EXIT/TRIM），这里翻成中文，避免表格里只剩实现细节。
+        action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
+        reason = ee.get("exit_reason", "")[:14]
+        return f"[red]◀{action_cn}: {reason}[/red]"
+    return "[dim]未触发[/dim]"
+
+
 def _display_unranked_results(success_results: list[dict]):
     """展示无排名的深度分析结果（兜底，排名层未启用时使用）"""
     table = Table(title="深度分析结果", show_lines=False)
@@ -1721,6 +1763,7 @@ def _display_unranked_results(success_results: list[dict]):
     table.add_column("仓位", width=8)
     table.add_column("语义", width=6)
     table.add_column("状态", width=10)
+    table.add_column("买卖点", width=18)
     table.add_column("AI情绪", width=10)
 
     buy_count = 0
@@ -1770,6 +1813,7 @@ def _display_unranked_results(success_results: list[dict]):
             pos_action,
             action_semantic,
             lifecycle,
+            _format_entry_exit_brief(sd),
             ai_str,
         )
 
