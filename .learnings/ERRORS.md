@@ -93,3 +93,65 @@ Restore the full `pm.suggest_update(pos.stock_code, stock_data.stock_name, strat
 - Related Files: src/cli/main.py
 
 ---
+
+## [ERR-20260525-001] run_in_terminal powershell exe invocation
+
+**Logged**: 2026-05-25T00:00:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+通过 `run_in_terminal` 在 PowerShell 中直接执行绝对路径的 `python.exe` 时，未加调用运算符或未加引号会触发命令解析错误。
+
+### Error
+```text
+The term 'c:\Project\Muyun\.venv\Scripts\python.exe' is not recognized as the name of a cmdlet...
+The ampersand (&) character is not allowed...
+```
+
+### Context
+- Attempted to run focused Python validation commands against the project virtualenv.
+- Plain absolute executable path failed in PowerShell parsing under the terminal wrapper.
+- Using `& "c:\Project\Muyun\.venv\Scripts\python.exe" ...` succeeded and produced the expected validation output.
+
+### Suggested Fix
+在 PowerShell 的 `run_in_terminal` 命令里，执行绝对路径 exe 时统一使用带引号的调用形式：`& "...\python.exe" script_or_args`。
+
+### Metadata
+- Reproducible: yes
+- Related Files: .learnings/ERRORS.md
+- See Also: ERR-20260515-001
+
+---
+
+## [ERR-20260526-001] rag evaluator offline model init
+
+**Logged**: 2026-05-26T00:00:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+运行 RAG 评估脚本时，脚本先尝试初始化在线嵌入模型，离线环境会在指标计算前直接失败。
+
+### Error
+```text
+RAG服务初始化失败: 嵌入模型加载失败: We couldn't connect to 'https://hf-mirror.com' to load the files, and couldn't find them in the cached files.
+错误: RAG初始化失败
+```
+
+### Context
+- Attempted to validate updated labels with `.\.venv\Scripts\python.exe tests\rag_eval\evaluator.py`.
+- The script tried to initialize the full RAG service before reading existing retrieval results and labels.
+- Current environment had no cached model files and could not reach the Hugging Face mirror.
+
+### Suggested Fix
+给评估脚本增加离线模式或纯指标模式：在已有检索结果和标签文件存在时，跳过 RAG 初始化，仅执行指标计算与报告生成。
+
+### Metadata
+- Reproducible: yes
+- Related Files: tests/rag_eval/evaluator.py
+- See Also: ERR-20260525-001
+
+---
