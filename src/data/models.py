@@ -310,6 +310,9 @@ class StrategyDecision(BaseModel):
     # v0.8.3 Phase C: 买卖点计算结果
     entry_exit: Optional[dict] = Field(default=None, description="买卖点计算结果（EntryExitResult序列化）")
 
+    # v0.8.3 收尾: 买卖点与AI情绪分歧
+    divergence: Optional[dict] = Field(default=None, description="买卖点技术信号与AI情绪的分歧检测（type/technical_signal/ai_sentiment/warning）")
+
 
 class AIModifierResult(BaseModel):
     """AI调节层输出（v0.8.3）

@@ -73,31 +73,40 @@ def mrr(scores):
 
 
 def auto_label(rag_service, queries, top_k=5):
-    """自动标注：基于检索排名进行初筛标注
-
-    RRF融合分数范围极窄（0.01-0.02），不适用绝对阈值。
-    改为排名策略：
-    - 第1名（最佳匹配）: relevant (2)
-    - 第2-3名: partial (1)
-    - 第4-5名及以后: irrelevant (0)
-
-    此标注为初筛，建议人工审核后微调。
-    """
+    "Auto-label using semantic cosine similarity (sentence-transformers)."
     labels = {}
-    for q in queries:
+    # Build query embeddings
+    query_texts = [q["query"] for q in queries]
+    query_embeddings = rag_service._embedder.embed(query_texts)
+    
+    for qi, q in enumerate(queries):
         result = rag_service.retrieve(q["query"], top_k=top_k)
         q_labels = {}
-        for rank, (doc, score) in enumerate(zip(result.documents, result.scores), start=1):
-            if rank == 1:
-                q_labels[doc.id] = 2
-            elif rank <= 3:
-                q_labels[doc.id] = 1
+        doc_texts = []
+        for doc in result.documents:
+            doc_text = doc.content if hasattr(doc,"content") else ""
+            doc_texts.append(doc_text[:500] if doc_text else "")
+        
+        # Build doc embeddings
+        doc_embeddings = rag_service._embedder.embed(doc_texts)
+        
+        # Compute cosine similarity
+        from numpy import dot
+        from numpy.linalg import norm
+        q_emb = query_embeddings[qi]
+        for di, doc in enumerate(result.documents):
+            if doc_texts[di]:
+                sim = dot(q_emb, doc_embeddings[di]) / (norm(q_emb) * norm(doc_embeddings[di]) + 1e-8)
+                if sim >= 0.72:
+                    q_labels[doc.id] = 2
+                elif sim >= 0.60:
+                    q_labels[doc.id] = 1
+                else:
+                    q_labels[doc.id] = 0
             else:
                 q_labels[doc.id] = 0
         labels[q["id"]] = q_labels
     return labels
-
-
 def evaluate(rag_service, queries, labels, top_k=5):
     """运行评估，计算所有指标"""
     results = []
@@ -227,7 +236,7 @@ def main():
         labels = auto_label(rag, queries, top_k=5)
         save_relevance_labels(labels_path, labels)
         print(f"标注已保存到 {labels_path}")
-        print("提示: 请人工审核标注文件，调整不准确的相关性标签后重新运行")
+        print("提示: 使用语义相似度自动标注(cosine>=0.72 relevant, >=0.60 partial). 可人工审核调整")
     else:
         print(f"加载已有标注: {len(labels)} 条查询")
     

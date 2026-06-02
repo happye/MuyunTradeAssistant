@@ -1,7 +1,7 @@
 {
-  "avg_recall@5": 1.0,
-  "avg_mrr": 1.0,
-  "avg_ndcg@5": 1.0,
+  "avg_recall@5": 0.8,
+  "avg_mrr": 0.733,
+  "avg_ndcg@5": 0.749,
   "num_queries": 30,
   "targets": {
     "Recall@5": 0.7,
@@ -30,7 +30,7 @@
         0.015,
         0.014
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q02",
@@ -53,7 +53,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q03",
@@ -76,7 +76,7 @@
         0.016,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q04",
@@ -84,7 +84,7 @@
       "category": "仓位",
       "recall@5": 1.0,
       "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "ndcg@5": 0.85,
       "top_docs": [
         "ch17_p3",
         "ch46_p4",
@@ -99,7 +99,7 @@
         0.014,
         0.01
       ],
-      "num_relevant": 3
+      "num_relevant": 2
     },
     {
       "query_id": "q05",
@@ -122,7 +122,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q06",
@@ -145,7 +145,7 @@
         0.015,
         0.014
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q07",
@@ -168,15 +168,15 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q08",
       "query": "移动止损怎么用？",
       "category": "止损",
       "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.651,
       "top_docs": [
         "ch4_p6",
         "ch48_p5",
@@ -191,7 +191,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 2
     },
     {
       "query_id": "q09",
@@ -214,7 +214,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 1
     },
     {
       "query_id": "q10",
@@ -237,7 +237,7 @@
         0.016,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 1
     },
     {
       "query_id": "q11",
@@ -260,7 +260,7 @@
         0.009,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q12",
@@ -283,7 +283,7 @@
         0.016,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q13",
@@ -291,7 +291,7 @@
       "category": "资金",
       "recall@5": 1.0,
       "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "ndcg@5": 0.983,
       "top_docs": [
         "望周知—系统化交易大纲_p13",
         "ch9_p2",
@@ -306,15 +306,15 @@
         0.015,
         0.014
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q14",
       "query": "涨停板第二天怎么操作？",
       "category": "操作",
       "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.761,
       "top_docs": [
         "ch8_p2",
         "ch8_p5",
@@ -329,7 +329,7 @@
         0.01,
         0.01
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q15",
@@ -337,7 +337,7 @@
       "category": "技术",
       "recall@5": 1.0,
       "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "ndcg@5": 0.956,
       "top_docs": [
         "ch25_p1",
         "ch16_p2",
@@ -352,15 +352,15 @@
         0.01,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q16",
       "query": "熊市中应该空仓吗？",
       "category": "大盘",
       "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.631,
       "top_docs": [
         "ch37_p1",
         "ch42_p3",
@@ -375,15 +375,15 @@
         0.015,
         0.01
       ],
-      "num_relevant": 3
+      "num_relevant": 1
     },
     {
       "query_id": "q17",
       "query": "均线多头排列是什么？",
       "category": "技术指标",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "ch4_p4",
         "ch4_p2",
@@ -398,15 +398,15 @@
         0.015,
         0.014
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     },
     {
       "query_id": "q18",
       "query": "如何做波段操作？",
       "category": "操作",
       "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "mrr": 0.5,
+      "ndcg@5": 0.631,
       "top_docs": [
         "ch24_p1",
         "ch38_p3",
@@ -421,15 +421,15 @@
         0.009,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 1
     },
     {
       "query_id": "q19",
       "query": "黑天鹅事件怎么应对？",
       "category": "风控",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "望周知—系统化交易大纲_p25",
         "ch39_p5",
@@ -444,15 +444,15 @@
         0.009,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     },
     {
       "query_id": "q20",
       "query": "换手率高说明什么？",
       "category": "成交量",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "ch34_p2",
         "ch33_p3",
@@ -467,7 +467,7 @@
         0.01,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     },
     {
       "query_id": "q21",
@@ -490,7 +490,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q22",
@@ -513,7 +513,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 1
     },
     {
       "query_id": "q23",
@@ -536,15 +536,15 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q24",
       "query": "如何设置条件单？",
       "category": "操作",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "望周知—系统化交易大纲_p8",
         "望周知—系统化交易大纲_p43",
@@ -559,7 +559,7 @@
         0.01,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     },
     {
       "query_id": "q25",
@@ -582,7 +582,7 @@
         0.01,
         0.01
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q26",
@@ -605,7 +605,7 @@
         0.01,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q27",
@@ -628,7 +628,7 @@
         0.015,
         0.015
       ],
-      "num_relevant": 3
+      "num_relevant": 5
     },
     {
       "query_id": "q28",
@@ -651,15 +651,15 @@
         0.015,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 4
     },
     {
       "query_id": "q29",
       "query": "金字塔加仓法怎么操作？",
       "category": "仓位",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "ch17_p3",
         "ch37_p4",
@@ -674,15 +674,15 @@
         0.009,
         0.009
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     },
     {
       "query_id": "q30",
       "query": "A股T+1交易有什么影响？",
       "category": "规则",
-      "recall@5": 1.0,
-      "mrr": 1.0,
-      "ndcg@5": 1.0,
+      "recall@5": 0.0,
+      "mrr": 0.0,
+      "ndcg@5": 0.0,
       "top_docs": [
         "ch60_p1",
         "ch61_p1",
@@ -697,7 +697,7 @@
         0.01,
         0.01
       ],
-      "num_relevant": 3
+      "num_relevant": 0
     }
   ]
 }

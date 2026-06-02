@@ -300,6 +300,29 @@ class Orchestrator:
         if entry_exit_result:
             strategy_decision.entry_exit = entry_exit_result.model_dump()
 
+        # v0.8.3 收尾 ISS-030: 买卖点与AI情绪分歧检测
+        if ai_result and entry_exit_result:
+            ai_sentiment = ai_result.sentiment
+            ai_bearish = ai_sentiment in ("看跌", "bearish")
+            ai_bullish = ai_sentiment in ("看涨", "bullish")
+            tech_buy = entry_exit_result.entry_triggered
+            tech_sell = entry_exit_result.exit_triggered
+
+            if tech_buy and ai_bearish:
+                strategy_decision.divergence = {
+                    "type": "entry_vs_bearish_ai",
+                    "technical_signal": "买点触发",
+                    "ai_sentiment": ai_sentiment,
+                    "warning": f"技术面买点已触发，但AI情绪{ai_sentiment}。买点规则优先，AI仅作风险提示。"
+                }
+            elif tech_sell and ai_bullish:
+                strategy_decision.divergence = {
+                    "type": "exit_vs_bullish_ai",
+                    "technical_signal": "卖点触发",
+                    "ai_sentiment": ai_sentiment,
+                    "warning": f"技术面卖点已触发，但AI情绪{ai_sentiment}。卖点规则优先，AI仅作风险提示。"
+                }
+
         # AI仓位上限影响Strategy Layer的仓位建议
         if ai_result and ai_result.position_cap < 1.0:
             original_ratio = strategy_decision.position_ratio

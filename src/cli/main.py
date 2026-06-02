@@ -289,7 +289,7 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
             entry_ratio_pct = int(ee.get('entry_ratio', 0) * 100)
             console.print(f"  [green]▶ 买点·建仓{entry_ratio_pct}%:[/green] {ee.get('entry_reason', '')}")
         if ee.get("exit_triggered"):
-            action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
+            action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0), ee.get('exit_type', ''))
             exit_reason = ee.get('exit_reason', '')
             chandelier_stop = ee.get('chandelier_stop_price')
             if chandelier_stop:
@@ -301,6 +301,13 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
             console.print(f"  [bold]买卖点覆盖决策 → {action}[/bold]")
         if not ee.get("entry_triggered") and not ee.get("exit_triggered"):
             console.print(f"  [dim]无触发 (价格在买卖点之间)[/dim]")
+    
+    # v0.8.3 ISS-030: 买卖点与AI情绪分歧
+    if strategy_decision and strategy_decision.divergence:
+        d = strategy_decision.divergence
+        console.print(f"\n[bold yellow]⚠ 分歧提示：[/bold yellow]")
+        console.print(f"  [yellow]技术面: {d['technical_signal']} | AI情绪: {d['ai_sentiment']}[/yellow]")
+        console.print(f"  [dim]{d['warning']}[/dim]")
 
 # v0.7.2: 策略层信息
     if strategy_decision:
@@ -563,12 +570,17 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                     entry_ratio_pct = int(ee.get('entry_ratio', 0) * 100)
                     console.print(f"  [green]▶ 买点·建仓{entry_ratio_pct}%:[/green] {ee.get('entry_reason', '')}")
                 elif ee.get("exit_triggered"):
-                    action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
+                    action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0), ee.get('exit_type', ''))
                     chandelier_stop = ee.get('chandelier_stop_price')
                     if chandelier_stop:
                         console.print(f"  [red]◀ 卖点·{action_cn}:[/red] 止损价{chandelier_stop} | {ee.get('exit_reason', '')}")
                     else:
                         console.print(f"  [red]◀ 卖点·{action_cn}:[/red] {ee.get('exit_reason', '')}")
+
+            # v0.8.3 ISS-030: 分歧提示（持仓扫描路径）
+            if strategy_decision and strategy_decision.divergence:
+                d = strategy_decision.divergence
+                console.print(f"  [yellow]⚠ 分歧: 技术面{d['technical_signal']} vs AI情绪{d['ai_sentiment']} — AI仅作风险提示[/yellow]")
 
             # 更新持仓
             pm.suggest_update(
@@ -1730,12 +1742,26 @@ def _display_ranked_results(success_results: list[dict]):
     )
 
 
-def _exit_action_cn(exit_action: str, exit_ratio: float) -> str:
-    """把内部动作枚举翻译成中文执行语义，便于用户快速判断是清仓还是减仓。"""
+def _exit_action_cn(exit_action: str, exit_ratio: float, exit_type: str = "") -> str:
+    """把内部动作枚举翻译成中文执行语义+子类型标签。"""
+    # exit_type 子语义映射
+    type_labels = {
+        "chandelier_stop": "Chandelier止损",
+        "trend_break": "趋势破坏",
+        "take_profit": "止盈",
+        "capital_outflow": "资金流出",
+    }
+    type_tag = type_labels.get(exit_type, exit_type.replace("_", " ").title()) if exit_type else ""
+
     if exit_action == "EXIT" or exit_ratio >= 1.0:
-        return "清仓"
-    pct = int(exit_ratio * 100)
-    return f"减仓{pct}%"
+        base = "清仓"
+    else:
+        pct = int(exit_ratio * 100)
+        base = f"减仓{pct}%"
+    
+    if type_tag and type_tag not in base:
+        return f"{base}({type_tag})"
+    return base
 
 
 def _format_entry_exit_brief(sd) -> str:
@@ -1754,7 +1780,7 @@ def _format_entry_exit_brief(sd) -> str:
         return f"[green]▶建仓: {reason}[/green]"
     if ee.get("exit_triggered"):
         # exit_action 是内部枚举（EXIT/TRIM），这里翻成中文，避免表格里只剩实现细节。
-        action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0))
+        action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0), ee.get('exit_type', ''))
         reason = ee.get("exit_reason", "")[:14]
         return f"[red]◀{action_cn}: {reason}[/red]"
     return "[dim]未触发[/dim]"
