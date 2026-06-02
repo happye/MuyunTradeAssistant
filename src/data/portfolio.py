@@ -46,6 +46,7 @@ class PositionRecord:
         last_action_semantic: Optional[str] = None,
         last_sell_path: Optional[str] = None,
         last_action_date: Optional[str] = None,
+        high_since_entry: Optional[float] = None,
         lifecycle: str = "FLAT",
         strategy_state: Optional[dict] = None,
     ):
@@ -58,6 +59,7 @@ class PositionRecord:
         self.last_action_semantic = last_action_semantic
         self.last_sell_path = last_sell_path
         self.last_action_date = last_action_date
+        self.high_since_entry = high_since_entry
         self.lifecycle = lifecycle
         self.strategy_state = strategy_state or {}
 
@@ -72,6 +74,7 @@ class PositionRecord:
             "last_action_semantic": self.last_action_semantic,
             "last_sell_path": self.last_sell_path,
             "last_action_date": self.last_action_date,
+            "high_since_entry": self.high_since_entry,
             "lifecycle": self.lifecycle,
             "strategy_state": self.strategy_state,
         }
@@ -90,6 +93,7 @@ class PositionRecord:
             last_action_semantic=data.get("last_action_semantic"),
             last_sell_path=data.get("last_sell_path"),
             last_action_date=data.get("last_action_date"),
+            high_since_entry=data.get("high_since_entry"),
             lifecycle=data.get("lifecycle", "FLAT"),
             strategy_state=data.get("strategy_state", {}),
         )

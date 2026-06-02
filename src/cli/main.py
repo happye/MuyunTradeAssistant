@@ -498,8 +498,14 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 ai_enabled=True,
                 has_position=has_position,
                 entry_price=pos.entry_price if pos else None,
+                    high_since_entry=pos.high_since_entry if pos else None,
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
+            if hasattr(strategy_decision,'entry_exit') and strategy_decision.entry_exit:
+                ee = strategy_decision.entry_exit
+                if ee.get('highest_since_entry'):
+                    if pos.high_since_entry is None or ee['highest_since_entry'] > pos.high_since_entry:
+                        pos.high_since_entry = ee['highest_since_entry']
 
             # 单只股票简要输出
             signal_colors = {
@@ -796,6 +802,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             ai_enabled=True,
             has_position=has_position,
             entry_price=pos.entry_price if pos else None,
+                    high_since_entry=pos.high_since_entry if pos else None,
         )
         display_result(result, strategy_decision, execution_eval, ai_result)
 
