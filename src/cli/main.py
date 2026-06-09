@@ -1405,15 +1405,15 @@ def scan_market(
 
     # v0.8.4: 大盘环境前置检查
     try:
-        from src.data.data_feeder import DataFeeder
-        df = DataFeeder(backtest_mode=True)
-        trend, ma20, ma60, ma250, idx_close, idx_chg, _ = df._get_index_at_date("latest")
-        if trend:
+        from src.data.akshare_client import AKShareClient
+        idx = AKShareClient._get_index_trend()
+        if idx:
+            trend = idx.get("trend", "NEUTRAL")
             trend_cn = {"BULLISH": "多头(🟢 适合积极选股)", "BEARISH": "空头(🔴 控制仓位)", "NEUTRAL": "中性(🟡 谨慎操作)"}.get(trend, trend)
             trend_color = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(trend, "white")
-            idx_info = f"沪深300: MA20={ma20:.0f} MA60={ma60:.0f} 趋势={trend_cn}"
-            if idx_chg is not None:
-                idx_info += f" 涨跌={idx_chg:+.2f}%"
+            idx_info = f"沪深300: MA20={idx.get('ma20', 0):.0f} MA60={idx.get('ma60', 0):.0f} 趋势={trend_cn}"
+            if idx.get("change_pct") is not None:
+                idx_info += f" 涨跌={idx['change_pct']:+.2f}%"
             console.print(f"  [{trend_color}]大盘: {idx_info}[/{trend_color}]")
             if trend == "BEARISH":
                 console.print(f"  [red]⚠ 大盘空头环境，选股需严格风控，建议轻仓或空仓[/red]")
@@ -1429,19 +1429,8 @@ def scan_market(
     else:
         console.print("  行情缓存: [yellow]未命中，正在获取全市场数据（约4分钟）...[/yellow]")
 
-    # 数据源完整性提示（v0.8.4）
-    try:
-        sample_df = engine.market_cache.get_cache_status()
-        src = sample_df.get("stocks", {}).get("source", "")
-        missing = []
-        if "量比" not in str(sample_df):
-            missing.append("量比")
-        if "60日涨跌幅" not in str(sample_df):
-            missing.append("60日涨跌幅")
-        if missing:
-            console.print(f"  [dim]数据源: 缺少 {', '.join(missing)}，对应过滤器自动跳过。深度分析阶段可补充趋势判断[/dim]")
-    except Exception:
-        pass
+    # v0.8.4: 初筛仅有当日快照，深度分析的 Weinstein 阶段(S2/S4)做趋势确认
+    console.print("  [dim]提示: 初筛基于当日数据，深度分析可补充趋势判断(Weinstein S1-S4)[/dim]")
 
     if theme_query:
         console.print(f"  主题词: {theme_query}")
