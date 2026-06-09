@@ -1403,6 +1403,25 @@ def scan_market(
     rule_display = rule_info["display_name"] if rule_info else resolved_name
     console.print(f"\n[bold cyan]全市场扫描[/bold cyan] — {rule_display}")
 
+    # v0.8.4: 大盘环境前置检查
+    try:
+        from src.data.data_feeder import DataFeeder
+        df = DataFeeder(backtest_mode=True)
+        trend, ma20, ma60, ma250, idx_close, idx_chg, _ = df._get_index_at_date("latest")
+        if trend:
+            trend_cn = {"BULLISH": "多头(🟢 适合积极选股)", "BEARISH": "空头(🔴 控制仓位)", "NEUTRAL": "中性(🟡 谨慎操作)"}.get(trend, trend)
+            trend_color = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(trend, "white")
+            idx_info = f"沪深300: MA20={ma20:.0f} MA60={ma60:.0f} 趋势={trend_cn}"
+            if idx_chg is not None:
+                idx_info += f" 涨跌={idx_chg:+.2f}%"
+            console.print(f"  [{trend_color}]大盘: {idx_info}[/{trend_color}]")
+            if trend == "BEARISH":
+                console.print(f"  [red]⚠ 大盘空头环境，选股需严格风控，建议轻仓或空仓[/red]")
+            elif trend == "NEUTRAL":
+                console.print(f"  [yellow]⚠ 大盘方向不明，建议只选最强趋势的股票[/yellow]")
+    except Exception as e:
+        logger.debug(f"大盘环境检查失败: {e}")
+
     # 显示缓存状态
     cache_status = engine.market_cache.get_cache_status()
     if cache_status["stocks"]["cached"] and not cache_status["stocks"]["expired"]:
@@ -1610,6 +1629,7 @@ def _display_ranked_results(success_results: list[dict]):
     table.add_column("决策", style="bold", width=6)
     table.add_column("仓位", width=8)
     table.add_column("语义", width=6)
+    table.add_column("阶段", width=6)
     table.add_column("买卖点", width=18)
     table.add_column("AI情绪", width=10)
 
@@ -1679,6 +1699,9 @@ def _display_ranked_results(success_results: list[dict]):
 
             # 买卖点摘要
             ee_str = _format_entry_exit_brief(sd)
+            # Weinstein 阶段
+            stock_d3 = dr.stock if dr and hasattr(dr, 'stock') else None
+            stage_str = _weinstein_stage(stock_d3) if stock_d3 else "[dim]?[/dim]"
 
             table.add_row(
                 rank_str,
@@ -1692,6 +1715,7 @@ def _display_ranked_results(success_results: list[dict]):
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
                 action_semantic,
+                stage_str,
                 ee_str,
                 ai_str,
             )
@@ -1699,6 +1723,8 @@ def _display_ranked_results(success_results: list[dict]):
             # 无排名数据时用旧格式
             score = dr.score if dr else 0
             ee_str = _format_entry_exit_brief(sd)
+            stock_d4 = dr.stock if dr and hasattr(dr, 'stock') else None
+            stage_str = _weinstein_stage(stock_d4) if stock_d4 else "[dim]?[/dim]"
             table.add_row(
                 "-",
                 r["stock_code"],
@@ -1711,6 +1737,7 @@ def _display_ranked_results(success_results: list[dict]):
                 f"[{decision_style}]{decision}[/{decision_style}]",
                 pos_action,
                 action_semantic,
+                stage_str,
                 ee_str,
                 ai_str,
             )
@@ -1764,6 +1791,46 @@ def _exit_action_cn(exit_action: str, exit_ratio: float, exit_type: str = "") ->
     return base
 
 
+def _weinstein_stage(sd) -> str:
+    """Weinstein四阶段分类（基于StockData技术指标）
+    
+    阶段1(筑底): MA20与MA60缠绕，价格在两者附近
+    阶段2(上升): MA20>MA60，价格>MA20
+    阶段3(顶部): 价格高位，MA走平或即将死叉
+    阶段4(下跌): MA20<MA60，价格<MA20
+    """
+    if not sd:
+        return "[dim]?[/dim]"
+    try:
+        ma20 = getattr(sd, 'ma20', None)
+        ma60 = getattr(sd, 'ma60', None)
+        price = getattr(sd, 'price', None)
+        if ma20 is None or ma60 is None or price is None:
+            return "[dim]?[/dim]"
+        
+        if ma20 > ma60:
+            if price > ma20:
+                return "[green]S2↑[/green]"
+            elif price > ma60:
+                return "[yellow]S2-[/yellow]"
+            else:
+                return "[yellow]S1[/yellow]"
+        elif ma20 < ma60:
+            if price < ma20:
+                return "[red]S4↓[/red]"
+            elif price < ma60:
+                return "[red]S3[/red]"
+            else:
+                return "[yellow]S3[/yellow]"
+        else:
+            if price > ma20:
+                return "[yellow]S1+[/yellow]"
+            else:
+                return "[yellow]S1[/yellow]"
+    except Exception:
+        return "[dim]?[/dim]"
+
+
 def _format_entry_exit_brief(sd) -> str:
     """买卖点简要摘要，用于扫描表格列。
 
@@ -1796,6 +1863,7 @@ def _display_unranked_results(success_results: list[dict]):
     table.add_column("仓位", width=8)
     table.add_column("语义", width=6)
     table.add_column("状态", width=10)
+    table.add_column("阶段", width=6)
     table.add_column("买卖点", width=18)
     table.add_column("AI情绪", width=10)
 
@@ -1838,6 +1906,10 @@ def _display_unranked_results(success_results: list[dict]):
         else:
             hold_count += 1
 
+        # Weinstein 阶段判断
+        stock_d2 = dr.stock if dr and hasattr(dr, 'stock') else None
+        stage_str = _weinstein_stage(stock_d2) if stock_d2 else "[dim]?[/dim]"
+        
         table.add_row(
             r["stock_code"],
             r.get("stock_name", ""),
@@ -1846,6 +1918,7 @@ def _display_unranked_results(success_results: list[dict]):
             pos_action,
             action_semantic,
             lifecycle,
+            stage_str,
             _format_entry_exit_brief(sd),
             ai_str,
         )

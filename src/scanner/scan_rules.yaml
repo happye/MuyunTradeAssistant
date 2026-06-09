@@ -1,83 +1,91 @@
 # ============================================================
-# 暮云思辨投资助手 - 全市场扫描规则 (v0.8.0 Phase 2)
+# 暮云思辨投资助手 - 全市场扫描规则 (v0.8.4 选股体系升级)
 # ============================================================
 #
-# 格式说明：
-#   filters 中每项为 {field, op, value} 三元组
-#   field: 行情字段名（见下方可用字段）
-#   op: 比较操作符 (gt/gte/lt/lte/eq/neq/between/in/not_in/like/not_like)
-#   value: 比较值（between时为[min, max]，in时为列表）
+# 设计理念：
+#   不做追涨（放量突破/强势动量已删除）
+#   核心：趋势确认 + 回调买点 + 低估值价值
 #
 # 可用字段: change_pct, turnover_rate, volume_ratio, amplitude,
 #           price, volume, amount, pe_ratio, pb_ratio, total_mv,
 #           circ_mv, code, name, change_speed, change_5min,
 #           change_60d, change_ytd
-#
-# 初筛只使用行情数据（涨跌幅/换手率/量比等），不用K线技术指标。
-# 候选股走Orchestrator深度分析时才计算技术指标。
 # ============================================================
 
 # 全局排除规则（所有规则集共享）
-# 格式说明：
-#   每项为 {field, op, value} 三元组，语义为"排除满足此条件的股票"
-#   - op="contains": 名称/代码中包含指定字符串的排除
-#   - op="starts_with": 字段以指定字符串开头的排除
-#   - op="eq": 字段等于指定值的排除
-#   - op="lte"/"lt": 字段小于(等于)指定值的排除
-#   - op="gte"/"gt": 字段大于(等于)指定值的排除
 global_exclude:
-  # 注意：ST股票不做全局排除——部分ST股有重组/摘帽预期，保留给用户自行判断
-  # 排除停牌股票（成交量为0或NaN）
   - field: "volume"
     op: "lte"
     value: 0
-  # 排除北交所股票（代码以8开头 或 920开头）
   - field: "code"
     op: "starts_with"
     value: "8"
   - field: "code"
     op: "starts_with"
     value: "920"
-  # 排除退市整理期（名称包含退）
   - field: "name"
     op: "contains"
     value: "退"
 
-# 规则集定义
 rules:
-  # ===== 默认规则：放量突破型 =====
-  default:
-    name: "放量突破"
-    description: "筛选放量上涨、量比>1.5的股票，寻找资金关注标的"
+  # ===== 趋势回调买点（推荐，默认规则） =====
+  trend_pullback:
+    name: "趋势回调"
+    description: "上升趋势中(60日涨幅>5%)、今日缩量回调(跌0~3%)、贴近均线附近的健康买点"
     filters:
-      # 涨跌幅：0~9.5%（排除涨停，涨停买不到）
+      - field: "change_60d"
+        op: "gt"
+        value: 5.0
       - field: "change_pct"
         op: "between"
-        value: [0, 9.4]
-      # 换手率：1%~15%（有活跃度但非过度投机）
+        value: [-3.0, 0]
+      - field: "volume_ratio"
+        op: "lt"
+        value: 1.0
       - field: "turnover_rate"
         op: "between"
-        value: [1.0, 15.0]
-      # 量比：>1.5（明显放量）
-      - field: "volume_ratio"
-        op: "gt"
-        value: 1.5
-      # 振幅：<8%（排除剧烈波动）
+        value: [1.0, 10.0]
       - field: "amplitude"
         op: "lt"
-        value: 8.0
-      # 成交额>1亿（确保流动性）
+        value: 6.0
       - field: "amount"
         op: "gt"
         value: 100000000
     max_candidates: 30
-    sort_by: "change_pct"
+    sort_by: "change_60d"
     sort_desc: true
 
-  # ===== 缩量回调型 =====
+  # ===== 趋势蓄势突破（趋势确认+今日启动） =====
+  trend_breakout:
+    name: "趋势蓄势"
+    description: "60日有涨幅基础(>10%)、今日温和放量上涨(0~5%)、仍在趋势中不追涨停"
+    filters:
+      - field: "change_60d"
+        op: "gt"
+        value: 10.0
+      - field: "change_pct"
+        op: "between"
+        value: [0, 5.0]
+      - field: "volume_ratio"
+        op: "between"
+        value: [1.0, 3.0]
+      - field: "turnover_rate"
+        op: "between"
+        value: [1.0, 12.0]
+      - field: "amplitude"
+        op: "lt"
+        value: 7.0
+      - field: "amount"
+        op: "gt"
+        value: 100000000
+    max_candidates: 20
+    sort_by: "volume_ratio"
+    sort_desc: true
+
+  # ===== 缩量回调（弱趋势中也可以看） =====
   shrink_pullback:
     name: "缩量回调"
-    description: "缩量下跌，可能是健康回调，关注企稳机会"
+    description: "缩量下跌(量比<0.8)、可能企稳的股票，需深度分析确认是否有趋势支撑"
     filters:
       - field: "change_pct"
         op: "between"
@@ -98,31 +106,10 @@ rules:
     sort_by: "change_pct"
     sort_desc: false
 
-  # ===== 强势动量型 =====
-  strong_momentum:
-    name: "强势动量"
-    description: "涨幅>3%且放量换手的强势股"
-    filters:
-      - field: "change_pct"
-        op: "between"
-        value: [3.0, 9.4]
-      - field: "turnover_rate"
-        op: "gt"
-        value: 3.0
-      - field: "volume_ratio"
-        op: "gt"
-        value: 2.0
-      - field: "amount"
-        op: "gt"
-        value: 200000000
-    max_candidates: 20
-    sort_by: "volume_ratio"
-    sort_desc: true
-
-  # ===== 低估值型 =====
+  # ===== 低估值筛选 =====
   value_pick:
     name: "低估值筛选"
-    description: "市盈率<20且市净率<2的低估值股"
+    description: "市盈率<20且市净率<2的低估值股，适合价值投资者"
     filters:
       - field: "pe_ratio"
         op: "between"
@@ -141,25 +128,4 @@ rules:
         value: 50000000
     max_candidates: 30
     sort_by: "pe_ratio"
-    sort_desc: false
-
-  # ===== 超跌反弹型 =====
-  oversold_bounce:
-    name: "超跌反弹"
-    description: "短期跌幅较大但放量企稳的股票"
-    filters:
-      - field: "change_pct"
-        op: "between"
-        value: [-9.5, -3.0]
-      - field: "volume_ratio"
-        op: "gt"
-        value: 1.2
-      - field: "turnover_rate"
-        op: "gt"
-        value: 2.0
-      - field: "amount"
-        op: "gt"
-        value: 100000000
-    max_candidates: 20
-    sort_by: "change_pct"
     sort_desc: false
