@@ -1,18 +1,22 @@
-# ============================================================
-# 暮云思辨投资助手 - 全市场扫描规则 (v0.8.4 选股体系升级)
+﻿# ============================================================
+# 暮云思辨投资助手 - 全市场扫描规则 (v0.8.4)
 # ============================================================
 #
 # 设计理念：
-#   不做追涨（放量突破/强势动量已删除）
-#   核心：趋势确认 + 回调买点 + 低估值价值
+#   初筛只看当日快照数据（涨跌幅/量比/换手率/振幅/成交额等）
+#   趋势判断由深度分析的 Weinstein 阶段(S2/S4)完成
+#   不做追涨 — 删除放量突破/强势动量/超跌反弹
+#
+# 数据源说明：
+#   主数据源: 新浪 (无 量比/60日涨跌幅)
+#   备用: eFinance (有 量比，无 60日涨跌幅)
+#   缺失字段的过滤器会被静默跳过(scanner_filter.py L118)
 #
 # 可用字段: change_pct, turnover_rate, volume_ratio, amplitude,
 #           price, volume, amount, pe_ratio, pb_ratio, total_mv,
-#           circ_mv, code, name, change_speed, change_5min,
-#           change_60d, change_ytd
+#           circ_mv, code, name
 # ============================================================
 
-# 全局排除规则（所有规则集共享）
 global_exclude:
   - field: "volume"
     op: "lte"
@@ -28,14 +32,11 @@ global_exclude:
     value: "退"
 
 rules:
-  # ===== 趋势回调买点（推荐，默认规则） =====
-  trend_pullback:
-    name: "趋势回调"
-    description: "上升趋势中(60日涨幅>5%)、今日缩量回调(跌0~3%)、贴近均线附近的健康买点"
+  # ===== 健康回调（推荐，默认规则） =====
+  healthy_pullback:
+    name: "健康回调"
+    description: "今日缩量小幅回调(-3%~0)、振幅不大、流动性正常 → 深度分析确认趋势阶段"
     filters:
-      - field: "change_60d"
-        op: "gt"
-        value: 5.0
       - field: "change_pct"
         op: "between"
         value: [-3.0, 0]
@@ -52,17 +53,14 @@ rules:
         op: "gt"
         value: 100000000
     max_candidates: 30
-    sort_by: "change_60d"
+    sort_by: "amount"
     sort_desc: true
 
-  # ===== 趋势蓄势突破（趋势确认+今日启动） =====
-  trend_breakout:
-    name: "趋势蓄势"
-    description: "60日有涨幅基础(>10%)、今日温和放量上涨(0~5%)、仍在趋势中不追涨停"
+  # ===== 温和上涨（趋势蓄势） =====
+  steady_advance:
+    name: "温和上涨"
+    description: "今日温和放量上涨(0~5%)、不追涨停、流动性好 → 深度分析确认是S2延续还是S3顶部"
     filters:
-      - field: "change_60d"
-        op: "gt"
-        value: 10.0
       - field: "change_pct"
         op: "between"
         value: [0, 5.0]
@@ -82,10 +80,10 @@ rules:
     sort_by: "volume_ratio"
     sort_desc: true
 
-  # ===== 缩量回调（弱趋势中也可以看） =====
+  # ===== 缩量回调 =====
   shrink_pullback:
     name: "缩量回调"
-    description: "缩量下跌(量比<0.8)、可能企稳的股票，需深度分析确认是否有趋势支撑"
+    description: "缩量下跌(量比<0.8)、可能企稳 → 需深度分析确认是否在S2上升趋势中"
     filters:
       - field: "change_pct"
         op: "between"
@@ -109,7 +107,7 @@ rules:
   # ===== 低估值筛选 =====
   value_pick:
     name: "低估值筛选"
-    description: "市盈率<20且市净率<2的低估值股，适合价值投资者"
+    description: "市盈率<20且市净率<2的低估值股 → 适合价值投资者，需自行判断基本面"
     filters:
       - field: "pe_ratio"
         op: "between"

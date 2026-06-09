@@ -1429,6 +1429,20 @@ def scan_market(
     else:
         console.print("  行情缓存: [yellow]未命中，正在获取全市场数据（约4分钟）...[/yellow]")
 
+    # 数据源完整性提示（v0.8.4）
+    try:
+        sample_df = engine.market_cache.get_cache_status()
+        src = sample_df.get("stocks", {}).get("source", "")
+        missing = []
+        if "量比" not in str(sample_df):
+            missing.append("量比")
+        if "60日涨跌幅" not in str(sample_df):
+            missing.append("60日涨跌幅")
+        if missing:
+            console.print(f"  [dim]数据源: 缺少 {', '.join(missing)}，对应过滤器自动跳过。深度分析阶段可补充趋势判断[/dim]")
+    except Exception:
+        pass
+
     if theme_query:
         console.print(f"  主题词: {theme_query}")
 
