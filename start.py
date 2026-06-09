@@ -167,7 +167,7 @@ def parse_input(user_input: str):
     # ── 扫描 ──
     if cmd in ("scan", "s"):
         if len(parts) >= 2 and parts[1].lower() in ("market", "m"):
-            args = {"rule_name": "default", "market_query": None, "deep": False}
+            args = {"rule_name": "healthy_pullback", "market_query": None, "deep": False}
             rest = parts[2:]
             # scan market deep [主题]
             if rest and rest[0].lower() == "deep":
@@ -263,7 +263,7 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "scan_market":
         scan_market(
-            rule_name=args.get("rule_name", "default"),
+            rule_name=args.get("rule_name", "healthy_pullback"),
             market_query=args.get("market_query"),
             ai_debug=_ai_debug,
             deep=args.get("deep", False),

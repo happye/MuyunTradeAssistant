@@ -116,7 +116,7 @@ class ScannerEngine:
 
     def quick_scan(
         self,
-        rule_name: str = "default",
+        rule_name: str = "healthy_pullback",
         market_query: str = None,
         exclude_codes: set[str] = None,
     ) -> tuple[list[ScanCandidate], dict]:
@@ -407,7 +407,7 @@ class ScannerEngine:
         """模糊匹配规则名
 
         支持以下匹配方式（按优先级）：
-        1. 精确匹配 key（如 "default", "shrink_pullback"）
+        1. 精确匹配 key（如 "healthy_pullback", "shrink_pullback"）
         2. 精确匹配中文显示名（如 "放量突破", "缩量回调"）
         3. 包含匹配 key（如 "shrink" → "shrink_pullback"）
         4. 包含匹配中文显示名（如 "缩量" → "缩量回调", "动量" → "强势动量"）
@@ -419,7 +419,7 @@ class ScannerEngine:
             匹配到的规则key，无匹配返回None
         """
         if not user_input:
-            return "default"
+            return "healthy_pullback"
 
         rules_cfg = self.rules.get("rules", {})
 

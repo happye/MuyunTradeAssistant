@@ -1317,7 +1317,7 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
 
 def scan_market(
-    rule_name: str = "default",
+    rule_name: str = "healthy_pullback",
     market_query: str = None,
     ai_debug: bool = False,
     deep: bool = False,
@@ -1374,14 +1374,14 @@ def scan_market(
     )
 
     theme_query = market_query
-    effective_rule = rule_name or "default"
+    effective_rule = rule_name or "healthy_pullback"
     if not theme_query:
         resolved_rule = engine.resolve_rule_name(effective_rule)
         if resolved_rule:
             effective_rule = resolved_rule
         else:
             theme_query = effective_rule
-            effective_rule = "default"
+            effective_rule = "healthy_pullback"
 
     # ===== Step 1: 快速初筛 =====
     # 规则名模糊匹配
@@ -2388,7 +2388,7 @@ AI配置:
     elif hasattr(args, 'scan') and args.scan:
         # 全市场扫描
         scan_market(
-            rule_name=args.scan or "default",
+            rule_name=args.scan or "healthy_pullback",
             market_query=None,
             deep=getattr(args, 'scan_deep', False),
             ai_enabled=not _ai_override.get('disable_ai', False),
