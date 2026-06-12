@@ -1,4 +1,4 @@
-# ============================================================
+﻿# ============================================================
 # 暮云思辨投资助手 - 持仓记录本
 # ============================================================
 #
@@ -12,142 +12,167 @@
 #   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期
 #   - strategy_state由系统自动维护，一般不需要手动修改
 #
+# 更新日期：2026-06-12
 # ============================================================
 
 positions:
-  '600546':
-    stock_name: 山煤国际
-    entry_date: '2026-04-25'
-    entry_price: 10.63
-    current_ratio: 0.0125
-    last_action: REDUCE
-    last_action_semantic: TRIM
-    last_sell_path: null
-    last_action_date: '2026-05-12'
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: SELL
-      recent_signals:
-      - BUY
-      - HOLD
-      - SELL
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-  '603063':
-    stock_name: 禾望电气
-    entry_date: '2026-04-25'
-    entry_price: 18.02
-    current_ratio: 0.05
+  "000821":
+    stock_name: ST京机
+    entry_date: "2026-06-12"
+    entry_price: 9.7026
+    current_ratio: 0.0463
     last_action: HOLD_POSITION
     last_action_semantic: HOLD
     last_sell_path: null
-    last_action_date: '2026-04-25'
+    last_action_date: "2026-06-12"
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 2
+      inertia_counter: 0
       last_decision: HOLD
-      recent_signals:
-      - BUY
-      - SELL
+      recent_signals: []
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-  '159201':
-    stock_name: 自由现金流ETF华夏
-    entry_date: '2026-04-25'
-    entry_price: 1.14
-    current_ratio: 0.05
-    last_action: OPEN
-    last_action_semantic: ENTRY
+      high_since_entry: null
+
+  "002538":
+    stock_name: ST司特
+    entry_date: "2026-06-12"
+    entry_price: 6.0501
+    current_ratio: 0.0393
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
     last_sell_path: null
-    last_action_date: '2026-04-25'
-    lifecycle: OPEN
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-  '159611':
-    stock_name: 电力ETF广发
-    entry_date: '2026-04-25'
-    entry_price: 1.03
-    current_ratio: 0.04
-    last_action: OPEN
-    last_action_semantic: ENTRY
-    last_sell_path: null
-    last_action_date: '2026-04-25'
-    lifecycle: OPEN
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-  '605358':
-    stock_name: 立昂微
-    entry_date: '2026-04-28'
-    entry_price: 39.18
-    current_ratio: 0.055
-    last_action: REDUCE
-    last_action_semantic: TRIM
-    last_sell_path: null
-    last_action_date: '2026-05-12'
+    last_action_date: "2026-06-12"
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 1
-      last_decision: SELL
-      recent_signals:
-      - BUY
-      - SELL
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-  '002129':
-    stock_name: TCL中环
-    entry_date: '2026-05-12'
-    entry_price: null
-    current_ratio: 0.07
-    last_action: OPEN
-    last_action_semantic: ENTRY
+      high_since_entry: null
+
+  "159201":
+    stock_name: 自由现金流ETF华夏
+    entry_date: "2026-06-12"
+    entry_price: 1.1447
+    current_ratio: 0.0423
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
     last_sell_path: null
-    last_action_date: '2026-05-12'
-    lifecycle: OPEN
+    last_action_date: "2026-06-12"
+    lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 1
-      last_decision: BUY
-      recent_signals:
-      - BUY
-      signal_stability_score: 1.0
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
+      signal_stability_score: 0.0
       reduce_protection_remaining: 0
-      min_hold_remaining: 5
+      min_hold_remaining: 0
       add_protection_remaining: 0
+      high_since_entry: null
+
+  "159611":
+    stock_name: 电力ETF广发
+    entry_date: "2026-06-12"
+    entry_price: 1.0337
+    current_ratio: 0.0438
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: "2026-06-12"
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+      high_since_entry: null
+
+  "002129":
+    stock_name: TCL中环
+    entry_date: "2026-06-12"
+    entry_price: 4.7912
+    current_ratio: 0.0128
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: "2026-06-12"
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+      high_since_entry: null
+
+  "002192":
+    stock_name: 融捷股份
+    entry_date: "2026-06-12"
+    entry_price: 82.0758
+    current_ratio: 0.2303
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: "2026-06-12"
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+      high_since_entry: null
+
+  "603063":
+    stock_name: 禾望电气
+    entry_date: "2026-06-12"
+    entry_price: 17.8915
+    current_ratio: 0.0601
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: "2026-06-12"
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 0
+      last_decision: HOLD
+      recent_signals: []
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 0
+      add_protection_remaining: 0
+      high_since_entry: null
