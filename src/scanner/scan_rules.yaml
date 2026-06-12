@@ -53,7 +53,7 @@ rules:
         op: "gt"
         value: 100000000
     max_candidates: 30
-    sort_by: "amount"
+    sort_by: "change_60d"
     sort_desc: true
 
   # ===== 温和上涨（趋势蓄势） =====

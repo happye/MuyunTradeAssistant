@@ -472,6 +472,7 @@ class ScanCandidate(BaseModel):
     pb_ratio: Optional[float] = Field(default=None, description="市净率")
     total_mv: Optional[float] = Field(default=None, description="总市值")
     industry: Optional[str] = Field(default=None, description="所属行业")
+    change_60d: Optional[float] = Field(default=None, description="60日涨跌幅(%) v0.8.4")
     matched_rules: list[str] = Field(default_factory=list, description="命中的规则名")
 
 

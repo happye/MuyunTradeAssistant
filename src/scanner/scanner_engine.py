@@ -219,6 +219,9 @@ class ScannerEngine:
         # 转换为 ScanCandidate 列表
         candidates = self._df_to_candidates(df, resolved)
 
+        # v0.8.4: enrich with 60d change
+        candidates = self._enrich_trend_data(candidates)
+
         elapsed = time.time() - start_time
         scan_info = {
             "rule_name": resolved,
@@ -849,6 +852,71 @@ class ScannerEngine:
                 seen.add(name)
                 deduped.append(name)
         return deduped
+
+    def _enrich_trend_data(self, candidates: list) -> list:
+        """Enrich candidates with 60-day price change via Baostock (v0.8.4).
+
+        Only runs when candidates <= 50. Fails silently on error.
+        """
+        if len(candidates) > 50 or len(candidates) == 0:
+            return candidates
+
+        try:
+            from src.data.akshare_client import _ensure_baostock_login
+            import baostock as bs
+            from datetime import datetime, timedelta
+            import pandas as pd
+
+            if not _ensure_baostock_login():
+                return candidates
+
+            end_d = datetime.now().strftime("%Y-%m-%d")
+            start_d = (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d")
+            updated = 0
+
+            for cand in candidates:
+                try:
+                    code = cand.stock_code
+                    prefix = "sh" if code.startswith(("6", "9")) else "sz"
+                    bs_code = f"{prefix}.{code}"
+
+                    rs = bs.query_history_k_data_plus(
+                        bs_code, "date,close",
+                        start_date=start_d, end_date=end_d,
+                        frequency="d", adjustflag="2"
+                    )
+                    if rs.error_code != "0":
+                        continue
+
+                    rows = []
+                    while (rs.error_code == "0") and rs.next():
+                        rows.append(rs.get_row_data())
+
+                    if len(rows) < 20:
+                        continue
+
+                    df = pd.DataFrame(rows, columns=["date", "close"])
+                    df["close"] = pd.to_numeric(df["close"], errors="coerce")
+                    df = df.dropna(subset=["close"])
+
+                    if len(df) < 45:
+                        continue
+
+                    latest = df["close"].iloc[-1]
+                    ago_idx = max(0, len(df) - 60)
+                    ago = df["close"].iloc[ago_idx]
+
+                    if ago > 0:
+                        cand.change_60d = round((latest - ago) / ago * 100, 2)
+                        updated += 1
+                except Exception:
+                    continue
+
+            logger.info(f"60d change enriched: {updated}/{len(candidates)}")
+        except Exception as e:
+            logger.debug(f"60d enrichment failed: {e}")
+
+        return candidates
 
     def _df_to_candidates(
         self, df: pd.DataFrame, rule_name: str
