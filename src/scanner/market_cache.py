@@ -589,9 +589,21 @@ class MarketCache:
                 logger.info(f"MarketCache: 行业成分股缓存命中({industry_name})")
                 return self._industry_stocks[industry_name]
 
-        logger.info(f"MarketCache: 获取行业成分股(THS, {industry_name})...")
+        logger.info(f"MarketCache: 获取行业成分股(THS, {industry_name}, timeout=15s)...")
         try:
-            codes = self._get_ths_board_stocks_by_name(industry_name, "industry")
+            import threading as _thr
+            _res = [None]; _err = [None]
+            def _f():
+                try: _res[0] = self._get_ths_board_stocks_by_name(industry_name, "industry")
+                except Exception as e: _err[0] = e
+            _t = _thr.Thread(target=_f, daemon=True)
+            _t.start(); _t.join(timeout=15)
+            if _t.is_alive():
+                logger.warning(f"MarketCache: 行业成分股获取超时({industry_name})")
+                return self._industry_stocks.get(industry_name, [])
+            if _err[0]:
+                raise _err[0]
+            codes = _res[0]
             if codes:
                 self._industry_stocks[industry_name] = codes
                 self._industry_stocks_ts[industry_name] = time.time()
@@ -644,9 +656,21 @@ class MarketCache:
                 logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
                 return self._concept_stocks[concept_name]
 
-        logger.info(f"MarketCache: 获取概念成分股(THS, {concept_name})...")
+        logger.info(f"MarketCache: 获取概念成分股(THS, {concept_name}, timeout=15s)...")
         try:
-            codes = self._get_ths_board_stocks_by_name(concept_name, "concept")
+            import threading as _thr2
+            _res2 = [None]; _err2 = [None]
+            def _f2():
+                try: _res2[0] = self._get_ths_board_stocks_by_name(concept_name, "concept")
+                except Exception as e: _err2[0] = e
+            _t2 = _thr2.Thread(target=_f2, daemon=True)
+            _t2.start(); _t2.join(timeout=15)
+            if _t2.is_alive():
+                logger.warning(f"MarketCache: 概念成分股获取超时({concept_name})")
+                return self._concept_stocks.get(concept_name, [])
+            if _err2[0]:
+                raise _err2[0]
+            codes = _res2[0]
             if codes:
                 self._concept_stocks[concept_name] = codes
                 self._concept_stocks_ts[concept_name] = time.time()

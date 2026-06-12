@@ -676,7 +676,7 @@ class AKShareClient:
                 high_val = float(latest['最高']) if '最高' in latest else None
                 low_val = float(latest['最低']) if '最低' in latest else None
                 # 优先使用preclose计算涨跌幅，备选使用涨跌幅字段
-                if 'preclose' in latest and pd.notna(latest['preclose']) and latest['preclose'] != 0:
+                if 'preclose' in latest and pd.notna(latest['preclose']) and float(latest['preclose']) != 0:
                     change_pct_val = round((price_val - float(latest['preclose'])) / float(latest['preclose']) * 100, 2)
                 else:
                     change_pct_val = float(latest.get('涨跌幅', 0)) if latest.get('涨跌幅') else 0

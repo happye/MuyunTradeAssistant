@@ -25,6 +25,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -37,7 +38,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "002538":
     stock_name: ST司特
@@ -48,6 +48,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -60,7 +61,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "159201":
     stock_name: 自由现金流ETF华夏
@@ -71,6 +71,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -83,7 +84,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "159611":
     stock_name: 电力ETF广发
@@ -94,6 +94,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -106,7 +107,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "002129":
     stock_name: TCL中环
@@ -117,6 +117,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -129,7 +130,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "002192":
     stock_name: 融捷股份
@@ -140,6 +140,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -152,7 +153,6 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
 
   "603063":
     stock_name: 禾望电气
@@ -163,6 +163,7 @@ positions:
     last_action_semantic: HOLD
     last_sell_path: null
     last_action_date: "2026-06-12"
+    high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
@@ -175,4 +176,3 @@ positions:
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-      high_since_entry: null
