@@ -100,34 +100,22 @@ docs/               # 详细文档
 
 ## 六、开发习惯与维护流程
 
-### 日常节奏
+遵循全局开发工作流 skill：`$dev-flow`
 
-1. **先跑 `neat-freak` skill**：每次阶段完成后同步 docs/README/ISSUES，防止文档腐烂
-2. **用 `karpathy-guidelines` 约束编码**：不改相邻代码、不新增无谓抽象、先诊断再动手
-3. **所有 Phase 阶段发现的 bug 统一记录 ISSUES.md**：格式 `ISS-XXX: 状态/优先级/描述/更新记录`
-4. **修改后立即验证 + 提交 + 推送**：不攒 commit
-5. **不要写重复内容到多个文件**：README 写架构，使用手册写命令，里程碑写进度——各司其职
+核心流程：**Plan → Diagnose → Implement → Verify → Sync → Ship**
 
-### 新增功能的标准流程
+详细规范（六步法、知识管理、业界最佳实践、反模式）见 `$dev-flow` skill。
 
-```
-1. 设计方案 → 记录到 docs/v0.x.x_迭代规划.md
-2. 创建 ISS 条目 → ISSUES.md
-3. 开发实现 → 逐文件提交
-4. neat-freak → 同步 README/使用手册/里程碑
-5. 推送 → 标记 ISS 完成
-```
+### 本项目特有的补充
 
-### 修改 YAML 配置的检查清单
-
+**修改 YAML 配置的检查清单**：
 - [ ] 所有代码中硬编码的键名已同步（grep 确认）
 - [ ] scan_rules.yaml 的字段在 scanner_filter.FIELD_MAP 中
 - [ ] 字段在当前数据源中可用（新浪无 量比/60d）
 - [ ] start.py 帮助文本已更新
 - [ ] 使用手册.md 规则表已更新
 
-### 文件命名
-
+**文件命名**：
 - 临时脚本：`_xxx.py`（开发完立即删除，不提交）
 - 测试文件：`tests/test_xxx.py`
 - 配置：`configs/xxx.yaml` 或 `src/xxx/config.yaml`
