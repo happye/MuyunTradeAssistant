@@ -102,3 +102,62 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 - See Also: LRN-20260515-001
 
 ---
+
+## [LRN-20260618-001] correction
+
+**Logged**: 2026-06-18T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: workflow
+
+### Summary
+接手会话开局漏读 `AGENTS.md`（项目单一事实源），被用户当场纠偏；根因是用 `Glob *` 列举根目录时被高基数子目录污染、关键文件未命中。
+
+### Details
+本次接手 v0.8.4 第 0 周对齐归一任务时，初始上下文采集只执行了 `Glob *` 与若干宽口径搜索，没有定向校验 `AGENTS.md` 是否存在并被读取。结果是把 `README.md`/`使用手册.md` 当作主索引，错过了仓库已经在 commit `1c6ed7a` 锁定的"AI Agent 开发手册"。用户提示"先读 AGENTS.md"才纠回主线。这类列举型搜索在大目录下极易丢文件，必须配二次校验。
+
+### Suggested Action
+任何"列举仓库根 / 收集事实源"的开局动作执行三步：
+1. `Glob *.md` 或 `Glob AGENTS.md` 显式过滤主文档；
+2. 与 `git ls-files | grep -i agents\|claude\|copilot` 等定向命令交叉确认；
+3. 若仓库在 `.github/copilot-instructions.md`、`AGENTS.md`、`CLAUDE.md` 任一存在，必须先全文读取再动手，而非靠目录浏览推断重要性。
+
+### Metadata
+- Source: user_feedback
+- Related Files: AGENTS.md, .github/copilot-instructions.md, docs/AI协作工作范式.md
+- Tags: onboarding, search-discipline, source-of-truth, agents-md
+- See Also: LRN-20260511-002
+
+---
+
+## [LRN-20260618-002] insight
+
+**Logged**: 2026-06-18T00:00:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: docs
+
+### Summary
+ISSUES.md 中 ISS-030 状态写为 📋 待办，但代码事实显示该功能已实现；状态字段与代码已脱节，必须用 `file:line` 锚点重新确认才能信任。
+
+### Details
+2026-06-18 接手审计时发现 ISS-030（买卖点分歧检测层）实际代码已落地：
+- `src/core/orchestrator.py:303-322` 实现技术信号 vs AI 情绪分歧检测；
+- `src/data/models.py:313` `StrategyDecision` 已带 `divergence` 字段；
+- `src/cli/main.py:305-310` 与 `src/cli/main.py:580-583` 在 `-l` 与 `-p` 两条路径输出"分歧提示"。
+
+但 ISSUES.md 的状态行仍是"📋 待办"，给后续会话和 AI Agent 造成误导（已规划 vs 已交付边界模糊）。这是典型的"代码先行、状态滞后"案例。
+
+### Suggested Action
+ISSUES.md 状态变更必须满足：
+1. 状态行（📋/🔄/✅/❌）与一组 `file:line` 锚点同时更新；
+2. 解决日期与对应 commit 短哈希出现在更新记录里；
+3. 若仅做了部分实现，单独拆出后续 ISS 编号（例如本次 scan market 路径未确认 → 转 ISS-031），不要把"已部分实现"含糊写在原条目里。
+
+### Metadata
+- Source: self_discovery
+- Related Files: ISSUES.md, src/core/orchestrator.py, src/data/models.py, src/cli/main.py
+- Tags: issue-tracking, status-drift, code-anchor, divergence-detection
+- See Also: LRN-20260519-001
+
+---

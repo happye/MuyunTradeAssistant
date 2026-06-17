@@ -27,6 +27,8 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 七层架构：Signal → Decision → Event → AI Modifier → EntryExit → Strategy → Execution
 
+> 注：EntryExit 在 AI Modifier 与 Strategy 之间作为「最高优先级覆盖步」实现（`src/core/orchestrator.py:255-301`），不是独立层级。
+
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索。
 
 当前版本：**v0.8.4**（选股体系升级）。
@@ -106,6 +108,8 @@ docs/               # 详细文档
 
 详细规范（六步法、知识管理、业界最佳实践、反模式）见 `$dev-flow` skill。
 
+> 脚注：`$dev-flow` 是用户级全局 skill，不在本仓库内；仓库内最相近的是 `.github/skills/self-improvement/SKILL.md`。
+
 ### 本项目特有的补充
 
 **修改 YAML 配置的检查清单**：
@@ -138,14 +142,11 @@ docs/               # 详细文档
 
 ### 待办（优先级排序）
 
-| 优先级 | 任务 | 说明 |
-|:--:|------|------|
-| P2 | 回测验证 v0.8.4 | 新规则 vs 旧规则的对照回测 |
-| P3 | 扫描器数据源升级 | 接入含量比+60日的主数据源，减少降级 |
+详见 `ISSUES.md` ISS-028 ~ ISS-031。
 
 ### 持仓
 
-见 `portfolio.yaml`。当前 7 只 / 总仓位 47.5%。
+实时见 `portfolio.yaml`，本文档不内嵌。
 
 ---
 
