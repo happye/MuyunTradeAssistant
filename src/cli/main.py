@@ -875,6 +875,7 @@ def run_backtest(
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
+    entry_exit_config = config.get("entry_exit", None)
 
     def build_engine(target_layer_mode: str, target_start_date: str | None = None, target_end_date: str | None = None) -> BacktestEngine:
         return BacktestEngine(
@@ -887,6 +888,7 @@ def run_backtest(
             skills_dir=skills_dir,
             signal_weights=weights,
             skill_types=skill_types,
+            entry_exit_config=entry_exit_config,
         )
 
     engine = build_engine(layer_mode)
@@ -989,6 +991,7 @@ def run_batch_validation(
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
+    entry_exit_config = config.get("entry_exit", None)
 
     payloads: list[dict] = []
     failures: list[dict[str, str]] = []
@@ -1007,6 +1010,7 @@ def run_batch_validation(
                 skills_dir=skills_dir,
                 signal_weights=weights,
                 skill_types=skill_types,
+                entry_exit_config=entry_exit_config,
             )
 
         try:
