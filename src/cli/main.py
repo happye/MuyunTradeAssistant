@@ -1267,10 +1267,28 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict", lay
                 "策略信号即使触发也无法成交。[/yellow]"
             )
         else:
-            console.print(
-                "  [yellow]零交易诊断：资金可买入1手，可能由策略信号、"
-                "执行约束或样本区间共同导致。建议拉长区间或更换标的复核。[/yellow]"
-            )
+            # ISS-034：用 reject 计数器精确定位拒单原因
+            rej_funds = result.rejected_insufficient_funds
+            rej_below = result.rejected_below_target
+            rej_zero = result.rejected_zero_shares
+            total_rej = rej_funds + rej_below + rej_zero
+            if total_rej > 0:
+                # 高价股典型场景：try 买入但目标增量 < 1 手成本
+                console.print(
+                    f"  [yellow]零交易诊断：BUY 信号触发后被拒单 {total_rej} 次"
+                    f"（资金不足{rej_funds} / 已达目标{rej_below} / 手数为0 {rej_zero}）。[/yellow]"
+                )
+                if rej_funds > 0:
+                    suggested_capital = int(min_lot_cost / 0.20 / 10000) * 10000  # 按 20% 试探仓反推建议资金
+                    console.print(
+                        f"  [yellow]提示：本股最小手数 ¥{min_lot_cost:,.0f}，按 20% 试探仓需 ≥¥{suggested_capital:,.0f} 才能建仓。"
+                        f"建议 --capital ¥{suggested_capital:,.0f} 或更高。[/yellow]"
+                    )
+            else:
+                console.print(
+                    "  [yellow]零交易诊断：资金可买入1手且无拒单记录，可能由策略信号、"
+                    "执行约束或样本区间共同导致。建议拉长区间或更换标的复核。[/yellow]"
+                )
     if result.max_drawdown_pct > 30:
         console.print(f"  [red]最大回撤 {result.max_drawdown_pct:.1f}% 较大，策略风险较高。[/red]")
 

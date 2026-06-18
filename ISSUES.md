@@ -783,21 +783,29 @@ P3（已取消）:
 ---
 
 ### ISS-034: 高价股回测 0 交易 — 资金阈值/金字塔仓位下限边界
-- **状态**: 📋 待办
+- **状态**: ✅ 已解决（2026-06-18 同会话）
 - **优先级**: P2（边界场景，影响小盘子用户回测体验）
 - **关联方向**: ISS-027 第二轮回测发现 / 边界条件
 - **描述**: 2026-06-18 第二轮回测中贵州茅台（600519）整年 0 交易：
   - 初始资金 ¥200,000，茅台 1 手 ¥1685 × 100 ≈ ¥168,500，理论可买
   - 决策层 BUY=13 / 策略层 BUY=4 / position_action OPEN=59 天，但 0 笔成交
   - 执行日志 `position_ratio_before/after` 全为 0，无 `blocked_reason` 标记
-- **根因初判**:
-  - `_calculate_position()` 在金字塔试探仓档位（10-15%）下，目标仓位 ¥20,000-30,000 < 1 手 ¥168,500，被静默过滤
-  - 或 SimulatedAccount.buy() 的 `target_position_ratio` 计算下取整为 0 手
-- **方案方向**:
-  1. 在 `BacktestEngine` 增加诊断：当 `decision=BUY` 但 `executed_amount=0` 时记录原因（资金不足/手数过滤/...）
-  2. 在 `_empty_result` 报告里展示"BUY 信号但未执行"次数
-  3. 文档中加入"高价股回测建议初始资金"参考（茅台 ≥¥500,000）
-- **预估工作量**: 1-2天
-- **依赖**: 无
+- **根因确认**: `SimulatedAccount.buy()` line 75 `if available < price * 100: return None` 静默拒单。茅台 ¥200000 资金 + 试探仓 20% → 目标增量 ¥40000 < 1 手 ¥152500 → 静默 return None，**不计入任何 blocked 字段**。
+- **解决方案**（2026-06-18 同会话）:
+  1. ✅ `SimulatedAccount` 新增 3 个 reject 计数器（`rejected_insufficient_funds` / `rejected_below_target` / `rejected_zero_shares`），3 个 `return None` 路径都精确归类
+  2. ✅ `BacktestResult` 模型新增对应字段，`run()` 注入计数
+  3. ✅ CLI 零交易诊断行（`src/cli/main.py:1261-1281`）改用 reject 计数透出具体原因 + 自动反推"按 20% 试探仓所需建议资金"
+- **代码锚点**:
+  - `src/core/backtest_engine.py:51-53` SimulatedAccount 三个 reject 计数器
+  - `src/core/backtest_engine.py:75-91` buy() 三个 return None 路径加计数
+  - `src/core/backtest_engine.py:570-573` run() 注入到 result
+  - `src/data/models.py:457-460` BacktestResult 新增 3 个字段
+  - `src/cli/main.py:1261-1281` 零交易诊断行升级
+- **用户可感知**：跑 `b 600519 -s 2024-01-01 -e 2024-12-31 --capital 200000` 现在显示：
+  ```
+  零交易诊断：BUY 信号触发后被拒单 59 次（资金不足 59 / 已达目标 0 / 手数为0 0）。
+  提示：本股最小手数 ¥126,100，按 20% 试探仓需 ≥¥630,000 才能建仓。建议 --capital ¥630,000 或更高。
+  ```
 - **更新记录**:
   - 2026-06-18: 创建，ISS-027 第二轮回测发现茅台 0 交易异常
+  - 2026-06-18: ✅ 已解决（同会话），三个 reject 计数器 + CLI 诊断行精确化 + 建议资金反推

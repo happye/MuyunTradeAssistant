@@ -47,6 +47,10 @@ class SimulatedAccount:
         self.buy_date = None
         self.total_buy = 0
         self.total_sell = 0
+        # ISS-034 诊断：BUY 信号被资金/手数等执行约束拒单的次数
+        self.rejected_insufficient_funds = 0  # 资金不足以买入 1 手
+        self.rejected_below_target = 0        # 目标增量 <= 0（已达目标仓位）
+        self.rejected_zero_shares = 0         # 计算后买入手数为 0
 
     @property
     def has_position(self) -> bool:
@@ -67,16 +71,19 @@ class SimulatedAccount:
             current_market_value = self.market_value(price)
             needed = target_market_value - current_market_value
             if needed <= 0:
+                self.rejected_below_target += 1  # ISS-034
                 return None
             available = min(needed, self.cash * 0.95)
         else:
             available = self.cash * max_ratio
 
         if available < price * 100:
+            self.rejected_insufficient_funds += 1  # ISS-034
             return None
 
         shares = int(available / price / 100) * 100
         if shares <= 0:
+            self.rejected_zero_shares += 1  # ISS-034
             return None
 
         amount = shares * price
@@ -561,6 +568,10 @@ class BacktestEngine:
             decision_directions, blocked_limit_up,
             blocked_limit_down, blocked_liquidity, blocked_no_open_price,
         )
+        # ISS-034 高价股 0 交易诊断：从 account 注入 reject 计数
+        result.rejected_insufficient_funds = account.rejected_insufficient_funds
+        result.rejected_below_target = account.rejected_below_target
+        result.rejected_zero_shares = account.rejected_zero_shares
         result.diagnostics = {
             "daily_decisions": daily_decisions,
             "execution_logs": execution_logs,

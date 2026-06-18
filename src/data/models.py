@@ -454,6 +454,11 @@ class BacktestResult(BaseModel):
     blocked_by_liquidity: int = Field(default=0, description="因流动性不足被阻止交易次数")
     blocked_by_no_open_price: int = Field(default=0, description="因开盘价缺失跳过执行次数（v0.8.2前视偏差修复）")
 
+    # ISS-034 高价股 0 交易诊断（2026-06-18）
+    rejected_insufficient_funds: int = Field(default=0, description="BUY 信号因目标增量买不到 1 手被拒次数（典型为高价股资金不足）")
+    rejected_below_target: int = Field(default=0, description="BUY 信号因已达目标仓位被拒次数")
+    rejected_zero_shares: int = Field(default=0, description="BUY 信号因计算后买入手数为 0 被拒次数")
+
     # v0.8.2 诊断导出
     diagnostics: dict = Field(default_factory=dict, description="回测中间决策与执行诊断日志")
 
