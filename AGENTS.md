@@ -78,6 +78,8 @@ docs/               # 详细文档
 - **RAGDocument 字段名是 `content`，不是 `text`**
 - **StrategyDecision.entry_exit 是 dict，不是 EntryExitResult 对象**：通过 `ee.get("key")` 访问
 - **StockData 的 MA 字段通过 `dr.stock` 访问**：`_weinstein_stage()` 需要 StockData，不是 StrategyDecision
+- **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` / `pyramid_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点/金字塔仓位**整体失效**（commit `77aaf9d` 修了 `entry_exit_config`，`pyramid_config` 待处理见 ISS-032）
+- **调策略卖出参数前先打 `trade['sell_path']`**：回测中实际卖出走的是 `src/core/strategy_layer.py:88-97` hardcoded 常量（`take_profit_trim` / `trend_exit`），不是 `src/core/entry_exit/exit_rules.py`。两者各管一半，不能互相替代（详见 `.learnings/LEARNINGS.md` LRN-20260618-003）
 
 ### 数据源
 
