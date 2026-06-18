@@ -745,7 +745,27 @@ P3（已取消）:
     1. `trend_exit` 改为分层：浮亏 -2% 跌破 MA20 → 减仓 50%（不清仓）；浮亏 -5% + 跌破 MA60 → 才 CLOSE_ALL
     2. `take_profit_trim` 在牛市状态下保留更多（市场状态 RISK_ON 时 KEEP=0.85 vs RISK_OFF 时 KEEP=0.60）
     3. 先把"市场状态感知"嵌入仓位执行参数，再回测验证
-- **本轮已落地的微调（保留，不回滚）**: src/core/strategy_layer.py:88-93 `TAKE_PROFIT_KEEP 0.60→0.75` + `TAKE_PROFIT_MIN_GAIN_PCT 0.05→0.10`（commit 待入），方向正确但效果不显著
+- **本轮已落地的微调（保留，不回滚）**: src/core/strategy_layer.py:88-93 `TAKE_PROFIT_KEEP 0.60→0.75` + `TAKE_PROFIT_MIN_GAIN_PCT 0.05→0.10`（commit `e29c71f`），方向正确但效果不显著
+  - 2026-06-18: **第二阶段调参失败教训**（同会话）。MarketState 分档参数（commit `a6d4e2f`）：RISK_ON 牛市档/TRANSITION 震荡档/RISK_OFF 熊市档/PANIC 恐慌档各自不同的 KEEP/MIN_GAIN/BREAK_PCT。第三轮 9 股 2024 全年回测：
+    - 平均改善 **+0.22pp**（几乎噪声水平）
+    - 宁德/茅台/中免 Δ=0.00（完全没变化）
+    - 立讯精密 -0.55pp（反而变差）
+    
+    **失败教训二**：
+    1. 没先确认 MarketState 实际分布就调参。事后查 2024 年命中分布是 TRANSITION 156天 / RISK_ON 61天 / RISK_OFF 22天 / PANIC 3-6天，TRANSITION 主导，而 TRANSITION 档参数与 ISS-033 一阶段完全一致 → 大部分时间走的还是震荡档，难怪没变化
+    2. POSITION_CAPS[RISK_ON]=0.60 但 BUY 上限 OPEN_RATIO+ADD_RATIO=0.40，**牛市档的高仓位上限用不到**（容量错配）
+    3. trend_exit 占 29 笔（vs take_profit_trim 22），主要由均线破坏触发，参数档只影响 break_pct 这一个判定，主条件未动
+
+    **三阶段方向**（待审批）：
+    1. POSITION_CAPS 与 OPEN_RATIO+ADD_RATIO 的容量对齐：RISK_ON 时 BUY 上限提到 0.60，让强 BUY 信号能加到 60% 而非 40% 封顶
+    2. trend_exit 的 STRONG_SELL_EXIT_THRESHOLD=0.55 在牛市过低 → 按 state 分档
+    3. 检查 RISK_ON 那 61 天里实际 BUY/SELL 信号生成情况，定位"参数档对了但信号不对" 还是 "信号对了但参数档没生效"
+
+    **本轮真实落地的用户可感知**（保留）：
+    - start.py banner v0.8.0→v0.8.4
+    - CLI 跑 -l/-b 时策略层信息段第一条显示"参数档[X档]: 止盈保留 N% / 浮盈门槛 M% / 趋势退出 K%"
+    - LRN-20260618-004 立项「用户可感知」最高优先级原则（AGENTS.md § 二·五）
+
 
 ---
 

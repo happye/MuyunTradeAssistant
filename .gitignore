@@ -39,3 +39,4 @@ Thumbs.db
 # 持仓数据（私有仓库可上传，用于多设备同步）
 # portfolio.yaml  ← 已移除忽略，允许上传
 tests/issue_033_round1/
+tests/issue_033_round2/
