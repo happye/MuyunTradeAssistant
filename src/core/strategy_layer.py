@@ -98,6 +98,36 @@ class StrategyLayer:
     STRONG_SELL_EXIT_THRESHOLD = 0.55
     SELL_DOMINANCE_GAP = 0.15
     TREND_EXIT_BREAK_PCT = -0.02
+
+    # ISS-033 二阶段（2026-06-18）：MarketState 感知的仓位执行参数
+    # 牛市少卖晚卖让趋势仓位活久点 / 熊市多卖快卖控回撤 / 震荡按当前默认。
+    # 这是把 take_profit_trim 与 trend_exit 这两条 sell_path 与市场状态接通的最小切片。
+    STATE_TUNED_PARAMS = {
+        MarketState.RISK_ON: {
+            "tier_label": "牛市档",
+            "take_profit_keep": 0.85,        # 卖 15%（vs 默认卖 25%）
+            "take_profit_min_gain_pct": 0.15,# 浮盈 ≥15% 才走止盈分批（vs 10%）
+            "trend_exit_break_pct": -0.05,   # 浮亏 -5% 才考虑趋势退出（vs -2%）
+        },
+        MarketState.TRANSITION: {
+            "tier_label": "震荡档",
+            "take_profit_keep": 0.75,
+            "take_profit_min_gain_pct": 0.10,
+            "trend_exit_break_pct": -0.02,
+        },
+        MarketState.RISK_OFF: {
+            "tier_label": "熊市档",
+            "take_profit_keep": 0.50,        # 卖 50% 快速回血
+            "take_profit_min_gain_pct": 0.05,# 浮盈 ≥5% 即可止盈
+            "trend_exit_break_pct": -0.01,   # 浮亏 -1% 即考虑趋势退出
+        },
+        MarketState.PANIC: {
+            "tier_label": "恐慌档",
+            "take_profit_keep": 0.30,        # 几乎全卖
+            "take_profit_min_gain_pct": 0.03,
+            "trend_exit_break_pct": 0.0,     # 任何浮亏即退出
+        },
+    }
     MIN_HOLD_DAYS = 5
     ADD_PROTECTION_DAYS = 5
     REDUCE_PROTECTION_DAYS = {
@@ -258,6 +288,7 @@ class StrategyLayer:
             position_action,
             decision_result,
             strategy_state,
+            market_state,
         )
         repeated_reduce_blocked = self._should_block_repeated_reduce(
             new_state,
@@ -325,6 +356,19 @@ class StrategyLayer:
             strategy_reasons.append("最短持有窗口: 新开仓阶段不执行战术性减仓")
         if post_add_tactical_sell_blocked:
             strategy_reasons.append("加仓保护窗口: 刚加仓后不执行战术性减仓")
+
+        # ISS-033 二阶段（用户可感知）：在策略理由首条标注当前用的参数档
+        # 例如 "参数档[牛市档]: 止盈保留85% / 浮盈门槛15% / 趋势退出-5%"
+        # 让用户跑 -l/-b 时能直接看见"现在系统认为这是什么市况、用了哪一档"
+        tier_params = self._get_state_params(market_state)
+        tier_label = tier_params["tier_label"]
+        tier_summary = (
+            f"参数档[{tier_label}]: "
+            f"止盈保留{int(tier_params['take_profit_keep']*100)}% / "
+            f"浮盈门槛{int(tier_params['take_profit_min_gain_pct']*100)}% / "
+            f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}%"
+        )
+        strategy_reasons.insert(0, tier_summary)
 
         return StrategyDecision(
             decision=adjusted_decision,
@@ -547,7 +591,7 @@ class StrategyLayer:
             and self._has_stop_loss_trim_loss(current_return_pct)
         )
         has_take_profit = take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
-        valid_take_profit = has_take_profit and self._has_take_profit_buffer(current_return_pct)
+        valid_take_profit = has_take_profit and self._has_take_profit_buffer(current_return_pct, state)
         stop_loss_exit = (
             stop_loss_confidence >= self.STOP_LOSS_EXIT_THRESHOLD
             and self._has_stop_loss_exit_loss(current_return_pct)
@@ -561,7 +605,11 @@ class StrategyLayer:
             strategy_state,
             current_return_pct,
             strong_sell_exit,
+            state,
         )
+
+        # ISS-033 二阶段：take_profit_keep 按市场状态分档
+        take_profit_keep = self._get_state_params(state)["take_profit_keep"]
 
         if final_signal == SignalType.SELL:
             if current_position_ratio <= 0:
@@ -577,7 +625,7 @@ class StrategyLayer:
             elif trend_exit:
                 return PositionAction.CLOSE_ALL, 0.0
             elif valid_take_profit:
-                target = current_position_ratio * self.TAKE_PROFIT_KEEP
+                target = current_position_ratio * take_profit_keep
                 return PositionAction.REDUCE, target
             else:
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
@@ -632,7 +680,7 @@ class StrategyLayer:
         if sell_path == "take_profit_trim":
             return "止盈触发: 分批落袋"
         if sell_path == "trend_exit" or position_action == PositionAction.CLOSE_ALL:
-            trend_reason = self._describe_trend_exit_reason(decision_result.stock, strategy_state)
+            trend_reason = self._describe_trend_exit_reason(decision_result.stock, strategy_state, market_state)
             return f"趋势退出: {trend_reason}，执行清仓({market_state.value})"
         if sell_path == "weak_sell" or position_action == PositionAction.REDUCE:
             return "弱卖出: 卖压存在但趋势未破坏，先减仓观察"
@@ -644,6 +692,7 @@ class StrategyLayer:
         position_action: PositionAction,
         decision_result: DecisionResult,
         strategy_state: StrategyState,
+        market_state: MarketState = MarketState.TRANSITION,
     ) -> Optional[str]:
         if final_signal != SignalType.SELL:
             return None
@@ -670,7 +719,7 @@ class StrategyLayer:
             return "stop_loss_trim"
         if (
             take_profit_confidence >= self.TAKE_PROFIT_TRIM_THRESHOLD
-            and self._has_take_profit_buffer(current_return_pct)
+            and self._has_take_profit_buffer(current_return_pct, market_state)
             and position_action == PositionAction.REDUCE
         ):
             return "take_profit_trim"
@@ -693,8 +742,23 @@ class StrategyLayer:
             return None
         return (stock.price - strategy_state.entry_price) / strategy_state.entry_price
 
-    def _has_take_profit_buffer(self, current_return_pct: Optional[float]) -> bool:
-        return current_return_pct is not None and current_return_pct >= self.TAKE_PROFIT_MIN_GAIN_PCT
+    def _get_state_params(self, market_state: MarketState) -> dict:
+        """ISS-033 二阶段：根据市场状态返回当前档位的仓位执行参数。
+
+        命中即返回该档；未命中（理论上不该发生）回退到震荡档默认值，避免 KeyError。
+        """
+        return self.STATE_TUNED_PARAMS.get(
+            market_state,
+            self.STATE_TUNED_PARAMS[MarketState.TRANSITION],
+        )
+
+    def _has_take_profit_buffer(
+        self, current_return_pct: Optional[float], market_state: MarketState = MarketState.TRANSITION
+    ) -> bool:
+        if current_return_pct is None:
+            return False
+        threshold = self._get_state_params(market_state)["take_profit_min_gain_pct"]
+        return current_return_pct >= threshold
 
     def _has_stop_loss_exit_loss(self, current_return_pct: Optional[float]) -> bool:
         return current_return_pct is not None and current_return_pct <= self.STOP_LOSS_EXIT_LOSS_PCT
@@ -702,8 +766,12 @@ class StrategyLayer:
     def _has_stop_loss_trim_loss(self, current_return_pct: Optional[float]) -> bool:
         return current_return_pct is not None and current_return_pct < 0
 
-    def _describe_trend_exit_reason(self, stock: StockData, strategy_state: StrategyState) -> str:
+    def _describe_trend_exit_reason(
+        self, stock: StockData, strategy_state: StrategyState,
+        market_state: MarketState = MarketState.TRANSITION,
+    ) -> str:
         current_return_pct = self._get_unrealized_return_pct(strategy_state, stock)
+        break_pct = self._get_state_params(market_state)["trend_exit_break_pct"]
         facts: list[str] = []
 
         if stock.ma60 is not None and stock.price < stock.ma60:
@@ -717,7 +785,7 @@ class StrategyLayer:
             facts.append("MA20失守且短中期转弱")
         elif stock.ma20 is not None and stock.price < stock.ma20:
             facts.append("跌破MA20")
-        if current_return_pct is not None and current_return_pct <= self.TREND_EXIT_BREAK_PCT:
+        if current_return_pct is not None and current_return_pct <= break_pct:
             facts.append("浮亏扩大")
         if strategy_state.lifecycle == TradeLifecycle.EXIT:
             facts.append("生命周期已转EXIT")
@@ -732,10 +800,12 @@ class StrategyLayer:
         strategy_state: StrategyState,
         current_return_pct: Optional[float],
         strong_sell_exit: bool,
+        market_state: MarketState = MarketState.TRANSITION,
     ) -> bool:
         if not strong_sell_exit:
             return False
 
+        break_pct = self._get_state_params(market_state)["trend_exit_break_pct"]
         broke_ma60 = stock.ma60 is not None and stock.price < stock.ma60
         broke_ma20 = stock.ma20 is not None and stock.price < stock.ma20
         ma20_lost_trend = (
@@ -744,7 +814,7 @@ class StrategyLayer:
             and stock.ma20 <= stock.ma60
             and stock.price < stock.ma20
         )
-        losing_hold = current_return_pct is not None and current_return_pct <= self.TREND_EXIT_BREAK_PCT
+        losing_hold = current_return_pct is not None and current_return_pct <= break_pct
         ma60_lost_trend = broke_ma60 and (ma20_lost_trend or losing_hold)
 
         return ma60_lost_trend or ma20_lost_trend or (broke_ma20 and losing_hold)

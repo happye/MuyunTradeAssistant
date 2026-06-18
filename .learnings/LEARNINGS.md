@@ -196,3 +196,39 @@ ISS-033 原方案基于"Chandelier Exit 过早离场"假设展开了 4 个调参
 - See Also: LRN-20260618-002
 
 ---
+
+## [LRN-20260618-004] best_practice
+
+**Logged**: 2026-06-18T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: workflow
+
+### Summary
+本项目所有改动都必须在 `start.py` 路径上让用户实测得到差异。"看不见的改动 = 没做"是用户立的硬规则，不是建议。
+
+### Details
+2026-06-18 用户接手会话末尾明确表态："开发工作能够让我的使用有确实的感知，做出的任何改动或者是提升，我都能在使用启动脚本的时候感受到真实的变化"。背景是：之前 v0.8.0→v0.8.4 期间累积了大量内部改动（决策追溯、回测框架、Phase C 买卖点、金字塔仓位等），但 `start.py` banner 还停在 v0.8.0、CLI 输出没暴露任何"当前用的什么策略档"等元信息，用户跑命令时无法感知系统在迭代。
+
+接手会话也踩中这个坑：前置 Bug 修复 commit `77aaf9d`（回测路径未传 entry_exit_config）从代码角度是真 Bug，但单独看 start.py 的输出根本看不出修没修——只有跑回测看 trades 数量才能间接验证。这种"修了等于没修"的体验导致用户失信。
+
+### Suggested Action
+每次 commit 前自问 5 条硬条件（详见 AGENTS.md § 二·五）：
+1. start.py banner / help / 命令输出有可见变化
+2. -l 单股分析输出多/少具体内容
+3. -b 回测输出指标值变化
+4. scan 排名表 / 触发详情有差异
+5. 命令本身新增/删除
+
+任一条满足即合格；都不满足且不是纯内部重构 → **必须在输出层补一行让用户看见**。例如：
+- 调了策略参数 → 在 CLI 加"当前使用参数档：牛市档/震荡档/熊市档"诊断行
+- 修了静默 Bug → 在受影响命令加"已生效"或"启用 X 模块"提示
+- 改了配置加载 → 启动时打印"加载配置：xxx.yaml (key=value)"
+
+### Metadata
+- Source: user_feedback
+- Related Files: start.py, src/cli/main.py, AGENTS.md
+- Tags: user-perception, observable-output, principle, dev-discipline
+- See Also: LRN-20260618-003
+
+---
