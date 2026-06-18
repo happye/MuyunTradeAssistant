@@ -1766,6 +1766,31 @@ def _display_ranked_results(success_results: list[dict]):
     if top3_stocks:
         console.print(f"  [bold green]TOP3推荐[/bold green]: {' | '.join(top3_stocks)}")
 
+    # ISS-031: 触发了买卖点的股票，补完整理由（短摘要在表格里截断会丢关键数值/MA偏离/盈利%）
+    triggered = []
+    for r in success_results:
+        sd = r.get("strategy_decision")
+        if not sd or not getattr(sd, "entry_exit", None):
+            continue
+        ee = sd.entry_exit
+        if ee.get("entry_triggered") or ee.get("exit_triggered"):
+            triggered.append((r, ee))
+    if triggered:
+        console.print(f"\n  [bold]买卖点触发详情：[/bold]")
+        for r, ee in triggered:
+            code = r["stock_code"]
+            name = r.get("stock_name", "")
+            if ee.get("entry_triggered"):
+                ratio_pct = int(ee.get("entry_ratio", 0) * 100)
+                reason = ee.get("entry_reason", "")
+                console.print(f"  [green]▶[/green] {code} {name} 建仓{ratio_pct}%: {reason}")
+            elif ee.get("exit_triggered"):
+                action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0), ee.get('exit_type', ''))
+                reason = ee.get("exit_reason", "")
+                stop = ee.get("chandelier_stop_price")
+                metric_str = f"止损价 ¥{stop:.2f} | " if stop else ""
+                console.print(f"  [red]◀[/red] {code} {name} {action_cn}: {metric_str}{reason}")
+
     # 评分解读
     console.print(
         "\n  [dim]评分解读: "
@@ -1842,20 +1867,32 @@ def _format_entry_exit_brief(sd) -> str:
     """买卖点简要摘要，用于扫描表格列。
 
     这里不是要把所有细节都塞进一列，而是给 scan 结果提供一个高密度、低噪音的摘要：
-    - 买点：只保留“建仓 + 关键理由截断”
-    - 卖点：只保留“清仓/减仓 + 关键理由截断”
+    - 买点：建仓比例 + 关键理由截断
+    - 卖点：动作+子语义 + 关键指标（Chandelier 用结构化止损价，其他用 reason 截断）
     - 无触发：统一显示为空，避免让用户误以为漏了信号
+
+    ISS-031 收尾：尽量从结构化字段（chandelier_stop_price 等）取关键指标，
+    避免对 reason 文本做正则提取（脆弱，随模板改写易 break）。
     """
     if not sd or not getattr(sd, "entry_exit", None):
         return "[dim]-[/dim]"
     ee = sd.entry_exit
     if ee.get("entry_triggered"):
-        reason = ee.get("entry_reason", "")[:16]
-        return f"[green]▶建仓: {reason}[/green]"
+        ratio_pct = int(ee.get("entry_ratio", 0) * 100)
+        reason = ee.get("entry_reason", "")[:14]
+        prefix = f"建{ratio_pct}%" if ratio_pct else "建仓"
+        return f"[green]▶{prefix}: {reason}[/green]"
     if ee.get("exit_triggered"):
-        # exit_action 是内部枚举（EXIT/TRIM），这里翻成中文，避免表格里只剩实现细节。
+        # exit_action 是内部枚举（EXIT/TRIM），翻成中文加子语义（清仓/减仓+原因类型）
         action_cn = _exit_action_cn(ee.get('exit_action', ''), ee.get('exit_ratio', 0), ee.get('exit_type', ''))
-        reason = ee.get("exit_reason", "")[:14]
+        exit_type = ee.get("exit_type", "")
+        # Chandelier 止损：从结构化字段拼"止损¥X"，比正则切 reason 稳
+        if exit_type == "chandelier_stop":
+            stop = ee.get("chandelier_stop_price")
+            if stop:
+                return f"[red]◀{action_cn}: 止损¥{stop:.2f}[/red]"
+        # 其他类型回退到 reason 截断
+        reason = ee.get("exit_reason", "")[:16]
         return f"[red]◀{action_cn}: {reason}[/red]"
     return "[dim]未触发[/dim]"
 
