@@ -731,6 +731,21 @@ P3（已取消）:
 - **依赖**: ISS-027（基础修复已完成）
 - **更新记录**:
   - 2026-06-18: 创建，ISS-027 第二轮回测验收发现
+  - 2026-06-18: **第一轮调参失败教训**（接手会话）。审 trade reason 发现真实卖出根因**不是 entry_exit 模块**而是**策略层 `take_profit_trim` + `trend_exit`**（src/core/strategy_layer.py:88-97 hardcoded 常量）。原 ISS-033 列出的 4 个方案（adaptive_n / 趋势强度判定 / Chandelier MA 确认 / trim_ratio）都解决不了真问题。第一轮尝试调 `TAKE_PROFIT_KEEP 0.60→0.75 + TAKE_PROFIT_MIN_GAIN_PCT 0.05→0.10`，3 股快速回测：
+    - 宁德时代 Δ收益 +0.00pp（**0 改善**，门槛提升后仍走 take_profit_trim 5 笔，触发时浮盈 24.83% / 15.86% / 6.10% / 37.63% / 37.98% — 6.10% 那笔仍归类 take_profit_trim 是奇怪的，需要根因下钻）
+    - 东方财富 Δ收益 +0.90pp（微正向）
+    - 工商银行 Δ收益 +0.86pp（微正向）
+    
+    **失败教训**：
+    1. ISS-033 原方案完全错位，写"Chandelier 过早离场"但实际数据是策略层 hardcoded 常量主导
+    2. 提高浮盈门槛会让原本走 take_profit_trim 的卖出落到 `else` 分支的 `NORMAL_REDUCE_KEEP=0.65`（卖 35%）vs `TAKE_PROFIT_KEEP=0.75`（卖 25%），差异极小，所以收益基本不变
+    3. **真正瓶颈**是 `trend_exit` 在持仓浮亏 -2% + 跌破 MA60/MA20 时**直接清仓**（CLOSE_ALL），趋势牛股短期回调即触发
+    
+    **二阶段方向**（待用户决定是否继续）：
+    1. `trend_exit` 改为分层：浮亏 -2% 跌破 MA20 → 减仓 50%（不清仓）；浮亏 -5% + 跌破 MA60 → 才 CLOSE_ALL
+    2. `take_profit_trim` 在牛市状态下保留更多（市场状态 RISK_ON 时 KEEP=0.85 vs RISK_OFF 时 KEEP=0.60）
+    3. 先把"市场状态感知"嵌入仓位执行参数，再回测验证
+- **本轮已落地的微调（保留，不回滚）**: src/core/strategy_layer.py:88-93 `TAKE_PROFIT_KEEP 0.60→0.75` + `TAKE_PROFIT_MIN_GAIN_PCT 0.05→0.10`（commit 待入），方向正确但效果不显著
 
 ---
 

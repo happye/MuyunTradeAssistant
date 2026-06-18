@@ -85,12 +85,15 @@ class StrategyLayer:
     }
     OPEN_RATIO = 0.20
     ADD_RATIO = 0.20
-    TAKE_PROFIT_KEEP = 0.60
+    # ISS-033 调参（2026-06-18）：第二轮回测显示宁德/工行错过 50pp 牛市，
+    # 根因 take_profit 在 5% 浮盈即触发分批 + 60% 保留导致仓位反复掉落。
+    # 0.60→0.75（少卖 15pp）+ 0.05→0.10（10% 浮盈门槛）让趋势仓位活久点。
+    TAKE_PROFIT_KEEP = 0.75
     NORMAL_REDUCE_KEEP = 0.65
     STOP_LOSS_REDUCE_THRESHOLD = 0.70
     STOP_LOSS_EXIT_THRESHOLD = 0.85
     TAKE_PROFIT_TRIM_THRESHOLD = 0.70
-    TAKE_PROFIT_MIN_GAIN_PCT = 0.05
+    TAKE_PROFIT_MIN_GAIN_PCT = 0.10
     STOP_LOSS_EXIT_LOSS_PCT = -0.05
     STRONG_SELL_EXIT_THRESHOLD = 0.55
     SELL_DOMINANCE_GAP = 0.15

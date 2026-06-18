@@ -161,3 +161,38 @@ ISSUES.md 状态变更必须满足：
 - See Also: LRN-20260519-001
 
 ---
+
+## [LRN-20260618-003] correction
+
+**Logged**: 2026-06-18T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: backend
+
+### Summary
+看到回测"错过率高"先别盲调 entry_exit 参数 — 必须先打 trade.reason / trade.sell_path 看真正的卖出走的是哪条路径，不能假设 ISS-027 修复的模块就是触发卖出的模块。
+
+### Details
+ISS-033 原方案基于"Chandelier Exit 过早离场"假设展开了 4 个调参方向。但实际审第二轮回测 9 股的 trade['reason']/['sell_path'] 字段后发现：
+- 宁德时代 8 笔 SELL 全部走 `take_profit_trim` (5) + `trend_exit` (3)
+- 工商银行 8 笔 SELL 全部走 `take_profit_trim` (7) + `trend_exit` (1)
+- 立讯精密 23 笔 SELL 多数走 `trend_exit` + `take_profit_trim`，**没有一笔走 entry_exit/Chandelier**
+
+也就是说回测的卖出根本没经过 ISS-027 修复的 `src/core/entry_exit/exit_rules.py`，而是经过 `src/core/strategy_layer.py:88-97` 的 hardcoded 常量（`TAKE_PROFIT_KEEP / TAKE_PROFIT_MIN_GAIN_PCT / TREND_EXIT_BREAK_PCT`）。基于错误根因调 entry_exit 参数会浪费 3-5 天且毫无效果。
+
+### Suggested Action
+任何"策略调参 / 错过率优化 / 频繁交易"类任务的开局动作必须先做：
+1. 跑代表股回测，导出 `--export-analysis-json`
+2. 读 `trades[].sell_path` 与 `trades[].reason` 字段，统计 sell_path 分布
+3. 确认调参目标和实际触发链路对得上，再下笔
+4. 如不对应：在 ISSUES.md 记录"原方案错位"，重新定根因，再行动
+
+具体到本仓库：策略层 `strategy_layer.py:88-97` 有 11 个 hardcoded 阈值（TAKE_PROFIT_KEEP/MIN_GAIN_PCT、STOP_LOSS_*、NORMAL_REDUCE_KEEP、TREND_EXIT_BREAK_PCT 等），它们才是回测中卖出执行参数的主战场，不是 entry_exit/config.yaml。
+
+### Metadata
+- Source: self_discovery
+- Related Files: src/core/strategy_layer.py, src/core/entry_exit/exit_rules.py, ISSUES.md, tests/issue_027_round2/, tests/issue_033_round1/
+- Tags: backtest, root-cause, parameter-tuning, sell-path, strategy-layer-vs-entry-exit
+- See Also: LRN-20260618-002
+
+---
