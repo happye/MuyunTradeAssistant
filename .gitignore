@@ -27,6 +27,7 @@ cli_out*.txt
 test_out*.txt
 test_output*.txt
 test_*.txt
+tests/issue_027_round2/
 
 # 系统文件
 Thumbs.db
