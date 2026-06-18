@@ -686,7 +686,7 @@ P3（已取消）:
 ---
 
 ### ISS-032: pyramid_config 未连线 CLI → BacktestEngine → Orchestrator
-- **状态**: 📋 待办
+- **状态**: ✅ 已解决（2026-06-18 同会话）
 - **优先级**: P2（金字塔仓位走默认值，未影响主交易语义但 v0.8.3 Phase D 设计意图未完整落地）
 - **关联方向**: v0.8.3 Phase D 收尾 / 配置传递链路
 - **描述**: ISS-020（金字塔仓位管理）已在 v0.8.3 Phase D 完成实现，`Orchestrator.__init__` 与 `BacktestEngine.__init__` 都接受 `pyramid_config` 参数。但 CLI 三条路径（`analyze_live` / `run_backtest` / `run_batch_validation`）**全部未从 settings.yaml 读取并传入**，导致 `StrategyLayer(pyramid_config=None)` 始终走默认参数。
@@ -705,6 +705,7 @@ P3（已取消）:
 - **依赖**: ISS-020（实现已完成）
 - **更新记录**:
   - 2026-06-18: 接手审计 ISS-027 第二轮回测前置条件时发现，与 entry_exit_config 同类问题但未影响主交易语义，单独跟踪
+  - 2026-06-18: ✅ 已解决（同会话 commit 待入）。新增 `load_pyramid_config()` helper，按"settings.yaml 的 pyramid 段 > position_tiers.yaml 兜底"优先级加载。CLI 4 处 Orchestrator 实例化点（`analyze_interactive` / `analyze_json` / `analyze_live` / `scan_portfolio_holdings`）全部连线。Verify 探针确认 `orchestrator.strategy_layer.pyramid` 是真实 `PyramidPositionManager` 实例，CLI `-l 600519` 输出末尾显示"金字塔启用"。**踩坑教训**（同 LRN-20260618-001）：第一轮只改了 2/4 处（漏 line 438/826 两处），靠跑 CLI 实测才发现"金字塔未启用"显示有问题。今后任何"4 处 / N 处需同步"类改动必须用 `grep -c` 数清楚再下手。
 
 ---
 

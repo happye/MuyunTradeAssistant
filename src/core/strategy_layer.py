@@ -365,12 +365,15 @@ class StrategyLayer:
         cap = self.POSITION_CAPS.get(market_state, 0.30)
         # 三阶段：强 BUY 时实际上限（牛市走 cap，其余走 OPEN+ADD）
         buy_cap_actual = cap if market_state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+        # ISS-032：金字塔仓位管理是否启用（用户可感知）
+        pyramid_label = "金字塔启用" if self.pyramid is not None else "金字塔未启用"
         tier_summary = (
             f"参数档[{tier_label}]: "
             f"止盈保留{int(tier_params['take_profit_keep']*100)}% / "
             f"浮盈门槛{int(tier_params['take_profit_min_gain_pct']*100)}% / "
             f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}% / "
-            f"强买上限{int(buy_cap_actual*100)}%"
+            f"强买上限{int(buy_cap_actual*100)}% / "
+            f"{pyramid_label}"
         )
         strategy_reasons.insert(0, tier_summary)
 
