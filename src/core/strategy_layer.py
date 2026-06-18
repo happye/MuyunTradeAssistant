@@ -362,11 +362,15 @@ class StrategyLayer:
         # 让用户跑 -l/-b 时能直接看见"现在系统认为这是什么市况、用了哪一档"
         tier_params = self._get_state_params(market_state)
         tier_label = tier_params["tier_label"]
+        cap = self.POSITION_CAPS.get(market_state, 0.30)
+        # 三阶段：强 BUY 时实际上限（牛市走 cap，其余走 OPEN+ADD）
+        buy_cap_actual = cap if market_state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
         tier_summary = (
             f"参数档[{tier_label}]: "
             f"止盈保留{int(tier_params['take_profit_keep']*100)}% / "
             f"浮盈门槛{int(tier_params['take_profit_min_gain_pct']*100)}% / "
-            f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}%"
+            f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}% / "
+            f"强买上限{int(buy_cap_actual*100)}%"
         )
         strategy_reasons.insert(0, tier_summary)
 
@@ -632,8 +636,10 @@ class StrategyLayer:
                 return PositionAction.REDUCE, target
 
         elif final_signal == SignalType.BUY:
+            # ISS-033 三阶段：强 BUY 信号在牛市/震荡时上限直接走 cap，不被 OPEN+ADD=0.40 封顶。
+            # 之前 min(OPEN+ADD=0.40, cap=0.60) 始终封顶 0.40，导致 RISK_ON 仓位上限形同虚设。
             if buy_score >= 0.4:
-                target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                target = cap if state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 return PositionAction.OPEN, target
@@ -646,7 +652,8 @@ class StrategyLayer:
 
         elif final_signal == SignalType.HOLD:
             if buy_score > sell_score * 1.5:
-                target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                # 同上：HOLD+强 BUY 偏向时也允许牛市走 cap
+                target = cap if state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 else:

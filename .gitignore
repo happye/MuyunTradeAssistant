@@ -40,3 +40,4 @@ Thumbs.db
 # portfolio.yaml  ← 已移除忽略，允许上传
 tests/issue_033_round1/
 tests/issue_033_round2/
+tests/issue_033_round3/
