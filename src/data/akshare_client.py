@@ -296,7 +296,18 @@ class AKShareClient:
                 logger.warning(f"数据源 [{name}] 获取失败: {e}")
                 continue
 
-        logger.error(f"所有实时行情接口均失败 {stock_code}, 最后错误: {last_error}")
+        # E1-B5：所有源都失败时，根据错误类型给出可操作建议
+        err_str = str(last_error) if last_error else ""
+        hint = ""
+        if "ProxyError" in err_str or "10057" in err_str or "代理" in err_str:
+            hint = " | 提示：可能是系统代理(127.0.0.1:7890)干扰金融 API，可临时关闭代理或重试"
+        elif "Timeout" in err_str or "timeout" in err_str:
+            hint = " | 提示：网络超时，可稍后重试或检查网络稳定性"
+        elif "登录失败" in err_str or "login" in err_str.lower():
+            hint = " | 提示：BaoStock 登录失败，可能是其服务端临时故障，等几分钟重试"
+        elif last_error is None:
+            hint = " | 提示：所有数据源静默返回失败，可能是非交易时段或股票代码无效"
+        logger.error(f"所有实时行情接口均失败 {stock_code}, 最后错误: {last_error}{hint}")
         return None
 
     @classmethod

@@ -1313,9 +1313,10 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict", lay
 def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: float, ratio: float):
     """v0.8.5 阶段 1.2：建仓后调用 TradePlanGenerator 生成草稿 + Y/n 交互。
 
-    设计：
+    设计（E1-B1 强化）：
     - 优先尝试拉实时 StockData（akshare），让 generator 用真实 ATR/MA 算
-    - 拉数据失败 → 走规则版兜底（仍能算 8% 止损）
+    - **拉数据失败 → 默认跳过 plan 生成**（兜底数据不能用作真实交易依据）
+      用户可强制用 --force-plan-fallback 走规则版兜底（仅用于流程测试）
     - 用户 n 跳过 → 不附加 plan，提示 pos plan 命令后续手动补
     """
     from src.core.trade_plan import TradePlanGenerator
@@ -1324,16 +1325,32 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
 
     # 尝试拉实时数据（含 ATR/MA）
     stock_data = None
+    data_error = None
     try:
         from src.data.akshare_client import get_stock_data
         stock_data = get_stock_data(stock_code)
         if stock_data:
-            console.print(f"   [green]✓[/green] 读取技术面（ATR={stock_data.atr_14}, MA20={stock_data.ma20}, MA60={stock_data.ma60}）")
-        else:
-            console.print(f"   [yellow]⚠[/yellow] 技术面数据不可用，走规则版兜底")
+            atr_str = f"{stock_data.atr_14:.2f}" if stock_data.atr_14 else "?"
+            ma20_str = f"{stock_data.ma20:.2f}" if stock_data.ma20 else "?"
+            ma60_str = f"{stock_data.ma60:.2f}" if stock_data.ma60 else "?"
+            console.print(f"   [green]✓[/green] 读取技术面（ATR={atr_str}, MA20={ma20_str}, MA60={ma60_str}）")
     except Exception as e:
+        data_error = e
         logger.warning(f"TradePlan 数据拉取失败: {e}")
-        console.print(f"   [yellow]⚠[/yellow] 数据拉取失败（{type(e).__name__}），走规则版兜底")
+
+    # E1-B1：数据不可用时强警告 + 直接跳过（不再用兜底值生成误导性 plan）
+    if stock_data is None:
+        console.print(f"\n[bold red]⚠ 无法获取技术面数据[/bold red]")
+        if data_error:
+            console.print(f"   错误: [red]{type(data_error).__name__}: {str(data_error)[:100]}[/red]")
+        console.print(f"\n[bold yellow]TradePlan 自动生成已跳过[/bold yellow]")
+        console.print(f"   原因：没有 ATR / MA / 趋势数据时生成的 plan 全是硬编码兜底值（8% 止损 / 10%-20% 止盈），")
+        console.print(f"   [bold]不能作为真实交易决策依据[/bold]，建议：")
+        console.print(f"   [cyan]1.[/cyan] 检查网络/代理（系统代理 127.0.0.1:7890 会干扰金融 API，可临时关闭）")
+        console.print(f"   [cyan]2.[/cyan] 等数据源恢复后跑 [bold]pos plan {stock_code}[/bold] 查看是否需要重建 plan")
+        console.print(f"   [cyan]3.[/cyan] 或手动编辑 portfolio.yaml 的 trade_plan 字段（参考 portfolio.yaml.template）")
+        console.print(f"\n[dim]持仓本身已添加成功，仅 trade_plan 子系统未启用此股 PlanGuard 守卫[/dim]")
+        return
 
     # RAG（可选）
     rag_service = None

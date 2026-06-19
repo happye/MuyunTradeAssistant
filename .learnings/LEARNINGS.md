@@ -232,3 +232,114 @@ ISS-033 原方案基于"Chandelier Exit 过早离场"假设展开了 4 个调参
 - See Also: LRN-20260618-003
 
 ---
+## [LRN-20260619-001] best_practice
+
+**Logged**: 2026-06-19T00:00:00+08:00
+**Priority**: critical
+**Status**: pending
+**Area**: workflow
+
+### Summary
+调参类工作必须有 4 条硬纪律：30 分钟前提验证 / 第三轮失败原则 / 改善门槛 / 基准对照。否则会陷入"改一点点参数→看一点点改善→继续改"的兔子洞。
+
+### Details
+v0.8.5 ISS-033 + 阶段 3 累计跑了 5 轮调参（一阶段 +0.22pp / 二阶段 +0.19pp / 三阶段 +0.41pp / 阶段 3.1 +0pp / 阶段 3.3 +0.56pp），累计改善 +1.4pp，离目标 +15pp 仍然差 13.6pp。
+
+每一轮我都说"方向对、改善小、继续做"。但事实是：第二轮就该停下来质疑架构。继续做三轮纯属浪费时间。
+
+根因有四：
+1. 调参前没确认前提（如 ISS-033 二阶段没看 MarketState 实际分布就调分档参数，结果 156/242 天是 TRANSITION 没走分档）
+2. 没设"第 N 次失败就停手"的红线
+3. 没用"基准噪声门槛"判断改善是否真实
+4. 看绝对收益不看对照，把噪音当成功
+
+### Suggested Action
+所有"调参 / 优化参数 / 改阈值"类工作必须满足：
+
+1. **30 分钟前提验证法则**：动手前花 30 分钟做"我要改的参数实际生效几天/几次？"验证。例如调 RISK_ON 分档参数前先打印 RISK_ON 命中天数；调 weak_sell 阈值前先看 trade.sell_path 分布。前提不成立直接放弃这个方向。
+
+2. **第三轮失败原则**：同一参数家族（如 take_profit / chandelier / position_cap）调过 2 次都没显著改善（< 改善门槛），第 3 次直接停手。换方向或退一步质疑架构本身。
+
+3. **改善门槛**：单股改善 < 2pp / 整体平均改善 < 1pp 视为噪声水平，不算成功，不写"已解决"，不进 commit。改善必须 >= 噪声门槛才算有效。
+
+4. **基准对照纪律**：开发新功能前**先跑一次对照基线**（同期同股同参数 PlanGuard 关闭等），新功能跑完和基线 diff，超过门槛才算有效。不要看绝对收益。
+
+### Metadata
+- Source: self_discovery
+- Related Files: src/core/strategy_layer.py, src/core/plan_guard.py, docs/v0.8.5_阶段3_final.md, ISSUES.md (ISS-033 / ISS-037)
+- Tags: parameter-tuning, decision-discipline, anti-pattern, rabbit-hole
+- See Also: LRN-20260618-003
+
+---
+
+## [LRN-20260619-002] best_practice
+
+**Logged**: 2026-06-19T00:00:00+08:00
+**Priority**: critical
+**Status**: pending
+**Area**: workflow
+
+### Summary
+当发现自己在兔子洞（连续 2 次试验改善 < 1pp 噪声水平）时，**强制跳出来**去 web search / 读学术资源 / 咨询其他 agent，找更好的算法/方法论，而不是继续在当前架构里调参。
+
+### Details
+2026-06-19 用户明确建议："如果你发现你正在掉入一个兔子洞陷阱，那么你就要需要跳脱出来，从互联网上寻找更好的解法。"
+
+具体到本仓库：v0.8.5 三阶段累计改善 +1.4pp，本应在阶段 3.1 失败（+0pp）后跳出来，去查"为什么 PlanGuard 在长样本回测无效"——可能学术上有现成方法（cooldown_period / regime_dependent stop / multi-factor exit）能解决，但我没去查，继续做了阶段 3.3。
+
+### Suggested Action
+触发条件：连续 2 次同方向试验改善 < 1pp 噪声水平（按 LRN-20260619-001）
+
+跳出动作（按优先级）：
+
+1. **WebSearch 先行**：用 web search 查"当前问题 + 主流量化方法论 + 学术 paper"。例如调"持有期"问题先搜 holding period optimization quantitative trading 而不是再调 max_hold_days 参数。
+
+2. **读策略库 RAG**：本仓库有 65 个策略 txt + RAG 索引。先用 RAG 检索看有没有现成方法，再决定要不要重新发明。
+
+3. **咨询专门 agent**：spawn code-architect 或 general-purpose agent 让它独立做 research，避免我自己在原方案里循环。
+
+4. **WebFetch 学术资源**：对找到的 paper / 主流框架（AQR / 桥水风格 / RiskParity / Event-driven）用 WebFetch 抓实际方法描述，不凭训练知识拍脑袋。
+
+只有当上述 4 步都没找到更好方案时，才回到原架构继续优化。
+
+### Metadata
+- Source: user_feedback
+- Related Files: docs/v0.8.5_阶段3_final.md
+- Tags: rabbit-hole-escape, web-search-first, research-discipline
+- See Also: LRN-20260619-001
+
+---
+
+## [LRN-20260619-003] insight
+
+**Logged**: 2026-06-19T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: backend
+
+### Summary
+回测结果不能证明工具好坏，最多只能证明"这个工具在测试期那个特定环境下的表现"。要回答"工具好不好"必须满足：(1) 多年覆盖多个市场周期 (2) 接入宏观/新闻/基本面 (3) 不与训练期重叠（避免过拟合）。
+
+### Details
+2026-06-19 用户提问："是不是回测的结果就证明了目前我们的量化工具的结果是好是坏？有没有可能是我们当前我们的量化策略不适用于2024年的股票数据呢？"
+
+这个问题点中本仓库回测体系的根本局限。具体事实：
+
+1. **当前回测覆盖期**：2024 单年 = 1 个市场周期样本。学术界量化最少要 5-10 年 + 多个市场周期才能下结论
+2. **当前回测无新闻面 / 无基本面 / 无地缘风险**：技术架构文档第 1000 行自承"无基本面数据 | 纯技术分析+新闻情绪"。地缘局势 / 金融风暴 / 美元体系 / 行业政策切换 全部不在策略输入里
+3. **2024 是 A 股结构性分化极端年**：半数行业涨 30%+ / 半数跌 -10%~-30%，**任何基于 MA 的趋势策略都会同时显示"风控好 + 错过率高"**——不是策略不好，是 2024 年环境特殊
+4. **过拟合风险**：本仓库 5 轮调参全是"看 2024 数据→调参→再看 2024 数据"，已经过拟合 2024，跑 2025 / 2023 可能完全是另一个画像
+
+### Suggested Action
+1. **诚实声明回测局限**：技术架构文档 / README / 使用手册都应明确说"回测仅反映测试期表现，不能证明工具好坏"
+2. **跑多年回测**：扩到 2020-2024 五年，覆盖 2020 牛市、2021 高位、2022 熊市、2023 震荡、2024 分化。任何"调参→改善"声明都必须在多年样本上验证
+3. **接入宏观/新闻**：v0.8.6+ 真正方向不是再调参，是接入新闻面（财联社/RSS）+ 基本面（财务 API）+ 地缘事件（影响行业的政策/国际新闻）让策略对"濒临崩塌环境"有感知
+4. **保留训练-验证分离**：调参用 2020-2022，验证用 2023-2024，避免过拟合
+
+### Metadata
+- Source: user_feedback
+- Related Files: docs/技术架构文档.md, docs/v0.8.5_阶段3_final.md, docs/v0.8.5_扩样本验证报告.md
+- Tags: backtest-limits, overfitting, multi-year-validation, macro-input
+- See Also: LRN-20260619-001, LRN-20260619-002
+
+---
