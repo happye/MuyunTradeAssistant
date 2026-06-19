@@ -195,6 +195,7 @@ class BacktestEngine:
         execution_constraint: Optional[ExecutionConstraint] = None,
         entry_exit_config: Optional[dict] = None,
         pyramid_config: Optional[dict] = None,
+        enable_trade_plan: bool = True,  # v0.8.5 阶段 3.1: 回测自动建 TradePlan + PlanGuard 生效
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -228,6 +229,17 @@ class BacktestEngine:
             skills_dir=skills_dir, enabled_skills=enabled_skills, signal_weights=signal_weights,
             skill_types=skill_types, execution_constraint=execution_constraint
         )
+
+        # v0.8.5 阶段 3.1: TradePlan 子系统在回测中生效
+        # 每次建仓（OPEN/ENTRY）时调用 generator 创建 plan，挂在 self._current_plan
+        # 持仓期间每天 analyze() 透传 plan 给 Orchestrator → PlanGuard 压制 weak_sell
+        # 清仓时清除 plan
+        self.enable_trade_plan = enable_trade_plan
+        self._current_plan = None  # 当前持仓的 TradePlan（单股回测每次最多 1 个）
+        self._plan_stats = {        # 统计：用于回测后看 plan 实际效果
+            "plans_created": 0,
+            "weak_sells_suppressed_by_guard": 0,
+        }
 
     def run(self) -> BacktestResult:
         """执行单次回测
@@ -454,6 +466,31 @@ class BacktestEngine:
                         if trade.action == "SELL" and account.position == 0:
                             last_sell_date = date
 
+                        # v0.8.5 阶段 3.1: 维护 self._current_plan（与 account 状态同步）
+                        if self.enable_trade_plan:
+                            if trade.action == "BUY" and account.has_position and self._current_plan is None:
+                                # 首次建仓 → 创建 plan（用 generator 规则版，无 AI 兜底）
+                                try:
+                                    from src.core.trade_plan import TradePlanGenerator
+                                    gen = TradePlanGenerator()
+                                    plan, _meta = gen.generate(
+                                        stock_code=self.stock_code,
+                                        stock_name=feeder._stock_name or self.stock_code,
+                                        entry_price=account.avg_cost,
+                                        ratio=account.position_ratio(current_price),
+                                        stock_data=stock_data,
+                                    )
+                                    # 用建仓日期，不是当前日期（pending 的 today=date 已经是 N 日）
+                                    plan.opened_at = date
+                                    plan.plan_id = f"{self.stock_code}_{date}"
+                                    self._current_plan = plan
+                                    self._plan_stats["plans_created"] += 1
+                                except Exception as e:
+                                    logger.debug(f"回测建 plan 失败 {date}: {e}")
+                            elif trade.action == "SELL" and account.position == 0:
+                                # 清仓 → 清除 plan（下次建仓重新生成新 plan）
+                                self._current_plan = None
+
                     execution_logs.append(self._build_execution_log(
                         execution_date=date,
                         signal_date=pending_signal_date,
@@ -480,6 +517,9 @@ class BacktestEngine:
                 # v0.8.3: 买卖点上下文
                 _has_pos = account.has_position
                 _entry_price = account.avg_cost if _has_pos else None
+                # v0.8.5 阶段 3.1: 持仓时透传 TradePlan 让 PlanGuard 在回测中生效
+                _trade_plan = self._current_plan if (self.enable_trade_plan and _has_pos) else None
+                # 记录 PlanGuard 生效前的 strategy_decision（用于事后统计压制效果，先不实现，留观察点）
                 decision_result, strategy_decision, execution_eval, _ = self.orchestrator.analyze(
                     stock_data, current_position_ratio=current_pos_ratio,
                     strategy_state=strategy_state,
@@ -488,7 +528,13 @@ class BacktestEngine:
                     entry_price=_entry_price,
                     position_tier="pilot",
                     high_since_entry=high_since_entry,
+                    trade_plan=_trade_plan,
+                    today=date,
                 )
+                # PlanGuard 压制统计：strategy_reasons 含 "PlanGuard: 计划未失效"
+                if strategy_decision and strategy_decision.strategy_reasons:
+                    if any("PlanGuard: 计划未失效" in r for r in strategy_decision.strategy_reasons):
+                        self._plan_stats["weak_sells_suppressed_by_guard"] += 1
             except Exception as e:
                 logger.warning(f"分析异常 {date}: {e}")
                 decision_result = None
