@@ -36,3 +36,23 @@ positions: {}
   #     - BUY
   #     signal_stability_score: 1.0
   #     reduce_protection_remaining: 0
+  #   # v0.8.5 TradePlan 子系统：建仓时一次性定下，避免日常波动牵着走
+  #   # 由系统在 pos add 时 AI 辅助生成，用户 Y/N 确认或编辑
+  #   trade_plan:
+  #     plan_id: '000001_2026-01-15'
+  #     opened_at: '2026-01-15'
+  #     why_buy: '银行板块估值修复 + MA20 上方支撑'
+  #     when_buy: '当前价 12.50，已在 5 日均线上方'
+  #     how_much: 0.20
+  #     when_sell_targets: [13.75, 15.00]    # 止盈分档目标价（绝对价）
+  #     when_sell_invalidate:
+  #       - 跌破 MA60 + 成交量异常放大
+  #       - 出现重大利空（政策/财务）
+  #     locked_initial_stop: 11.50            # 建仓时定的初始止损（单向上移基线）
+  #     current_stop: 11.50                   # 当前止损（trailing 后只升不降）
+  #     max_hold_days: 90
+  #     fundamental_outlook: bullish          # bullish / neutral / bearish
+  #     thesis_sources:
+  #       - 'ch48-止损位设置-2倍ATR法'
+  #       - 'news-2026-01-14-银行业绩超预期'
+  #     adjustments: []                       # 调整审计 [{date, field, old, new, reason, source}]

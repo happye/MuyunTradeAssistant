@@ -20,7 +20,7 @@ from typing import Optional
 import yaml
 
 from src.data.models import (
-    StrategyState, TradeLifecycle, SignalType
+    StrategyState, TradeLifecycle, SignalType, TradePlan
 )
 
 logger = logging.getLogger(__name__)
@@ -49,6 +49,7 @@ class PositionRecord:
         high_since_entry: Optional[float] = None,
         lifecycle: str = "FLAT",
         strategy_state: Optional[dict] = None,
+        trade_plan: Optional[TradePlan] = None,
     ):
         self.stock_code = stock_code
         self.stock_name = stock_name
@@ -62,6 +63,7 @@ class PositionRecord:
         self.high_since_entry = high_since_entry
         self.lifecycle = lifecycle
         self.strategy_state = strategy_state or {}
+        self.trade_plan = trade_plan  # v0.8.5 TradePlan 子系统
 
     def to_dict(self) -> dict:
         """转为YAML可序列化的字典"""
@@ -78,11 +80,16 @@ class PositionRecord:
             "lifecycle": self.lifecycle,
             "strategy_state": self.strategy_state,
         }
+        if self.trade_plan is not None:
+            # Pydantic v2: model_dump() 转 dict；YAML 兼容
+            d["trade_plan"] = self.trade_plan.model_dump()
         return d
 
     @classmethod
     def from_dict(cls, stock_code: str, data: dict) -> "PositionRecord":
         """从YAML字典创建"""
+        plan_data = data.get("trade_plan")
+        trade_plan = TradePlan(**plan_data) if plan_data else None
         return cls(
             stock_code=stock_code,
             stock_name=data.get("stock_name", ""),
@@ -96,6 +103,7 @@ class PositionRecord:
             high_since_entry=data.get("high_since_entry"),
             lifecycle=data.get("lifecycle", "FLAT"),
             strategy_state=data.get("strategy_state", {}),
+            trade_plan=trade_plan,
         )
 
 

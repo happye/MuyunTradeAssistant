@@ -1,6 +1,6 @@
 """数据模型定义 - Pydantic"""
 
-from typing import Optional
+from typing import Optional, Literal
 from pydantic import BaseModel, Field
 from enum import Enum
 
@@ -88,6 +88,57 @@ class TradeLifecycle(str, Enum):
     HOLD = "HOLD"          # 持仓中（确认趋势，持有为主）
     EXIT = "EXIT"          # 退出过程（收到退出信号，执行减仓/清仓）
     COOLDOWN = "COOLDOWN"  # 冷却期（平仓后限制短期内反向操作）
+
+
+class TradePlan(BaseModel):
+    """交易计划（v0.8.5 — TradePlan 子系统）
+
+    建仓时根据当时所有信息（技术面/消息面/前景）一次性定下：
+    入场理由、止损、止盈分档、失效条件、最长持有期。
+    之后每天只检查"计划条件是否触发"，不再被日常波动牵着走。
+
+    设计原则（来源：策略库望周知大纲 ch40-41 + 第48章止损位设置）：
+    1. 七要素：买什么 / 为什么买 / 什么时候买 / 买多少 / 止盈目标 / 失效条件 / 最长持有期
+    2. 止损单向上移：current_stop ≥ initial_stop，trailing 后只升不降
+    3. 计划可调整但需"科学统计 + 金融分析"依据：每次 adjustments 必须有 source 锚点
+    4. AI 辅助建议、用户最终决策：所有调整需 source=user 才真正生效
+    """
+
+    # 七要素（望周知大纲 ch40-41）
+    plan_id: str = Field(description="计划唯一标识（uuid 或 stockcode_opentdate）")
+    opened_at: str = Field(description="建仓日期 YYYY-MM-DD")
+    why_buy: str = Field(description="为什么买 — thesis 文本（AI 生成 + 用户编辑）")
+    when_buy: str = Field(description="什么时候买 — 进场触发条件描述（如：MA20 上方 + 量比 1.5）")
+    how_much: float = Field(description="目标仓位比例（0-1）")
+    when_sell_targets: list[float] = Field(
+        default_factory=list,
+        description="止盈分档目标价（绝对价，如 [1650.0, 1800.0]）"
+    )
+    when_sell_invalidate: list[str] = Field(
+        default_factory=list,
+        description="失效条件文本列表（如['跌破MA60+成交量异常', '出现重大利空']）"
+    )
+
+    # 风控核心
+    locked_initial_stop: float = Field(description="建仓时定的初始止损价（绝对价，单向上移基线）")
+    current_stop: float = Field(description="当前止损价（≥ initial_stop，trailing 后单调上移）")
+    max_hold_days: int = Field(default=90, description="最长持有天数（中线 90 / 短线 30 / 趋势 180）")
+
+    # 基本面/前景（AI 生成，用户可改）
+    fundamental_outlook: Literal["bullish", "neutral", "bearish"] = Field(
+        default="neutral",
+        description="基本面前景判断 — 影响 PlanGuard 是否压制 weak_sell"
+    )
+    thesis_sources: list[str] = Field(
+        default_factory=list,
+        description="AI 引用的策略库章节 / 新闻摘要锚点（如['ch48-止损方法', 'news-2026-06-15-消费板块修复']）"
+    )
+
+    # 调整审计
+    adjustments: list[dict] = Field(
+        default_factory=list,
+        description="计划调整历史 [{date, field, old, new, reason, source}]，source: user / ai_suggested / auto_trailing"
+    )
 
 
 class StockData(BaseModel):

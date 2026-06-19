@@ -1332,6 +1332,25 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
         console.print(table)
 
+        # v0.8.5 TradePlan：列出所有有计划的持仓，让用户跑 pos 时看见计划核心字段
+        with_plan = [p for p in positions if p.trade_plan is not None]
+        if with_plan:
+            console.print(f"\n[bold cyan]📋 交易计划摘要（{len(with_plan)} 只有计划）[/bold cyan]")
+            for pos in with_plan:
+                tp = pos.trade_plan
+                outlook_color = {"bullish": "green", "neutral": "yellow", "bearish": "red"}.get(tp.fundamental_outlook, "white")
+                targets = " / ".join(f"¥{t:.2f}" for t in tp.when_sell_targets) if tp.when_sell_targets else "-"
+                console.print(
+                    f"  [cyan]{pos.stock_code}[/cyan] {pos.stock_name}: "
+                    f"止损 [red]¥{tp.current_stop:.2f}[/red] (初始 ¥{tp.locked_initial_stop:.2f}) | "
+                    f"止盈 {targets} | "
+                    f"持有上限 {tp.max_hold_days} 天 | "
+                    f"前景 [{outlook_color}]{tp.fundamental_outlook}[/{outlook_color}]"
+                )
+                console.print(f"    [dim]thesis: {tp.why_buy[:60]}{'...' if len(tp.why_buy) > 60 else ''}[/dim]")
+        else:
+            console.print(f"\n[dim]💡 提示：持仓尚无 TradePlan。下次跑 `pos add` 时系统会自动 AI 辅助生成交易计划（v0.8.5 新增）[/dim]")
+
     elif action == "add":
         if not stock_code:
             console.print("[red]请指定股票代码[/red]")
