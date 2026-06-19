@@ -1293,6 +1293,86 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict", lay
         console.print(f"  [red]最大回撤 {result.max_drawdown_pct:.1f}% 较大，策略风险较高。[/red]")
 
 
+def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: float, ratio: float):
+    """v0.8.5 阶段 1.2：建仓后调用 TradePlanGenerator 生成草稿 + Y/n 交互。
+
+    设计：
+    - 优先尝试拉实时 StockData（akshare），让 generator 用真实 ATR/MA 算
+    - 拉数据失败 → 走规则版兜底（仍能算 8% 止损）
+    - 用户 n 跳过 → 不附加 plan，提示 pos plan 命令后续手动补
+    """
+    from src.core.trade_plan import TradePlanGenerator
+
+    console.print(f"\n[bold cyan]🤖 正在为 {stock_code} {stock_name} 生成交易计划草稿...[/bold cyan]")
+
+    # 尝试拉实时数据（含 ATR/MA）
+    stock_data = None
+    try:
+        from src.data.akshare_client import get_stock_data
+        stock_data = get_stock_data(stock_code)
+        if stock_data:
+            console.print(f"   [green]✓[/green] 读取技术面（ATR={stock_data.atr_14}, MA20={stock_data.ma20}, MA60={stock_data.ma60}）")
+        else:
+            console.print(f"   [yellow]⚠[/yellow] 技术面数据不可用，走规则版兜底")
+    except Exception as e:
+        logger.warning(f"TradePlan 数据拉取失败: {e}")
+        console.print(f"   [yellow]⚠[/yellow] 数据拉取失败（{type(e).__name__}），走规则版兜底")
+
+    # RAG（可选）
+    rag_service = None
+    try:
+        from src.rag.service import get_rag_service
+        rag_service = get_rag_service()
+    except Exception:
+        pass
+
+    gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
+    try:
+        plan, meta = gen.generate(
+            stock_code=stock_code, stock_name=stock_name,
+            entry_price=entry_price, ratio=ratio, stock_data=stock_data,
+        )
+    except Exception as e:
+        logger.error(f"TradePlan 生成失败: {e}")
+        console.print(f"   [red]✗ 生成失败: {e}[/red]")
+        console.print(f"   [dim]可后续手动编辑 portfolio.yaml 的 trade_plan 字段[/dim]")
+        return
+
+    # 展示草稿
+    outlook_color = {"bullish": "green", "neutral": "yellow", "bearish": "red"}.get(plan.fundamental_outlook, "white")
+    console.print(f"\n[bold]📋 计划草稿[/bold]")
+    console.print(f"  why_buy: {plan.why_buy}")
+    console.print(f"  when_buy: {plan.when_buy}")
+    console.print(f"  how_much: {plan.how_much:.0%} 仓位")
+    console.print(f"  止盈分档: {' / '.join(f'¥{t:.2f}' for t in plan.when_sell_targets)}")
+    console.print(f"  失效条件:")
+    for c in plan.when_sell_invalidate:
+        console.print(f"    - {c}")
+    console.print(f"  [red]locked_initial_stop: ¥{plan.locked_initial_stop:.2f}[/red]")
+    console.print(f"  max_hold_days: {plan.max_hold_days} 天")
+    console.print(f"  fundamental_outlook: [{outlook_color}]{plan.fundamental_outlook}[/{outlook_color}]")
+    console.print(f"  [dim]thesis_sources: {len(plan.thesis_sources)} 条锚点[/dim]")
+
+    # 元数据提示
+    if meta.get("fallback_reasons"):
+        console.print(f"  [dim]⚠ 降级提示: {' / '.join(meta['fallback_reasons'])}[/dim]")
+
+    # Y/N 交互
+    try:
+        answer = input("\n是否采用此计划草稿？[Y/n]（n=跳过，可后续编辑 portfolio.yaml 补） ").strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        answer = "n"
+
+    if answer in ("", "y", "yes"):
+        if pm.attach_plan(stock_code, plan):
+            console.print(f"[green]✓ 交易计划已保存到 portfolio.yaml[/green]")
+            console.print(f"  [dim]后续跑 `scan` 时 PlanGuard 会按此计划压制 weak_sell（计划未失效时不卖）[/dim]")
+        else:
+            console.print(f"[red]✗ 附加失败（持仓不存在？）[/red]")
+    else:
+        console.print(f"[dim]已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补[/dim]")
+
+
 def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0, ratio: float = 0.20):
     """持仓管理子命令"""
     pm = PortfolioManager()
@@ -1368,6 +1448,11 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"[green]✓ 已添加持仓: {name or stock_code} ({stock_code})[/green]")
         console.print(f"  仓位: {ratio:.0%}" + (f"  开仓价: {price:.2f}" if price > 0 else ""))
 
+        # v0.8.5 阶段 1.2：AI 辅助建仓引导器
+        # 入场价存在时自动生成 TradePlan 草稿，缺失则跳过（用户可后续手动补）
+        if price > 0:
+            _try_attach_trade_plan(pm, stock_code, name or stock_code, price, ratio)
+
     elif action == "remove":
         if not stock_code:
             console.print("[red]请指定股票代码[/red]")
@@ -1379,6 +1464,46 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         pos = pm.get_position(stock_code)
         pm.remove_position(stock_code)
         console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
+
+    elif action == "plan":
+        # v0.8.5 阶段 1.2：查看某只持仓的完整 TradePlan
+        if not stock_code:
+            console.print("[red]请指定股票代码（用法：pos plan 600519）[/red]")
+            return
+        if not pm.has_position(stock_code):
+            console.print(f"[yellow]⚠ {stock_code} 无持仓记录[/yellow]")
+            return
+        pos = pm.get_position(stock_code)
+        if pos.trade_plan is None:
+            console.print(f"[yellow]⚠ {stock_code} {pos.stock_name} 暂无 TradePlan[/yellow]")
+            console.print(f"[dim]💡 删除后重新 `pos add` 时会自动生成（v0.8.5 新增）[/dim]")
+            return
+        tp = pos.trade_plan
+        outlook_color = {"bullish": "green", "neutral": "yellow", "bearish": "red"}.get(tp.fundamental_outlook, "white")
+        console.print(f"\n[bold cyan]📋 {stock_code} {pos.stock_name} — 交易计划[/bold cyan]")
+        console.print(f"  plan_id: {tp.plan_id}")
+        console.print(f"  opened_at: {tp.opened_at}")
+        console.print(f"  why_buy: {tp.why_buy}")
+        console.print(f"  when_buy: {tp.when_buy}")
+        console.print(f"  how_much: {tp.how_much:.0%} 仓位")
+        console.print(f"  止盈分档: {' / '.join(f'¥{t:.2f}' for t in tp.when_sell_targets)}")
+        console.print(f"  失效条件:")
+        for c in tp.when_sell_invalidate:
+            console.print(f"    - {c}")
+        console.print(f"  [red]locked_initial_stop: ¥{tp.locked_initial_stop:.2f}[/red]")
+        console.print(f"  [red]current_stop: ¥{tp.current_stop:.2f}[/red] (单向上移)")
+        console.print(f"  max_hold_days: {tp.max_hold_days} 天")
+        console.print(f"  fundamental_outlook: [{outlook_color}]{tp.fundamental_outlook}[/{outlook_color}]")
+        if tp.thesis_sources:
+            console.print(f"  [dim]thesis_sources:[/dim]")
+            for s in tp.thesis_sources:
+                console.print(f"    [dim]- {s}[/dim]")
+        if tp.adjustments:
+            console.print(f"\n  [bold]调整审计（共 {len(tp.adjustments)} 条）[/bold]")
+            for adj in tp.adjustments[-5:]:  # 只显示最近 5 条
+                console.print(f"    {adj.get('date', '?')} {adj.get('field', '?')}: {adj.get('old', '?')} → {adj.get('new', '?')} ({adj.get('source', '?')}: {adj.get('reason', '?')})")
+        else:
+            console.print(f"  [dim]adjustments: 暂无调整记录[/dim]")
 
 
 def scan_market(

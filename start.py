@@ -69,6 +69,8 @@ def show_help():
     print("│  ★ 持仓                                            │")
     print("│    pos                    查看持仓列表              │")
     print("│    pos add <代码> [名称] [价格] [仓位]              │")
+    print("│      ↑ 自动 AI 辅助生成 TradePlan 草稿（v0.8.5）    │")
+    print("│    pos plan <代码>        查看完整交易计划          │")
     print("│    pos rm  <代码>         删除持仓记录              │")
     print("│                                                    │")
     print("│  ★ 其他                                            │")
@@ -224,8 +226,14 @@ def parse_input(user_input: str):
                 print("  [!] 用法: pos rm <代码>")
                 return None
             return ("pos_remove", {"stock_code": parts[2]})
+        elif sub in ("plan", "p"):
+            # v0.8.5：查看某只持仓的完整 TradePlan
+            if len(parts) < 3:
+                print("  [!] 用法: pos plan <代码>")
+                return None
+            return ("pos_plan", {"stock_code": parts[2]})
         else:
-            print(f"  [!] 未知: pos {sub}  用法: pos / pos add / pos rm")
+            print(f"  [!] 未知: pos {sub}  用法: pos / pos add / pos rm / pos plan")
             return None
 
     # ── 开关 ──
@@ -378,6 +386,9 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "pos_remove":
         manage_positions("remove", stock_code=args.get("stock_code", ""))
+
+    elif mode == "pos_plan":
+        manage_positions("plan", stock_code=args.get("stock_code", ""))
 
     elif mode == "chat":
         from src.chat.agent import run_chat_repl

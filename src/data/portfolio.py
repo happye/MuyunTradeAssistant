@@ -295,6 +295,22 @@ class PortfolioManager:
             del positions[stock_code]
             self._save()
 
+    def attach_plan(self, stock_code: str, plan: TradePlan) -> bool:
+        """为已存在持仓附加 TradePlan（v0.8.5）。
+
+        Args:
+            stock_code: 股票代码
+            plan: TradePlan 实例（建议由 TradePlanGenerator 生成 + 用户编辑后传入）
+
+        Returns:
+            True 表示附加成功；False 表示持仓不存在
+        """
+        if "positions" not in self._data or stock_code not in self._data["positions"]:
+            return False
+        self._data["positions"][stock_code]["trade_plan"] = plan.model_dump()
+        self._save()
+        return True
+
     def update_from_strategy_decision(
         self,
         stock_code: str,
