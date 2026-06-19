@@ -73,6 +73,10 @@ def show_help():
     print("│    pos plan <代码>        查看完整交易计划          │")
     print("│    pos rm  <代码>         删除持仓记录              │")
     print("│                                                    │")
+    print("│  ★ 笨总「超景气价值投机」(v0.8.6.1)                │")
+    print("│    bz [代码/名称]         6 维交互式打分            │")
+    print("│      (来自 B站「笨笨的韭菜」up 主教学体系)         │")
+    print("│                                                    │")
     print("│  ★ 其他                                            │")
     print("│    noai                   切换 AI 开关（纯技术面）  │")
     print("│    debug                  切换 AI 调试模式          │")
@@ -243,9 +247,120 @@ def parse_input(user_input: str):
         return ("debug", {})
     if cmd == "chat":
         return ("chat", {})
+    if cmd in ("bz", "benzhong", "笨总"):
+        # v0.8.6.1: 笨总「超景气价值投机」6 维打分（交互式）
+        # 可选第 2 参数：股票代码 / 名称（仅作元数据，不查行情）
+        meta = parts[1] if len(parts) >= 2 else ""
+        return ("benzhong", {"meta": meta})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
     return None
+
+
+# ── 命令执行 ──────────────────────────────────────────────
+def _ask_score(prompt: str, default: float = 0.0) -> float:
+    """交互式询问 0-100 分数，回车用默认值。"""
+    try:
+        ans = input(f"  {prompt}（0-100，回车={default}）: ").strip()
+        if not ans:
+            return default
+        v = float(ans)
+        return max(0.0, min(100.0, v))
+    except (ValueError, EOFError, KeyboardInterrupt):
+        return default
+
+
+def run_benzhong_scoring(meta: str = ""):
+    """v0.8.6.1：笨总「超景气价值投机」交互式 6 维打分。
+
+    实现来源：投资策略（持续更新）/笨总教学 bilibili-笨笨的韭菜/
+              笨总课件/笨总选股打分表.xlsx
+    """
+    from src.core.benzhong import score_one
+
+    print()
+    print("=" * 60)
+    print("  📊 笨总「超景气价值投机」6 维打分")
+    print("  来源：B 站 up 主「笨笨的韭菜」教学体系")
+    if meta:
+        print(f"  标的: {meta}")
+    print("=" * 60)
+    print()
+    print("⚠ 大前提：必须先确认本股所在行业是高景气 / 现象级拐点已出现")
+    print("  否则打分模型失效（教学 2 反面案例：中免 0 景气度 = 模型作废）")
+    print()
+    print("请逐项打分（每项 0-100，回车跳过给 0 分）：")
+    print()
+
+    ip = _ask_score("1️⃣ 行业景气度（权重 20%）", 0)
+    if ip == 0:
+        print()
+        print("⚠ 行业景气度=0 → 大前提失效，本次打分无意义。")
+        print("  建议先回去识别现象级拐点事件，再来打分。")
+        print()
+        return
+
+    bp = _ask_score("2️⃣ 业务纯度（主营占比，权重 40% 最重要）", 100)
+    vp = _ask_score("3️⃣ 历史估值位置（近 3 年最低价 200% 内=满分，权重 25%）", 50)
+    il = _ask_score("4️⃣ 细分行业龙头（全球/国内/A股龙头，权重 15%）", 80)
+    mr = _ask_score("5️⃣ 市场辨识度（提产品第一反应是它，权重 20%）", 80)
+    rd = _ask_score("6️⃣ 个股风险值（扣分项，0=最好。定增/减持/官司各 +20）", 0)
+
+    print()
+    print("7️⃣ 全市场流动性（影响系数）：")
+    try:
+        liq_str = input("   单日成交额（万亿，如 1.2，回车=1.0）: ").strip()
+        liq = float(liq_str) if liq_str else 1.0
+    except (ValueError, EOFError):
+        liq = 1.0
+
+    s = score_one(
+        industry_prosperity=ip,
+        business_purity=bp,
+        valuation_position=vp,
+        industry_leader=il,
+        market_recognition=mr,
+        risk_deduction=rd,
+        market_turnover_trillion=liq,
+        stock_code=meta,
+        stock_name=meta,
+    )
+
+    # 输出结果
+    print()
+    print("─" * 60)
+    print(f"  📋 打分明细（流动性系数 ×{s.liquidity_coeff}）")
+    print("─" * 60)
+    contribs = s.contributions
+    print(f"  行业景气度  ×0.20 = {contribs['industry_prosperity']:>+6.2f}")
+    print(f"  业务纯度    ×0.40 = {contribs['business_purity']:>+6.2f}")
+    print(f"  历史估值    ×0.25 = {contribs['valuation_position']:>+6.2f}")
+    print(f"  细分龙头    ×0.15 = {contribs['industry_leader']:>+6.2f}")
+    print(f"  市场辨识度  ×0.20 = {contribs['market_recognition']:>+6.2f}")
+    print(f"  个股风险值  ×-0.20= {contribs['risk_deduction']:>+6.2f}（扣分）")
+    print(f"  原始累加         = {s.raw_sum:>+6.2f}")
+    print()
+
+    grade = s.grade()
+    grade_label = {
+        "A": "🏆 A 级 — 超优质（90+）",
+        "B": "✅ B 级 — 优秀（80-90，可买入）",
+        "C": "🟡 C 级 — 可观察（60-80）",
+        "D": "🔻 D 级 — 勉强观望（40-60）",
+        "F": "❌ F 级 — 放弃（< 40）",
+    }[grade]
+    print(f"  💯 总分：{s.total_score} → {grade_label}")
+    print("─" * 60)
+
+    warn = s.precondition_warning()
+    if warn:
+        print()
+        print(f"  {warn}")
+
+    print()
+    print("📚 评分依据：教学 2 + 笨总选股打分表.xlsx")
+    print("   案例对照：HND（83.2 B 级买入）/ THS（84.6 B 级买入）/ 中免（0 景气度作废）")
+    print()
 
 
 # ── 命令执行 ──────────────────────────────────────────────
@@ -394,6 +509,10 @@ def run_cli(mode: str, args: dict):
         from src.chat.agent import run_chat_repl
         config = load_config()
         run_chat_repl(config)
+
+    elif mode == "benzhong":
+        # v0.8.6.1: 笨总「超景气价值投机」6 维交互式打分
+        run_benzhong_scoring(meta=args.get("meta", ""))
 
 
 # ── 主循环 ────────────────────────────────────────────────
