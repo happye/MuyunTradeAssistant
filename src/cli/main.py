@@ -525,6 +525,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 has_position=has_position,
                 entry_price=pos.entry_price if pos else None,
                     high_since_entry=pos.high_since_entry if pos else None,
+                trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
             if hasattr(strategy_decision,'entry_exit') and strategy_decision.entry_exit:
@@ -835,6 +836,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             has_position=has_position,
             entry_price=pos.entry_price if pos else None,
                     high_since_entry=pos.high_since_entry if pos else None,
+            trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
         )
         display_result(result, strategy_decision, execution_eval, ai_result)
 

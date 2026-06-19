@@ -119,6 +119,8 @@ class Orchestrator:
         entry_price: Optional[float] = None,
         position_tier: str = "pilot",
         high_since_entry: Optional[float] = None,
+        trade_plan=None,  # v0.8.5 阶段 1.3: TradePlan 实例（来自 PortfolioManager）
+        today: Optional[str] = None,  # v0.8.5: 用于 PlanGuard 的时间止损判定
     ) -> tuple[DecisionResult, StrategyDecision, ExecutionEvaluation, Optional[AIModifierResult]]:
         """执行完整分析流程（v0.8.0 六层架构）
 
@@ -336,6 +338,14 @@ class Orchestrator:
 
         logger.info(f"Strategy decision: {strategy_decision.decision} "
                      f"(lifecycle: {strategy_decision.lifecycle_before.value}→{strategy_decision.lifecycle_after.value})")
+
+        # v0.8.5 阶段 1.3: PlanGuard — 根据 TradePlan 调整 strategy_decision
+        # 只压制 weak_sell（计划未失效时不卖）；致命止损/趋势退出/止盈分批不动
+        if trade_plan is not None:
+            from src.core.plan_guard import PlanGuard
+            guard = PlanGuard()
+            strategy_decision = guard.evaluate(strategy_decision, trade_plan, data, today)
+            logger.debug(f"PlanGuard evaluated; final decision={strategy_decision.decision}")
 
         # Layer 5: 执行层评估（Execution Layer）
         volume_ratio = None
