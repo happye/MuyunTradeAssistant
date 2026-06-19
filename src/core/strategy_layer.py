@@ -363,17 +363,26 @@ class StrategyLayer:
         tier_params = self._get_state_params(market_state)
         tier_label = tier_params["tier_label"]
         cap = self.POSITION_CAPS.get(market_state, 0.30)
-        # 三阶段：强 BUY 时实际上限（牛市走 cap，其余走 OPEN+ADD）
-        buy_cap_actual = cap if market_state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+        # 阶段 3.3：质量信号判定（与 _calculate_position 同口径）
+        # 高质量定义：价格 > MA20 > MA60 — Weinstein S2 上升期
+        _hq = (
+            data.ma20 is not None and data.ma60 is not None
+            and data.price > data.ma20 and data.ma20 > data.ma60
+        )
+        # 三阶段+3.3：强 BUY 时实际上限（牛市+高质量才走 cap，其余走 OPEN+ADD）
+        buy_cap_actual = cap if (market_state == MarketState.RISK_ON and _hq) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
         # ISS-032：金字塔仓位管理是否启用（用户可感知）
         pyramid_label = "金字塔启用" if self.pyramid is not None else "金字塔未启用"
+        # 阶段 3.3：质量信号是否成立（用户可感知）
+        quality_label = "高质量(MA20+S2)" if _hq else "普通信号"
         tier_summary = (
             f"参数档[{tier_label}]: "
             f"止盈保留{int(tier_params['take_profit_keep']*100)}% / "
             f"浮盈门槛{int(tier_params['take_profit_min_gain_pct']*100)}% / "
             f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}% / "
             f"强买上限{int(buy_cap_actual*100)}% / "
-            f"{pyramid_label}"
+            f"{pyramid_label} / "
+            f"{quality_label}"
         )
         strategy_reasons.insert(0, tier_summary)
 
@@ -618,6 +627,17 @@ class StrategyLayer:
         # ISS-033 二阶段：take_profit_keep 按市场状态分档
         take_profit_keep = self._get_state_params(state)["take_profit_keep"]
 
+        # v0.8.5 阶段 3.3: BUY 信号质量过滤
+        # 只有"高质量信号"才允许在 RISK_ON 时走高仓位上限（避免容量放大错股亏损）
+        # 高质量定义：价格 > MA20 上方 + MA20 > MA60（多头排列，即 Weinstein S2）
+        stock = decision_result.stock
+        high_quality_signal = (
+            stock is not None
+            and stock.ma20 is not None and stock.ma60 is not None
+            and stock.price > stock.ma20
+            and stock.ma20 > stock.ma60
+        )
+
         if final_signal == SignalType.SELL:
             if current_position_ratio <= 0:
                 return PositionAction.STAY_OUT, 0.0
@@ -639,10 +659,9 @@ class StrategyLayer:
                 return PositionAction.REDUCE, target
 
         elif final_signal == SignalType.BUY:
-            # ISS-033 三阶段：强 BUY 信号在牛市/震荡时上限直接走 cap，不被 OPEN+ADD=0.40 封顶。
-            # 之前 min(OPEN+ADD=0.40, cap=0.60) 始终封顶 0.40，导致 RISK_ON 仓位上限形同虚设。
+            # v0.8.5 阶段 3.3: 高仓位上限只给 (RISK_ON + 高质量信号) 双条件
             if buy_score >= 0.4:
-                target = cap if state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 return PositionAction.OPEN, target
@@ -655,8 +674,8 @@ class StrategyLayer:
 
         elif final_signal == SignalType.HOLD:
             if buy_score > sell_score * 1.5:
-                # 同上：HOLD+强 BUY 偏向时也允许牛市走 cap
-                target = cap if state == MarketState.RISK_ON else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                # 同上：HOLD+强 BUY 偏向时也按双条件判定
+                target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 else:
