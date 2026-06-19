@@ -809,3 +809,30 @@ P3（已取消）:
 - **更新记录**:
   - 2026-06-18: 创建，ISS-027 第二轮回测发现茅台 0 交易异常
   - 2026-06-18: ✅ 已解决（同会话），三个 reject 计数器 + CLI 诊断行精确化 + 建议资金反推
+
+---
+
+### ISS-035: v0.8.5 TradePlan 子系统 — 阶段 1 完成
+- **状态**: ✅ 已解决（2026-06-19）
+- **优先级**: P0（解决"前景良好的股票被日常波动卖飞"的核心痛点）
+- **关联方向**: 用户反馈 — "无论如何，要根据现有的各方面消息面、技术面来设置卖点，这样才能稳定持有"
+- **背景**：当前架构是"每天重评估"——每天根据当下技术+消息面输出 BUY/SELL/HOLD，等于每天重新决定要不要持有。一只前景良好的股票遇到一天负面消息或市场波动就被工具输出"卖出"，**不受任何"我建仓时为什么买"的逻辑约束**。
+- **方案**（接手会话规划，详见 `C:/Users/Crux/.claude/plans/dreamy-juggling-yeti.md`）：
+  - 阶段 1：TradePlan 持久化 + AI 辅助生成 + 动态调整 ✅ 本次完成
+  - 阶段 2：扩样本回测（沪深 300 抽样 30 只）— 待开
+  - 阶段 3：信号质量过滤（BUY + Weinstein S2 等过滤）— 待开
+- **阶段 1 五子任务全部完成**：
+  - **1.1 数据模型**（commit `c16ac49`）：`src/data/models.py:TradePlan` Pydantic + `PositionRecord.trade_plan` 字段 + portfolio.yaml 向后兼容
+  - **1.2 AI 辅助建仓引导器**（commit `d528a68`）：`src/core/trade_plan/generator.py` 规则版优先（2×ATR 止损 + Weinstein 阶段 max_hold 分档）+ AI 增强可选 + `pos add` 自动弹出 plan 草稿 + `pos plan <code>` 命令
+  - **1.3 PlanGuard 层**（commit `5847100`）：`src/core/plan_guard.py` 4 条规则（压制 weak_sell + 安全网保留 + 时间止损 + 致命止损）+ 接入 `Orchestrator.analyze()`
+  - **1.4 AI 辅助动态调整**（commit `80f43a6`）：`src/core/trade_plan/adjuster.py` 4 类触发器（trailing/target/max_hold/invalidate）+ 接入 scan 持仓路径
+  - **1.5 测试 + 文档**（本 commit）：`tests/test_trade_plan.py` 22 测试 PASS + `docs/TradePlan_使用指南.md` 完整使用文档 + 使用手册场景 D + AGENTS.md 七层架构图加 PlanGuard
+- **用户可感知（4 处）**：
+  - `pos add` 自动弹出 plan 草稿 + Y/n 交互
+  - `pos plan <code>` 新命令查看完整计划
+  - `pos` 列表底部"📋 交易计划摘要"
+  - `scan` 持仓后追加"💡 计划调整建议"段（含 4 类触发器）
+- **架构改动**：七层 → 八层（Signal → Decision → Event → AI Modifier → EntryExit → Strategy → **PlanGuard** → Execution）
+- **不在范围**：真实基本面数据接入（财务/估值/季报）、AI 增强生成 thesis（留接口未实现）— 留待后续
+- **更新记录**:
+  - 2026-06-19: 接手会话规划 + 实施 + 验收（22 单测全 PASS）

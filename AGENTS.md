@@ -25,13 +25,15 @@ Python 3.11+，包管理器 uv。不需要手动 pip install。
 
 AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回测 + 决策辅助。
 
-七层架构：Signal → Decision → Event → AI Modifier → EntryExit → Strategy → Execution
+七层架构：Signal → Decision → Event → AI Modifier → EntryExit → Strategy → **PlanGuard** → Execution
 
 > 注：EntryExit 在 AI Modifier 与 Strategy 之间作为「最高优先级覆盖步」实现（`src/core/orchestrator.py:255-301`），不是独立层级。
+>
+> v0.8.5 新增 **PlanGuard**（`src/core/plan_guard.py`）：在 Strategy 之后、Execution 之前，根据 `TradePlan` 决定是否压制 weak_sell。详见 `docs/TradePlan_使用指南.md`。
 
-核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索。
+核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）。
 
-当前版本：**v0.8.4**（选股体系升级）。
+当前版本：**v0.8.5**（TradePlan 子系统：建仓时一次性定下计划，按计划执行不被日常波动牵着走）。
 
 ---
 
@@ -179,6 +181,7 @@ docs/               # 详细文档
 |------|------|
 | `README.md` | 项目概述、架构图、版本历史、技术栈 |
 | `使用手册.md` | 命令详解、工作流、买卖点说明、常见问题 — **首部含「🌱 新手入门 5 分钟」+ 末尾含「📖 术语对照表」**，专业术语看不懂时翻这里 |
+| `docs/TradePlan_使用指南.md` | **v0.8.5 新增**：建仓 plan 草稿生成、PlanGuard 压制 weak_sell、动态调整建议——让股票"持得住" |
 | `docs/技术架构文档.md` | 七层架构详解、数据流、模块关系 |
 | `docs/AI系统说明.md` | AI 角色、影响范围、可控性、降级策略 |
 | `docs/v0.8.3_里程碑.md` | 里程碑进度（含 v0.8.4） |
