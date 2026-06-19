@@ -15,5 +15,6 @@
 """
 
 from src.core.trade_plan.generator import TradePlanGenerator, generate_plan_draft
+from src.core.trade_plan.adjuster import TradePlanAdjuster
 
-__all__ = ["TradePlanGenerator", "generate_plan_draft"]
+__all__ = ["TradePlanGenerator", "generate_plan_draft", "TradePlanAdjuster"]

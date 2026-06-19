@@ -602,6 +602,21 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 d = strategy_decision.divergence
                 console.print(f"  [yellow]⚠ 分歧: 技术面{d['technical_signal']} vs AI情绪{d['ai_sentiment']} — AI仅作风险提示[/yellow]")
 
+            # v0.8.5 阶段 1.4: TradePlan 动态调整建议
+            if pos.trade_plan is not None:
+                from src.core.trade_plan import TradePlanAdjuster
+                adj = TradePlanAdjuster()
+                suggestions = adj.suggest(
+                    pos.trade_plan, stock_data,
+                    high_since_entry=pos.high_since_entry,
+                )
+                if suggestions:
+                    console.print(f"  [bold cyan]💡 计划调整建议（{len(suggestions)} 条）[/bold cyan]")
+                    for i, s in enumerate(suggestions, 1):
+                        marker = "📋" if s.get("actionable") else "⚠"
+                        console.print(f"    {marker} [{s['trigger']}] {s['reason']}")
+                    console.print(f"  [dim]💡 跑 `pos plan {pos.stock_code}` 查看完整计划，编辑 portfolio.yaml 应用调整[/dim]")
+
             # 更新持仓
             pm.suggest_update(
                 pos.stock_code, stock_data.stock_name,
