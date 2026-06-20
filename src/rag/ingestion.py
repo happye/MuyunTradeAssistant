@@ -247,13 +247,18 @@ def load_strategy_files(
         return []
 
     documents = []
-    txt_files = sorted(dir_path.glob("*.txt"))
+    # v0.8.6.2: rglob 递归扫子目录 + 同时支持 .txt / .md / .html 三种格式
+    # 为了让 投资策略（持续更新）/笨总教学.../*.md 也能进 RAG
+    txt_files = sorted(
+        list(dir_path.rglob("*.txt"))
+        + list(dir_path.rglob("*.md"))
+    )
 
     if not txt_files:
-        logger.warning(f"策略目录下无txt文件: {knowledge_dir}")
+        logger.warning(f"策略目录下无 txt/md 文件: {knowledge_dir}")
         return []
 
-    logger.info(f"开始摄入策略文件: {len(txt_files)}个文件")
+    logger.info(f"开始摄入策略文件: {len(txt_files)}个文件（含 .txt 和 .md）")
 
     for txt_file in txt_files:
         try:

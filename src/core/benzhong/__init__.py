@@ -5,7 +5,10 @@
 
 模块：
 - scorer：6 维打分体系（基于 xlsx 课件）
-- （后续阶段补充：event_detector / mode_classifier / exit_signals）
+- auto_scorer：6 维 AI 自动评分调度器（v0.8.6.2）
+- data_provider：财务/公告等数据接入（v0.8.6.2）
+- cache：评分结果文件缓存（v0.8.6.2）
+- dimensions/：6 个维度独立评分器（v0.8.6.2）
 """
 
 from src.core.benzhong.scorer import (
@@ -13,5 +16,12 @@ from src.core.benzhong.scorer import (
     score_one,
     liquidity_coefficient,
 )
+from src.core.benzhong.auto_scorer import auto_score, AutoScoredResult
 
-__all__ = ["BenzhongScore", "score_one", "liquidity_coefficient"]
+__all__ = [
+    "BenzhongScore",
+    "score_one",
+    "liquidity_coefficient",
+    "auto_score",
+    "AutoScoredResult",
+]

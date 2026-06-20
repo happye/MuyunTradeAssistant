@@ -74,7 +74,9 @@ def show_help():
     print("│    pos rm  <代码>         删除持仓记录              │")
     print("│                                                    │")
     print("│  ★ 笨总「超景气价值投机」(v0.8.6.1)                │")
-    print("│    bz [代码/名称]         6 维交互式打分            │")
+    print("│    bz <代码>             笨总 AI 自动 6 维评分       │")
+    print("│    bz <代码> --refresh   强制刷新（跳过缓存）        │")
+    print("│    bz --manual           旧交互式手动打分（兜底）    │")
     print("│      (来自 B站「笨笨的韭菜」up 主教学体系)         │")
     print("│                                                    │")
     print("│  ★ 其他                                            │")
@@ -248,10 +250,19 @@ def parse_input(user_input: str):
     if cmd == "chat":
         return ("chat", {})
     if cmd in ("bz", "benzhong", "笨总"):
-        # v0.8.6.1: 笨总「超景气价值投机」6 维打分（交互式）
-        # 可选第 2 参数：股票代码 / 名称（仅作元数据，不查行情）
-        meta = parts[1] if len(parts) >= 2 else ""
-        return ("benzhong", {"meta": meta})
+        # v0.8.6.2: bz <code> 自动 AI 评分；bz --manual 走旧交互式；bz --refresh 强制刷新
+        # 解析：parts[1] 可能是代码、--manual、--refresh
+        meta = ""
+        manual = False
+        refresh = False
+        for p in parts[1:]:
+            if p in ("--manual", "-m", "manual"):
+                manual = True
+            elif p in ("--refresh", "-r", "refresh"):
+                refresh = True
+            elif not meta:
+                meta = p
+        return ("benzhong", {"meta": meta, "manual": manual, "refresh": refresh})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
     return None
@@ -270,12 +281,114 @@ def _ask_score(prompt: str, default: float = 0.0) -> float:
         return default
 
 
-def run_benzhong_scoring(meta: str = ""):
-    """v0.8.6.1：笨总「超景气价值投机」交互式 6 维打分。
+def run_benzhong_scoring(meta: str = "", manual: bool = False, refresh: bool = False):
+    """v0.8.6.2：笨总「超景气价值投机」6 维评分。
 
-    实现来源：投资策略（持续更新）/笨总教学 bilibili-笨笨的韭菜/
-              笨总课件/笨总选股打分表.xlsx
+    默认（v0.8.6.2）：自动 AI 评分 — 输入代码直接出 6 维结果
+      bz 600519          → 自动 AI 评分（每维度调 1 次 AI，约 30-60s）
+      bz 600519 --refresh → 强制刷新（跳过缓存）
+      bz --manual         → 旧交互式手动打分（v0.8.6.1 兜底）
     """
+    # manual 模式走旧交互式
+    if manual or not meta:
+        return _run_benzhong_manual(meta)
+
+    # 自动模式
+    return _run_benzhong_auto(meta, force_refresh=refresh)
+
+
+def _run_benzhong_auto(code: str, force_refresh: bool = False):
+    """v0.8.6.2 自动 AI 评分（默认路径）。"""
+    from src.core.benzhong import auto_score
+
+    print()
+    print("=" * 64)
+    print(f"  📊 笨总 AI 自动评分 — {code}")
+    print("=" * 64)
+    print()
+    print("  正在评估 6 个维度（每维度调 AI 1 次 + 数据拉取，预计 30-60s）...")
+    print("  ✓ 命中缓存会秒回；--refresh 强制重算")
+    print()
+
+    try:
+        result = auto_score(code, force_refresh=force_refresh)
+    except KeyboardInterrupt:
+        print("\n  [!] 已取消")
+        return
+    except Exception as e:
+        print(f"\n  [red]✗ 评分失败: {type(e).__name__}: {e}[/red]")
+        print(f"  [dim]可尝试 bz --manual 走交互式兜底[/dim]")
+        return
+
+    bs = result.score
+    meta = result.dimensions_meta
+
+    # 每维度输出
+    dim_labels = [
+        ("industry_prosperity", "1️⃣ 行业景气度"),
+        ("business_purity",     "2️⃣ 业务纯度  "),
+        ("valuation_position",  "3️⃣ 历史估值位置"),
+        ("industry_leader",     "4️⃣ 细分行业龙头"),
+        ("market_recognition",  "5️⃣ 市场辨识度"),
+        ("risk_deduction",      "6️⃣ 个股风险值"),
+    ]
+    for key, label in dim_labels:
+        m = meta.get(key, {})
+        score = m.get("score", 0)
+        conf = m.get("confidence", 0)
+        cached = " (缓存)" if key in result.cache_hits else ""
+        warn_marker = "⚠" if conf < 0.5 else "✓"
+        print(f"  {warn_marker} {label} [conf {conf:.2f}]{cached} = {score:>5.1f} 分")
+        sources = m.get("sources", [])
+        if sources:
+            print(f"      来源：{' / '.join(sources[:3])}")
+        reasoning = m.get("reasoning", "")
+        if reasoning:
+            print(f"      AI: {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
+        for w in m.get("warnings", []):
+            print(f"      [yellow]⚠ {w}[/yellow]")
+        print()
+
+    # 总分
+    print("─" * 64)
+    grade = bs.grade()
+    grade_label = {
+        "A": "🏆 A 级 — 超优质（90+）",
+        "B": "✅ B 级 — 优秀（80-90，可买入）",
+        "C": "🟡 C 级 — 可观察（60-80）",
+        "D": "🔻 D 级 — 勉强观望（40-60）",
+        "F": "❌ F 级 — 放弃（< 40）",
+    }[grade]
+    print(f"  💯 总分：{bs.total_score} → {grade_label}")
+    print(f"  🎯 总体置信度：{result.overall_confidence:.2f}", end="")
+    if result.overall_confidence < 0.5:
+        print("  [yellow]⚠ 偏低（有维度数据缺失/AI 降级）[/yellow]")
+    else:
+        print()
+    if result.cache_hits:
+        print(f"  💾 缓存命中：{len(result.cache_hits)}/6 维度")
+    print("─" * 64)
+
+    # 警告
+    if result.warnings:
+        print()
+        for w in result.warnings:
+            print(f"  [yellow]{w}[/yellow]")
+        print()
+
+    # 大前提警告
+    pre = bs.precondition_warning()
+    if pre:
+        print(f"  [bold red]{pre}[/bold red]")
+        print()
+
+    print(f"  📚 评分依据：笨总教学 + xlsx 打分表（v0.8.6.1 试金石 4 案例已验证）")
+    print(f"  💡 提示：bz {code} --refresh 强制刷新；bz --manual 走交互式兜底")
+    print()
+
+
+def _run_benzhong_manual(meta: str = ""):
+    """v0.8.6.1 交互式手动打分（兜底，保留）。"""
     from src.core.benzhong import score_one
 
     print()
@@ -511,8 +624,12 @@ def run_cli(mode: str, args: dict):
         run_chat_repl(config)
 
     elif mode == "benzhong":
-        # v0.8.6.1: 笨总「超景气价值投机」6 维交互式打分
-        run_benzhong_scoring(meta=args.get("meta", ""))
+        # v0.8.6.2: bz <code> 默认自动 AI 评分；--manual 走旧交互式
+        run_benzhong_scoring(
+            meta=args.get("meta", ""),
+            manual=args.get("manual", False),
+            refresh=args.get("refresh", False),
+        )
 
 
 # ── 主循环 ────────────────────────────────────────────────

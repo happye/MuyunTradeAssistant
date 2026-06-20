@@ -268,10 +268,13 @@ class RAGService:
         if not knowledge_path.exists():
             return fingerprint
 
-        for f in knowledge_path.glob("*.txt"):
+        # v0.8.6.2: rglob 递归 + 同时跟踪 .txt / .md
+        for f in list(knowledge_path.rglob("*.txt")) + list(knowledge_path.rglob("*.md")):
             try:
-                fingerprint[f.name] = os.path.getmtime(f)
-            except OSError:
+                # 用相对路径做 key，避免子目录同名冲突
+                key = str(f.relative_to(knowledge_path))
+                fingerprint[key] = os.path.getmtime(f)
+            except (OSError, ValueError):
                 continue
 
         return fingerprint
@@ -340,3 +343,37 @@ class RAGService:
             return True
 
         return False
+
+
+# v0.8.6.2: 模块级 singleton 工厂（懒加载，失败返回 None 不抛）
+_rag_service_singleton = None
+
+
+def get_rag_service(config: dict = None, auto_initialize: bool = True):
+    """获取 RAGService 单例（懒加载）。
+
+    Args:
+        config: 可选配置；None 时自动从 settings.yaml 加载
+        auto_initialize: True 时自动调 initialize()（首次会构建索引，较慢）
+
+    Returns:
+        RAGService 实例，或 None（初始化失败时）
+    """
+    global _rag_service_singleton
+    if _rag_service_singleton is not None:
+        return _rag_service_singleton
+    try:
+        if config is None:
+            from src.cli.main import load_config
+            config = load_config()
+        svc = RAGService(config)
+        if auto_initialize:
+            svc.initialize()
+        if svc.is_available():
+            _rag_service_singleton = svc
+            return svc
+        logger.warning("RAG service 初始化后不可用（可能配置未启用）")
+        return None
+    except Exception as e:
+        logger.warning(f"RAG service 初始化失败: {type(e).__name__}: {e}")
+        return None

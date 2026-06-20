@@ -855,6 +855,9 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         )
         display_result(result, strategy_decision, execution_eval, ai_result)
 
+        # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
+        _print_benzhong_summary(stock_code, stock_data.stock_name)
+
         # ===== 建议更新持仓 =====
         pm.suggest_update(
             stock_code, stock_data.stock_name,
@@ -1405,6 +1408,54 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
             console.print(f"[red]✗ 附加失败（持仓不存在？）[/red]")
     else:
         console.print(f"[dim]已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补[/dim]")
+
+
+def _print_benzhong_summary(stock_code: str, stock_name: str = ""):
+    """v0.8.6.2: l 命令末尾打印笨总评分摘要（缓存优先，不强制 AI 调用）。
+
+    设计：
+    - 优先读当日缓存（同股同日已跑过 bz 则直接显示）
+    - 缓存缺失 → 只显示提示"跑 bz <code> 获取完整评分"，不自动跑 6 次 AI
+      （避免每次 l 都 30-60s + 6 次 API 调用）
+    """
+    from datetime import datetime
+    from src.core.benzhong import cache
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    console.print(f"\n[bold cyan]📊 笨总评分摘要[/bold cyan]")
+
+    # 检查缓存是否有当日评分
+    dims_to_check = ["industry_prosperity", "business_purity", "valuation_position",
+                     "industry_leader", "market_recognition", "risk_deduction"]
+    cached = {}
+    for dim in dims_to_check:
+        r = cache.get(stock_code, today, dim)
+        if r is not None:
+            cached[dim] = r
+
+    if len(cached) == 6:
+        # 全缓存命中 → 算总分显示
+        from src.core.benzhong import score_one
+        # 流动性用缓存里的（或默认 1.0）
+        mt = cached.get("industry_prosperity", {}).get("market_turnover", 1.0)
+        bs = score_one(
+            industry_prosperity=cached["industry_prosperity"]["score"],
+            business_purity=cached["business_purity"]["score"],
+            valuation_position=cached["valuation_position"]["score"],
+            industry_leader=cached["industry_leader"]["score"],
+            market_recognition=cached["market_recognition"]["score"],
+            risk_deduction=cached["risk_deduction"]["score"],
+            market_turnover_trillion=mt,
+            stock_code=stock_code, stock_name=stock_name,
+        )
+        grade_colors = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}
+        gc = grade_colors.get(bs.grade(), "white")
+        console.print(f"  总分 [bold]{bs.total_score}[/bold] → [{gc}]{bs.grade()} 级[/{gc}]")
+        console.print(f"  [dim]（今日已评分，缓存命中。跑 bz {stock_code} --refresh 可重算）[/dim]")
+    elif len(cached) > 0:
+        console.print(f"  [yellow]部分维度已评分（{len(cached)}/6），跑 bz {stock_code} 完成剩余维度[/yellow]")
+    else:
+        console.print(f"  [dim]今日未评分。跑 [bold]bz {stock_code}[/bold] 获取 6 维 AI 自动评分（约 30-60s）[/dim]")
 
 
 def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0, ratio: float = 0.20):
