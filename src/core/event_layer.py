@@ -39,6 +39,7 @@ from src.data.models import MarketEvent, AIModifierResult, MarketState
 logger = logging.getLogger(__name__)
 
 # AI事件分类的系统提示词
+# v0.8.6.3: 增加笨总现象级事件四要素判定（ISS-041 events）
 EVENT_CLASSIFY_PROMPT = """你是一个专业的A股市场事件分析师。根据提供的新闻内容，判断这是否是一个需要投资者关注的重要事件。
 
 你必须严格按照以下JSON格式输出分析结果，不要输出任何其他内容：
@@ -50,7 +51,13 @@ EVENT_CLASSIFY_PROMPT = """你是一个专业的A股市场事件分析师。根�
   "impact_level": 1-5,
   "scope": "market/sector/stock",
   "duration": "short/medium/long",
-  "summary": "一句话摘要"
+  "summary": "一句话摘要",
+  "four_elements": {
+    "authenticity": 0-100,
+    "virality": 0-100,
+    "scale": 0-100,
+    "timeliness": 0-100
+  }
 }
 
 判断标准：
@@ -65,6 +72,12 @@ EVENT_CLASSIFY_PROMPT = """你是一个专业的A股市场事件分析师。根�
 3. impact_level: 1=可忽略 2=需关注 3=重要 4=重大 5=极端
 4. scope: 影响范围
 5. duration: 预期持续时间
+
+笨总现象级事件四要素（教学3）——只对 is_significant=true 的事件判定，否则各项给50：
+- authenticity 真实性（最重要）：消息是否经得起推敲？单一来源/小道消息/明显夸张→低分；权威媒体/多源报道/数据支撑→高分。注意：你只能基于这条新闻文本判断，无法上网交叉验证，对真实性要保守，疑似伪信号给低分
+- virality 传播性：是否出圈、全民讨论？冷门行业小众消息→低分；社会热点/全民关注→高分
+- scale 规模性：行业体量是否足够大？细分小众领域→低分；万亿级主流产业→高分
+- timeliness 时效性：是否首次发生？首次突破→高分；重复/后续跟进消息→低分
 
 注意：宁可低估影响也不要夸大。只有真正重大的事件才标记为4-5级。"""
 
@@ -596,6 +609,17 @@ class EventLayer:
             if not data.get("is_significant", False):
                 return None
 
+            # v0.8.6.3: 解析四要素（笨总现象级事件，ISS-041 events）
+            four_elements = self._parse_four_elements(data.get("four_elements"))
+
+            # 真实性低 → 事件降级（不真否决，提示用户核实）
+            degraded = False
+            if four_elements and four_elements.get("authenticity", 100) < 30:
+                degraded = True
+                # 真实性存疑的"重大"事件降为"需关注"，避免伪信号放大
+                orig_level = int(data.get("impact_level", 2))
+                data["impact_level"] = max(2, orig_level - 2)
+
             return MarketEvent(
                 event_type=data.get("event_type", "macro"),
                 sentiment=data.get("sentiment", "neutral"),
@@ -605,6 +629,7 @@ class EventLayer:
                 summary=data.get("summary", ""),
                 timestamp=datetime.now().isoformat(),
                 detection_method="ai",
+                four_elements=four_elements,
             )
 
         except Exception as e:
@@ -675,6 +700,12 @@ class EventLayer:
             if not data.get("is_significant", False):
                 return None
 
+            # v0.8.6.3: 解析四要素 + 真实性低降级（同宏观事件逻辑）
+            four_elements = self._parse_four_elements(data.get("four_elements"))
+            if four_elements and four_elements.get("authenticity", 100) < 30:
+                orig_level = int(data.get("impact_level", 2))
+                data["impact_level"] = max(2, orig_level - 2)
+
             return MarketEvent(
                 event_type=data.get("event_type", "earnings"),
                 sentiment=data.get("sentiment", "neutral"),
@@ -686,11 +717,33 @@ class EventLayer:
                 affected_codes=[stock_code],
                 timestamp=datetime.now().isoformat(),
                 detection_method="ai",
+                four_elements=four_elements,
             )
 
         except Exception as e:
             logger.warning(f"AI持仓股事件分类失败 ({stock_code}): {e}")
             return None
+
+    # ===== 笨总四要素（v0.8.6.3，ISS-041 events） =====
+
+    @staticmethod
+    def _parse_four_elements(raw) -> Optional[dict]:
+        """解析 AI 返回的四要素 dict，校验+钳制 0-100。失败返回 None。
+
+        四要素：authenticity(真实性)/virality(传播性)/scale(规模性)/timeliness(时效性)
+        注意：真实性是 AI 基于单条文本的疑似判断，非多源交叉验证。
+        """
+        if not isinstance(raw, dict):
+            return None
+        keys = ("authenticity", "virality", "scale", "timeliness")
+        result = {}
+        for k in keys:
+            v = raw.get(k)
+            try:
+                result[k] = max(0, min(100, float(v)))
+            except (TypeError, ValueError):
+                return None  # 任一要素缺失/非法 → 整体判 None（不半填充）
+        return result
 
     def get_available_rules(self) -> list[dict]:
         """获取所有可用事件规则"""

@@ -856,7 +856,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         display_result(result, strategy_decision, execution_eval, ai_result)
 
         # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
-        _print_benzhong_summary(stock_code, stock_data.stock_name)
+        _print_benzong_summary(stock_code, stock_data.stock_name)
 
         # ===== 建议更新持仓 =====
         pm.suggest_update(
@@ -1410,7 +1410,7 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         console.print(f"[dim]已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补[/dim]")
 
 
-def _print_benzhong_summary(stock_code: str, stock_name: str = ""):
+def _print_benzong_summary(stock_code: str, stock_name: str = ""):
     """v0.8.6.2: l 命令末尾打印笨总评分摘要（缓存优先，不强制 AI 调用）。
 
     设计：
@@ -1419,7 +1419,7 @@ def _print_benzhong_summary(stock_code: str, stock_name: str = ""):
       （避免每次 l 都 30-60s + 6 次 API 调用）
     """
     from datetime import datetime
-    from src.core.benzhong import cache
+    from src.core.benzong import cache
 
     today = datetime.now().strftime("%Y-%m-%d")
     console.print(f"\n[bold cyan]📊 笨总评分摘要[/bold cyan]")
@@ -1435,7 +1435,7 @@ def _print_benzhong_summary(stock_code: str, stock_name: str = ""):
 
     if len(cached) == 6:
         # 全缓存命中 → 算总分显示
-        from src.core.benzhong import score_one
+        from src.core.benzong import score_one
         # 流动性用缓存里的（或默认 1.0）
         mt = cached.get("industry_prosperity", {}).get("market_turnover", 1.0)
         bs = score_one(
@@ -2306,6 +2306,7 @@ def scan_events(ai_debug: bool = False):
     table.add_column("情绪", width=6)
     table.add_column("范围", width=6)
     table.add_column("摘要", style="white", overflow="fold")
+    table.add_column("四要素", style="dim", overflow="fold")
     table.add_column("来源", style="dim", overflow="fold")
     table.add_column("检测方式", style="dim", overflow="fold")
 
@@ -2332,17 +2333,38 @@ def scan_events(ai_debug: bool = False):
         if event.affected_codes:
             affected = f" [{','.join(event.affected_codes[:3])}]"
 
+        # 四要素（仅 AI 检测的事件有）
+        fe = event.four_elements
+        if fe:
+            auth = fe.get("authenticity", 0)
+            auth_color = "red" if auth < 30 else ("yellow" if auth < 60 else "green")
+            fe_str = (f"真[{auth_color}]{auth:.0f}[/{auth_color}] "
+                      f"传{fe.get('virality', 0):.0f} "
+                      f"规{fe.get('scale', 0):.0f} "
+                      f"时{fe.get('timeliness', 0):.0f}")
+        else:
+            fe_str = "-"
+
         table.add_row(
             f"{icon}{event.impact_level}",
             evt_cn,
             f"[{sent_color}]{sent_cn}[/{sent_color}]",
             scp_cn,
             f"{event.summary}{affected}",
+            fe_str,
             (event.source or "")[:30],
             mth_cn,
         )
 
     console.print(table)
+
+    # 真实性存疑事件提示（笨总四要素，真实性<30 已降级，提示用户核实）
+    suspect = [e for e in events
+               if e.four_elements and e.four_elements.get("authenticity", 100) < 30]
+    if suspect:
+        console.print(f"\n[bold red]⚠ 真实性存疑事件 ({len(suspect)}条，已降级，请人工核实):[/bold red]")
+        for event in suspect:
+            console.print(f"  ❓ {event.summary} — 真实性仅 {event.four_elements['authenticity']:.0f}/100（单一来源/疑似伪信号）")
 
     # 高影响事件预警
     high_impact = [e for e in events if e.impact_level >= 4]

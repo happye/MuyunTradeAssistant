@@ -16,10 +16,21 @@
 """
 
 import logging
+import os
 from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+def _fix_curl_ssl_paths():
+    """调用公共 SSL 修复（src.data.source_check.fix_curl_ssl_paths）。
+
+    v0.8.6.3：原本地实现已提取为公共函数，供 news_client 等共享。
+    保留本 wrapper 供 data_provider._safe_call 调用，避免改调用点。
+    """
+    from src.data.source_check import fix_curl_ssl_paths
+    fix_curl_ssl_paths()
 
 
 def _safe_call(func_name: str, fn, *args, **kwargs):
@@ -27,6 +38,7 @@ def _safe_call(func_name: str, fn, *args, **kwargs):
 
     失败时按错误类型给可操作 hint（与 E1-B5 一致）。
     """
+    _fix_curl_ssl_paths()  # 确保 akshare curl_cffi 接口 SSL 可用
     try:
         return fn(*args, **kwargs)
     except Exception as e:
@@ -134,8 +146,41 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
 def get_industry_info(code: str) -> Optional[dict]:
     """获取股票所属行业 + 行业内简单信息。
 
-    返回：{industry_name, industry_code, peer_count, market_cap_rank}
+    数据源（v0.8.6.3 修复 ISS-041/1a：em 接口被反爬，换 Baostock）：
+    1. Baostock query_stock_industry（证监会行业分类，已验证可用）
+    2. AKShare stock_individual_info_em（em 兜底，常被反爬）
+
+    返回：{industry_name, stock_name, total_market_cap, circulating_market_cap, industry_raw}
     """
+    from src.data.akshare_client import _ensure_baostock_login, AKShareClient
+    prefix, _ = AKShareClient._normalize_stock_code(code)
+
+    # 主数据源：Baostock 证监会行业分类
+    try:
+        import baostock as bs
+        if _ensure_baostock_login():
+            rs = bs.query_stock_industry(code=f"{prefix}.{code}")
+            if rs.error_code == '0':
+                rows = []
+                while rs.next():
+                    rows.append(rs.get_row_data())
+                if rows:
+                    f = rs.fields
+                    industry = rows[0][f.index('industry')]
+                    stock_name = rows[0][f.index('code_name')]
+                    return {
+                        "industry_name": industry,
+                        "stock_name": stock_name,
+                        "total_market_cap": "",
+                        "circulating_market_cap": "",
+                        "industry_raw": {"source": "baostock", "industry": industry},
+                    }
+            else:
+                logger.warning(f"Baostock 行业查询失败: {rs.error_msg}")
+    except Exception as e:
+        logger.warning(f"Baostock 行业查询异常: {type(e).__name__}: {str(e)[:80]}")
+
+    # 兜底：东方财富个股信息（常被反爬，仅作 fallback）
     try:
         import akshare as ak
     except ImportError:
@@ -188,31 +233,31 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
     """获取全市场单日成交额（万亿）。用于笨总流动性系数。
 
     Args:
-        date: YYYY-MM-DD，默认最新交易日
+        date: YYYY-MM-DD，默认最新交易日（当前仅支持最新交易日）
 
     返回：成交额（万亿，如 1.2 表示 1.2 万亿）。失败返回 None。
+
+    数据源（v0.8.6.3 修复 ISS-041/1a：em 接口被反爬，换新浪源）：
+    复用 scanner.MarketCache 的新浪全市场快照（绕代理 + 带缓存），
+    若用户先 scan 后 bz 可缓存命中秒回。
     """
     try:
-        import akshare as ak
-    except ImportError:
-        return None
-
-    # 优先：从大盘指数（沪深300）反推不行，要拉全市场总成交额
-    # AKShare 接口：stock_zh_a_spot_em 全市场快照（含成交额）
-    df = _safe_call("stock_zh_a_spot_em", lambda: ak.stock_zh_a_spot_em())
-    if df is None or df.empty:
-        return None
-
-    try:
-        # "成交额" 列单位是元，全市场加和后转万亿
-        total = df["成交额"].sum() if "成交额" in df.columns else 0
+        from src.scanner.market_cache import MarketCache
+        mc = MarketCache()
+        df = mc.get_all_stocks()
+        if df is None or df.empty:
+            return None
+        if "成交额" not in df.columns:
+            logger.warning("全市场快照无 成交额 列")
+            return None
+        total = df["成交额"].sum()
         if total <= 0:
             return None
         trillion = total / 1e12  # 元 → 万亿
-        logger.info(f"全市场单日成交额: {trillion:.2f} 万亿")
+        logger.info(f"全市场单日成交额: {trillion:.2f} 万亿 (新浪源, {len(df)} 只)")
         return round(trillion, 2)
     except Exception as e:
-        logger.warning(f"成交额计算失败: {e}")
+        logger.warning(f"成交额获取失败(MarketCache): {type(e).__name__}: {str(e)[:80]}")
         return None
 
 

@@ -63,6 +63,9 @@ class NewsClient:
         try:
             # AKShare stock_news_em 接受6位代码
             code = stock_code.strip().zfill(6)
+            # v0.8.6.3: 修复 curl_cffi SSL（中文路径致 curl 77），复用公共修复
+            from src.data.source_check import fix_curl_ssl_paths
+            fix_curl_ssl_paths()
             df = ak.stock_news_em(symbol=code)
 
             if df is None or df.empty:
@@ -118,6 +121,9 @@ class NewsClient:
             return cached_news[:max_count]
 
         try:
+            # v0.8.6.3: 修复 curl_cffi SSL（中文路径致 curl 77），复用公共修复
+            from src.data.source_check import fix_curl_ssl_paths
+            fix_curl_ssl_paths()
             df = ak.stock_info_global_em()
 
             if df is None or df.empty:

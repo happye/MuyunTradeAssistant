@@ -549,6 +549,10 @@ class MarketEvent(BaseModel):
     affected_sectors: list[str] = Field(default_factory=list, description="受影响的行业")
     timestamp: str = Field(default="", description="检测时间 ISO8601")
     detection_method: str = Field(default="keyword", description="检测方式: keyword/ai/rule")
+    # v0.8.6.3 笨总现象级事件四要素（ISS-041 events，仅 AI 检测的事件填充）
+    # 真实性/传播性/规模性/时效性 各 0-100，None 表示未判定（关键词/规则事件）
+    # 真实性是 AI 基于单条文本的疑似判断，非多源交叉验证，低真实性时事件降级+提示用户核实
+    four_elements: Optional[dict] = Field(default=None, description="笨总四要素 {authenticity, virality, scale, timeliness}")
 
 
 class DimensionScore(BaseModel):

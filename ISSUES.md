@@ -907,8 +907,8 @@ P3（已取消）:
   - 2026-06-19: 用户提供笨总教学知识库（10 篇 .md + 3 份课件）+ 选 F1 调研路线，方向定为「融合笨总『超景气价值投机』体系」，详见 `docs/v0.8.6_调研报告.md`
   - 2026-06-19: 用户决策 A+D1+E1+F1 → 启动 v0.8.6.1 笨总评分器 MVP
   - 2026-06-19: **v0.8.6.1 完成（试金石通过）**：
-    - `src/core/benzhong/scorer.py` 6 维打分公式（与 xlsx 课件公式严格一致）
-    - `tests/test_benzhong_scorer.py` 7/7 PASS — Case A HND=83.2 / B THS=84.6 / D 中免=120 全部与 xlsx 期望值匹配；Case C 发现 xlsx 笔误（I10=90.6 与公式严格计算 75.5 不一致），诚实记录
+    - `src/core/benzong/scorer.py` 6 维打分公式（与 xlsx 课件公式严格一致）
+    - `tests/test_benzong_scorer.py` 7/7 PASS — Case A HND=83.2 / B THS=84.6 / D 中免=120 全部与 xlsx 期望值匹配；Case C 发现 xlsx 笔误（I10=90.6 与公式严格计算 75.5 不一致），诚实记录
     - start.py `bz [代码]` 交互式打分命令上线，端到端验证 HND 输入 → 83.2 B 级买入
     - 用户感知：跑 `bz HND` 看到 6 维明细 + 等级 + 大前提警告
   - 后续：v0.8.6.2 事件四要素 / v0.8.6.3 剑宗气宗 / v0.8.6.4 高位止盈监控
@@ -937,19 +937,23 @@ P3（已取消）:
   - 会话粒度：分 2 阶段（本会话 v0.8.6.2 单股自动评分；下会话 v0.8.6.3 融入 scan/event/回测）
   - 网络：不可修（机构反爬），代码做到降级 conf=0 + 警告
 - **实现**（commit `0358e06`）:
-  - `src/core/benzhong/auto_scorer.py`：6 维调度器 + AutoScoredResult
-  - `src/core/benzhong/cache.py`：(code, date, dim) 文件缓存 ~/.muyun/benzhong_cache/
-  - `src/core/benzhong/data_provider.py`：akshare 财务/公告/行业/K线/成交额 5 类接口，失败返回 None 不抛
-  - `src/core/benzhong/dimensions/`：6 个维度独立评分器（valuation_position 纯算法，其余 5 个 AI）
+  - `src/core/benzong/auto_scorer.py`：6 维调度器 + AutoScoredResult
+  - `src/core/benzong/cache.py`：(code, date, dim) 文件缓存 ~/.muyun/benzong_cache/
+  - `src/core/benzong/data_provider.py`：akshare 财务/公告/行业/K线/成交额 5 类接口，失败返回 None 不抛
+  - `src/core/benzong/dimensions/`：6 个维度独立评分器（valuation_position 纯算法，其余 5 个 AI）
   - `start.py`：`bz <code>` 默认自动 / `--refresh` 强制刷新 / `--manual` 旧交互式兜底
   - `src/cli/main.py`：`l <code>` 末尾加笨总评分摘要（缓存优先不重算）
 - **顺带修复**:
   - `src/rag/ingestion.py:250` glob('*.txt') → rglob + .md（笨总教学 10 篇 .md 进 RAG）
   - `src/rag/service.py` 加 get_rag_service() 工厂（之前 main.py 引用但不存在）
-- **Verify**: tests/test_benzhong_auto_scorer.py 6/6 PASS + test_benzhong_scorer.py 7/7 回归 PASS
+- **Verify**: tests/test_benzong_auto_scorer.py 6/6 PASS + test_benzong_scorer.py 7/7 回归 PASS
 - **网络限制**: 实联网端到端验证留给用户（网络恢复后跑 `bz 600519`）
 - **更新记录**:
   - 2026-06-20: 完成 + 推送。v0.8.6.3 留下会话
+  - 2026-06-20: **实测修复两个阻断 bug（接手会话）**。用户跑 `bz 600989` 发现 5 维 AI 全 404 + 行业/成交额 ConnectionError：
+    - **Bug 1b（ai_model 透传）**：`auto_scorer` 漏传 `ai_model` + 6 维度 `score()` 签名不接收 + `_call_ai_for_score` 默认硬编码 `deepseek-chat`，导致 kimi provider 下全 404。顺带发现 `settings.yaml:103` provider 被某次 commit（`bae079e` 2026-05-19）从 deepseek 改成 kimi（夹带改动，非用户决策）→ 已切回 deepseek。修复：6 维签名加 `ai_model` 参数 + 透传 + 防御 warning。auto_scorer 6/6 + scorer 7/7 回归 PASS
+    - **Bug 1a（data_provider 换源）**：用了项目已废弃的东方财富 em 接口（`stock_individual_info_em`/`stock_zh_a_spot_em`），被反爬。换源：行业→Baostock `query_stock_industry`、成交额→新浪全市场（复用 `MarketCache._fetch_sina_market`，绕代理+带缓存）、主营保留 ths。实测 600989：4/5 数据源成功，5 维 AI 从全挂→4 维出真分（业务纯度 conf=0.95/细分龙头 conf=0.85/辨识度 conf=0.80/行业景气度 conf=0.60），仅个股风险值因 `stock_news_em` SSL 证书错误降级（有 score=0 兜底不阻塞）
+    - **关键结论**：之前认定"网络反爬不可修"是误判——kimi/deepseek API、Baostock、新浪均可达，仅东方财富 em 金融接口被反爬。换源即可
 
 ---
 
@@ -966,6 +970,24 @@ P3（已取消）:
 - **依赖**: ISS-040（v0.8.6.2 已完成）+ 用户网络恢复后实测 v0.8.6.2 反馈
 - **更新记录**:
   - 2026-06-20: 占位创建，等下会话
+  - 2026-06-20: **实测前置 bug 已清（同会话，见 ISS-040 更新记录）**。Bug 1b（ai_model 透传）+ Bug 1a（data_provider 换 Baostock/新浪源）已修复验证，`bz 600989` 现在 4 维出真实 AI 评分。剩余已知限制：`stock_news_em` SSL 证书错误（curl 77），导致个股风险值维度无新闻输入走兜底——属环境证书问题，非反爬，待单独处理。ISS-041 三个子任务（scan 批量/events 四要素/回测规则版）尚未开工
+  - 2026-06-20: **新增两个配套任务**（用户要求并入原计划）：
+    - **ISS-043 数据源连通性测试工具**（P1 前置）：一键批量测全部数据源连通性，后续调源前先验证前提。**ISS-041 scan 批量评分子任务依赖它**（批量调 AI 前先确认源通）
+    - **ISS-044 笨总6维说明文档**（P2 配套）：补 6 维评分器工作原理/数据来源/使用说明文档
+    - 推进顺序：ISS-043 → ISS-044 → ISS-041 主体（回测规则版 fallback 优先，因不卡网络且是硬约束）→ events 四要素 → scan 批量
+  - 2026-06-20: **规则版↔AI版相关性验证完成（ISS-041 回测前置）**。写 `src/core/benzong/rule_scorer.py`（5 AI 维用规则信号近似）+ `tests/issue_041_rule_validate.py`，5 股（茅台/宁德/宝丰/中免/立讯）真实对比：
+    - 总分 Spearman = **0.600**（临界，判定线 0.6，严格 < 未达）
+    - 逐维：历史估值 +1.000（规则版复用纯算法版必然一致）/ 行业景气 +0.707（跌幅代理方向对）/ 细分龙头 +0.456（市值代理部分对）/ **业务纯度 0.000 / 辨识度 0.000 / 风险 0.000（三维完全失效）**
+    - **诚实结论**：0.600 是假象，靠估值维必然一致撑起。3 个 AI 维（业务纯度/辨识度/风险）本质需要语义判断，技术面/财务快照信号错配（如辨识度：高换手率≈题材炒作股，与 AI 版"品牌辨识"方向相反）。**规则版逐日近似路线不可行**
+    - **更优替代方向**（待用户拍板）：笨总评分本质是"当下值不值得买"的定性判断，不需逐日变。改用「选股初筛一次性 AI」或「建仓时算一次 AI 作静态属性」，回测本身不调 AI，避开规则版近似失真
+    - 产物：`src/core/benzong/rule_scorer.py`（保留，规则版有降级兜底价值）、`tests/issue_041_rule_validate.py`（验证脚本，gitignore 本地）
+  - 2026-06-20: **方向 A 选股初筛实现完成（ISS-041 回测融入）**。规则版不可行后改走「一次性 AI 选股」，避开逐日近似：
+    - `src/core/benzong/batch_scorer.py`：`auto_score_batch(codes, top_n)` build client 1 次 + 串行注入 auto_score（Baostock 全局登录态非线程安全强制串行）+ 按总分排序 + invalidate 否决股排最后 + 失败隔离。单测 6/6 PASS
+    - `start.py`：`bz scan [主题] [--top N] [--limit N] [--backtest --start --end --capital] [--rule]` 新命令。scan 初筛 → 笨总批量 AI 评分 → Rich TopN 排名表（6维明细+等级+置信度）→ 可选批量回测对比表（笨总排名 vs 收益/基准/超额）
+    - 端到端实测 `bz scan --limit 3 --top 3`：scan 初筛30只→取3只→AI评分0失败→排名表（林洋能源84.6/B、苏州科达64.2/C、宏辉果蔬49.2/D）。全量回归 24/24 PASS
+    - **用户可感知**：新命令 + 排名表 + 回测对比表，符合 §二·五
+    - 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示（这正是要验证的）
+    - ISS-041 剩余子任务：events 四要素（greenfield 独立模块，待开）
 
 ---
 
@@ -976,3 +998,69 @@ P3（已取消）:
 - **方案**: 挪到 `.env` 或 `settings.local.yaml` + 加 `.gitignore`；历史 commit 里的 key 需 rotate
 - **更新记录**:
   - 2026-06-20: neat-freak 同步时发现并记录
+
+---
+
+### ISS-043: 数据源连通性测试工具（一键批量验证）
+- **状态**: 📋 待办（ISS-041 配套前置）
+- **优先级**: P1（开发基础设施 + 落实 LRN-20260619-001「调参前先验证前提」）
+- **关联方向**: ISS-041 数据源稳定性 / 笨总 data_provider
+- **背景**: 2026-06-20 修 ISS-041/1a 时靠手写一次性探测脚本验证 Baostock/新浪/ths 可达性。此类脚本用完即丢，每次重写。东方财富 em / 同花顺 / 新浪等非官方接口本就不稳定（反爬随时变），需常驻连通性体检工具。
+- **方案**:
+  1. 可被代码调用的 `check_all_sources(code=None) -> dict` 函数（`src/core/benzong/source_check.py` 或 `src/data/source_check.py`）
+  2. 测全部数据源：Baostock（行业/K线/大盘趋势）、新浪全市场（MarketCache）、同花顺主营（stock_zyjs_ths）、东方财富新闻（stock_news_em）、deepseek + kimi AI（轻量探针调用）
+  3. 输出 ✅通/❌挂 + 错误类型（反爬/超时/SSL/认证）+ 可操作 hint
+  4. REPL/CLI 命令接入（`bz --check` 或 `check sources`），Rich 表格展示
+  5. 配单元测试（mock + 真实），接入维护流程
+- **使用场景**: 调任何数据源前先跑验证前提；用户网络异常时自检定位是哪个源挂
+- **预估工作量**: 0.5-1 天
+- **依赖**: 无
+- **更新记录**:
+  - 2026-06-20: 创建，ISS-041 修复时确立需求
+
+---
+
+### ISS-044: 笨总6维评分说明文档
+- **状态**: ✅ 已解决（2026-06-20）
+- **优先级**: P2（可读性 / 新人上手）
+- **关联方向**: ISS-040 / ISS-041 笨总体系
+- **背景**: v0.8.6.2 笨总 6 维 AI 自动评分已上线，但 `docs/` 下无任何笨总评分器工作原理/数据来源/使用说明文档。`docs/v0.8.6_调研报告.md` 是立项调研（讲笨总策略 + 融合架构），不是评分器操作说明。用户反馈"想直观了解工作原理、数据来源、分析模式"。
+- **方案**: 写 `docs/笨总6维评分_说明文档.md`，覆盖：
+  1. 工作原理：6 维打分公式（行业景气度20%/业务纯度40%/历史估值25%/细分龙头15%/辨识度20%/风险-20%）+ 流动性系数 + 大前提（行业景气度=0 模型失效）
+  2. 数据来源：每维用哪个源（Baostock 行业/新浪成交额/ths 主营/K线/AI 判定）
+  3. 分析模式：AI 维（5 个，调 deepseek/kimi）vs 纯算法维（历史估值位置，不调 AI）
+  4. 降级策略：数据缺失/AI 失败 → conf=0 + score=50（中性）+ warning，不编造
+  5. 命令用法：`bz <code>` / `bz <code> --refresh` / `bz --manual`
+  6. 输出解读：6 维明细 + 等级（A/B/C/D/F）+ 整体置信度 + 缓存命中
+  7. 已知限制：news SSL 证书问题导致风险维度降级；缓存键 (code,date,dim)
+- **预估工作量**: 0.5 天
+- **依赖**: ISS-040（已完成）
+- **更新记录**:
+  - 2026-06-20: 创建，用户要求"没有就写一份"
+  - 2026-06-20: ✅ 完成 `docs/笨总6维评分_说明文档.md`（工作原理/数据来源/降级/命令/输出/限制/代码地图）
+
+---
+
+### ISS-045: bz 实测六项问题修复（拼音/SSL/RAG/文案）
+- **状态**: ✅ 已解决（2026-06-20）
+- **优先级**: P0（用户验收反馈，bz 可用性）
+- **来源**: 用户验收 bz 后报 6 个问题
+- **修复明细**:
+  1. **拼音错误 benzhong→benzong**：笨总「总」是平舌音 zǒng，全局误写成翘舌 zh。git mv 目录 `src/core/benzhong/`→`benzong/` + 3 测试文件名 + sed 37 文件 103 处。中文"笨总"不动。cache.py 加旧目录 `benzhong_cache`→`benzong_cache` 自动迁移
+  2. **stock_news_em SSL（curl 77）**：根因 = curl_cffi 的 libcurl 在 Windows 无法处理含中文的 CA 证书路径（项目路径含「暮云思辨投资助手」）。修复 = data_provider 启动时把 certifi 证书复制到纯 ASCII 路径 `~/.muyun_cacert.pem` + 设 CURL_CA_BUNDLE/REQUESTS_CA_BUNDLE/SSL_CERT_FILE。实测 news 从 0 条→10 条
+  3. **RAG 初始化失败刷屏**：根因 = `get_rag_service` 传整个 settings.yaml 给 `RAGService(config)`，但 RAGService 期望 rag 子节 → `enabled` 读不到 → False → 跳过初始化。修复 = 取 `config.get("rag", config)`。另：嵌入模型 BAAI/bge-small-zh-v1.5 未本地缓存，hf-mirror 下载后 RAG 可用（712 文档块含笨总教学 .md），industry_prosperity 维度现能拿到笨总教学锚点
+  4. **风险维度降级（连锁解决）**：SSL 修复后 news 可用 → 风险维度从 conf=0.30 降级兜底 → conf=0.95 真实 AI 判定。整体置信度 0.30→0.70
+  5. **(缓存)标注困惑**：展示层开头加缓存机制说明（自动存盘 ~/.muyun/benzong_cache/，同股同日复用，无需手动导出，无固定周期，--refresh 重算）
+  6. **"confidence 较低需人工核对"+大前提失效与A级矛盾**：展示层改 — 单维 conf<0.5 标"该维降级，分仅供参考（不影响其他维）"；大前提失效（行业景气=0）时总分行加红字"此总分/等级不具参考意义，不可作为买入依据"，避免用户误信 A 级
+- **验证**: bz 600989 实测 6 维全 ✓（conf 0.70-1.00）、风险维真实判定、RAG 不再刷屏。全量回归 24/24 PASS
+- **更新记录**:
+  - 2026-06-20: 用户验收反馈 6 问题 → 全部修复验证
+  - 2026-06-20: **events 四要素 + news_client SSL 惠及（ISS-041 events 子任务完成）**：
+    - 方向 A 增强 AI 分类（方向 B 多源交叉前提不成立：新闻源只有 em 一个）
+    - `EVENT_CLASSIFY_PROMPT` 扩四要素输出（真实性/传播性/规模性/时效性 各0-100）
+    - `MarketEvent` 加 `four_elements` 字段（仅 AI 事件填充）
+    - `_ai_classify_event`/`_ai_classify_portfolio_news` 解析四要素，真实性<30 → 事件降级（不真否决，符合调研报告"AI 只出疑似伪信号提示，用户最终确认"）
+    - events 表格加"四要素"列 + 真实性存疑事件红字提示用户核实
+    - **顺带把 SSL 修复提取为公共函数** `src/data/source_check.py:fix_curl_ssl_paths`，news_client 调用 → events 持仓新闻扫描从 8 只全失败 → 正常拿到新闻做四要素判定（回答用户问题2"修复惠及原有功能"的实证）
+    - 实测：电力ETF政策利好 真80/传70/规85/时75；ST司特信披 真80/传40/规30/时70。诚实标注真实性是 AI 基于单条文本判断，非多源交叉验证
+    - 回归 24/24 PASS。ISS-041 三个子任务全部完成（回测选股初筛/events四要素/scan批量已在ISS-041主体完成）
