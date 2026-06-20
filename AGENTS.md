@@ -12,6 +12,13 @@ uv run python start.py          # 交互式 REPL（推荐日常使用）
 python -m src.cli.main -l 600519  # CLI 模式：分析单只股票
 ```
 
+笨总评分（v0.8.6）：
+```
+bz 600519            # 6 维 AI 自动评分（每维 1 次 AI，约 30-60s）
+bz 600519 --refresh  # 强制刷新跳过缓存
+bz --manual          # 旧交互式手动打分（兜底）
+```
+
 依赖安装：
 ```
 uv sync
@@ -30,10 +37,12 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 > 注：EntryExit 在 AI Modifier 与 Strategy 之间作为「最高优先级覆盖步」实现（`src/core/orchestrator.py:255-301`），不是独立层级。
 >
 > v0.8.5 新增 **PlanGuard**（`src/core/plan_guard.py`）：在 Strategy 之后、Execution 之前，根据 `TradePlan` 决定是否压制 weak_sell。详见 `docs/TradePlan_使用指南.md`。
+>
+> v0.8.6 新增 **笨总评分体系**（`src/core/benzhong/`）：基于 B 站 up 主「笨笨的韭菜」超景气价值投机教学，6 维 AI 自动评分。`bz <code>` 输入代码直接出结果。详见 `docs/v0.8.6_调研报告.md`。
 
-核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）。
+核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分**（v0.8.6）。
 
-当前版本：**v0.8.5**（TradePlan 子系统：建仓时一次性定下计划，按计划执行不被日常波动牵着走）。
+当前版本：**v0.8.6**（笨总超景气价值投机体系融入 — 6 维 AI 评分器 + 缓存 + RAG 教学锚点）。
 
 ---
 
@@ -103,6 +112,8 @@ docs/               # 详细文档
 - **StockData 的 MA 字段通过 `dr.stock` 访问**：`_weinstein_stage()` 需要 StockData，不是 StrategyDecision
 - **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` / `pyramid_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点/金字塔仓位**整体失效**（commit `77aaf9d` 修了 `entry_exit_config`，`pyramid_config` 待处理见 ISS-032）
 - **调策略卖出参数前先打 `trade['sell_path']`**：回测中实际卖出走的是 `src/core/strategy_layer.py:88-97` hardcoded 常量（`take_profit_trim` / `trend_exit`），不是 `src/core/entry_exit/exit_rules.py`。两者各管一半，不能互相替代（详见 `.learnings/LEARNINGS.md` LRN-20260618-003）
+- **笨总评分体系的缓存键是 `(stock_code, date, dimension)`**：同股同日同维度只算一次 AI（`src/core/benzhong/cache.py`，存 `~/.muyun/benzhong_cache/`）。改了维度评分器 prompt 后必须 `bz <code> --refresh` 才能看到新结果
+- **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py:250`）：v0.8.6.2 修复了 `glob("*.txt")` 漏扫笨总教学 .md 的 bug。新增策略文档放子目录也会被扫到
 
 ### 数据源
 
@@ -184,10 +195,13 @@ docs/               # 详细文档
 | `docs/TradePlan_使用指南.md` | **v0.8.5 新增**：建仓 plan 草稿生成、PlanGuard 压制 weak_sell、动态调整建议——让股票"持得住" |
 | `docs/技术架构文档.md` | 七层架构详解、数据流、模块关系 |
 | `docs/AI系统说明.md` | AI 角色、影响范围、可控性、降级策略 |
-| `docs/v0.8.3_里程碑.md` | 里程碑进度（含 v0.8.4） |
+| `docs/v0.8.3_里程碑.md` | 里程碑进度（含 v0.8.4 / v0.8.5 收尾） |
 | `docs/v0.8.3_迭代规划.md` | v0.8.3 五个优化方向完整设计 |
+| `docs/v0.8.5_扩样本验证报告.md` | 30 股沪深 300 回测：9 股非不利样本，是策略哲学问题 |
+| `docs/v0.8.5_阶段3_final.md` | v0.8.5 阶段 3 收尾：5 轮调参累计 +1.4pp，核心瓶颈在选股能力 |
+| `docs/v0.8.6_调研报告.md` | 笨总超景气价值投机体系融合架构 + 4 阶段路线 + 4 决策点 |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-031） |
+| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-039） |
 | `portfolio.yaml` | 当前持仓记录 |
 | `src/scanner/scan_rules.yaml` | 扫描规则定义（4 条） |
 | `configs/settings.yaml` | 全局配置 |

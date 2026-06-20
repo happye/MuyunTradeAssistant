@@ -925,3 +925,54 @@ P3（已取消）:
   3. `start.py` banner v0.8.4 → v0.8.5
 - **更新记录**:
   - 2026-06-19: 用户报告 + E1 修复完成
+
+---
+
+### ISS-040: v0.8.6.2 笨总 6 维 AI 自动评分（输入代码直接出结果）
+- **状态**: ✅ 已解决（2026-06-20）
+- **优先级**: P0（用户核心诉求："完全自动化，我不知道怎么打分"）
+- **关联方向**: ISS-038 v0.8.6 笨总体系融合
+- **用户决策**（2026-06-20）:
+  - AI 调用模式：每次都调 AI（带缓存层兜底）
+  - 会话粒度：分 2 阶段（本会话 v0.8.6.2 单股自动评分；下会话 v0.8.6.3 融入 scan/event/回测）
+  - 网络：不可修（机构反爬），代码做到降级 conf=0 + 警告
+- **实现**（commit `0358e06`）:
+  - `src/core/benzhong/auto_scorer.py`：6 维调度器 + AutoScoredResult
+  - `src/core/benzhong/cache.py`：(code, date, dim) 文件缓存 ~/.muyun/benzhong_cache/
+  - `src/core/benzhong/data_provider.py`：akshare 财务/公告/行业/K线/成交额 5 类接口，失败返回 None 不抛
+  - `src/core/benzhong/dimensions/`：6 个维度独立评分器（valuation_position 纯算法，其余 5 个 AI）
+  - `start.py`：`bz <code>` 默认自动 / `--refresh` 强制刷新 / `--manual` 旧交互式兜底
+  - `src/cli/main.py`：`l <code>` 末尾加笨总评分摘要（缓存优先不重算）
+- **顺带修复**:
+  - `src/rag/ingestion.py:250` glob('*.txt') → rglob + .md（笨总教学 10 篇 .md 进 RAG）
+  - `src/rag/service.py` 加 get_rag_service() 工厂（之前 main.py 引用但不存在）
+- **Verify**: tests/test_benzhong_auto_scorer.py 6/6 PASS + test_benzhong_scorer.py 7/7 回归 PASS
+- **网络限制**: 实联网端到端验证留给用户（网络恢复后跑 `bz 600519`）
+- **更新记录**:
+  - 2026-06-20: 完成 + 推送。v0.8.6.3 留下会话
+
+---
+
+### ISS-041: v0.8.6.3 笨总体系融入 scan / events / 回测（下会话）
+- **状态**: 📋 待办（下会话）
+- **优先级**: P0（用户诉求"融入所有功能"）
+- **关联方向**: ISS-038 / ISS-040
+- **范围**:
+  1. `scan market deep`：候选股自动笨总评分排序（需批量 AI 调用，要加并发或预烘）
+  2. `events`：现象级事件四要素判定（真实性/传播性/规模性/时效性）
+  3. 回测：规则版 fallback（回测不能每只每天 6 次 AI，需基于技术面+财务快照的规则版笨总评分）
+  4. 文档同步（使用手册 + 技术架构文档 + ISSUES）
+- **预估工作量**: 1-2 周
+- **依赖**: ISS-040（v0.8.6.2 已完成）+ 用户网络恢复后实测 v0.8.6.2 反馈
+- **更新记录**:
+  - 2026-06-20: 占位创建，等下会话
+
+---
+
+### ISS-042: API Key 明文落库（安全隐患）
+- **状态**: 📋 待办（独立跟踪）
+- **优先级**: P1（安全）
+- **描述**: `configs/settings.yaml:105,110` DeepSeek/Kimi API Key 明文写入并跟 git 走
+- **方案**: 挪到 `.env` 或 `settings.local.yaml` + 加 `.gitignore`；历史 commit 里的 key 需 rotate
+- **更新记录**:
+  - 2026-06-20: neat-freak 同步时发现并记录
