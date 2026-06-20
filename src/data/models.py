@@ -129,6 +129,13 @@ class TradePlan(BaseModel):
         default="neutral",
         description="基本面前景判断 — 影响 PlanGuard 是否压制 weak_sell"
     )
+    # v0.8.6.3 笨总剑宗/气宗模式（ISS-033 气宗持有，调研报告 v0.8.6.3 阶段）
+    # None=未设定(向后兼容,PlanGuard 仅压 weak_sell) / qizong=气宗长期格局(压 trend_exit+weak_sell) /
+    # jianzong=剑宗一波流(不压,破线即走)
+    mode: Optional[Literal["qizong", "jianzong"]] = Field(
+        default=None,
+        description="笨总模式: qizong=气宗(长期格局,持有期长,压制技术卖出) / jianzong=剑宗(一波流,破线即走)"
+    )
     thesis_sources: list[str] = Field(
         default_factory=list,
         description="AI 引用的策略库章节 / 新闻摘要锚点（如['ch48-止损方法', 'news-2026-06-15-消费板块修复']）"

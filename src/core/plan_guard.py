@@ -5,16 +5,15 @@
 工作位置：在 Orchestrator 中插在 Strategy Layer 之后、Execution Layer 之前。
 读 strategy_decision.sell_path + 当前 trade_plan，决定是否压制 SELL。
 
-压制规则（按用户决策"只压 weak_sell"）：
+压制规则（v0.8.5: 只压 weak_sell；v0.8.6.3 气宗模式额外压 trend_exit）：
 
-1. weak_sell + plan.outlook != bearish + 失效条件未触发
-   → 压制 SELL → HOLD（写入 strategy_reasons "PlanGuard: 计划未失效，压制弱卖出"）
-2. take_profit_trim / stop_loss_* / trend_exit
-   → 不动（安全网保留）
-3. 时间止损：当前日期 - opened_at >= max_hold_days
-   → 强制 EXIT（覆盖 HOLD/BUY，但 SELL 已经在卖就不动）
-4. 价格穿透 current_stop（致命止损）
-   → 强制 STOP（不可压制）
+1. weak_sell（+气宗时 trend_exit）+ plan.outlook != bearish + 失效条件未触发
+   → 压制 SELL → HOLD（写入 strategy_reasons）
+   · mode=None/jianzong：仅压 weak_sell（原行为，破趋势线即走）
+   · mode=qizong（气宗）：压 weak_sell + trend_exit（让牛股拿住主升浪，ISS-033）
+2. take_profit_trim / stop_loss_* → 不动（止盈分档/止损是主动获利与安全网，气宗也不压）
+3. 时间止损：当前日期 - opened_at >= max_hold_days → 强制 EXIT
+4. 价格穿透 current_stop（致命止损）→ 强制 STOP（不可压制）
 
 设计原则：
 - 不削弱现有安全网：致命止损/趋势退出/止盈分档不动
@@ -27,7 +26,7 @@ from datetime import datetime
 from typing import Optional
 
 from src.data.models import (
-    SignalType, StrategyDecision, StockData, TradePlan
+    SignalType, StrategyDecision, StockData, TradePlan, PositionAction
 )
 
 logger = logging.getLogger(__name__)
@@ -139,31 +138,48 @@ class PlanGuard:
             return adjusted
 
         # 规则 1：weak_sell 压制（核心功能）
-        if adjusted.decision == SignalType.SELL and adjusted.sell_path == "weak_sell":
+        # v0.8.6.3 气宗模式（ISS-033）：气宗额外压 trend_exit + take_profit_trim（让牛股拿住整波主升浪）
+        #   剑宗/未设定：仅压 weak_sell（原行为）
+        #   注：take_profit_trim 是减仓非清仓，气宗压制它=不减仓继续持有，符合"长期格局"
+        is_qizong = (trade_plan.mode == "qizong")
+        suppressible_paths = ("weak_sell",)
+        if is_qizong:
+            suppressible_paths = ("weak_sell", "trend_exit", "take_profit_trim")
+
+        if adjusted.decision == SignalType.SELL and adjusted.sell_path in suppressible_paths:
             if trade_plan.fundamental_outlook == "bearish":
                 # 前景已转空 → 不压制，让卖出执行
                 reasons.insert(0, f"PlanGuard 不压制弱卖出: fundamental_outlook=bearish")
                 adjusted.strategy_reasons = reasons
                 return adjusted
 
-            invalidated, invalidate_cond = _check_invalidation_triggered(trade_plan, data)
-            if invalidated:
-                reasons.insert(0, f"PlanGuard 不压制弱卖出: 失效条件已触发（{invalidate_cond}）")
-                adjusted.strategy_reasons = reasons
-                return adjusted
+            # v0.8.6.3 气宗：跳过 invalidation（回调时 MA60 跌破正是该拿住的时刻，
+            # 仅致命止损+时间止损作安全网，已在规则4/3处理）
+            if not is_qizong:
+                invalidated, invalidate_cond = _check_invalidation_triggered(trade_plan, data)
+                if invalidated:
+                    reasons.insert(0, f"PlanGuard 不压制弱卖出: 失效条件已触发（{invalidate_cond}）")
+                    adjusted.strategy_reasons = reasons
+                    return adjusted
 
             # 计划未失效 + outlook 非 bearish → 压制
             outlook_label = trade_plan.fundamental_outlook
             thesis_short = (trade_plan.why_buy or "")[:40]
+            mode_label = "气宗" if is_qizong else None
+            mode_tag = f"[{mode_label}压制 {adjusted.sell_path}] " if mode_label else ""
             reasons.insert(0,
-                f"PlanGuard: 计划未失效，压制弱卖出 "
+                f"PlanGuard: {mode_tag}计划未失效，压制弱卖出 "
                 f"(outlook={outlook_label}, thesis: {thesis_short}{'...' if len(trade_plan.why_buy or '') > 40 else ''})"
             )
             adjusted.decision = SignalType.HOLD
+            suppressed_path = adjusted.sell_path
             adjusted.sell_path = None  # 不再是卖出，清空 sell_path
-            logger.info(f"PlanGuard suppress weak_sell: outlook={outlook_label}")
+            adjusted.position_action = PositionAction.HOLD_POSITION  # v0.8.6.3: 同步重置仓位动作，否则执行层仍按 REDUCE/CLOSE_ALL 卖出
+            adjusted.position_ratio = 0.0  # HOLD 不增减仓
+            logger.info(f"PlanGuard suppress {suppressed_path} (qizong={is_qizong}): outlook={outlook_label}")
             adjusted.strategy_reasons = reasons
             return adjusted
 
-        # 规则 2：take_profit_trim / stop_loss_* / trend_exit / 其他 → 不动（安全网保留）
+        # 规则 2：take_profit_trim / stop_loss_* / 其他 → 不动（安全网保留）
+        # 注：气宗也不压 take_profit_trim（止盈分档是主动获利了结，非卖飞）
         return adjusted

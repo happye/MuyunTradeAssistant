@@ -302,6 +302,16 @@ class Orchestrator:
         if entry_exit_result:
             strategy_decision.entry_exit = entry_exit_result.model_dump()
 
+        # v0.8.6.3 (ISS-033): Chandelier/trend_break force_exit 经 strategy_layer 后 sell_path
+        # 可能落空（_calculate_position 重算 position_action 致 _infer_sell_path 推断不到）。
+        # force_exit 本质是趋势退出，明确标 trend_exit，让 PlanGuard 气宗能匹配压制。
+        if (entry_exit_result
+                and strategy_decision.decision == SignalType.SELL
+                and entry_exit_result.override_action in ("EXIT", "STOP", "TRIM")
+                and entry_exit_result.exit_type in ("chandelier_stop", "trend_break")
+                and not strategy_decision.sell_path):
+            strategy_decision.sell_path = "trend_exit"
+
         # v0.8.3 收尾 ISS-030: 买卖点与AI情绪分歧检测
         if ai_result and entry_exit_result:
             ai_sentiment = ai_result.sentiment

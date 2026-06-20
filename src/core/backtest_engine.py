@@ -196,6 +196,7 @@ class BacktestEngine:
         entry_exit_config: Optional[dict] = None,
         pyramid_config: Optional[dict] = None,
         enable_trade_plan: bool = True,  # v0.8.5 阶段 3.1: 回测自动建 TradePlan + PlanGuard 生效
+        qizong_codes: Optional[set] = None,  # v0.8.6.3: 气宗模式股票集（笨总高分股），建 plan 时 mode=qizong
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -236,6 +237,7 @@ class BacktestEngine:
         # 清仓时清除 plan
         self.enable_trade_plan = enable_trade_plan
         self._current_plan = None  # 当前持仓的 TradePlan（单股回测每次最多 1 个）
+        self._qizong_codes = qizong_codes or set()  # v0.8.6.3 气宗股票集
         self._plan_stats = {        # 统计：用于回测后看 plan 实际效果
             "plans_created": 0,
             "weak_sells_suppressed_by_guard": 0,
@@ -483,6 +485,11 @@ class BacktestEngine:
                                     # 用建仓日期，不是当前日期（pending 的 today=date 已经是 N 日）
                                     plan.opened_at = date
                                     plan.plan_id = f"{self.stock_code}_{date}"
+                                    # v0.8.6.3: 气宗模式（笨总高分股 → 压制 trend_exit 拿住牛股）
+                                    if self.stock_code in self._qizong_codes:
+                                        plan.mode = "qizong"
+                                        # 气宗持有期拉长（调研报告：气宗 max_hold=180）
+                                        plan.max_hold_days = max(plan.max_hold_days, 180)
                                     self._current_plan = plan
                                     self._plan_stats["plans_created"] += 1
                                 except Exception as e:
