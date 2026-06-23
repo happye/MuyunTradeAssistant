@@ -77,6 +77,8 @@ def show_help():
     print("│    bz <代码>             笨总 AI 自动 6 维评分       │")
     print("│    bz <代码> --refresh   强制刷新（跳过缓存）        │")
     print("│    bz --manual           旧交互式手动打分（兜底）    │")
+    print("│    bz --check            数据源连通性体检(ISS-043)  │")
+    print("│    bz scan [主题] --top N  笨总选股初筛+批量评分    │")
     print("│      (来自 B站「笨笨的韭菜」up 主教学体系)         │")
     print("│                                                    │")
     print("│  ★ 其他                                            │")
@@ -249,20 +251,60 @@ def parse_input(user_input: str):
         return ("debug", {})
     if cmd == "chat":
         return ("chat", {})
-    if cmd in ("bz", "benzhong", "笨总"):
+    if cmd in ("bz", "benzong", "笨总"):
         # v0.8.6.2: bz <code> 自动 AI 评分；bz --manual 走旧交互式；bz --refresh 强制刷新
-        # 解析：parts[1] 可能是代码、--manual、--refresh
+        # v0.8.6.3: bz --check 数据源连通性体检（ISS-043）
+        # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
+        if len(parts) >= 2 and parts[1].lower() in ("scan", "筛选", "选股"):
+            scan_args = {"theme": "", "top_n": 10, "backtest": False,
+                         "start": "", "end": "", "capital": 100000.0,
+                         "rule": "healthy_pullback", "limit": 15, "refresh": False}
+            rest = parts[2:]
+            i = 0
+            theme_parts = []
+            while i < len(rest):
+                p = rest[i]
+                low = p.lower()
+                if low in ("--top",) and i + 1 < len(rest):
+                    try: scan_args["top_n"] = int(rest[i + 1])
+                    except ValueError: pass
+                    i += 2; continue
+                if low in ("--backtest", "--bt"):
+                    scan_args["backtest"] = True; i += 1; continue
+                if low in ("--refresh", "-r"):
+                    scan_args["refresh"] = True; i += 1; continue
+                if low in ("--start",) and i + 1 < len(rest):
+                    scan_args["start"] = rest[i + 1]; i += 2; continue
+                if low in ("--end",) and i + 1 < len(rest):
+                    scan_args["end"] = rest[i + 1]; i += 2; continue
+                if low in ("--capital",) and i + 1 < len(rest):
+                    try: scan_args["capital"] = float(rest[i + 1])
+                    except ValueError: pass
+                    i += 2; continue
+                if low in ("--rule",) and i + 1 < len(rest):
+                    scan_args["rule"] = rest[i + 1]; i += 2; continue
+                if low in ("--limit",) and i + 1 < len(rest):
+                    try: scan_args["limit"] = int(rest[i + 1])
+                    except ValueError: pass
+                    i += 2; continue
+                theme_parts.append(p); i += 1
+            scan_args["theme"] = " ".join(theme_parts).strip()
+            return ("benzong_scan", scan_args)
+
         meta = ""
         manual = False
         refresh = False
+        check = False
         for p in parts[1:]:
             if p in ("--manual", "-m", "manual"):
                 manual = True
             elif p in ("--refresh", "-r", "refresh"):
                 refresh = True
+            elif p in ("--check", "--体检", "check"):
+                check = True
             elif not meta:
                 meta = p
-        return ("benzhong", {"meta": meta, "manual": manual, "refresh": refresh})
+        return ("benzong", {"meta": meta, "manual": manual, "refresh": refresh, "check": check})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
     return None
@@ -281,7 +323,7 @@ def _ask_score(prompt: str, default: float = 0.0) -> float:
         return default
 
 
-def run_benzhong_scoring(meta: str = "", manual: bool = False, refresh: bool = False):
+def run_benzong_scoring(meta: str = "", manual: bool = False, refresh: bool = False):
     """v0.8.6.2：笨总「超景气价值投机」6 维评分。
 
     默认（v0.8.6.2）：自动 AI 评分 — 输入代码直接出 6 维结果
@@ -291,15 +333,15 @@ def run_benzhong_scoring(meta: str = "", manual: bool = False, refresh: bool = F
     """
     # manual 模式走旧交互式
     if manual or not meta:
-        return _run_benzhong_manual(meta)
+        return _run_benzong_manual(meta)
 
     # 自动模式
-    return _run_benzhong_auto(meta, force_refresh=refresh)
+    return _run_benzong_auto(meta, force_refresh=refresh)
 
 
-def _run_benzhong_auto(code: str, force_refresh: bool = False):
+def _run_benzong_auto(code: str, force_refresh: bool = False):
     """v0.8.6.2 自动 AI 评分（默认路径）。"""
-    from src.core.benzhong import auto_score
+    from src.core.benzong import auto_score
 
     print()
     print("=" * 64)
@@ -307,7 +349,8 @@ def _run_benzhong_auto(code: str, force_refresh: bool = False):
     print("=" * 64)
     print()
     print("  正在评估 6 个维度（每维度调 AI 1 次 + 数据拉取，预计 30-60s）...")
-    print("  ✓ 命中缓存会秒回；--refresh 强制重算")
+    print("  缓存：同股同日同维度只算一次，自动存盘 ~/.muyun/benzong_cache/，无需手动导出")
+    print("  ✓ 命中缓存秒回；--refresh 强制重算")
     print()
 
     try:
@@ -322,6 +365,7 @@ def _run_benzhong_auto(code: str, force_refresh: bool = False):
 
     bs = result.score
     meta = result.dimensions_meta
+    precondition_failed = (bs.industry_prosperity == 0)
 
     # 每维度输出
     dim_labels = [
@@ -337,8 +381,13 @@ def _run_benzhong_auto(code: str, force_refresh: bool = False):
         score = m.get("score", 0)
         conf = m.get("confidence", 0)
         cached = " (缓存)" if key in result.cache_hits else ""
-        warn_marker = "⚠" if conf < 0.5 else "✓"
-        print(f"  {warn_marker} {label} [conf {conf:.2f}]{cached} = {score:>5.1f} 分")
+        if conf < 0.5:
+            warn_marker = "⚠"
+            conf_hint = " ⚠该维降级，分仅供参考（不影响其他维）"
+        else:
+            warn_marker = "✓"
+            conf_hint = ""
+        print(f"  {warn_marker} {label} [conf {conf:.2f}]{cached} = {score:>5.1f} 分{conf_hint}")
         sources = m.get("sources", [])
         if sources:
             print(f"      来源：{' / '.join(sources[:3])}")
@@ -359,37 +408,285 @@ def _run_benzhong_auto(code: str, force_refresh: bool = False):
         "D": "🔻 D 级 — 勉强观望（40-60）",
         "F": "❌ F 级 — 放弃（< 40）",
     }[grade]
-    print(f"  💯 总分：{bs.total_score} → {grade_label}")
+    if precondition_failed:
+        print(f"  💯 总分：{bs.total_score} → {grade_label}")
+        print(f"  [bold red]⚠ 大前提失效（行业景气度=0）：此总分/等级不具参考意义，不可作为买入依据！[/bold red]")
+        print(f"  [dim]笨总教学：没有高景气行业判断，其他维度再高也无意义（中免反面案例）[/dim]")
+    else:
+        print(f"  💯 总分：{bs.total_score} → {grade_label}")
     print(f"  🎯 总体置信度：{result.overall_confidence:.2f}", end="")
     if result.overall_confidence < 0.5:
-        print("  [yellow]⚠ 偏低（有维度数据缺失/AI 降级）[/yellow]")
+        print("  [yellow]⚠ 偏低（有维度降级，总分仅供参考）[/yellow]")
     else:
         print()
     if result.cache_hits:
-        print(f"  💾 缓存命中：{len(result.cache_hits)}/6 维度")
+        print(f"  💾 缓存命中：{len(result.cache_hits)}/6 维度（同股同日复用，--refresh 重算）")
     print("─" * 64)
 
-    # 警告
-    if result.warnings:
+    # 警告（大前提失效时不重复打，已在上方红字提示）
+    other_warnings = [w for w in result.warnings if "大前提失效" not in w] if precondition_failed else result.warnings
+    if other_warnings:
         print()
-        for w in result.warnings:
+        for w in other_warnings:
             print(f"  [yellow]{w}[/yellow]")
         print()
 
-    # 大前提警告
-    pre = bs.precondition_warning()
-    if pre:
-        print(f"  [bold red]{pre}[/bold red]")
-        print()
+    # 大前提警告（非失效时不显示，失效时上方已红字提示，此处保留兜底）
+    if not precondition_failed:
+        pre = bs.precondition_warning()
+        if pre:
+            print(f"  [bold red]{pre}[/bold red]")
+            print()
 
     print(f"  📚 评分依据：笨总教学 + xlsx 打分表（v0.8.6.1 试金石 4 案例已验证）")
-    print(f"  💡 提示：bz {code} --refresh 强制刷新；bz --manual 走交互式兜底")
+    print(f"  💡 提示：bz {code} --refresh 强制刷新；bz --manual 走交互式兜底；bz --check 体检数据源")
     print()
 
 
-def _run_benzhong_manual(meta: str = ""):
+def run_benzong_scan(args: dict):
+    """v0.8.6.3 笨总选股初筛（ISS-041 方向 A）。
+
+    scan 技术面初筛 → 笨总 6 维 AI 批量评分 → TopN 排名 → 可选批量回测。
+
+    用法：
+      bz scan                  默认 healthy_pullback 规则初筛 → 笨总评分 Top10
+      bz scan AI,半导体        指定主题词缩小候选范围
+      bz scan --top 5          Top5
+      bz scan --limit 15       限制初筛候选数（控制 AI 耗时，默认15）
+      bz scan --backtest --start 2024-01-01 --end 2024-12-31  对 TopN 批量回测
+    """
+    from src.scanner.scanner_engine import ScannerEngine
+    from src.core.benzong.batch_scorer import auto_score_batch
+
+    theme = args.get("theme", "")
+    top_n = args.get("top_n", 10)
+    do_backtest = args.get("backtest", False)
+    limit = args.get("limit", 15)
+    rule_name = args.get("rule", "healthy_pullback")
+    force_refresh = args.get("refresh", False)
+
+    print()
+    print("=" * 64)
+    print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
+    print("=" * 64)
+    print(f"  规则: {rule_name} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
+    print(f"  TopN: {top_n} | 回测: {'是' if do_backtest else '否'}")
+    print()
+
+    # ── Step 1: 候选股获取 ──
+    # 有主题词 → 法C 精准定位（AI直接报股+Baostock验证，绕过板块匹配天花板）
+    # 无主题词 → quick_scan 技术面初筛
+    from src.cli.main import load_config
+    config = load_config()
+    scanner_cfg = config.get("scanner", {})
+    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+    enabled_skills = config.get("skills", {}).get("enabled", [])
+    signal_weights = config.get("decision", {}).get("signal_weights", {})
+    skill_types = config.get("skills", {}).get("types", {})
+    entry_exit_config = config.get("entry_exit", None)
+
+    # 排除已持仓
+    exclude_codes = set()
+    if scanner_cfg.get("auto_exclude_holdings", True):
+        try:
+            from src.data.portfolio import PortfolioManager
+            pm = PortfolioManager()
+            exclude_codes = {pos.stock_code for pos in pm.list_positions()}
+        except Exception:
+            pass
+
+    located_stocks = None  # 法C结果（有主题词时填充）
+    if theme:
+        # ── 法C：主题词精准定位 ──
+        from src.core.benzong.theme_locator import locate_theme_stocks
+        terms = [t.strip() for t in theme.split(",") if t.strip()]
+        print(f"  [Step 1/3] 法C 精准定位：AI识别「{theme}」对应A股公司 + 验证...")
+        located = locate_theme_stocks(terms, config=config)
+        located_stocks = [s for s in located.get("stocks", [])
+                          if s["code"] not in exclude_codes]
+        if located.get("invalid"):
+            print(f"  [dim]丢弃 {len(located['invalid'])} 只（AI可能给错代码）："
+                  + ", ".join(f"{i['code']}({i['name']})" for i in located["invalid"][:5]))
+        if not located_stocks:
+            print(f"  [yellow]⚠ 主题「{theme}」未定位到验证通过的A股公司[/yellow]")
+            print(f"  [dim]可能：AI不熟悉该细分领域 / 代码全验证失败。可尝试换更通用的主题词[/dim]")
+            return
+        codes = [s["code"] for s in located_stocks[:limit]]
+        print(f"  ✓ 法C 定位 {len(located['stocks'])} 只 → 取前 {len(codes)} 只评分")
+        for s in located_stocks[:limit]:
+            print(f"    {s['code']} {s['name'][:10]} [{s['term']}] {s['why'][:40]}")
+        print()
+    else:
+        # ── 技术面初筛 ──
+        engine = ScannerEngine(
+            rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),
+            skills_dir=skills_dir,
+            enabled_skills=enabled_skills,
+            signal_weights=signal_weights,
+            skill_types=skill_types,
+            ai_config=config.get("ai", None),
+            cache_ttl=scanner_cfg.get("cache_ttl", 300),
+            entry_exit_config=entry_exit_config,
+        )
+
+        print("  [Step 1/3] 技术面初筛中...")
+        try:
+            candidates, scan_info = engine.quick_scan(
+                rule_name=rule_name,
+                market_query=None,
+                exclude_codes=exclude_codes,
+            )
+        except Exception as e:
+            print(f"  [red]✗ 初筛失败: {type(e).__name__}: {e}[/red]")
+            return
+
+        if "error" in scan_info:
+            print(f"  [red]✗ 扫描失败: {scan_info['error']}[/red]")
+            return
+        if not candidates:
+            print(f"  [yellow]⚠ 初筛无候选股（可能非交易时段或条件过严）[/yellow]")
+            return
+
+        codes = [c.stock_code for c in candidates[:limit]]
+        print(f"  ✓ 初筛 {len(candidates)} 只 → 取前 {len(codes)} 只评分")
+        print()
+
+    # ── Step 2: 笨总批量 AI 评分 ──
+    print(f"  [Step 2/3] 笨总 6 维 AI 评分中（{len(codes)}只 × 5维 ≈ {len(codes)*5}次AI，请耐心）...")
+    def _progress(i, total, code, status):
+        print(f"    ({i}/{total}) {code} → {status}")
+
+    batch = auto_score_batch(codes, top_n=top_n, force_refresh=force_refresh,
+                             config=config, progress_cb=_progress)
+    print()
+
+    # ── Step 3: 展示笨总 TopN 排名 ──
+    print("─" * 64)
+    print(f"  📊 笨总 Top{len(batch['top_n'])} 排名（评分 {batch['scored']}只 / 失败 {batch['failed']}只）")
+    print("─" * 64)
+    try:
+        from rich.table import Table
+        from rich.console import Console
+        rc = Console()
+        tbl = Table(show_header=True, header_style="bold cyan", show_lines=False)
+        tbl.add_column("#", width=3)
+        tbl.add_column("代码", width=8)
+        tbl.add_column("名称", width=10)
+        tbl.add_column("总分", justify="right")
+        tbl.add_column("等级", justify="center")
+        tbl.add_column("置信度", justify="right")
+        tbl.add_column("行业景气/纯度/估值/龙头/辨识/风险")
+        for idx, item in enumerate(batch["top_n"], 1):
+            ds = item["dim_scores"]
+            dims_str = "/".join(f"{ds.get(d, 0):.0f}" for d in
+                                ["industry_prosperity", "business_purity", "valuation_position",
+                                 "industry_leader", "market_recognition", "risk_deduction"])
+            grade_color = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}.get(item["grade"], "white")
+            veto = " 🚨否决" if item.get("invalidate") else ""
+            tbl.add_row(str(idx), item["code"], item["name"][:8],
+                        f"{item['total_score']:.1f}",
+                        f"[{grade_color}]{item['grade']}[/{grade_color}]{veto}",
+                        f"{item['confidence']:.2f}", dims_str)
+        rc.print(tbl)
+    except Exception:
+        # rich 不可用时降级纯文本
+        for idx, item in enumerate(batch["top_n"], 1):
+            print(f"  {idx}. {item['code']} {item['name'][:8]} | {item['total_score']:.1f} {item['grade']} | conf {item['confidence']:.2f}")
+    print()
+
+    if batch["failures"]:
+        print(f"  [dim]失败: {', '.join(f['code'] for f in batch['failures'])}[/dim]")
+        print()
+
+    # ── Step 4 (可选): 批量回测 TopN ──
+    if not do_backtest:
+        print(f"  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top{len(batch['top_n'])} 批量回测")
+        print()
+        return
+
+    from datetime import datetime, timedelta
+    start = args.get("start") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    end = args.get("end") or datetime.now().strftime("%Y-%m-%d")
+    capital = args.get("capital", 100000.0)
+
+    print("=" * 64)
+    print(f"  📈 批量回测 Top{len(batch['top_n'])} — {start} ~ {end} 资金¥{capital:,.0f}")
+    print("=" * 64)
+
+    from src.core.backtest_engine import BacktestEngine
+    from src.cli.main import load_pyramid_config, normalize_stock_code
+    pyramid_config = load_pyramid_config(config)
+
+    bt_rows = []
+    for idx, item in enumerate(batch["top_n"], 1):
+        code = normalize_stock_code(item["code"])
+        print(f"  ({idx}/{len(batch['top_n'])}) 回测 {code} {item['name'][:8]}...")
+        try:
+            eng = BacktestEngine(
+                stock_code=code, start_date=start, end_date=end,
+                initial_capital=capital, execution_mode="framework_strict",
+                layer_mode="decision_strategy_execution",
+                skills_dir=skills_dir, signal_weights=signal_weights,
+                skill_types=skill_types, entry_exit_config=entry_exit_config,
+                pyramid_config=pyramid_config,
+            )
+            res = eng.run()
+            bt_rows.append({
+                "code": code, "name": item["name"][:8],
+                "bz_score": item["total_score"], "bz_grade": item["grade"],
+                "return": res.total_return_pct, "bench": res.benchmark_return_pct,
+                "trades": getattr(res, "total_trades", 0) or 0,
+            })
+        except Exception as e:
+            print(f"    [red]✗ 回测失败: {type(e).__name__}: {e}[/red]")
+            bt_rows.append({"code": code, "name": item["name"][:8],
+                            "bz_score": item["total_score"], "bz_grade": item["grade"],
+                            "return": None, "bench": None, "trades": 0})
+
+    # 回测对比表
+    print()
+    print("─" * 64)
+    print(f"  📊 笨总排名 vs 回测收益对比")
+    print("─" * 64)
+    try:
+        from rich.table import Table
+        from rich.console import Console
+        rc = Console()
+        tbl = Table(show_header=True, header_style="bold cyan")
+        tbl.add_column("#", width=3)
+        tbl.add_column("代码", width=8)
+        tbl.add_column("名称", width=10)
+        tbl.add_column("笨总分", justify="right")
+        tbl.add_column("等级", justify="center")
+        tbl.add_column("收益%", justify="right")
+        tbl.add_column("基准%", justify="right")
+        tbl.add_column("超额%", justify="right")
+        tbl.add_column("交易次", justify="right")
+        for idx, r in enumerate(bt_rows, 1):
+            if r["return"] is None:
+                tbl.add_row(str(idx), r["code"], r["name"], f"{r['bz_score']:.1f}",
+                            r["bz_grade"], "[red]失败[/red]", "-", "-", "-")
+                continue
+            excess = r["return"] - (r["bench"] or 0)
+            ret_color = "green" if r["return"] > 0 else "red"
+            exc_color = "green" if excess > 0 else "red"
+            tbl.add_row(str(idx), r["code"], r["name"], f"{r['bz_score']:.1f}",
+                        r["bz_grade"], f"[{ret_color}]{r['return']:+.2f}[/{ret_color}]",
+                        f"{r['bench']:+.2f}", f"[{exc_color}]{excess:+.2f}[/{exc_color}]",
+                        str(r["trades"]))
+        rc.print(tbl)
+    except Exception:
+        for idx, r in enumerate(bt_rows, 1):
+            ret = f"{r['return']:+.2f}%" if r["return"] is not None else "失败"
+            print(f"  {idx}. {r['code']} {r['name']} | 笨总{r['bz_score']:.1f}{r['bz_grade']} | 收益{ret}")
+    print()
+    print(f"  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示")
+    print()
+
+
+def _run_benzong_manual(meta: str = ""):
     """v0.8.6.1 交互式手动打分（兜底，保留）。"""
-    from src.core.benzhong import score_one
+    from src.core.benzong import score_one
 
     print()
     print("=" * 60)
@@ -623,13 +920,22 @@ def run_cli(mode: str, args: dict):
         config = load_config()
         run_chat_repl(config)
 
-    elif mode == "benzhong":
+    elif mode == "benzong":
         # v0.8.6.2: bz <code> 默认自动 AI 评分；--manual 走旧交互式
-        run_benzhong_scoring(
+        # v0.8.6.3: bz --check 数据源连通性体检（ISS-043）
+        if args.get("check"):
+            from src.data.source_check import check_all_sources, format_report
+            print(format_report(check_all_sources()))
+            return
+        run_benzong_scoring(
             meta=args.get("meta", ""),
             manual=args.get("manual", False),
             refresh=args.get("refresh", False),
         )
+
+    elif mode == "benzong_scan":
+        # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
+        run_benzong_scan(args)
 
 
 # ── 主循环 ────────────────────────────────────────────────
