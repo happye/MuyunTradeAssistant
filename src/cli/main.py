@@ -618,8 +618,10 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                     console.print(f"  [dim]💡 跑 `pos plan {pos.stock_code}` 查看完整计划，编辑 portfolio.yaml 应用调整[/dim]")
 
             # 更新持仓
+            # 名称优先用 portfolio.yaml 中用户维护的 stock_name（Baostock 行情 stock_data.stock_name 常是代码本身，
+            # 直接传会把持仓名称覆盖成代码）。与上方 display_name 逻辑一致。
             pm.suggest_update(
-                pos.stock_code, stock_data.stock_name,
+                pos.stock_code, pos.stock_name or stock_data.stock_name,
                 strategy_decision, stock_data, console
             )
 
@@ -859,8 +861,12 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         _print_benzong_summary(stock_code, stock_data.stock_name)
 
         # ===== 建议更新持仓 =====
+        # 名称优先用 portfolio.yaml 中已维护的（Baostock stock_data.stock_name 常是代码本身，会覆盖正确名称）
+        _existing_pos = pm.get_position(stock_code)
+        _update_name = (_existing_pos.stock_name if _existing_pos and _existing_pos.stock_name
+                         else stock_data.stock_name)
         pm.suggest_update(
-            stock_code, stock_data.stock_name,
+            stock_code, _update_name,
             strategy_decision, stock_data, console
         )
     else:

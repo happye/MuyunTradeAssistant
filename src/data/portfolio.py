@@ -335,6 +335,11 @@ class PortfolioManager:
         # 获取或创建持仓记录
         existing = self.get_position(stock_code)
 
+        # 防御：stock_name 为空或等于代码（Baostock 行情不含名称时回填代码）时，
+        # 优先保留 existing 已维护的名称，避免把正确名称覆盖成代码（旧版 bug）
+        if not stock_name or stock_name == stock_code:
+            stock_name = (existing.stock_name if existing and existing.stock_name else stock_name)
+
         # 仓位动作映射
         pos_action = strategy_decision.position_action.value
 
