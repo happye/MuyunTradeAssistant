@@ -18,7 +18,7 @@ import pandas as pd
 # 确保项目根在 path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.core.benzhong import auto_score, cache
+from src.core.benzong import auto_score, cache
 
 
 def _make_mock_ai(scores_by_dim_keyword):
@@ -111,18 +111,24 @@ def test_data_missing_degradation():
 
 
 def test_ai_unavailable():
-    """4. AI 不可用：ai_client=None → 5 个 AI 维度全降级 conf=0"""
+    """4. AI 调用失败降级：mock client create 抛异常 → 5 个 AI 维度 conf=0
+
+    注：auto_score 在 ai_client=None 时会自动从 settings.yaml 构造真实 client，
+    所以不能用 None 表达"AI 不可用"；改用抛异常的 mock client 模拟真实调用失败。
+    """
     cache.clear("TEST004")
-    r = auto_score("TEST004", "测试", ai_client=None, rag_service=None,
+    ai = mock.MagicMock()
+    ai.chat.completions.create.side_effect = Exception("API 不可用")
+    r = auto_score("TEST004", "测试", ai_client=ai, rag_service=None,
                    data_summary=_make_full_data_summary(), today="2026-06-20", force_refresh=True)
     # valuation_position 是纯算法不依赖 AI，conf 应=1.0
     assert r.dimensions_meta["valuation_position"]["confidence"] == 1.0
-    # 其他 5 个 AI 维度 conf 应=0
+    # 其他 5 个 AI 维度：create 抛异常 → _call_ai_for_score 返回 None → _ai_failed_result conf=0
     ai_dims = ["industry_prosperity", "business_purity", "industry_leader",
                "market_recognition", "risk_deduction"]
     for d in ai_dims:
         assert r.dimensions_meta[d]["confidence"] == 0.0, f"{d} 应 conf=0"
-    print(f"✓ AI 不可用: valuation conf=1.0 (纯算法), 5 个 AI 维度 conf=0")
+    print(f"✓ AI 调用失败降级: valuation conf=1.0 (纯算法), 5 个 AI 维度 conf=0")
     cache.clear("TEST004")
 
 
@@ -151,11 +157,15 @@ def test_invalidate_redline():
 
 
 def test_rag_failure_tolerant():
-    """6. RAG 加载失败不影响评分（industry_prosperity 仍能跑）"""
+    """6. bz 不依赖 RAG：即使传入会抛异常的 rag_service，industry_prosperity 仍正常出分
+
+    v0.8.6.3：bz 默认 rag_service=None，industry_prosperity 不再调 RAG。
+    本测试验证即使外部注入坏 rag_service，评分也不受影响（RAG 是可选软依赖）。
+    """
     cache.clear("TEST006")
     ai = _make_mock_ai({"行业景气度": 75, "业务纯度": 85, "细分行业龙头": 80,
                         "市场辨识度": 90, "个股风险值": 5})
-    # rag_service 是个会抛异常的 mock
+    # rag_service 是个会抛异常的 mock（验证 bz 不依赖它）
     bad_rag = mock.MagicMock()
     bad_rag.get_context.side_effect = Exception("RAG 故障")
     r = auto_score("TEST006", "测试", ai_client=ai, rag_service=bad_rag,

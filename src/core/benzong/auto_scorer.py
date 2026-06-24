@@ -15,13 +15,14 @@
 """
 
 import logging
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
 
-from src.core.benzhong import cache, data_provider
-from src.core.benzhong.scorer import BenzhongScore, score_one
-from src.core.benzhong.dimensions import _lazy_load_dimensions
+from src.core.benzong import cache, data_provider
+from src.core.benzong.scorer import BenzhongScore, score_one
+from src.core.benzong.dimensions import _lazy_load_dimensions
 
 logger = logging.getLogger(__name__)
 
@@ -52,13 +53,12 @@ def _build_ai_client(config: Optional[dict] = None):
         ai_cfg = config.get("ai", {})
         provider = ai_cfg.get("provider", "deepseek")
         provider_cfg = ai_cfg.get(provider, {})
-        api_key = provider_cfg.get("api_key") or ""
+        api_key = provider_cfg.get("api_key") or os.environ.get(f"{provider.upper()}_API_KEY", "")
         base_url = provider_cfg.get("base_url")
         if not api_key:
             logger.warning("AI api_key 未配置，AI 维度将走降级")
             return None, None
 
-        import os
         if "OPENAI_API_KEY" not in os.environ:
             os.environ["OPENAI_API_KEY"] = api_key
 
@@ -72,7 +72,11 @@ def _build_ai_client(config: Optional[dict] = None):
 
 
 def _build_rag_service(config: Optional[dict] = None):
-    """加载 RAG（可选，失败返回 None）"""
+    """加载 RAG（可选，失败返回 None）。
+
+    v0.8.6.3：bz 默认不再自动调用本函数（用户决定 bz 不依赖 RAG）。
+    保留供需要 RAG 的外部调用方使用。auto_score 默认 rag_service=None。
+    """
     try:
         from src.rag.service import get_rag_service
         rag = get_rag_service()
@@ -114,8 +118,8 @@ def auto_score(
     # Step 1: 准备依赖
     if ai_client is None:
         ai_client, ai_model = _build_ai_client(config)
-    if rag_service is None:
-        rag_service = _build_rag_service(config)
+    # v0.8.6.3: bz 默认不依赖 RAG（rag_service 保持 None，除非外部显式注入）
+    # 维度评分器对 rag_service=None 走无 RAG 路径，不影响评分
 
     # Step 2: 拉数据（如果未注入）
     if data_summary is None:
@@ -143,7 +147,8 @@ def auto_score(
 
         try:
             r = scorer_fn(code, name, data_summary=data_summary,
-                          ai_client=ai_client, rag_service=rag_service)
+                          ai_client=ai_client, ai_model=ai_model,
+                          rag_service=rag_service)
         except Exception as e:
             logger.error(f"  {dim_name} 调用异常: {e}", exc_info=True)
             r = {

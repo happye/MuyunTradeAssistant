@@ -7,7 +7,8 @@ AI 任务：综合判定行业景气度 0-100
 """
 
 import logging
-from src.core.benzhong.dimensions import _missing_data_result, _ai_failed_result, _call_ai_for_score
+from typing import Optional
+from src.core.benzong.dimensions import _missing_data_result, _ai_failed_result, _call_ai_for_score
 
 logger = logging.getLogger(__name__)
 
@@ -36,8 +37,14 @@ SYSTEM_PROMPT = """你是笨总「超景气价值投机」体系的行业景气�
 
 
 def score(code: str, name: str, *, data_summary: dict,
-          ai_client=None, rag_service=None) -> dict:
-    """行业景气度评分（0-100）。"""
+          ai_client=None, ai_model: Optional[str] = None,
+          rag_service=None) -> dict:
+    """行业景气度评分（0-100）。
+
+    v0.8.6.3：去掉 RAG 依赖（用户决定 bz 不依赖 RAG）。笨总教学评分标准
+    已内嵌在 SYSTEM_PROMPT，行业+新闻足够 AI 判定，无需 RAG 锚点。
+    rag_service 参数保留（签名统一）但不使用。
+    """
     industry = data_summary.get("industry") or {}
     industry_name = industry.get("industry_name", "")
     announcements = data_summary.get("announcements") or []
@@ -58,16 +65,6 @@ def score(code: str, name: str, *, data_summary: dict,
     if not news_text:
         news_text = "（最近 30 天无相关新闻）"
 
-    # RAG 检索笨总教学锚点
-    rag_context = ""
-    if rag_service is not None:
-        try:
-            query = f"{industry_name} 高景气 现象级事件 拐点 笨总"
-            rag_context = rag_service.get_context(query, target="modifier",
-                                                  top_k=3, max_length=800) or ""
-        except Exception as e:
-            logger.warning(f"RAG 检索失败: {e}")
-
     user_prompt = f"""请评估 {name}（{code}）的行业景气度。
 
 所属行业：{industry_name or "未知"}
@@ -75,10 +72,7 @@ def score(code: str, name: str, *, data_summary: dict,
 最近 30 天相关新闻（{len(announcements)} 条）：
 {news_text}
 
-笨总教学参考（RAG 检索）：
-{rag_context[:800] if rag_context else "（无）"}
-
-请按笨总「超景气价值投机」体系给行业景气度打分（0-100）。
+请按笨总「超景气价值投机」体系给行业景气度打分（0-100）。评分标准见系统提示。
 JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "评分依据..."}}
 """
 
@@ -86,7 +80,7 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "评分依据..
         return _ai_failed_result("ai_client 未提供", dim_name="行业景气度")
 
     ai_result = _call_ai_for_score(ai_client, SYSTEM_PROMPT, user_prompt,
-                                    dim_name="行业景气度")
+                                    dim_name="行业景气度", model=ai_model)
     if ai_result is None:
         return _ai_failed_result("AI 调用/解析失败", dim_name="行业景气度")
 
@@ -95,8 +89,6 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "评分依据..
         sources.append(f"行业: {industry_name}")
     if announcements:
         sources.append(f"新闻 {len(announcements)} 条")
-    if rag_context:
-        sources.append("RAG 笨总教学锚点")
 
     return {
         "score": ai_result["score"],

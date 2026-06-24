@@ -128,6 +128,15 @@ class StrategyLayer:
             "trend_exit_break_pct": 0.0,     # 任何浮亏即退出
         },
     }
+    # 跳法A（MarketState 降级）：气宗固定长持参数，不随市况分档。
+    # 取牛市档口径（晚卖少卖、宽趋势退出），让中长期格局仓位拿住整波，
+    # 卖出交由 PlanGuard 致命止损 / 时间止损 / 高位止盈3维度（P0/P1/P2）。
+    QIZONG_FIXED_PARAMS = {
+        "tier_label": "气宗档",
+        "take_profit_keep": 0.85,
+        "take_profit_min_gain_pct": 0.15,
+        "trend_exit_break_pct": -0.05,
+    }
     MIN_HOLD_DAYS = 5
     ADD_PROTECTION_DAYS = 5
     REDUCE_PROTECTION_DAYS = {
@@ -144,6 +153,7 @@ class StrategyLayer:
     def __init__(self, pyramid_config: Optional[dict] = None):
         """初始化策略层"""
         self.pyramid = None
+        self._active_mode = None  # 跳法A: 当前持仓笨总 mode（process 透传），气宗走固定长持参数
         if pyramid_config:
             from src.core.position_tier import PyramidPositionManager
             self.pyramid = PyramidPositionManager(pyramid_config)
@@ -774,8 +784,12 @@ class StrategyLayer:
     def _get_state_params(self, market_state: MarketState) -> dict:
         """ISS-033 二阶段：根据市场状态返回当前档位的仓位执行参数。
 
-        命中即返回该档；未命中（理论上不该发生）回退到震荡档默认值，避免 KeyError。
+        跳法A（MarketState 降级）：气宗 mode 下不随市况分档摆动，走固定长持参数
+        （等同牛市档：晚卖少卖、宽趋势退出阈值），持有行为完全由 mode+硬规则决定。
+        命中即返回该档；未命中回退到震荡档默认值，避免 KeyError。
         """
+        if self._active_mode == "qizong":
+            return self.QIZONG_FIXED_PARAMS
         return self.STATE_TUNED_PARAMS.get(
             market_state,
             self.STATE_TUNED_PARAMS[MarketState.TRANSITION],

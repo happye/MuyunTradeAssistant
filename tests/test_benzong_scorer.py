@@ -14,7 +14,7 @@
   按公式严格计算应得 83.05，本测试记录这一发现，用户可知情。
 """
 
-from src.core.benzhong import score_one
+from src.core.benzong import score_one
 
 
 def test_case_a_hnd():
@@ -130,7 +130,7 @@ def test_grade_thresholds():
 
 def test_liquidity_boundary():
     """流动性系数边界"""
-    from src.core.benzhong import liquidity_coefficient
+    from src.core.benzong import liquidity_coefficient
     assert liquidity_coefficient(0.5) == 0.8   # 极低
     assert liquidity_coefficient(0.8) == 0.8   # 边界（≤0.8）
     assert liquidity_coefficient(1.0) == 1.0   # 正常

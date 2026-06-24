@@ -15,7 +15,8 @@ logger = logging.getLogger(__name__)
 
 
 def score(code: str, name: str, *, data_summary: dict,
-          ai_client=None, rag_service=None) -> dict:
+          ai_client=None, ai_model: Optional[str] = None,
+          rag_service=None) -> dict:
     """计算历史估值位置评分（0-100）。
 
     Args:
@@ -23,6 +24,7 @@ def score(code: str, name: str, *, data_summary: dict,
         name: 股票名称
         data_summary: dict 含 kline (DataFrame) 与 fetch_status
         ai_client: 不使用（纯算法）
+        ai_model: 不使用（纯算法，签名统一而保留）
         rag_service: 不使用
 
     Returns:

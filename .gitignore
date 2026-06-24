@@ -33,8 +33,10 @@ tests/issue_027_round2/
 Thumbs.db
 .DS_Store
 
-# 敏感配置（如含API密钥）
-# configs/secrets.yaml
+# 敏感配置（如含API密钥）—— ISS-042
+configs/settings.local.yaml
+.env
+.env.*
 
 # 持仓数据（私有仓库可上传，用于多设备同步）
 # portfolio.yaml  ← 已移除忽略，允许上传

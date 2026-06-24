@@ -11,12 +11,12 @@
 - dimensions/：6 个维度独立评分器（v0.8.6.2）
 """
 
-from src.core.benzhong.scorer import (
+from src.core.benzong.scorer import (
     BenzhongScore,
     score_one,
     liquidity_coefficient,
 )
-from src.core.benzhong.auto_scorer import auto_score, AutoScoredResult
+from src.core.benzong.auto_scorer import auto_score, AutoScoredResult
 
 __all__ = [
     "BenzhongScore",

@@ -287,6 +287,27 @@ class Orchestrator:
                 elif action in ("EXIT", "STOP", "TRIM"):
                     logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value} != SELL")
 
+        # Layer 3.85: 高位止盈3维度大顶信号检查（跳法A 阶段2 / v0.8.6.4）
+        # 仅持仓时检查；触发即作为 P1 信号强制 SELL（PlanGuard 不可压制，仅次于致命止损）。
+        # 全客观硬规则（成交额/换手/缩量/减持），不依赖 AI 实时判断。
+        top_signal = None
+        if has_position:
+            try:
+                from src.core.exit_signals import check_top_signals
+                top_signal = check_top_signals(
+                    data, data.stock_code,
+                    turnover_pct=getattr(data, "turnover_pct", None),
+                    announcements=getattr(data, "recent_announcements", None),
+                    market_turnover_trillion=getattr(data, "market_turnover_trillion", None),
+                )
+            except Exception as e:
+                logger.debug(f"高位止盈信号检查失败: {e}")
+            if top_signal:
+                decision_result.decision = SignalType.SELL
+                decision_result.position_action = PositionAction.CLOSE_ALL
+                decision_result.reason.append(f"[TopSignal] 高位止盈: {top_signal}")
+                logger.info(f"[TopSignal] 大顶信号强制离场: {top_signal}")
+
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:
             strategy_state = StrategyState(
@@ -294,6 +315,8 @@ class Orchestrator:
                 lifecycle=TradeLifecycle.FLAT if current_position_ratio <= 0 else TradeLifecycle.HOLD,
             )
 
+        # 跳法A（MarketState 降级）：把笨总 mode 透传给策略层，气宗走固定长持参数
+        self.strategy_layer._active_mode = trade_plan.mode if trade_plan is not None else None
         strategy_decision = self.strategy_layer.process(
             decision_result, strategy_state, data
         )
@@ -301,6 +324,12 @@ class Orchestrator:
         # v0.8.3 Phase C: 将买卖点结果附加到策略决策
         if entry_exit_result:
             strategy_decision.entry_exit = entry_exit_result.model_dump()
+
+        # 跳法A 阶段2: 把大顶信号标到策略决策上，让 PlanGuard 按 P1 不可压处理
+        if top_signal:
+            strategy_decision.top_signal = top_signal
+            if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
+                strategy_decision.sell_path = "top_signal"
 
         # v0.8.6.3 (ISS-033): Chandelier/trend_break force_exit 经 strategy_layer 后 sell_path
         # 可能落空（_calculate_position 重算 position_action 致 _infer_sell_path 推断不到）。

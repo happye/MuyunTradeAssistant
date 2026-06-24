@@ -196,7 +196,8 @@ class BacktestEngine:
         entry_exit_config: Optional[dict] = None,
         pyramid_config: Optional[dict] = None,
         enable_trade_plan: bool = True,  # v0.8.5 阶段 3.1: 回测自动建 TradePlan + PlanGuard 生效
-        qizong_codes: Optional[set] = None,  # v0.8.6.3: 气宗模式股票集（笨总高分股），建 plan 时 mode=qizong
+        qizong_codes: Optional[set] = None,  # DEPRECATED(跳法A阶段1.3): 显式气宗股集，建 plan 时强制 mode=qizong；优先级高于自动评分。留作向后兼容/覆盖
+        benzong_auto_mode: bool = True,  # 跳法A阶段1.3: 建仓时调 rule_scorer 自动定 mode（A→气宗/B→剑宗）
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -237,11 +238,41 @@ class BacktestEngine:
         # 清仓时清除 plan
         self.enable_trade_plan = enable_trade_plan
         self._current_plan = None  # 当前持仓的 TradePlan（单股回测每次最多 1 个）
-        self._qizong_codes = qizong_codes or set()  # v0.8.6.3 气宗股票集
+        self._qizong_codes = qizong_codes or set()  # DEPRECATED: 显式覆盖
+        self._benzong_auto_mode = benzong_auto_mode  # 跳法A阶段1.3: 自动评分定 mode
+        self._benzong_mode_cache = {}  # {code: grade} 缓存，避免同股重复评分
         self._plan_stats = {        # 统计：用于回测后看 plan 实际效果
             "plans_created": 0,
             "weak_sells_suppressed_by_guard": 0,
+            "qizong_plans": 0,
+            "jianzong_plans": 0,
         }
+
+    def _resolve_benzong_mode(self, code: str) -> Optional[str]:
+        """建仓时定笨总 mode（跳法A阶段1.3）。
+
+        优先级：显式 qizong_codes 覆盖 > rule_scorer 自动评分 > None。
+        rule_scorer 用技术面+财务快照近似 grade（A→气宗/B→剑宗），准确率低于 AI 版，
+        回测结论是方向性的（建仓时刻一次定档，非逐日，可行性高于逐日近似）。
+        """
+        if code in self._qizong_codes:
+            return "qizong"
+        if not self._benzong_auto_mode:
+            return None
+        if code in self._benzong_mode_cache:
+            return self._benzong_mode_cache[code]
+        mode = None
+        try:
+            from src.core.benzong.rule_scorer import rule_score
+            from src.core.trade_plan.generator import _mode_from_grade
+            dims = rule_score(code, name=code)
+            grade = dims.get("grade")
+            ind_pros = dims.get("industry_prosperity", {}).get("score")
+            mode = _mode_from_grade(grade, ind_pros)
+        except Exception as e:
+            logger.debug(f"回测笨总自动评分失败 {code}: {e}")
+        self._benzong_mode_cache[code] = mode
+        return mode
 
     def run(self) -> BacktestResult:
         """执行单次回测
@@ -474,6 +505,9 @@ class BacktestEngine:
                                 # 首次建仓 → 创建 plan（用 generator 规则版，无 AI 兜底）
                                 try:
                                     from src.core.trade_plan import TradePlanGenerator
+                                    # 跳法A阶段1.3: 建仓时笨总评分定 mode（A→气宗/B→剑宗）
+                                    mode = self._resolve_benzong_mode(self.stock_code)
+                                    grade_for_gen = {"qizong": "A", "jianzong": "B"}.get(mode)
                                     gen = TradePlanGenerator()
                                     plan, _meta = gen.generate(
                                         stock_code=self.stock_code,
@@ -481,17 +515,17 @@ class BacktestEngine:
                                         entry_price=account.avg_cost,
                                         ratio=account.position_ratio(current_price),
                                         stock_data=stock_data,
+                                        benzong_grade=grade_for_gen,
                                     )
                                     # 用建仓日期，不是当前日期（pending 的 today=date 已经是 N 日）
                                     plan.opened_at = date
                                     plan.plan_id = f"{self.stock_code}_{date}"
-                                    # v0.8.6.3: 气宗模式（笨总高分股 → 压制 trend_exit 拿住牛股）
-                                    if self.stock_code in self._qizong_codes:
-                                        plan.mode = "qizong"
-                                        # 气宗持有期拉长（调研报告：气宗 max_hold=180）
-                                        plan.max_hold_days = max(plan.max_hold_days, 180)
                                     self._current_plan = plan
                                     self._plan_stats["plans_created"] += 1
+                                    if plan.mode == "qizong":
+                                        self._plan_stats["qizong_plans"] += 1
+                                    elif plan.mode == "jianzong":
+                                        self._plan_stats["jianzong_plans"] += 1
                                 except Exception as e:
                                     logger.debug(f"回测建 plan 失败 {date}: {e}")
                             elif trade.action == "SELL" and account.position == 0:
@@ -693,6 +727,9 @@ class BacktestEngine:
                 layer_mode=self.layer_mode,
                 skills_dir="./src/skills",
                 execution_constraint=perturbed_constraint,
+                enable_trade_plan=self.enable_trade_plan,
+                qizong_codes=self._qizong_codes,
+                benzong_auto_mode=self._benzong_auto_mode,
             )
 
             result = temp_engine.run()

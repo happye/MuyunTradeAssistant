@@ -50,6 +50,29 @@ OUTLOOK_HOLD_MULTIPLIER = {
 }
 
 
+# 笨总 grade → 笨总模式映射（跳法A 阶段1：建仓时笨总评分一次定 mode）
+# A 级且行业景气>0 → 气宗(长期格局,持有期长,宽止损,无技术失效条件)
+# B 级 → 剑宗(一波流,持有期短,紧止损,保留技术失效条件)
+# C/D/F/None → 不设模式(向后兼容,PlanGuard 仅压 weak_sell)
+QIZONG_MIN_HOLD_DAYS = 180
+JIANZONG_MAX_HOLD_DAYS = 30
+JIANZONG_ATR_MULTIPLIER = 1.0
+
+
+def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float]) -> Optional[str]:
+    """由笨总等级推断交易模式。
+
+    行业景气度=0 时模型失效（笨总大前提），即使 A 级也不设气宗。
+    """
+    if grade == "A":
+        if industry_prosperity is not None and industry_prosperity <= 0:
+            return None  # 大前提失效，不强加气宗纪律
+        return "qizong"
+    if grade == "B":
+        return "jianzong"
+    return None
+
+
 def _detect_weinstein_stage(stock: StockData) -> str:
     """从 StockData 推断 Weinstein 阶段（与 cli/main.py:_weinstein_stage 同口径）"""
     ma20 = stock.ma20
@@ -69,17 +92,19 @@ def _detect_weinstein_stage(stock: StockData) -> str:
             return "S4"  # 下跌
 
 
-def _calculate_initial_stop(stock: StockData, entry_price: float) -> float:
+def _calculate_initial_stop(stock: StockData, entry_price: float, mode: Optional[str] = None) -> float:
     """计算初始止损价（策略库 ch48 标准：entry - 2×ATR(14)）。
 
-    ATR 缺失时退化为固定 8% 止损。
+    跳法A 阶段1：剑宗一波流用紧凑 1×ATR 止损，气宗/默认用 2×ATR 宽松止损。
+    ATR 缺失时退化为固定止损（剑宗 5% / 其他 8%）。
     """
+    multiplier = JIANZONG_ATR_MULTIPLIER if mode == "jianzong" else ATR_MULTIPLIER
     if stock.atr_14 and stock.atr_14 > 0:
-        stop = entry_price - ATR_MULTIPLIER * stock.atr_14
+        stop = entry_price - multiplier * stock.atr_14
         # 防御：止损不能低于 entry 的 70%（极端波动股的下限）
         return max(stop, entry_price * 0.70)
-    # 兜底：8% 固定止损
-    return entry_price * 0.92
+    # 兜底：剑宗 5% / 其他 8% 固定止损
+    return entry_price * (0.95 if mode == "jianzong" else 0.92)
 
 
 def _calculate_take_profit_targets(entry_price: float) -> list[float]:
@@ -174,6 +199,8 @@ def generate_plan_draft(
     rag_context: Optional[str] = None,
     ai_thesis: Optional[str] = None,
     today: Optional[str] = None,
+    benzong_grade: Optional[str] = None,
+    industry_prosperity: Optional[float] = None,
 ) -> TradePlan:
     """生成 TradePlan 草稿（规则版必有，AI 增强可选）
 
@@ -186,12 +213,17 @@ def generate_plan_draft(
         rag_context: RAG 检索的策略章节文本（用于 thesis_sources 锚点）
         ai_thesis: AI 生成的 thesis 文本；为 None 时用规则模板
         today: 建仓日期 YYYY-MM-DD；缺失用今天
+        benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
+        industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
 
     Returns:
         TradePlan: 完整的计划草稿，用户可逐字段编辑
     """
     today = today or datetime.now().strftime("%Y-%m-%d")
     plan_id = f"{stock_code}_{today}"
+
+    # 笨总模式（跳法A 阶段1：建仓时一次定 mode，之后靠硬规则锁持有）
+    mode = _mode_from_grade(benzong_grade, industry_prosperity)
 
     # 阶段判断 + outlook
     if stock_data:
@@ -203,12 +235,17 @@ def generate_plan_draft(
 
     # 数值计算
     if stock_data:
-        initial_stop = _calculate_initial_stop(stock_data, entry_price)
+        initial_stop = _calculate_initial_stop(stock_data, entry_price, mode=mode)
     else:
         initial_stop = entry_price * 0.92  # 缺数据时 8% 兜底
 
     targets = _calculate_take_profit_targets(entry_price)
     max_hold = _calculate_max_hold_days(stage, outlook)
+    # 气宗持有期拉长、剑宗收紧（覆盖按阶段算的 max_hold）
+    if mode == "qizong":
+        max_hold = max(max_hold, QIZONG_MIN_HOLD_DAYS)
+    elif mode == "jianzong":
+        max_hold = min(max_hold, JIANZONG_MAX_HOLD_DAYS)
 
     # thesis：AI 优先，规则模板兜底
     if ai_thesis and ai_thesis.strip():
@@ -227,10 +264,13 @@ def generate_plan_draft(
             when_buy += f"，价格在 MA20({stock_data.ma20:.2f}){relation}"
 
     # 失效条件
-    invalidate = _generate_invalidate_conditions(stage, stock_data) if stock_data else [
-        "跌破初始止损价（致命）",
-        "出现重大利空",
-    ]
+    # 气宗：不靠技术失效条件（回调时跌破 MA 正是该拿住的时刻），仅留致命止损
+    if mode == "qizong":
+        invalidate = ["跌破初始止损价（致命）", "高位止盈3维度触发（宏观/板块/个股大顶信号）"]
+    elif stock_data:
+        invalidate = _generate_invalidate_conditions(stage, stock_data)
+    else:
+        invalidate = ["跌破初始止损价（致命）", "出现重大利空"]
 
     # 锚点
     sources = [
@@ -256,6 +296,7 @@ def generate_plan_draft(
         current_stop=round(initial_stop, 2),
         max_hold_days=max_hold,
         fundamental_outlook=outlook,
+        mode=mode,
         thesis_sources=sources,
         adjustments=[],
     )
@@ -283,8 +324,14 @@ class TradePlanGenerator:
         entry_price: float,
         ratio: float,
         stock_data: Optional[StockData] = None,
+        benzong_grade: Optional[str] = None,
+        industry_prosperity: Optional[float] = None,
     ) -> Tuple[TradePlan, dict]:
         """生成 TradePlan + 元数据（哪些来源生效、哪些降级）
+
+        Args:
+            benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
+            industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
 
         Returns:
             (plan, meta)
@@ -292,6 +339,8 @@ class TradePlanGenerator:
                 "rag_used": bool,
                 "ai_thesis_used": bool,
                 "weinstein_stage": str,
+                "benzong_grade": str | None,
+                "mode": str | None,
                 "fallback_reasons": list[str],
             }
         """
@@ -299,6 +348,8 @@ class TradePlanGenerator:
             "rag_used": False,
             "ai_thesis_used": False,
             "weinstein_stage": "?",
+            "benzong_grade": benzong_grade,
+            "mode": _mode_from_grade(benzong_grade, industry_prosperity),
             "fallback_reasons": [],
         }
 
@@ -333,6 +384,8 @@ class TradePlanGenerator:
             stock_data=stock_data,
             rag_context=rag_context,
             ai_thesis=ai_thesis,
+            benzong_grade=benzong_grade,
+            industry_prosperity=industry_prosperity,
         )
 
         return plan, meta

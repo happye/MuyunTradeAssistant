@@ -1,6 +1,7 @@
 """CLI入口 - 主命令行界面"""
 
 import sys
+import os
 import json
 import logging
 from pathlib import Path
@@ -41,10 +42,35 @@ def normalize_stock_code(stock_code: str) -> str:
     return code.zfill(6) if code.isdigit() and len(code) < 6 else code
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    """递归合并 override 到 base（override 同名键覆盖，dict 则继续深合并）。"""
+    if not isinstance(base, dict) or not isinstance(override, dict):
+        return override
+    merged = dict(base)
+    for k, v in override.items():
+        if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
+            merged[k] = _deep_merge(merged[k], v)
+        else:
+            merged[k] = v
+    return merged
+
+
 def load_config(config_path: str = "./configs/settings.yaml") -> dict:
-    """加载配置文件"""
+    """加载配置文件。
+
+    若存在 configs/settings.local.yaml（gitignored），深合并覆盖到基础配置之上——
+    用于存放 API key 等敏感项（ISS-042）。环境变量 DEEPSEEK_API_KEY / KIMI_API_KEY
+    仍由各 AI 入口自行兜底。
+    """
     with open(config_path, 'r', encoding='utf-8') as f:
-        return yaml.safe_load(f)
+        config = yaml.safe_load(f)
+    local_path = "./configs/settings.local.yaml"
+    if os.path.exists(local_path):
+        with open(local_path, 'r', encoding='utf-8') as f:
+            local = yaml.safe_load(f) or {}
+        if local:
+            config = _deep_merge(config, local)
+    return config
 
 
 def load_pyramid_config(config: dict, position_tiers_path: str = "./configs/position_tiers.yaml") -> dict | None:
@@ -1369,11 +1395,26 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     except Exception:
         pass
 
+    # 跳法A 阶段1.2：笨总评分定 mode（建仓时一次评分，A→气宗/B→剑宗/其他→不设）
+    benzong_grade = None
+    industry_prosperity = None
+    try:
+        from src.core.benzong.auto_scorer import auto_score
+        console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
+        bz = auto_score(stock_code, name=stock_name)
+        benzong_grade = bz.score.grade()
+        industry_prosperity = bz.score.industry_prosperity
+        console.print(f"   [green]✓[/green] 笨总评分 {bz.score.total_score:.1f} 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
+    except Exception as e:
+        logger.warning(f"建仓笨总评分失败: {e}")
+        console.print(f"   [yellow]⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）[/yellow]")
+
     gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
     try:
         plan, meta = gen.generate(
             stock_code=stock_code, stock_name=stock_name,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
+            benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
         )
     except Exception as e:
         logger.error(f"TradePlan 生成失败: {e}")
@@ -1394,6 +1435,9 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     console.print(f"  [red]locked_initial_stop: ¥{plan.locked_initial_stop:.2f}[/red]")
     console.print(f"  max_hold_days: {plan.max_hold_days} 天")
     console.print(f"  fundamental_outlook: [{outlook_color}]{plan.fundamental_outlook}[/{outlook_color}]")
+    mode_label = {"qizong": "气宗(长期格局,持有期长,压制技术卖出)", "jianzong": "剑宗(一波流,破线即走)"}.get(plan.mode, "未设定(仅压 weak_sell)")
+    mode_color = {"qizong": "green", "jianzong": "yellow"}.get(plan.mode, "dim")
+    console.print(f"  笨总模式 mode: [{mode_color}]{mode_label}[/{mode_color}]" + (f"  [dim](笨总 {benzong_grade} 级)[/dim]" if benzong_grade else ""))
     console.print(f"  [dim]thesis_sources: {len(plan.thesis_sources)} 条锚点[/dim]")
 
     # 元数据提示
@@ -1539,11 +1583,32 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     except Exception:
         pass
 
+    # 跳法A 阶段1.2：笨总评分定 mode。
+    # 更新模式下不重跑笨总评分（避免 mode 摇摆），由旧 mode 反推 grade 保持持有参数一致；
+    # 仅新生成时跑评分。
+    benzong_grade = None
+    industry_prosperity = None
+    if old_plan and old_plan.mode:
+        benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
+        console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分）[/dim]")
+    else:
+        try:
+            from src.core.benzong.auto_scorer import auto_score
+            console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
+            bz = auto_score(stock_code, name=pos.stock_name or stock_code)
+            benzong_grade = bz.score.grade()
+            industry_prosperity = bz.score.industry_prosperity
+            console.print(f"   [green]✓[/green] 笨总评分 {bz.score.total_score:.1f} 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}）")
+        except Exception as e:
+            logger.warning(f"{action_label}时笨总评分失败: {e}")
+            console.print(f"   [yellow]⚠ 笨总评分未获取，mode 不设定[/yellow]")
+
     gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
     try:
         plan, meta = gen.generate(
             stock_code=stock_code, stock_name=pos.stock_name or stock_code,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
+            benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
         )
     except Exception as e:
         console.print(f"   [red]✗ {action_label}失败: {e}[/red]")

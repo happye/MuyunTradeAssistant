@@ -1,7 +1,7 @@
 """笨总 6 维评分缓存层（v0.8.6.2）
 
 设计：
-- 文件级缓存，路径 ~/.muyun/benzhong_cache/{stock_code}_{date}_{dim}.json
+- 文件级缓存，路径 ~/.muyun/benzong_cache/{stock_code}_{date}_{dim}.json
 - 缓存键：(stock_code, date, dimension) — 同股同日同维度只算一次
 - 跨日自动失效（用日期切片）
 - 无外部依赖（只用 stdlib：pathlib + json）
@@ -26,16 +26,37 @@ logger = logging.getLogger(__name__)
 
 # 缓存根目录（用户级，跨项目共享）
 def _get_cache_root() -> Path:
-    """缓存根：~/.muyun/benzhong_cache/。失败回退到项目内 .cache/"""
+    """缓存根：~/.muyun/benzong_cache/。失败回退到项目内 .cache/
+
+    v0.8.6.3：拼音修正 benzhong→benzong。若旧目录 ~/.muyun/benzhong_cache/
+    存在，自动迁移其内容到新目录（一次性，迁移后删旧目录），不浪费用户已算的缓存。
+    """
     try:
         home = Path.home()
-        cache = home / ".muyun" / "benzhong_cache"
+        cache = home / ".muyun" / "benzong_cache"
         cache.mkdir(parents=True, exist_ok=True)
+
+        # 一次性迁移旧拼写目录
+        old = home / ".muyun" / "benzhong_cache"
+        if old.exists() and old != cache:
+            try:
+                moved = 0
+                for f in old.glob("*.json"):
+                    dest = cache / f.name
+                    if not dest.exists():
+                        f.replace(dest)
+                        moved += 1
+                old.rmdir()  # 空了才删，非空保留不强制
+                if moved:
+                    logger.info(f"缓存迁移：benzhong_cache→benzong_cache，{moved} 个文件")
+            except OSError as e:
+                logger.warning(f"旧缓存目录迁移失败（不影响使用）：{e}")
+
         return cache
     except (OSError, PermissionError):
         # 兜底：项目内 .cache/
         proj_root = Path(__file__).resolve().parents[3]
-        cache = proj_root / ".cache" / "benzhong"
+        cache = proj_root / ".cache" / "benzong"
         cache.mkdir(parents=True, exist_ok=True)
         logger.warning(f"用户目录不可写，缓存改用 {cache}")
         return cache

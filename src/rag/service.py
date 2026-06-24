@@ -366,13 +366,15 @@ def get_rag_service(config: dict = None, auto_initialize: bool = True):
         if config is None:
             from src.cli.main import load_config
             config = load_config()
-        svc = RAGService(config)
+        # RAGService 期望 rag 子节（含 enabled/knowledge_dir 等），非整个 settings.yaml
+        rag_cfg = config.get("rag", config) if isinstance(config, dict) else {}
+        svc = RAGService(rag_cfg)
         if auto_initialize:
             svc.initialize()
         if svc.is_available():
             _rag_service_singleton = svc
             return svc
-        logger.warning("RAG service 初始化后不可用（可能配置未启用）")
+        logger.warning("RAG service 初始化后不可用（可能配置未启用或嵌入模型加载失败）")
         return None
     except Exception as e:
         logger.warning(f"RAG service 初始化失败: {type(e).__name__}: {e}")

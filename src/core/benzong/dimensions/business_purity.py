@@ -5,7 +5,8 @@
 """
 
 import logging
-from src.core.benzhong.dimensions import _missing_data_result, _ai_failed_result, _call_ai_for_score
+from typing import Optional
+from src.core.benzong.dimensions import _missing_data_result, _ai_failed_result, _call_ai_for_score
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +28,8 @@ SYSTEM_PROMPT = """你是笨总「超景气价值投机」体系的业务纯度�
 
 
 def score(code: str, name: str, *, data_summary: dict,
-          ai_client=None, rag_service=None) -> dict:
+          ai_client=None, ai_model: Optional[str] = None,
+          rag_service=None) -> dict:
     business_intro = data_summary.get("business_intro")
 
     if not business_intro:
@@ -51,7 +53,7 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "..."}}
         return _ai_failed_result("ai_client 未提供", dim_name="业务纯度")
 
     ai_result = _call_ai_for_score(ai_client, SYSTEM_PROMPT, user_prompt,
-                                    dim_name="业务纯度")
+                                    dim_name="业务纯度", model=ai_model)
     if ai_result is None:
         return _ai_failed_result("AI 调用失败", dim_name="业务纯度")
 

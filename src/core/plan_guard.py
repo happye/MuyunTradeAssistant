@@ -127,6 +127,18 @@ class PlanGuard:
             adjusted.strategy_reasons = reasons
             return adjusted
 
+        # 规则 P1：高位止盈3维度大顶信号（跳法A 阶段2）——仅次于致命止损，不可压制。
+        # 即使气宗持有期内，宏观/个股大顶信号触发也强制离场（绕开"该不该卖"的 AI 判断）。
+        if adjusted.top_signal:
+            if adjusted.decision != SignalType.SELL:
+                adjusted.decision = SignalType.SELL
+            adjusted.position_action = PositionAction.CLOSE_ALL
+            adjusted.sell_path = "top_signal"
+            reasons.insert(0, f"PlanGuard 高位止盈(不可压): {adjusted.top_signal}")
+            logger.info(f"PlanGuard force EXIT by top_signal: {adjusted.top_signal}")
+            adjusted.strategy_reasons = reasons
+            return adjusted
+
         # 规则 3：时间止损
         if _check_max_hold_expired(trade_plan, today):
             if adjusted.decision != SignalType.SELL:

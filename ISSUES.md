@@ -992,12 +992,20 @@ P3（已取消）:
 ---
 
 ### ISS-042: API Key 明文落库（安全隐患）
-- **状态**: 📋 待办（独立跟踪）
+- **状态**: ✅ 已解决（2026-06-25）
 - **优先级**: P1（安全）
 - **描述**: `configs/settings.yaml:105,110` DeepSeek/Kimi API Key 明文写入并跟 git 走
 - **方案**: 挪到 `.env` 或 `settings.local.yaml` + 加 `.gitignore`；历史 commit 里的 key 需 rotate
+- **落地**:
+  - `load_config` 深合并 `configs/settings.local.yaml`（gitignored）覆盖 base；`settings.yaml` 两处 key 清空留注释
+  - 补 `auto_scorer._build_ai_client` 的 `DEEPSEEK_API_KEY/KIMI_API_KEY` env 回退（其余 4 入口本已有）
+  - 新增 `configs/settings.local.yaml`（本地真 key，已 ignore）+ `configs/settings.local.yaml.example`（入库模板）
+  - `.gitignore` 增 `configs/settings.local.yaml` / `.env` / `.env.*`
+  - 回归 auto_scorer 6/6 + scorer 7/7 + batch_scorer 6/6 + source_check 5/5 全 PASS
+- **待用户操作**: 历史 commit 已泄露的旧 key 须去 DeepSeek/Moonshot 服务商后台 **rotate**（代码侧无法代劳）
 - **更新记录**:
   - 2026-06-20: neat-freak 同步时发现并记录
+  - 2026-06-25: 实施迁移完成
 
 ---
 
@@ -1079,3 +1087,32 @@ P3（已取消）:
     - 实测 `bz scan 氮化镓,钽电容`：精准定位赛微/三安/通富/江海（真实GaN+钽电容公司，非宽板块）→ 笨总排名通富100.8A/江海96A/赛微86.4B/三安70.3C，0丢弃
     - 使用手册.md 场景E 重写：补全 bz scan(法C+例子)/bz --check/bz scan --backtest，修过时描述(去RAG/标气宗四要素已落地)
     - 回归 24/24 PASS
+
+---
+
+### ISS-046: 跳法A — 笨总当中长期决策主驾（阶段1+2）
+- **状态**: ✅ 阶段1+2 已完成（2026-06-25），阶段3-5 待后续
+- **优先级**: P0（用户拍板的方向决策落地）
+- **背景**: v0.8.6.3 交接文档诚实结论——增量调参已达边际（+1-2pp 噪声），七层技术架构是为短期交易设计的。用户在本会话拍板**跳法A**：笨总从"旁边看的人"升级为中长期决策主驾，技术层降级为持仓内择时。这是 v0.8.6 调研报告原始意图但从未执行（探索确认笨总此前完全不开车：Orchestrator/RankingLayer/Scanner 零引用，PlanGuard 气宗模式是死代码 qizong_codes 从不传入）
+- **核心设计（绕开 AI 天花板）**: 建仓时笨总评分**一次**定 mode（A→气宗/B→剑宗/其他→不设）→ 持有期靠**客观硬规则**锁（气宗纪律+高位止盈3维度）→ 技术层只兜底致命止损+Chandelier trailing。**全程零 AI 实时判定**——不重跑评分、不靠 AI 区分回调vs死亡，不撞 3.2 景气度天花板
+- **用户拍板的分叉点**: ①阶段1+2 一起做；②MarketState 保留降级为展示，不再驱动 STATE_TUNED_PARAMS 调参
+- **阶段1（主链路打通，笨总第一次开车）**:
+  1. `generator.py`：`generate()`/`generate_plan_draft()` 新增 `benzong_grade`/`industry_prosperity` 参数 + `_mode_from_grade()`（A且景气>0→qizong/B→jianzong）。气宗 max_hold≥180+宽2×ATR止损+失效条件只留致命止损；剑宗 max_hold≤30+紧1×ATR止损。不传 grade 向后兼容（mode=None）
+  2. `cli/main.py`：`_try_attach_trade_plan`(pos add) + `_generate_or_update_plan`(pos plan) 建仓时调 `auto_score` 取 grade 定 mode，草稿展示 mode；评分失败降级 grade=None。更新模式由旧 mode 反推 grade，不重跑评分（避免纪律摇摆）
+  3. `backtest_engine.py`：新增 `_resolve_benzong_mode()`（rule_scorer→score_one→grade，带 code 缓存）+ `benzong_auto_mode` 参数（默认 True）。建仓时自动定 mode，`qizong_codes` 降级为 deprecated 覆盖。统计加 qizong_plans/jianzong_plans
+- **阶段2（高位止盈3维度，个股+宏观层）**:
+  1. 新建 `src/core/exit_signals/`：`macro.py`(成交额破10万亿) + `stock.py`(换手>40%/缩量加速/实控人减持) + `sector.py`(阶段5占位,数据源缺失)
+  2. `orchestrator.py`：Layer3.85 插入高位止盈检查（仅持仓），触发设 SELL+top_signal
+  3. `models.py`：`StrategyDecision` 加 `top_signal` 字段
+  4. `plan_guard.py`：新增 P1 规则——top_signal 不可压制（气宗持有期内大顶信号也强制 CLOSE_ALL，仅次于致命止损）
+- **技术层降级**: `strategy_layer.py` 加 `QIZONG_FIXED_PARAMS` + `_active_mode`，气宗 mode 走固定长持参数（不随市况分档）；orchestrator 透传 trade_plan.mode。无 mode 保留原市况分档行为
+- **诚实声明（数据源限制）**:
+  - 宏观储蓄搬家/官方发金牌：无数据源，未实现（TODO）
+  - 板块渗透率30%/旗手滞涨/虹吸：无数据源/需板块映射基础设施，阶段2 全不实现（sector.py 占位），靠"宏观+个股双保险"覆盖
+  - 个股换手率：live 可从 MarketCache 快照传入，回测历史换手率需流通股本数据未提供→跳过该子信号
+  - 实控人减持：live 扫公告可用，回测历史公告获取受限→跳过
+  - rule_scorer 定 mode 准确率低于 AI 版，回测结论是方向性的（建仓时刻一次定档，非逐日近似）
+- **验证**: 新增 `tests/test_jumpA_benzong_driver.py` 17 项全 PASS。全量回归 63 PASS（原 46 + 新 17：benzong_scorer 7 + auto_scorer 6 + batch_scorer 6 + source_check 5 + trade_plan 22 + jumpA 17）。全链路 import 烟雾测试通过
+- **未做（后续阶段）**: 阶段3 客观基本面恶化监测（业绩转负/实控人减持/ST→outlook转bearish）；阶段4 2020-2024 五年回测验证（LRN-20260619-003）；阶段5 板块维度信号；RankingLayer 四维改为笨总驱动的深度选股替代
+- **更新记录**:
+  - 2026-06-25: 阶段1+2 实施完成，63 回归全绿

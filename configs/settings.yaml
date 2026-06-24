@@ -100,14 +100,14 @@ skills:
 ai:
   enabled: true
   debug: false               # debug模式：打印AI交互的完整输入输出
-  provider: "kimi"       # deepseek / kimi
+  provider: "deepseek"       # deepseek / kimi
   deepseek:
-    api_key: "sk-1f0ed445f13e4ab58514e9948904a515"              # 用户手动填写，或设置环境变量 DEEPSEEK_API_KEY
+    api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 DEEPSEEK_API_KEY（ISS-042）
     base_url: "https://api.deepseek.com"
     model: "deepseek-chat"        # 默认用chat（稳定JSON输出，快+便宜）
     model_pro: "deepseek-chat"    # 深度分析时也用chat；v4-flash/v4-pro是思考型模型，偶尔返回空content
   kimi:
-    api_key: "sk-zXfIjeAIUYIf6SJjb3jysqn999GFYNmMSjKhVIbwcD2YGLfG"                   # 在此处填写Kimi API Key，或设置环境变量 KIMI_API_KEY
+    api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 KIMI_API_KEY（ISS-042）
     base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）
     model: "moonshot-v1-auto"     # moonshot-v1系列支持temperature参数
     model_pro: "kimi-k2.6"       # 思考型模型，content偶尔为空（reasoning_content兜底）
