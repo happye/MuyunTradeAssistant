@@ -118,7 +118,10 @@ class BenzhongScore:
         self.total_score = round(self.raw_sum * self.liquidity_coeff, 2)
 
     def grade(self) -> Literal["A", "B", "C", "D", "F"]:
-        """评分等级（基于总分）。
+        """评分等级（基于原始总分，严格忠于 xlsx 公式，仅供 Excel 保真/审计）。
+
+        ⚠ 此为「原始等级」，不含景气度大前提闸门——会出现"景气30却A级"的误导。
+        展示/决策请用 effective_grade()（含景气度闸门）。
 
         来源：教学 2 + 教学报告 1 案例分析。
         - A 级 90+：超优质标的
@@ -137,6 +140,40 @@ class BenzhongScore:
             return "D"
         return "F"
 
+    def normalized_score(self) -> float:
+        """归一化总分到 0-100（直觉刻度，展示用）。
+
+        原始总分理论上限 = (100×1.2 正权和) × 1.2 流动性 = 144，
+        会出现"125分"这种超100、无直觉的数字。归一化 = 原始 / 1.44，
+        让 A 级≈对应高分段，便于横向比较。仅展示用，不参与公式。
+        """
+        return round(min(self.total_score / 1.44, 100.0), 1)
+
+    def effective_grade(self) -> Literal["A", "B", "C", "D", "F"]:
+        """实际等级 = 原始等级 + 行业景气度大前提闸门（展示/决策用）。
+
+        笨总体系第一大前提：没有高景气行业判断，其他维度再高也无意义
+        （教学2 中免反面案例）。当前公式里景气度只占 20% 权重，会被
+        纯度40%+估值25% 淹没，导致"景气30却A级"。此方法把景气度做成硬闸门：
+        - 景气度 == 0：模型失效 → F（不可作买入依据）
+        - 景气度 ≤ 30（笨总「边际下行」）：最高只能 C（不能是买入级 A/B）
+        - 景气度 ≤ 50（笨总「稳定无拐点」）：最高只能 B（不能是顶级 A）
+        - 否则：取原始等级
+        """
+        raw = self.grade()
+        order = ["F", "D", "C", "B", "A"]
+        ip = self.industry_prosperity
+        if ip <= 0:
+            return "F"
+        if ip <= 30:
+            cap = "C"
+        elif ip <= 50:
+            cap = "B"
+        else:
+            return raw
+        # 取原始等级与上限中较低者
+        return raw if order.index(raw) <= order.index(cap) else cap
+
     def precondition_warning(self) -> Optional[str]:
         """大前提警告：行业景气度 == 0 时打分模型失效（教学 2 反面案例）"""
         if self.industry_prosperity == 0:
@@ -151,6 +188,8 @@ class BenzhongScore:
         """序列化（用于 portfolio.yaml 持久化或日志）"""
         d = asdict(self)
         d["grade"] = self.grade()
+        d["effective_grade"] = self.effective_grade()
+        d["normalized_score"] = self.normalized_score()
         d["warning"] = self.precondition_warning()
         return d
 

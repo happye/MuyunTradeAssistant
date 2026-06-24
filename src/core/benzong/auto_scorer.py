@@ -63,7 +63,14 @@ def _build_ai_client(config: Optional[dict] = None):
             os.environ["OPENAI_API_KEY"] = api_key
 
         from openai import OpenAI
-        client = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
+        # 显式 timeout + 重试：防 bz scan 长批量时连接挂起到 WinError 10060/10054
+        # （OpenAI SDK 默认 timeout 偏长，单只卡住会拖垮整批）
+        ai_timeout = float(ai_cfg.get("request_timeout", 60))
+        ai_retries = int(ai_cfg.get("max_retries", 2))
+        client_kwargs = {"api_key": api_key, "timeout": ai_timeout, "max_retries": ai_retries}
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        client = OpenAI(**client_kwargs)
         model = provider_cfg.get("model", "deepseek-chat")
         return client, model
     except Exception as e:

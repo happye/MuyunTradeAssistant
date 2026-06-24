@@ -24,6 +24,47 @@ from src.core.trade_plan.generator import (
 from src.core.exit_signals import check_macro_top_signal, check_stock_top_signal, check_top_signals
 from src.core.plan_guard import PlanGuard
 from src.core.strategy_layer import StrategyLayer
+from src.core.benzong.scorer import score_one
+
+
+# ========== 景气度大前提硬约束（effective_grade）==========
+
+def test_effective_grade_prosperity_gate_30():
+    """景气度≤30 → 实际等级最高 C（即使原始 A）"""
+    s = score_one(30, 100, 100, 90, 100, 0, 1.6)
+    assert s.grade() == "A"
+    assert s.effective_grade() == "C"
+
+
+def test_effective_grade_prosperity_zero_to_f():
+    """景气度=0 → 模型失效 → F"""
+    s = score_one(0, 100, 100, 100, 100, 0, 1.6)
+    assert s.effective_grade() == "F"
+
+
+def test_effective_grade_prosperity_50_cap_b():
+    """景气度≤50 → 最高 B"""
+    s = score_one(50, 100, 100, 100, 100, 0, 1.6)
+    assert s.effective_grade() == "B"
+
+
+def test_effective_grade_high_prosperity_no_downgrade():
+    """景气度>50 → 不降级，取原始等级"""
+    s = score_one(70, 100, 100, 90, 90, 0, 1.6)
+    assert s.effective_grade() == s.grade()
+
+
+def test_normalized_score_caps_100():
+    """归一化分上限 100（原始 144 满分压到 100）"""
+    s = score_one(100, 100, 100, 100, 100, 0, 1.6)  # 原始超100
+    assert s.total_score > 100
+    assert s.normalized_score() <= 100.0
+
+
+def test_mode_uses_effective_grade_path():
+    """景气度低的 A 级股，effective_grade=C，_mode_from_grade(C) 不应设气宗"""
+    s = score_one(30, 100, 100, 90, 100, 0, 1.6)
+    assert _mode_from_grade(s.effective_grade(), s.industry_prosperity) is None
 
 
 def _sd(**kw):

@@ -127,3 +127,17 @@ rules:
     max_candidates: 30
     sort_by: "pe_ratio"
     sort_desc: false
+
+  theme_members:
+    name: "主题成分股（宽口径）"
+    description: "笨总 bz scan 全市场通道用：只剔除低流动性/低价/退市，主题归属交给 market_query 行业匹配，不做技术形态过滤（避免漏掉高成长高PE标的）"
+    filters:
+      - field: "price"
+        op: "gt"
+        value: 2.0
+      - field: "amount"
+        op: "gt"
+        value: 20000000
+    max_candidates: 80
+    sort_by: "amount"
+    sort_desc: true

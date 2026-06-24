@@ -16,11 +16,14 @@ import unittest.mock as mock
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-def _make_result(total, grade="A", conf=0.9, invalidate=False, name="测试"):
+def _make_result(total, grade="A", conf=0.9, invalidate=False, name="测试",
+                 effective_grade=None, normalized=None):
     """构造 mock AutoScoredResult"""
     r = mock.MagicMock()
     r.score.total_score = total
     r.score.grade.return_value = grade
+    r.score.effective_grade.return_value = effective_grade or grade
+    r.score.normalized_score.return_value = normalized if normalized is not None else round(total / 1.44, 1)
     r.score.stock_name = name
     r.overall_confidence = conf
     r.warnings = []

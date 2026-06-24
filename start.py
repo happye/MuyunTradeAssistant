@@ -409,20 +409,25 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
 
     # 总分
     print("─" * 64)
-    grade = bs.grade()
+    grade = bs.effective_grade()
+    raw_grade = bs.grade()
     grade_label = {
-        "A": "🏆 A 级 — 超优质（90+）",
-        "B": "✅ B 级 — 优秀（80-90，可买入）",
-        "C": "🟡 C 级 — 可观察（60-80）",
-        "D": "🔻 D 级 — 勉强观望（40-60）",
-        "F": "❌ F 级 — 放弃（< 40）",
+        "A": "🏆 A 级 — 超优质",
+        "B": "✅ B 级 — 优秀（可买入）",
+        "C": "🟡 C 级 — 可观察",
+        "D": "🔻 D 级 — 勉强观望",
+        "F": "❌ F 级 — 放弃",
     }[grade]
+    norm = bs.normalized_score()
+    downgrade_note = f"（原始 {raw_grade} 级，被行业景气度闸门降级）" if grade != raw_grade else ""
     if precondition_failed:
-        print(f"  💯 总分：{bs.total_score} → {grade_label}")
-        print(f"  [bold red]⚠ 大前提失效（行业景气度=0）：此总分/等级不具参考意义，不可作为买入依据！[/bold red]")
+        print(f"  💯 评分：{norm:.0f}/100 → {grade_label}")
+        print(f"  [bold red]⚠ 大前提失效（行业景气度=0）：此评分/等级不具参考意义，不可作为买入依据！[/bold red]")
         print(f"  [dim]笨总教学：没有高景气行业判断，其他维度再高也无意义（中免反面案例）[/dim]")
     else:
-        print(f"  💯 总分：{bs.total_score} → {grade_label}")
+        print(f"  💯 评分：{norm:.0f}/100 → {grade_label} {downgrade_note}")
+        if downgrade_note:
+            print(f"  [dim]行业景气度 {bs.industry_prosperity:.0f} 偏低（笨总大前提存疑），实际等级已下调[/dim]")
     print(f"  🎯 总体置信度：{result.overall_confidence:.2f}", end="")
     if result.overall_confidence < 0.5:
         print("  [yellow]⚠ 偏低（有维度降级，总分仅供参考）[/yellow]")
@@ -506,22 +511,58 @@ def run_benzong_scan(args: dict):
 
     located_stocks = None  # 法C结果（有主题词时填充）
     if theme:
-        # ── 法C：主题词精准定位 ──
+        # ── 双通道选股（去龙头偏向）──
+        # 通道A 法C：AI 报股，覆盖细分材料（THS 无对应板块的，如 PBO树脂）
+        # 通道B 全市场客观筛选：quick_scan(market_query=主题词) 从 THS 行业/概念成分股
+        #        捞全市场成员（含中小盘非龙头），客观数据不靠 AI 记忆
+        # 两通道合并去重 → 笨总评分排序
         from src.core.benzong.theme_locator import locate_theme_stocks
         terms = [t.strip() for t in theme.split(",") if t.strip()]
-        print(f"  [Step 1/3] 法C 精准定位：AI识别「{theme}」对应A股公司 + 验证...")
+        print(f"  [Step 1/3] 双通道选股：法C精准定位 + 全市场行业筛选...")
+
+        # 通道A：法C
         located = locate_theme_stocks(terms, config=config)
-        located_stocks = [s for s in located.get("stocks", [])
-                          if s["code"] not in exclude_codes]
+        a_stocks = [s for s in located.get("stocks", [])
+                    if s["code"] not in exclude_codes]
         if located.get("invalid"):
-            print(f"  [dim]丢弃 {len(located['invalid'])} 只（AI可能给错代码）："
+            print(f"  丢弃 {len(located['invalid'])} 只（AI可能给错代码）："
                   + ", ".join(f"{i['code']}({i['name']})" for i in located["invalid"][:5]))
+
+        # 通道B：全市场客观筛选（按主题词匹配 THS 行业/概念成分股）
+        b_stocks = []
+        try:
+            b_engine = ScannerEngine(
+                rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),
+                skills_dir=skills_dir, enabled_skills=enabled_skills,
+                signal_weights=signal_weights, skill_types=skill_types,
+                ai_config=config.get("ai", None),
+                cache_ttl=scanner_cfg.get("cache_ttl", 300),
+                entry_exit_config=entry_exit_config,
+            )
+            b_candidates, b_info = b_engine.quick_scan(
+                rule_name="theme_members",  # 宽口径规则，主要靠主题词过滤而非技术形态
+                market_query=theme,
+                exclude_codes=exclude_codes,
+            )
+            if not b_info.get("error"):
+                a_codes = {s["code"] for s in a_stocks}
+                for c in b_candidates:
+                    if c.stock_code not in a_codes and c.stock_code not in exclude_codes:
+                        b_stocks.append({"code": c.stock_code,
+                                         "name": getattr(c, "stock_name", c.stock_code),
+                                         "term": theme, "why": "全市场行业筛选"})
+        except Exception as e:
+            print(f"  [dim]通道B 全市场筛选跳过: {type(e).__name__}: {str(e)[:60]}[/dim]")
+
+        # 合并：法C 优先（细分纯正），全市场补充非龙头
+        merged = a_stocks + b_stocks
+        located_stocks = merged
         if not located_stocks:
-            print(f"  [yellow]⚠ 主题「{theme}」未定位到验证通过的A股公司[/yellow]")
-            print(f"  [dim]可能：AI不熟悉该细分领域 / 代码全验证失败。可尝试换更通用的主题词[/dim]")
+            print(f"  ⚠ 主题「{theme}」两通道均未定位到A股公司")
+            print(f"  可能：AI不熟悉该细分领域 + 主题词未匹配到行业板块。可尝试换更通用的主题词")
             return
         codes = [s["code"] for s in located_stocks[:limit]]
-        print(f"  ✓ 法C 定位 {len(located['stocks'])} 只 → 取前 {len(codes)} 只评分")
+        print(f"  ✓ 法C {len(a_stocks)} 只 + 全市场 {len(b_stocks)} 只 → 合并 {len(merged)} 只，取前 {len(codes)} 只评分")
         for s in located_stocks[:limit]:
             print(f"    {s['code']} {s['name'][:10]} [{s['term']}] {s['why'][:40]}")
         print()
@@ -581,26 +622,45 @@ def run_benzong_scan(args: dict):
         tbl.add_column("#", width=3)
         tbl.add_column("代码", width=8)
         tbl.add_column("名称", width=10)
-        tbl.add_column("总分", justify="right")
+        tbl.add_column("评分", justify="right")
         tbl.add_column("等级", justify="center")
         tbl.add_column("置信度", justify="right")
         tbl.add_column("行业景气/纯度/估值/龙头/辨识/风险")
         for idx, item in enumerate(batch["top_n"], 1):
             ds = item["dim_scores"]
-            dims_str = "/".join(f"{ds.get(d, 0):.0f}" for d in
-                                ["industry_prosperity", "business_purity", "valuation_position",
-                                 "industry_leader", "market_recognition", "risk_deduction"])
-            grade_color = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}.get(item["grade"], "white")
+            ip = ds.get("industry_prosperity", 0)
+            # 景气度低于阈值标红：笨总大前提，景气≤30=边际下行/=0=失效
+            dim_parts = []
+            for d in ["industry_prosperity", "business_purity", "valuation_position",
+                      "industry_leader", "market_recognition", "risk_deduction"]:
+                v = ds.get(d, 0)
+                if d == "industry_prosperity" and v <= 30:
+                    dim_parts.append(f"[red]{v:.0f}[/red]")
+                else:
+                    dim_parts.append(f"{v:.0f}")
+            dims_str = "/".join(dim_parts)
+            eff = item.get("effective_grade", item["grade"])
+            raw = item["grade"]
+            grade_color = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}.get(eff, "white")
+            # 实际等级与原始等级不同 → 标注被景气度闸门降级
+            grade_disp = f"[{grade_color}]{eff}[/{grade_color}]"
+            if eff != raw:
+                grade_disp += f"[dim](原{raw})[/dim]"
             veto = " 🚨否决" if item.get("invalidate") else ""
+            norm = item.get("normalized_score", item["total_score"])
             tbl.add_row(str(idx), item["code"], item["name"][:8],
-                        f"{item['total_score']:.1f}",
-                        f"[{grade_color}]{item['grade']}[/{grade_color}]{veto}",
+                        f"{norm:.0f}",
+                        grade_disp + veto,
                         f"{item['confidence']:.2f}", dims_str)
         rc.print(tbl)
+        print(f"  [dim]评分=归一化(0-100) | 等级含行业景气度闸门(景气≤30最高C/=0判F) | 景气分标红=笨总大前提存疑[/dim]")
     except Exception:
         # rich 不可用时降级纯文本
         for idx, item in enumerate(batch["top_n"], 1):
-            print(f"  {idx}. {item['code']} {item['name'][:8]} | {item['total_score']:.1f} {item['grade']} | conf {item['confidence']:.2f}")
+            eff = item.get("effective_grade", item["grade"])
+            norm = item.get("normalized_score", item["total_score"])
+            raw_tag = f"(原{item['grade']})" if eff != item["grade"] else ""
+            print(f"  {idx}. {item['code']} {item['name'][:8]} | {norm:.0f} {eff}{raw_tag} | conf {item['confidence']:.2f}")
     print()
 
     if batch["failures"]:
@@ -760,15 +820,17 @@ def _run_benzong_manual(meta: str = ""):
     print(f"  原始累加         = {s.raw_sum:>+6.2f}")
     print()
 
-    grade = s.grade()
+    grade = s.effective_grade()
+    raw_grade = s.grade()
     grade_label = {
-        "A": "🏆 A 级 — 超优质（90+）",
-        "B": "✅ B 级 — 优秀（80-90，可买入）",
-        "C": "🟡 C 级 — 可观察（60-80）",
-        "D": "🔻 D 级 — 勉强观望（40-60）",
-        "F": "❌ F 级 — 放弃（< 40）",
+        "A": "🏆 A 级 — 超优质",
+        "B": "✅ B 级 — 优秀（可买入）",
+        "C": "🟡 C 级 — 可观察",
+        "D": "🔻 D 级 — 勉强观望",
+        "F": "❌ F 级 — 放弃",
     }[grade]
-    print(f"  💯 总分：{s.total_score} → {grade_label}")
+    downgrade_note = f"（原始 {raw_grade}，景气度闸门降级）" if grade != raw_grade else ""
+    print(f"  💯 评分：{s.normalized_score():.0f}/100 → {grade_label} {downgrade_note}")
     print("─" * 60)
 
     warn = s.precondition_warning()

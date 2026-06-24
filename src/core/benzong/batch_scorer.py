@@ -80,22 +80,33 @@ def auto_score_batch(
                 "code": code,
                 "name": bs.stock_name or code,
                 "total_score": bs.total_score,
+                "normalized_score": bs.normalized_score(),
                 "grade": bs.grade(),
+                "effective_grade": bs.effective_grade(),
                 "confidence": result.overall_confidence,
                 "dim_scores": dim_scores,
                 "warnings": result.warnings,
                 "invalidate": result.invalidate,
             })
             if progress_cb:
-                progress_cb(i, total, code, f"{bs.total_score:.1f}/{bs.grade()}")
+                progress_cb(i, total, code, f"{bs.normalized_score():.0f}/{bs.effective_grade()}")
         except Exception as e:
             logger.error(f"[auto_score_batch] {code} 评分失败: {e}")
             failures.append({"code": code, "error": f"{type(e).__name__}: {str(e)[:80]}"})
             if progress_cb:
                 progress_cb(i, total, code, "失败")
 
-    # 按总分降序（invalidate 的一票否决股排最后）
-    ranked.sort(key=lambda x: (not x.get("invalidate", False), x["total_score"]), reverse=True)
+    # 排序：一票否决排最后 → 实际等级（含景气度闸门）降序 → 归一化分降序
+    # 用 effective_grade 排序，让"景气30的A级"被景气度闸门压到 C 后自然下沉
+    _grade_rank = {"A": 4, "B": 3, "C": 2, "D": 1, "F": 0}
+    ranked.sort(
+        key=lambda x: (
+            not x.get("invalidate", False),
+            _grade_rank.get(x.get("effective_grade", x["grade"]), 0),
+            x.get("normalized_score", x["total_score"]),
+        ),
+        reverse=True,
+    )
 
     top = ranked[:top_n] if top_n > 0 else ranked
 

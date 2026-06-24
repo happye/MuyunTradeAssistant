@@ -1402,9 +1402,9 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         from src.core.benzong.auto_scorer import auto_score
         console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
         bz = auto_score(stock_code, name=stock_name)
-        benzong_grade = bz.score.grade()
+        benzong_grade = bz.score.effective_grade()
         industry_prosperity = bz.score.industry_prosperity
-        console.print(f"   [green]✓[/green] 笨总评分 {bz.score.total_score:.1f} 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
+        console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
     except Exception as e:
         logger.warning(f"建仓笨总评分失败: {e}")
         console.print(f"   [yellow]⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）[/yellow]")
@@ -1499,8 +1499,10 @@ def _print_benzong_summary(stock_code: str, stock_name: str = ""):
             stock_code=stock_code, stock_name=stock_name,
         )
         grade_colors = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}
-        gc = grade_colors.get(bs.grade(), "white")
-        console.print(f"  总分 [bold]{bs.total_score}[/bold] → [{gc}]{bs.grade()} 级[/{gc}]")
+        eff = bs.effective_grade()
+        gc = grade_colors.get(eff, "white")
+        dg = f" [dim](原{bs.grade()})[/dim]" if eff != bs.grade() else ""
+        console.print(f"  评分 [bold]{bs.normalized_score():.0f}[/bold]/100 → [{gc}]{eff} 级[/{gc}]{dg}")
         console.print(f"  [dim]（今日已评分，缓存命中。跑 bz {stock_code} --refresh 可重算）[/dim]")
     elif len(cached) > 0:
         console.print(f"  [yellow]部分维度已评分（{len(cached)}/6），跑 bz {stock_code} 完成剩余维度[/yellow]")
@@ -1596,9 +1598,9 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             from src.core.benzong.auto_scorer import auto_score
             console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
             bz = auto_score(stock_code, name=pos.stock_name or stock_code)
-            benzong_grade = bz.score.grade()
+            benzong_grade = bz.score.effective_grade()
             industry_prosperity = bz.score.industry_prosperity
-            console.print(f"   [green]✓[/green] 笨总评分 {bz.score.total_score:.1f} 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}）")
+            console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}）")
         except Exception as e:
             logger.warning(f"{action_label}时笨总评分失败: {e}")
             console.print(f"   [yellow]⚠ 笨总评分未获取，mode 不设定[/yellow]")
