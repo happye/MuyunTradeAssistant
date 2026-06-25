@@ -23,7 +23,8 @@ SYSTEM_PROMPT = """你是笨总「超景气价值投机」体系的业务纯度�
 
 警惕「画饼」：投了一点钱给热门概念子公司不算主营，看真实营收占比。
 
-输出 JSON：{"score": 0-100, "confidence": 0-1, "reasoning": "评分依据..."}
+⚠️ 输出要求：reasoning 字段必须 ≤60 字，一句话点明主营占比结论即可，禁止长篇分析。
+输出 JSON：{"score": 0-100, "confidence": 0-1, "reasoning": "≤60字结论"}
 """
 
 
@@ -53,7 +54,8 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "..."}}
         return _ai_failed_result("ai_client 未提供", dim_name="业务纯度")
 
     ai_result = _call_ai_for_score(ai_client, SYSTEM_PROMPT, user_prompt,
-                                    dim_name="业务纯度", model=ai_model)
+                                    dim_name="业务纯度", model=ai_model,
+                                    max_tokens=2000)  # 业务纯度需分析主营介绍，reasoning 易超长，提到 2000
     if ai_result is None:
         return _ai_failed_result("AI 调用失败", dim_name="业务纯度")
 

@@ -27,7 +27,9 @@ logger = logging.getLogger(__name__)
 # 缓存版本号：改了任何维度评分逻辑(prompt/降级规则/公式)必须 bump，
 # 否则旧缓存会被命中导致"改了代码不生效"。get() 读到旧版本自动当未命中。
 # v0.8.6.4：risk_deduction 新闻缺失降级从 score=0 改为 score=50
-CACHE_VERSION = "v0.8.6.4"
+# v0.8.6.5：business_purity prompt 限 reasoning≤60字 + max_tokens 1500→2000，
+#           截断退化 confidence 0.5→0.3
+CACHE_VERSION = "v0.8.6.5"
 
 
 # 缓存根目录（用户级，跨项目共享）

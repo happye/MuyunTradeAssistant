@@ -52,11 +52,13 @@ def _ai_failed_result(reason: str, dim_name: str = "") -> dict:
 
 
 def _call_ai_for_score(ai_client, system_prompt: str, user_prompt: str,
-                       dim_name: str, model: Optional[str] = None) -> Optional[dict]:
+                       dim_name: str, model: Optional[str] = None,
+                       max_tokens: int = 1500) -> Optional[dict]:
     """共用 AI 调用 helper：发 prompt → 拿 JSON → 解析 score/confidence/reasoning。
 
     v0.8.6.3 修复：max_tokens 800→1500（防 reasoning 超长截断致 JSONDecodeError）+
     finish_reason==length 时自动重试（要求 reasoning 精简）+ JSON 解析容错截断。
+    v0.8.6.4：max_tokens 改为参数，业务纯度等长 reasoning 维度可提到 2000。
 
     Returns:
         dict {score, confidence, reasoning} 或 None（调用/解析失败）
@@ -86,7 +88,7 @@ def _call_ai_for_score(ai_client, system_prompt: str, user_prompt: str,
                     {"role": "user", "content": user_p},
                 ],
                 temperature=0.2,  # 评分类任务低温
-                max_tokens=1500,  # v0.8.6.3: 800→1500 防 reasoning 截断
+                max_tokens=max_tokens,
             )
             text = response.choices[0].message.content or ""
             finish_reason = getattr(response.choices[0], "finish_reason", None)
@@ -152,11 +154,12 @@ def _parse_score_json(text: str, dim_name: str) -> Optional[dict]:
     if best is not None:
         return _validate_score_dict(best)
 
-    # 最后退化：正则提取 score 数字（截断到只剩 score:80 片段时）
+    # 最后退化：正则提取 score 数字（截断到只剩 score:80 片段时）。
+    # confidence 降到 0.3——截断残片只能信 score 大致值，confidence/reasoning 都丢了。
     m = re.search(r'"score"\s*:\s*([0-9.]+)', cleaned)
     if m:
-        logger.warning(f"{dim_name}: JSON 严重截断，仅提取 score={m.group(1)}")
-        return _validate_score_dict({"score": float(m.group(1)), "confidence": 0.5, "reasoning": "(输出截断)"})
+        logger.warning(f"{dim_name}: JSON 严重截断，仅提取 score={m.group(1)}（confidence/reasoning 丢失，conf 置 0.3）")
+        return _validate_score_dict({"score": float(m.group(1)), "confidence": 0.3, "reasoning": "(AI 输出截断，仅提取到 score)"})
     return None
 
 
