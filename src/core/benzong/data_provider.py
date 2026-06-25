@@ -17,10 +17,16 @@
 
 import logging
 import os
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timedelta
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# 单个数据源调用的硬超时（秒）。akshare 底层 requests 默认无 timeout，
+# 一个接口卡住会挂起到 OS 报 WinError 10060；用线程级超时包住，超时放弃走降级。
+# 可由 settings.yaml 的 benzong.data_call_timeout 覆盖。
+DATA_CALL_TIMEOUT = 30.0
 
 
 def _fix_curl_ssl_paths():
@@ -33,21 +39,32 @@ def _fix_curl_ssl_paths():
     fix_curl_ssl_paths()
 
 
-def _safe_call(func_name: str, fn, *args, **kwargs):
-    """统一的"失败返回 None + 日志"包装。
+def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwargs):
+    """统一的"失败返回 None + 日志"包装，带线程级硬超时。
 
+    akshare 底层 requests 默认无 timeout，接口卡住会挂起到 WinError 10060/10054。
+    用 ThreadPoolExecutor 包住：超时放弃该调用返回 None（走降级），不冻结主流程。
     失败时按错误类型给可操作 hint（与 E1-B5 一致）。
     """
     _fix_curl_ssl_paths()  # 确保 akshare curl_cffi 接口 SSL 可用
+    to = timeout if timeout is not None else DATA_CALL_TIMEOUT
     try:
-        return fn(*args, **kwargs)
+        with ThreadPoolExecutor(max_workers=1) as ex:
+            fut = ex.submit(fn, *args, **kwargs)
+            try:
+                return fut.result(timeout=to)
+            except FuturesTimeout:
+                logger.warning(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
+                return None
     except Exception as e:
         err_str = str(e)
         hint = ""
         if "ProxyError" in err_str or "10057" in err_str:
             hint = " | 提示：代理可能干扰，可临时关代理"
-        elif "Timeout" in err_str or "timeout" in err_str.lower():
+        elif "Timeout" in err_str or "timeout" in err_str.lower() or "10060" in err_str:
             hint = " | 提示：网络超时，可稍后重试"
+        elif "10054" in err_str or "ConnectionReset" in err_str or "连接" in err_str:
+            hint = " | 提示：连接被重置，可能反爬/代理，可稍后重试"
         elif "登录失败" in err_str:
             hint = " | 提示：BaoStock 临时故障"
         logger.warning(f"data_provider.{func_name} 失败: {type(e).__name__}: {err_str[:80]}{hint}")
@@ -102,35 +119,66 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
     """获取最近 N 天公告/新闻列表。
 
     返回：[{title, date, content, source}, ...]
-    数据源：AKShare stock_news_em（东方财富个股新闻）
+    数据源（v0.8.6.4 多源降级）：
+    1. AKShare stock_news_em（东方财富个股新闻，主源）
+    2. AKShare stock_zh_a_disclosure_report_cninfo（巨潮官方公告，备用源）
+    主源失败 → 备用源，避免新闻源挂掉时风险维/景气维无数据。
     """
     try:
         import akshare as ak
     except ImportError:
         return []
 
+    cutoff = datetime.now() - timedelta(days=days)
+
+    # 主源：东方财富个股新闻
     df = _safe_call("stock_news_em", lambda: ak.stock_news_em(symbol=code))
+    items = _parse_news_df(df, cutoff) if (df is not None and not df.empty) else []
+
+    # 备用源：巨潮官方公告（主源失败或空时）
+    if not items:
+        backup = _safe_call(
+            "stock_zh_a_disclosure_report_cninfo",
+            lambda: _fetch_cninfo_disclosure(ak, code, days),
+            timeout=25,
+        )
+        if backup:
+            items = _parse_news_df(backup, cutoff)
+
+    return items
+
+
+def _fetch_cninfo_disclosure(ak, code: str, days: int):
+    """巨潮信息网官方公告（备用新闻源）。返回 DataFrame 或 None。"""
+    try:
+        market = "深证" if code.startswith(("0", "3", "2")) else "上证"
+        end = datetime.now().strftime("%Y%m%d")
+        start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
+        return ak.stock_zh_a_disclosure_report_cninfo(
+            symbol=code, market=market, start_date=start, end_date=end
+        )
+    except Exception as e:
+        logger.warning(f"巨潮公告拉取失败 {code}: {e}")
+        return None
+
+
+def _parse_news_df(df, cutoff) -> list[dict]:
+    """从新闻/公告 DataFrame 解析为统一 [{title,date,content,source}] 列表。"""
     if df is None or df.empty:
         return []
-
-    cutoff = datetime.now() - timedelta(days=days)
     items = []
     try:
         for _, row in df.iterrows():
-            # 列名可能是 ['关键词', '新闻标题', '新闻内容', '发布时间', '文章来源', '新闻链接']
-            title = row.get("新闻标题") or row.get("title") or ""
-            date_str = row.get("发布时间") or row.get("date") or ""
+            title = row.get("新闻标题") or row.get("公告标题") or row.get("title") or ""
+            date_str = row.get("发布时间") or row.get("公告时间") or row.get("date") or ""
             content = row.get("新闻内容") or row.get("content") or ""
-            source = row.get("文章来源") or row.get("source") or ""
-
-            # 过滤：仅保留 days 天内
+            source = row.get("文章来源") or row.get("来源") or row.get("source") or ""
             try:
                 date_dt = datetime.fromisoformat(str(date_str).split(" ")[0]) if date_str else None
                 if date_dt and date_dt < cutoff:
                     continue
             except (ValueError, AttributeError):
-                pass  # 解析失败保留
-
+                pass
             items.append({
                 "title": str(title)[:200],
                 "date": str(date_str)[:10],
@@ -138,8 +186,7 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
                 "source": str(source)[:50],
             })
     except Exception as e:
-        logger.warning(f"公告解析失败: {e}")
-
+        logger.warning(f"新闻/公告解析失败: {e}")
     return items
 
 
@@ -244,7 +291,7 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
     try:
         from src.scanner.market_cache import MarketCache
         mc = MarketCache()
-        df = mc.get_all_stocks()
+        df = _safe_call("market_cache.get_all_stocks", mc.get_all_stocks, timeout=20)
         if df is None or df.empty:
             return None
         if "成交额" not in df.columns:

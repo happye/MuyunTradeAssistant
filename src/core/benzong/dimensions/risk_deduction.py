@@ -43,14 +43,14 @@ def score(code: str, name: str, *, data_summary: dict,
     announcements = data_summary.get("announcements") or []
 
     if not announcements:
-        # 无新闻 ≠ 无风险，但也无证据风险存在 → 默认 0（最好）+ 低 confidence
+        # 无新闻 ≠ 无风险。返回中性 50 分（不是最优 0），避免新闻源失败时风险维虚高总分
         return {
-            "score": 0,
-            "confidence": 0.3,
+            "score": 50,
+            "confidence": 0.0,
             "sources": [],
-            "reasoning": "近 30 天无公告/新闻数据，无明显风险信号（confidence 较低，需人工核对）",
+            "reasoning": "近 30 天公告/新闻拉取失败，无法识别风险——按中性 50 分处理（不假装无风险，也不冤枉）",
             "data_freshness": "N/A",
-            "warnings": ["近期公告/新闻拉取失败，风险评分仅为 fallback"],
+            "warnings": ["⚠ 公告/新闻源拉取失败，风险评分不可信（中性兜底，非0分最优）"],
         }
 
     news_text = ""
@@ -73,14 +73,14 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "...", "invalid
 """
 
     if ai_client is None:
-        # AI 不可用时不能假装识别风险 → 返回 0 + 低 confidence + 警告
+        # AI 不可用时不能假装识别风险 → 中性 50（不是最优 0），避免风险维虚高
         return {
-            "score": 0,
+            "score": 50,
             "confidence": 0.0,
             "sources": [f"新闻 {len(announcements)} 条"],
-            "reasoning": "AI 不可用，无法解析新闻识别风险",
+            "reasoning": "AI 不可用，无法解析新闻识别风险——按中性 50 分处理",
             "data_freshness": "N/A",
-            "warnings": ["AI 未启用，风险评分不可信"],
+            "warnings": ["AI 未启用，风险评分不可信（中性兜底）"],
         }
 
     ai_result = _call_ai_for_score(ai_client, SYSTEM_PROMPT, user_prompt,

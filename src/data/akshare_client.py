@@ -21,6 +21,20 @@ logger = logging.getLogger(__name__)
 # 模块初始化时登录baostock
 _bs_login_status = None
 
+# v0.8.6.4：baostock socket 读取可能卡住，统一用线程级超时保护
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+DEFAULT_TIMEOUT = 30.0
+
+
+def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
+    """线程级硬超时包装：fn 卡住超过 timeout 秒则放弃，抛 TimeoutError。
+    akshare/baostock 底层无 timeout，靠这个防 WinError 10060 冻结。
+    """
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(fn, *args, **kwargs)
+        return fut.result(timeout=timeout)
+
 
 def _ensure_baostock_login():
     """确保baostock已登录（模块级别全局状态）
@@ -76,29 +90,43 @@ class AKShareClient:
         return random.choice(user_agents)
 
     @staticmethod
-    def _retry_with_backoff(func, *args, max_retries=3, base_delay=2, **kwargs):
-        """带指数退避的重试装饰器
+    def _retry_with_backoff(func, *args, max_retries=3, base_delay=2, timeout=30.0, **kwargs):
+        """带指数退避的重试装饰器 + 线程级硬超时。
 
         遇到网络不可恢复错误（ProxyError/RemoteDisconnected/ConnectionError）时
         直接跳过不重试，避免浪费时间等待注定失败的请求。
+
+        v0.8.6.4（ISS-047）：加 timeout 线程级硬超时。akshare 底层 requests 默认
+        无 timeout，接口卡住会挂起到 OS 报 WinError 10060/10054 冻结整个命令。
+        用 ThreadPoolExecutor 包住单次调用，超时放弃走重试/降级。
 
         Args:
             func: 要重试的函数
             *args: 函数参数
             max_retries: 最大重试次数
             base_delay: 基础延迟秒数
+            timeout: 单次调用硬超时秒数（默认 30s）
             **kwargs: 函数关键字参数
 
         Returns:
             函数返回值或None
         """
+        from concurrent.futures import TimeoutError as FuturesTimeout
         # 不可恢复的错误关键词，遇到直接放弃
         SKIP_RETRY_KEYWORDS = ['ProxyError', 'RemoteDisconnected', 'ConnectionReset',
                                 'ConnectTimeout', 'Max retries exceeded']
 
         for attempt in range(max_retries):
             try:
-                return func(*args, **kwargs)
+                return _call_with_timeout(func, *args, timeout=timeout, **kwargs)
+            except FuturesTimeout:
+                if attempt < max_retries - 1:
+                    delay = base_delay * (2 ** attempt) + random.uniform(0.5, 1.5)
+                    logger.warning(f"{func.__name__} 超时(>{timeout:.0f}s) (尝试 {attempt + 1}/{max_retries}), {delay:.1f}秒后重试...")
+                    time.sleep(delay)
+                else:
+                    logger.error(f"{func.__name__} 超时最终失败(>{timeout:.0f}s)")
+                    return None
             except Exception as e:
                 error_str = str(e)
                 # 不可恢复错误，直接放弃
@@ -530,9 +558,17 @@ class AKShareClient:
                 logger.error(f"Baostock查询失败: {rs.error_msg}")
                 return None
 
-            data_list = []
-            while (rs.error_code == '0') & rs.next():
-                data_list.append(rs.get_row_data())
+            # v0.8.6.4：bs.next() 读取结果可能 socket 卡住，线程级超时保护
+            def _read_all():
+                data = []
+                while (rs.error_code == '0') & rs.next():
+                    data.append(rs.get_row_data())
+                return data
+            try:
+                data_list = _call_with_timeout(_read_all, timeout=30)
+            except FuturesTimeout:
+                logger.warning(f"Baostock 读取K线超时 {stock_code}，走降级")
+                return None
 
             if not data_list:
                 return None
@@ -937,9 +973,16 @@ class AKShareClient:
                 frequency="d",
             )
 
-            rows = []
-            while (rs.error_code == '0') and rs.next():
-                rows.append(rs.get_row_data())
+            def _read_index_rows():
+                rows = []
+                while (rs.error_code == '0') and rs.next():
+                    rows.append(rs.get_row_data())
+                return rows
+            try:
+                rows = _call_with_timeout(_read_index_rows, timeout=30)
+            except FuturesTimeout:
+                logger.warning(f"Baostock 读取大盘数据超时 {index_code}，走降级")
+                return None
 
             if not rows or len(rows) < 20:
                 logger.warning(f"大盘数据不足（{len(rows)}行），无法判断趋势")
