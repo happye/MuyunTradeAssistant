@@ -1139,3 +1139,9 @@ P3（已取消）:
 - **未做（后续可选）**: 行业景气度维接入更多客观数据源（治本，但撞数据可得性）；THS 成分股 160 上限的分页扩展
 - **更新记录**:
   - 2026-06-25: 用户三连发现 → 四项全修（提示词+双通道选股+景气度闸门+归一化展示+网络超时）
+  - 2026-06-26: 用户实测暴露三个深层问题，续修：
+    - **网络超时根治**：上轮只修 AI client，akshare/baostock 底层 requests 仍无 timeout 仍报 WinError 10060。三层线程级硬超时全覆盖：`data_provider._safe_call`(30s) + `akshare_client._retry_with_backoff`(30s) + baostock `bs.next()` 读取(30s)，新增模块级 `_call_with_timeout` helper。超时 1s 即放弃走降级不冻结
+    - **风险维降级 bug**：`risk_deduction` 新闻缺失时返回 score=0(最优) 而非中性，致新闻源挂时所有股风险虚高总分。改中性 50 + conf=0 + 标红。同时加巨潮官方公告(`stock_zh_a_disclosure_report_cninfo`)作新闻备用源
+    - **缓存版本校验**：用户"风险还是0不报错"根因=同股同日旧缓存命中，改后的降级代码没执行。`cache.py` 加 `CACHE_VERSION`，get() 读旧版本当未命中，set() 写当前版本。改维度逻辑只需 bump 版本号，旧缓存自动失效重算，杜绝"改代码不生效"
+    - **业务纯度 JSON 截断**：`_call_ai_for_score` 加 max_tokens 参数(业务纯度 1500→2000) + prompt 显式限 reasoning≤60字 + 截断退化 confidence 0.5→0.3。bump CACHE_VERSION v0.8.6.4→v0.8.6.5
+    - 回归全绿（69 PASS）

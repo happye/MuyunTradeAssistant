@@ -46,7 +46,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）。
 
-当前版本：**v0.8.6.4**（笨总当中长期决策主驾「跳法A」阶段1+2：建仓笨总评分定气宗/剑宗 mode + 高位止盈3维度 + 景气度硬闸门 effective_grade + bz scan 双通道选股去龙头偏向）。
+当前版本：**v0.8.6.5**（ISS-047 续修：网络超时三层根治 + 风险维降级(新闻缺失中性50) + 缓存版本校验(改维度逻辑bump版本自动失效) + 业务纯度截断优化 + 新闻多源(巨潮备用)）。
 
 ---
 
@@ -119,11 +119,12 @@ docs/               # 详细文档
 - **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` / `pyramid_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点/金字塔仓位**整体失效**（ISS-032 已修复，用 `load_pyramid_config()` helper 加载）
 - **调策略卖出参数前先打 `trade['sell_path']`**：回测中实际卖出走的是 `src/core/strategy_layer.py` 的 `_infer_sell_path`（`take_profit_trim` / `trend_exit` / `weak_sell` / `stop_loss_*`），不是 `src/core/entry_exit/exit_rules.py`。两者各管一半，不能互相替代（详见 `.learnings/LEARNINGS.md` LRN-20260618-003）
 - **Chandelier force_exit 不设 sell_path**（v0.8.6.3 修复）：orchestrator 里 Chandelier/trend_break 的 force_exit 经 strategy_layer 后 sell_path 会落空，已在 orchestrator 明确标 `trend_exit` 让 PlanGuard 气宗能匹配压制
-- **笨总评分体系的缓存键是 `(stock_code, date, dimension)`**：同股同日同维度只算一次 AI（`src/core/benzong/cache.py`，存 `~/.muyun/benzong_cache/`）。改了维度评分器 prompt 后必须 `bz <code> --refresh` 才能看到新结果
+- **笨总评分体系的缓存键是 `(stock_code, date, dimension)`**：同股同日同维度只算一次 AI（`src/core/benzong/cache.py`，存 `~/.muyun/benzong_cache/`）。**改了任何维度评分逻辑（prompt/降级/公式）必须 bump `CACHE_VERSION`**（cache.py 顶部），否则旧缓存命中导致"改代码不生效"——get() 读旧版本自动当未命中。`bz <code> --refresh` 可单股强刷
 - **bz 不依赖 RAG**（v0.8.6.3）：笨总评分标准内嵌 SYSTEM_PROMPT，industry_prosperity 不再调 RAG。RAG 仍用于 scan/analysis 的事件/持仓策略增强
 - **curl_cffi SSL 证书路径修复**（v0.8.6.3，ISS-045）：项目路径含中文「暮云思辨投资助手」致 curl_cffi 的 libcurl 找不到 CA 证书（curl 77）。修复在 `src/data/source_check.py:fix_curl_ssl_paths`（公共函数），data_provider/news_client 共用，启动时把 certifi 证书复制到 ASCII 路径 `~/.muyun_cacert.pem`
 - **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py`）：新增策略文档放子目录也会被扫到
-- **AI 评分 JSON 截断容错**（v0.8.6.3）：`_call_ai_for_score` max_tokens=1500 + finish_reason==length 自动重试 + `_parse_score_json` 容错截断。改维度 prompt 后留意别让 reasoning 超长
+- **AI 评分 JSON 截断容错**（v0.8.6.5）：`_call_ai_for_score(max_tokens=)` 按维度可调（业务纯度 2000，其余 1500）+ finish_reason==length 自动重试 + `_parse_score_json` 容错截断。截断退化 confidence=0.3（不再假装 0.5）。维度 prompt 须显式限 reasoning 长度防超 max_tokens
+- **网络超时三层硬保护**（ISS-047，根治 WinError 10060/10054）：akshare/baostock 底层 requests 无 timeout 会挂起。`data_provider._safe_call`(30s) + `akshare_client._retry_with_backoff`(30s) + baostock `bs.next()` 读取(30s) 全用 `ThreadPoolExecutor` 线程级硬超时，超时即放弃走降级不冻结。新增网络调用必须包超时
 - **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷1.44 归一化到100）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
 - **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
 - **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout
@@ -195,6 +196,7 @@ docs/               # 详细文档
 - **数据源连通性体检**（ISS-043）：`bz --check` 一键测全源
 - **笨总当中长期决策主驾「跳法A」阶段1+2**（v0.8.6.4，ISS-046）：建仓笨总评分定气宗/剑宗 mode（笨总首次真正参与决策）+ 高位止盈3维度（`src/core/exit_signals/`，宏观成交额/个股换手缩量减持，PlanGuard P1 不可压）+ 气宗走固定长持参数（MarketState 降级为展示）
 - **景气度硬闸门 + 双通道选股 + 网络超时修复**（v0.8.6.4，ISS-047）：`effective_grade()` 让景气度成为真闸门；`bz scan` 双通道去龙头偏向；AI client 加 timeout
+- **网络根治+缓存版本+风险维降级+截断优化**（v0.8.6.5，ISS-047 续）：akshare/baostock 三层线程级硬超时根治冻结；缓存版本校验杜绝"改代码不生效"；风险维新闻缺失改中性50；业务纯度 prompt 限 reasoning≤60字
 
 ### 待办（优先级排序）
 
