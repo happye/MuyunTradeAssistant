@@ -40,11 +40,13 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 >
 > v0.8.5 新增 **PlanGuard**（`src/core/plan_guard.py`）：在 Strategy 之后、Execution 之前，根据 `TradePlan` 决定是否压制 weak_sell。详见 `docs/TradePlan_使用指南.md`。
 >
-> v0.8.6 新增 **笨总评分体系**（`src/core/benzong/`，注意拼音平舌 z）：基于 B 站 up 主「笨笨的韭菜」超景气价值投机教学，6 维 AI 自动评分。`bz <code>` 输入代码直接出结果；`bz scan <主题>` 法C 精准定位细分赛道标的。详见 `docs/笨总6维评分_说明文档.md`。
+> v0.8.6 新增 **笨总评分体系**（`src/core/benzong/`，注意拼音平舌 z）：基于 B 站 up 主「笨笨的韭菜」超景气价值投机教学，6 维 AI 自动评分。`bz <code>` 输入代码直接出结果；`bz scan <主题>` 双通道精准定位细分赛道标的。详见 `docs/笨总6维评分_说明文档.md`。
+>
+> v0.8.6.4「跳法A」**笨总升为中长期决策主驾**：建仓时笨总评分定气宗/剑宗 mode（笨总首次真正参与买卖决策，此前仅展示），技术层降级为持仓内择时。详见 `ISSUES.md` ISS-046。
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）。
 
-当前版本：**v0.8.6.3**（笨总体系融入 scan/events/回测：6 维评分器 + 主题法C定位 + 气宗 PlanGuard + 事件四要素 + bz 不依赖 RAG）。
+当前版本：**v0.8.6.4**（笨总当中长期决策主驾「跳法A」阶段1+2：建仓笨总评分定气宗/剑宗 mode + 高位止盈3维度 + 景气度硬闸门 effective_grade + bz scan 双通道选股去龙头偏向）。
 
 ---
 
@@ -122,6 +124,10 @@ docs/               # 详细文档
 - **curl_cffi SSL 证书路径修复**（v0.8.6.3，ISS-045）：项目路径含中文「暮云思辨投资助手」致 curl_cffi 的 libcurl 找不到 CA 证书（curl 77）。修复在 `src/data/source_check.py:fix_curl_ssl_paths`（公共函数），data_provider/news_client 共用，启动时把 certifi 证书复制到 ASCII 路径 `~/.muyun_cacert.pem`
 - **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py`）：新增策略文档放子目录也会被扫到
 - **AI 评分 JSON 截断容错**（v0.8.6.3）：`_call_ai_for_score` max_tokens=1500 + finish_reason==length 自动重试 + `_parse_score_json` 容错截断。改维度 prompt 后留意别让 reasoning 超长
+- **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷1.44 归一化到100）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
+- **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
+- **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout
+- **bz scan 双通道选股**（ISS-047）：法C（theme_locator AI 报股，细分材料）+ 全市场客观筛选（`quick_scan(market_query=)` 走 THS 成分股，含中小盘）。提示词已去龙头偏向，别再加"宁可少报"类措辞
 
 ### 数据源
 
@@ -187,10 +193,14 @@ docs/               # 详细文档
 - **笨总 6 维 AI 评分 + 主题法C选股**（v0.8.6）：`bz`/`bz scan <主题>`/`bz --check`
 - **气宗持有模式**（v0.8.6.3，ISS-033）：PlanGuard 压 trend_exit/take_profit_trim 拿住牛股（验证边际收益，指向"跳出现有思维"）
 - **数据源连通性体检**（ISS-043）：`bz --check` 一键测全源
+- **笨总当中长期决策主驾「跳法A」阶段1+2**（v0.8.6.4，ISS-046）：建仓笨总评分定气宗/剑宗 mode（笨总首次真正参与决策）+ 高位止盈3维度（`src/core/exit_signals/`，宏观成交额/个股换手缩量减持，PlanGuard P1 不可压）+ 气宗走固定长持参数（MarketState 降级为展示）
+- **景气度硬闸门 + 双通道选股 + 网络超时修复**（v0.8.6.4，ISS-047）：`effective_grade()` 让景气度成为真闸门；`bz scan` 双通道去龙头偏向；AI client 加 timeout
 
 ### 待办（优先级排序）
 
-详见 `ISSUES.md`。重点：ISS-042（API key 明文安全，0.5天）、ISS-033 趋势牛股错过率（验证显示增量调参已达边际，建议跳出现有技术架构思维）。
+详见 `ISSUES.md`。重点：跳法A 阶段3（客观基本面恶化监测）/阶段4（2020-2024 五年回测验证 LRN-20260619-003）/阶段5（板块维度信号）；行业景气度维接入更多客观数据源（治本，撞数据可得性，ISS-047 已分析）。
+
+> 安全提醒：API key 已迁至 `configs/settings.local.yaml`（gitignored，ISS-042 已修）。历史 commit 泄露的旧 key 用户需去 DeepSeek/Moonshot 后台 rotate。
 
 ### 持仓
 
@@ -213,9 +223,9 @@ docs/               # 详细文档
 | `docs/v0.8.5_阶段3_final.md` | v0.8.5 阶段 3 收尾：5 轮调参累计 +1.4pp，核心瓶颈在选股能力 |
 | `docs/v0.8.6_调研报告.md` | 笨总超景气价值投机体系融合架构 + 4 阶段路线 + 4 决策点 |
 | `docs/笨总6维评分_说明文档.md` | **v0.8.6.3 新增**：笨总 6 维评分器工作原理/数据来源/降级策略/命令用法/输出解读 |
-| `docs/v0.8.6.3_交接.md` | **v0.8.6.3 交接文档**：笨总框架完工度/边际结论/未拍板决策/代码地图/待办优先级（下个会话先读） |
+| `docs/v0.8.6.3_交接.md` | **v0.8.6.3 交接文档**：笨总框架完工度/边际结论/跳法A方向决策（跳法A 阶段1+2 已落地，见 ISSUES ISS-046/047） |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-045） |
+| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-047） |
 | `portfolio.yaml` | 当前持仓记录 |
-| `src/scanner/scan_rules.yaml` | 扫描规则定义（4 条） |
-| `configs/settings.yaml` | 全局配置 |
+| `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members） |
+| `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |
