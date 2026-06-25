@@ -24,6 +24,12 @@ from typing import Optional
 logger = logging.getLogger(__name__)
 
 
+# 缓存版本号：改了任何维度评分逻辑(prompt/降级规则/公式)必须 bump，
+# 否则旧缓存会被命中导致"改了代码不生效"。get() 读到旧版本自动当未命中。
+# v0.8.6.4：risk_deduction 新闻缺失降级从 score=0 改为 score=50
+CACHE_VERSION = "v0.8.6.4"
+
+
 # 缓存根目录（用户级，跨项目共享）
 def _get_cache_root() -> Path:
     """缓存根：~/.muyun/benzong_cache/。失败回退到项目内 .cache/
@@ -94,7 +100,11 @@ def get(code: str, date: str, dim: str) -> Optional[dict]:
         return None
     try:
         with p.open(encoding="utf-8") as f:
-            return json.load(f)
+            data = json.load(f)
+        # 版本校验：旧版本缓存当未命中（改了维度逻辑必须 bump CACHE_VERSION）
+        if data.get("_cache_version") != CACHE_VERSION:
+            return None
+        return data
     except (json.JSONDecodeError, OSError) as e:
         logger.warning(f"缓存读取失败 {p.name}: {e}")
         return None
@@ -107,7 +117,7 @@ def set(code: str, date: str, dim: str, result: dict) -> bool:
         # 加 metadata
         record = dict(result)
         record["_cached_at"] = datetime.now().isoformat()
-        record["_cache_version"] = "v0.8.6.2"
+        record["_cache_version"] = CACHE_VERSION
         with p.open("w", encoding="utf-8") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
         return True
