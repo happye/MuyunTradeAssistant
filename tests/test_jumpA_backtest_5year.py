@@ -82,6 +82,10 @@ CASES = [
 
 CAPITAL = 200000.0
 
+# 环境变量 BATCH2_ONLY=1 时只跑批次2(大中小盘9支),跳过原12支
+_BATCH2_ONLY = os.environ.get("BATCH2_ONLY") == "1"
+_ACTIVE_CASES = CASES[12:] if _BATCH2_ONLY else CASES
+
 
 def _year_range(year: str):
     return f"{year}-01-01", f"{year}-12-31"
@@ -124,7 +128,7 @@ def run_one(code, year, force_mode=None):
 
 def main():
     print("=" * 90)
-    print("  跳法A 阶段4：五年回测验证（2020-2024，手动指定 mode）")
+    print("  跳法A 阶段4：五年回测验证（2020-2024，手动指定 mode）" + ("【批次2:大中小盘9支】" if _BATCH2_ONLY else ""))
     print("=" * 90)
     print("  baseline: 无 mode（PlanGuard 仅压 weak_sell）")
     print("  气宗:     压 trend_exit+take_profit_trim，max_hold=180")
@@ -133,7 +137,7 @@ def main():
     print()
 
     rows = []
-    for code, name, year, group, mode_label in CASES:
+    for code, name, year, group, mode_label in _ACTIVE_CASES:
         print(f"▶ {year} {code} {name} [{group}] 标注mode={mode_label}", flush=True)
         try:
             # 有 mode 标注的股(qizong/jianzong)：baseline vs 强制mode对比；none股：只跑baseline
