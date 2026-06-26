@@ -35,6 +35,11 @@ os.environ["TQDM_DISABLE"] = "1"
 
 from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
 from src.core.backtest_engine import BacktestEngine
+from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+
+# 单只股回测的总超时（秒）。某只股卡死（如比亚迪2020边界case）时跳过继续下一只，
+# 不让一只股拖垮全盘。正常一整年回测约 5-15 分钟，给 20 分钟裕量。
+PER_STOCK_TIMEOUT = 1200
 
 # 五年案例：(code, name, 年份, 组别, 人工mode标注)
 # 组别：bull=牛股该气宗拿住 / top=见顶该逃顶 / flat=平庸对照
@@ -69,24 +74,32 @@ def _year_range(year: str):
 
 
 def run_one(code, year, qizong_codes=None):
-    cfg = load_config()
-    start, end = _year_range(year)
-    eng = BacktestEngine(
-        stock_code=normalize_stock_code(code),
-        start_date=start, end_date=end, initial_capital=CAPITAL,
-        execution_mode="framework_strict",
-        layer_mode="decision_strategy_execution",
-        skills_dir=cfg.get("skills", {}).get("dir", "./src/skills"),
-        signal_weights=cfg.get("decision", {}).get("signal_weights", None),
-        skill_types=cfg.get("skills", {}).get("types", None),
-        entry_exit_config=cfg.get("entry_exit", None),
-        pyramid_config=load_pyramid_config(cfg),
-        enable_trade_plan=True,
-        qizong_codes=qizong_codes,  # 手动指定气宗股
-        benzong_auto_mode=False,    # 关闭自动评分定mode（用人工标注）
-    )
-    res = eng.run()
-    return res, getattr(eng, "_plan_stats", {})
+    """跑单股回测，带总超时保护。超时返回 None。"""
+    def _run():
+        cfg = load_config()
+        start, end = _year_range(year)
+        eng = BacktestEngine(
+            stock_code=normalize_stock_code(code),
+            start_date=start, end_date=end, initial_capital=CAPITAL,
+            execution_mode="framework_strict",
+            layer_mode="decision_strategy_execution",
+            skills_dir=cfg.get("skills", {}).get("dir", "./src/skills"),
+            signal_weights=cfg.get("decision", {}).get("signal_weights", None),
+            skill_types=cfg.get("skills", {}).get("types", None),
+            entry_exit_config=cfg.get("entry_exit", None),
+            pyramid_config=load_pyramid_config(cfg),
+            enable_trade_plan=True,
+            qizong_codes=qizong_codes,  # 手动指定气宗股
+            benzong_auto_mode=False,    # 关闭自动评分定mode（用人工标注）
+        )
+        res = eng.run()
+        return res, getattr(eng, "_plan_stats", {})
+    with ThreadPoolExecutor(max_workers=1) as ex:
+        fut = ex.submit(_run)
+        try:
+            return fut.result(timeout=PER_STOCK_TIMEOUT)
+        except FuturesTimeout:
+            return None, None  # 超时，调用方处理
 
 
 def main():
@@ -104,8 +117,18 @@ def main():
         try:
             # 该气宗的股：baseline vs 气宗对比；非气宗股：只跑 baseline（气宗不该改善它）
             base, base_stats = run_one(code, year, qizong_codes=None)
+            if base is None:
+                print(f"    ⏱ baseline 超时(>{PER_STOCK_TIMEOUT}s)，跳过该股", flush=True)
+                rows.append({"code": code, "name": name, "year": year, "group": group,
+                             "mode": mode_label, "base_ret": None, "qz_ret": None,
+                             "delta": None, "bench": None, "base_trades": 0, "qz_trades": 0,
+                             "qz_suppressed": 0, "timeout": True})
+                continue
             if mode_label == "qizong":
                 qz, qz_stats = run_one(code, year, qizong_codes={code})
+                if qz is None:
+                    print(f"    ⏱ 气宗超时，用 baseline 结果", flush=True)
+                    qz, qz_stats = base, base_stats
             else:
                 qz, qz_stats = base, base_stats  # 非气宗股，两模式同
             delta = qz.total_return_pct - base.total_return_pct
@@ -117,7 +140,8 @@ def main():
                 "bench": base.benchmark_return_pct,
                 "base_trades": getattr(base, "total_trades", 0) or 0,
                 "qz_trades": getattr(qz, "total_trades", 0) or 0,
-                "qz_suppressed": qz_stats.get("weak_sells_suppressed_by_guard", 0),
+                "qz_suppressed": qz_stats.get("weak_sells_suppressed_by_guard", 0) if qz_stats else 0,
+                "timeout": False,
             })
             print(f"    baseline {base.total_return_pct:+.2f}% → 气宗 {qz.total_return_pct:+.2f}% "
                   f"Δ {delta:+.2f}pp (压制{qz_stats.get('weak_sells_suppressed_by_guard',0)}次)", flush=True)
@@ -126,7 +150,7 @@ def main():
             rows.append({"code": code, "name": name, "year": year, "group": group,
                          "mode": mode_label, "base_ret": None, "qz_ret": None,
                          "delta": None, "bench": None, "base_trades": 0, "qz_trades": 0,
-                         "qz_suppressed": 0})
+                         "qz_suppressed": 0, "timeout": False})
 
     # 汇总
     print()
@@ -136,7 +160,8 @@ def main():
     bull_deltas, top_deltas, flat_deltas = [], [], []
     for r in rows:
         if r["base_ret"] is None:
-            print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<6}{r['mode']:<8}  失败")
+            tag = "⏱超时" if r.get("timeout") else "✗失败"
+            print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<6}{r['mode']:<8}  {tag}")
             continue
         print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<6}{r['mode']:<8}"
               f"{r['bench'] or 0:>8.1f}{r['base_ret']:>9.2f}{r['qz_ret']:>9.2f}"
