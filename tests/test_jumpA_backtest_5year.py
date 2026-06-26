@@ -64,6 +64,20 @@ CASES = [
     # 对照组（横盘/阴跌，测气宗是否会误拿死扛）
     ("601888", "中国中免", "2022", "flat", "none"),   # 持续阴跌
     ("000661", "长春高新", "2022", "flat", "none"),   # 集采阴跌
+
+    # === 批次2：笨总标准选股，大中小盘各3，2023-2025（网络搜索+Baostock核实）===
+    # 大盘（>1000亿）
+    ("300308", "中际旭创", "2024", "bull_large", "jianzong"),  # AI光模块一波流
+    ("300750", "宁德时代", "2023", "bull_large", "qizong"),    # 锂电长牛(同年不同段)
+    ("601088", "中国神华", "2023", "bull_large", "qizong"),    # 红利慢牛
+    # 中盘（200-1000亿）
+    ("300274", "阳光电源", "2023", "bull_mid", "jianzong"),    # 光储一波流
+    ("601138", "工业富联", "2024", "bull_mid", "jianzong"),    # AI服务器一波流
+    ("600276", "恒瑞医药", "2024", "bull_mid", "qizong"),      # 创新药长牛
+    # 小盘（<200亿，把握度较低，Baostock核实代码真实）
+    ("603662", "柯力传感", "2024", "bull_small", "jianzong"),  # 机器人主题一波流
+    ("301105", "鸿铭股份", "2023", "bull_small", "qizong"),    # 包装设备小盘慢牛
+    ("301550", "斯菱智驱", "2024", "bull_small", "jianzong"),  # 汽车轴承一波流（实名斯菱智驱）
 ]
 
 CAPITAL = 200000.0
@@ -73,11 +87,16 @@ def _year_range(year: str):
     return f"{year}-01-01", f"{year}-12-31"
 
 
-def run_one(code, year, qizong_codes=None):
-    """跑单股回测，带总超时保护。超时返回 None。"""
+def run_one(code, year, force_mode=None):
+    """跑单股回测，带总超时保护。超时返回 None。
+
+    force_mode: "qizong"/"jianzong"/None。None=baseline(无mode)。
+    """
     def _run():
         cfg = load_config()
         start, end = _year_range(year)
+        qizong_codes = {code} if force_mode == "qizong" else None
+        jianzong_codes = {code} if force_mode == "jianzong" else None
         eng = BacktestEngine(
             stock_code=normalize_stock_code(code),
             start_date=start, end_date=end, initial_capital=CAPITAL,
@@ -89,7 +108,8 @@ def run_one(code, year, qizong_codes=None):
             entry_exit_config=cfg.get("entry_exit", None),
             pyramid_config=load_pyramid_config(cfg),
             enable_trade_plan=True,
-            qizong_codes=qizong_codes,  # 手动指定气宗股
+            qizong_codes=qizong_codes,    # 手动指定气宗股
+            jianzong_codes=jianzong_codes,  # 手动指定剑宗股
             benzong_auto_mode=False,    # 关闭自动评分定mode（用人工标注）
         )
         res = eng.run()
@@ -107,16 +127,17 @@ def main():
     print("  跳法A 阶段4：五年回测验证（2020-2024，手动指定 mode）")
     print("=" * 90)
     print("  baseline: 无 mode（PlanGuard 仅压 weak_sell）")
-    print("  气宗:     手动标注为气宗的股，PlanGuard 压 trend_exit+take_profit_trim，max_hold=180")
-    print("  对照:     人工判定不该气宗的股，两模式都走 baseline（验证气宗是否会误伤）")
+    print("  气宗:     压 trend_exit+take_profit_trim，max_hold=180")
+    print("  剑宗:     max_hold=30，紧止损(1×ATR)，破线即走")
+    print("  none:     人工判定不该定mode，两模式都走 baseline")
     print()
 
     rows = []
     for code, name, year, group, mode_label in CASES:
         print(f"▶ {year} {code} {name} [{group}] 标注mode={mode_label}", flush=True)
         try:
-            # 该气宗的股：baseline vs 气宗对比；非气宗股：只跑 baseline（气宗不该改善它）
-            base, base_stats = run_one(code, year, qizong_codes=None)
+            # 有 mode 标注的股(qizong/jianzong)：baseline vs 强制mode对比；none股：只跑baseline
+            base, base_stats = run_one(code, year, force_mode=None)
             if base is None:
                 print(f"    ⏱ baseline 超时(>{PER_STOCK_TIMEOUT}s)，跳过该股", flush=True)
                 rows.append({"code": code, "name": name, "year": year, "group": group,
@@ -124,13 +145,13 @@ def main():
                              "delta": None, "bench": None, "base_trades": 0, "qz_trades": 0,
                              "qz_suppressed": 0, "timeout": True})
                 continue
-            if mode_label == "qizong":
-                qz, qz_stats = run_one(code, year, qizong_codes={code})
+            if mode_label in ("qizong", "jianzong"):
+                qz, qz_stats = run_one(code, year, force_mode=mode_label)
                 if qz is None:
-                    print(f"    ⏱ 气宗超时，用 baseline 结果", flush=True)
+                    print(f"    ⏱ {mode_label}超时，用 baseline 结果", flush=True)
                     qz, qz_stats = base, base_stats
             else:
-                qz, qz_stats = base, base_stats  # 非气宗股，两模式同
+                qz, qz_stats = base, base_stats  # none股，两模式同
             delta = qz.total_return_pct - base.total_return_pct
             rows.append({
                 "code": code, "name": name, "year": year, "group": group,
@@ -143,8 +164,8 @@ def main():
                 "qz_suppressed": qz_stats.get("weak_sells_suppressed_by_guard", 0) if qz_stats else 0,
                 "timeout": False,
             })
-            print(f"    baseline {base.total_return_pct:+.2f}% → 气宗 {qz.total_return_pct:+.2f}% "
-                  f"Δ {delta:+.2f}pp (压制{qz_stats.get('weak_sells_suppressed_by_guard',0)}次)", flush=True)
+            print(f"    baseline {base.total_return_pct:+.2f}% → {mode_label} {qz.total_return_pct:+.2f}% "
+                  f"Δ {delta:+.2f}pp (压制{qz_stats.get('weak_sells_suppressed_by_guard',0) if qz_stats else 0}次)", flush=True)
         except Exception as e:
             print(f"    ✗ 失败: {type(e).__name__}: {e}", flush=True)
             rows.append({"code": code, "name": name, "year": year, "group": group,
@@ -155,20 +176,26 @@ def main():
     # 汇总
     print()
     print("=" * 90)
-    print(f"  {'年份':<6}{'代码':<8}{'名称':<10}{'组':<6}{'mode':<8}{'基准%':>8}{'base%':>9}{'气宗%':>9}{'Δpp':>8}{'压制':>5}")
+    print(f"  {'年份':<6}{'代码':<8}{'名称':<10}{'组':<12}{'mode':<8}{'基准%':>8}{'base%':>9}{'mode%':>9}{'Δpp':>8}{'压制':>5}")
     print("-" * 90)
-    bull_deltas, top_deltas, flat_deltas = [], [], []
+    bull_large_deltas, bull_mid_deltas, bull_small_deltas = [], [], []
+    top_deltas, flat_deltas = [], []
     for r in rows:
         if r["base_ret"] is None:
             tag = "⏱超时" if r.get("timeout") else "✗失败"
-            print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<6}{r['mode']:<8}  {tag}")
+            print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<12}{r['mode']:<8}  {tag}")
             continue
-        print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<6}{r['mode']:<8}"
+        print(f"  {r['year']:<6}{r['code']:<8}{r['name'][:8]:<10}{r['group']:<12}{r['mode']:<8}"
               f"{r['bench'] or 0:>8.1f}{r['base_ret']:>9.2f}{r['qz_ret']:>9.2f}"
               f"{r['delta']:>+8.2f}{r['qz_suppressed']:>5}")
-        if r["group"] == "bull":
-            bull_deltas.append(r["delta"])
-        elif r["group"] == "top":
+        g = r["group"]
+        if g in ("bull", "bull_large"):
+            bull_large_deltas.append(r["delta"])
+        elif g == "bull_mid":
+            bull_mid_deltas.append(r["delta"])
+        elif g == "bull_small":
+            bull_small_deltas.append(r["delta"])
+        elif g == "top":
             top_deltas.append(r["delta"])
         else:
             flat_deltas.append(r["delta"])
@@ -176,11 +203,18 @@ def main():
     print("-" * 90)
     print()
     print("  ── 分组统计 ──")
-    if bull_deltas:
-        avg = sum(bull_deltas) / len(bull_deltas)
-        pos = sum(1 for d in bull_deltas if d > 0)
-        print(f"  牛股组(该气宗) {len(bull_deltas)}只: 平均Δ {avg:+.2f}pp, 正向{pos}/{len(bull_deltas)}")
-        print(f"    → 预期：显著正（气宗拿住牛股不卖飞）")
+    if bull_large_deltas:
+        avg = sum(bull_large_deltas) / len(bull_large_deltas)
+        pos = sum(1 for d in bull_large_deltas if d > 0)
+        print(f"  牛股-大盘组 {len(bull_large_deltas)}只: 平均Δ {avg:+.2f}pp, 正向{pos}/{len(bull_large_deltas)}")
+    if bull_mid_deltas:
+        avg = sum(bull_mid_deltas) / len(bull_mid_deltas)
+        pos = sum(1 for d in bull_mid_deltas if d > 0)
+        print(f"  牛股-中盘组 {len(bull_mid_deltas)}只: 平均Δ {avg:+.2f}pp, 正向{pos}/{len(bull_mid_deltas)}")
+    if bull_small_deltas:
+        avg = sum(bull_small_deltas) / len(bull_small_deltas)
+        pos = sum(1 for d in bull_small_deltas if d > 0)
+        print(f"  牛股-小盘组 {len(bull_small_deltas)}只: 平均Δ {avg:+.2f}pp, 正向{pos}/{len(bull_small_deltas)}")
     if top_deltas:
         avg = sum(top_deltas) / len(top_deltas)
         print(f"  见顶组(该逃顶) {len(top_deltas)}只: 平均Δ {avg:+.2f}pp")

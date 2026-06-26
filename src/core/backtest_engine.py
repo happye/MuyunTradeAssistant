@@ -196,7 +196,8 @@ class BacktestEngine:
         entry_exit_config: Optional[dict] = None,
         pyramid_config: Optional[dict] = None,
         enable_trade_plan: bool = True,  # v0.8.5 阶段 3.1: 回测自动建 TradePlan + PlanGuard 生效
-        qizong_codes: Optional[set] = None,  # DEPRECATED(跳法A阶段1.3): 显式气宗股集，建 plan 时强制 mode=qizong；优先级高于自动评分。留作向后兼容/覆盖
+        qizong_codes: Optional[set] = None,  # DEPRECATED(跳法A阶段1.3): 显式气宗股集，建 plan 时强制 mode=qizong
+        jianzong_codes: Optional[set] = None,  # 跳法A阶段4: 显式剑宗股集，建 plan 时强制 mode=jianzong(短持30天紧止损)
         benzong_auto_mode: bool = True,  # 跳法A阶段1.3: 建仓时调 rule_scorer 自动定 mode（A→气宗/B→剑宗）
     ):
         self.stock_code = stock_code
@@ -239,6 +240,7 @@ class BacktestEngine:
         self.enable_trade_plan = enable_trade_plan
         self._current_plan = None  # 当前持仓的 TradePlan（单股回测每次最多 1 个）
         self._qizong_codes = qizong_codes or set()  # DEPRECATED: 显式覆盖
+        self._jianzong_codes = jianzong_codes or set()  # 显式剑宗覆盖
         self._benzong_auto_mode = benzong_auto_mode  # 跳法A阶段1.3: 自动评分定 mode
         self._benzong_mode_cache = {}  # {code: grade} 缓存，避免同股重复评分
         self._plan_stats = {        # 统计：用于回测后看 plan 实际效果
@@ -251,12 +253,14 @@ class BacktestEngine:
     def _resolve_benzong_mode(self, code: str) -> Optional[str]:
         """建仓时定笨总 mode（跳法A阶段1.3）。
 
-        优先级：显式 qizong_codes 覆盖 > rule_scorer 自动评分 > None。
+        优先级：显式 qizong_codes/jianzong_codes 覆盖 > rule_scorer 自动评分 > None。
         rule_scorer 用技术面+财务快照近似 grade（A→气宗/B→剑宗），准确率低于 AI 版，
         回测结论是方向性的（建仓时刻一次定档，非逐日，可行性高于逐日近似）。
         """
         if code in self._qizong_codes:
             return "qizong"
+        if code in self._jianzong_codes:
+            return "jianzong"
         if not self._benzong_auto_mode:
             return None
         if code in self._benzong_mode_cache:
@@ -729,6 +733,7 @@ class BacktestEngine:
                 execution_constraint=perturbed_constraint,
                 enable_trade_plan=self.enable_trade_plan,
                 qizong_codes=self._qizong_codes,
+                jianzong_codes=self._jianzong_codes,
                 benzong_auto_mode=self._benzong_auto_mode,
             )
 
