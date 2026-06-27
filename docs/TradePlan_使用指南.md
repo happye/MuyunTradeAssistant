@@ -1,6 +1,7 @@
-# TradePlan 使用指南（v0.8.5）
+# TradePlan 使用指南（v0.8.6.5）
 
 > 解决"前景良好的股票被日常波动卖飞"的问题。建仓时一次性定下交易计划，之后按计划执行。
+> v0.8.6.4 起新增**气宗/剑宗 mode**（跳法A：笨总当主驾定持有性格），见下文「笨总 mode：气宗 vs 剑宗」。
 
 ---
 
@@ -103,6 +104,39 @@ PlanGuard 在 Strategy Layer 之后、Execution Layer 之前评估，按 4 条�
 
 ---
 
+## 笨总 mode：气宗 vs 剑宗（v0.8.6.4 跳法A）
+
+建仓时 `pos add` 自动跑笨总评分，按 `effective_grade` 定持有性格，写入 `trade_plan.mode`：
+
+| 评级 | mode | max_hold | 止损 | 失效条件 | PlanGuard 压制范围 |
+|------|------|----------|------|---------|------------------|
+| A（景气>50） | **气宗 qizong** | 180天 | 宽 2×ATR | 只留致命止损+高位止盈 | weak_sell + trend_exit + take_profit_trim（拿住整波） |
+| B | **剑宗 jianzong** | 30天 | 紧 1×ATR | 跌破MA20等 | 仅压 weak_sell（破线即走） |
+| C及以下 | None | 默认90天 | 2×ATR | 技术失效条件 | 仅压 weak_sell |
+
+**气宗逻辑**：长期格局，回调时 MA60 跌破正是该拿住的时刻，靠致命止损+时间止损+高位止盈3维度作安全网，不被技术weak_sell洗出。回测验证：牛市/主升浪有效（+8.13pp），**调整/熊市有害（死扛下跌）**。
+
+**剑宗逻辑**：一波流，快进快出，破线即走，不扛回调。
+
+### 不可压制的安全网（所有 mode 都生效）
+- **P0 致命止损**：price ≤ current_stop → 强制 SELL（气宗也挡不住）
+- **P1 高位止盈3维度**：成交额破10万亿 / 换手>40% / 缩量加速 / 实控人减持 → 强制 SELL
+- **P2 时间止损**：持有 ≥ max_hold_days → 强制 SELL
+
+### 手动改 mode（当前无 `--mode` 参数）
+`pos add` 的 mode 由笨总评级自动定，**无法命令行指定**。若要手动覆盖（如震荡市想强制剑宗）：
+1. `pos add` 在 Y/n 确认那步选 **n**
+2. 编辑 `portfolio.yaml` 该股的 `trade_plan`：`mode: jianzong` + `max_hold_days: 30`
+3. `pos plan <代码> --update` 会沿用旧 mode（不重跑评分），所以 mode 改动只能手动编辑 yaml
+
+### 何时该用哪个 mode
+- **牛市/主升浪** → 气宗（拿住牛股不卖飞）
+- **震荡市/洗盘** → 慎用气宗，改剑宗（快进快出，防死扛）
+- **熊市/调整** → 别用气宗（批次2证明有害），用剑宗或不建仓
+- 详见 [选股与持仓规划实战工作流.md](选股与持仓规划实战工作流.md)「不同市况的用法」
+
+---
+
 ## TradePlan 七要素（参考策略库望周知大纲 ch40-41）
 
 | 要素 | 字段 | 说明 |
@@ -117,6 +151,7 @@ PlanGuard 在 Strategy Layer 之后、Execution Layer 之前评估，按 4 条�
 | 最长持有 | max_hold_days | 时间止损 |
 
 附加：
+- `mode` (qizong/jianzong/None) — 笨总持有性格，决定 PlanGuard 压制范围 + max_hold + 止损宽度（v0.8.6.4）
 - `fundamental_outlook` (bullish/neutral/bearish) — 影响 PlanGuard 是否压制
 - `thesis_sources` — AI 引用的策略库章节/新闻锚点
 - `adjustments` — 调整审计（每条带 source: user/ai_suggested/auto_trailing）
