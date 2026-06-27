@@ -1134,6 +1134,12 @@ P3（已取消）:
     - **指向治本改进**：`_mode_from_grade` 当前只看笨总grade不看大盘环境是核心缺陷。应把 MarketState 接入mode判定作前置闸门：RISK_ON→允许气宗；TRANSITION/RISK_OFF→一律不定气宗(只剑宗/none)。这是"MarketState降级为展示"决策的反向修正——MarketState不该完全退出决策，该作mode判定的牛市闸门
     - 脚本加 `BATCH2_ONLY` 环境变量 + `jianzong_codes` 支持（backtest_engine 新增 jianzong_codes 参数，镜像 qizong_codes）
     - 路径对齐确认（任务2）：回测与CLI `-l` 核心逻辑一致(七层+PlanGuard)，合理差异 ai_enabled=False/position_tier固定/today历史日期
+  - 2026-06-27: **MarketState 闸门回退（防矫枉过正，用户预警兔子洞）**
+    - 实施上述 MarketState 牛市闸门后，回测批次1验证：2022煤炭(神华/陕煤)气宗收益被砍光（神华 Δ +4.07→-0.14pp，陕煤 +6.24→+0.00pp）
+    - **根因**：2022大盘熊市，但煤炭是"大盘熊个股牛"的独立行情。MarketState 是大盘级信号，一刀切个股mode 会误杀独立行情的气宗机会
+    - **回退**：`_mode_from_grade` 的 market_state 参数保留(向后兼容)但不再参与判定，恢复批次1跑通的稳定高收益逻辑
+    - **教训**：调整年气宗有害是真的(批次2)，但 MarketState 不是正确解法。正确方向应是**个股级**趋势判断(Weinstein S2 阶段作闸门：个股上升通道才气宗)，而非大盘级一刀切。该方向留后续，当前止步防兔子洞
+    - 回测同时确认：2020牛市(宁德+39.93/比亚迪+19.24)气宗收益不受闸门影响（牛市放行正确），但不足以抵消对独立行情的误杀
 
 ---
 

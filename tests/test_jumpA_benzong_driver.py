@@ -67,18 +67,19 @@ def test_mode_uses_effective_grade_path():
     assert _mode_from_grade(s.effective_grade(), s.industry_prosperity) is None
 
 
-# ========== 跳法A 阶段4：MarketState 牛市闸门 ==========
+# ========== 跳法A 阶段4：MarketState 闸门（已回退，保留参数但不用）==========
+# 回测证明 MarketState 一刀切误杀"大盘熊个股牛"(2022煤炭)的气宗收益，故回退。
+# market_state 参数保留向后兼容，但不参与判定。
 
-def test_mode_qizong_only_in_bull_market():
-    """A级股在牛市(RISK_ON)→气宗；非牛市→降级剑宗（不死扛下跌）"""
+def test_mode_qizong_regardless_of_market_state():
+    """A级股气宗不受 market_state 影响（闸门已回退，防矫枉过正）"""
     assert _mode_from_grade("A", 70, market_state="RISK_ON") == "qizong"
-    assert _mode_from_grade("A", 70, market_state="TRANSITION") == "jianzong"
-    assert _mode_from_grade("A", 70, market_state="RISK_OFF") == "jianzong"
-    assert _mode_from_grade("A", 70, market_state="PANIC") == "jianzong"
+    assert _mode_from_grade("A", 70, market_state="RISK_OFF") == "qizong"  # 回退后不降级
+    assert _mode_from_grade("A", 70, market_state="TRANSITION") == "qizong"
 
 
 def test_mode_no_market_state_backward_compat():
-    """不传 market_state → 退回原逻辑（A级气宗），向后兼容"""
+    """不传 market_state → A级气宗"""
     assert _mode_from_grade("A", 70, market_state=None) == "qizong"
 
 

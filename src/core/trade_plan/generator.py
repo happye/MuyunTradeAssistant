@@ -64,17 +64,18 @@ def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
     """由笨总等级推断交易模式。
 
     行业景气度=0 时模型失效（笨总大前提），即使 A 级也不设气宗。
-    跳法A阶段4（批次2回测发现）：气宗是牛市武器，调整/熊市死扛下跌有害。
-    market_state 作前置闸门——仅 RISK_ON(牛市)允许气宗；TRANSITION/RISK_OFF/PANIC
-    一律不定气宗（A 级降为剑宗，B 级保持剑宗），让调整年不被气宗压住该跑的跌。
-    market_state=None 时退回原逻辑（向后兼容，如未传大盘状态）。
+
+    注：market_state 参数保留但当前不参与判定。
+    跳法A阶段4曾尝试用 MarketState 作牛市闸门（非牛市气宗降剑宗），但回测证明
+    矫枉过正——2022煤炭(神华/陕煤)是"大盘熊但个股牛"的典型，闸门误杀了这批
+    气宗收益(原+4.07/+6.24pp归零)。MarketState 是大盘级信号，不该一刀切个股mode。
+    调整年气宗有害是真的(批次2)，但正确解法应是**个股级**趋势判断(Weinstein S2阶段)，
+    而非大盘级。该方向留后续，当前回退保护批次1跑通的高收益逻辑。
     """
-    # 牛市闸门：非牛市环境，气宗降级为剑宗（不死扛，但仍保留纪律）
-    bull_only = market_state is not None and market_state != "RISK_ON"
     if grade == "A":
         if industry_prosperity is not None and industry_prosperity <= 0:
             return None  # 大前提失效，不强加气宗纪律
-        return "jianzong" if bull_only else "qizong"
+        return "qizong"
     if grade == "B":
         return "jianzong"
     return None
