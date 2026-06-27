@@ -67,6 +67,27 @@ def test_mode_uses_effective_grade_path():
     assert _mode_from_grade(s.effective_grade(), s.industry_prosperity) is None
 
 
+# ========== 跳法A 阶段4：MarketState 牛市闸门 ==========
+
+def test_mode_qizong_only_in_bull_market():
+    """A级股在牛市(RISK_ON)→气宗；非牛市→降级剑宗（不死扛下跌）"""
+    assert _mode_from_grade("A", 70, market_state="RISK_ON") == "qizong"
+    assert _mode_from_grade("A", 70, market_state="TRANSITION") == "jianzong"
+    assert _mode_from_grade("A", 70, market_state="RISK_OFF") == "jianzong"
+    assert _mode_from_grade("A", 70, market_state="PANIC") == "jianzong"
+
+
+def test_mode_no_market_state_backward_compat():
+    """不传 market_state → 退回原逻辑（A级气宗），向后兼容"""
+    assert _mode_from_grade("A", 70, market_state=None) == "qizong"
+
+
+def test_mode_jianzong_unaffected_by_market_state():
+    """B级股本就剑宗，市况不影响"""
+    assert _mode_from_grade("B", 70, market_state="RISK_OFF") == "jianzong"
+    assert _mode_from_grade("B", 70, market_state="RISK_ON") == "jianzong"
+
+
 def _sd(**kw):
     defaults = dict(stock_code="X", stock_name="Y", price=10.0, change_pct=0.0,
                     open=10.0, high=10.0, low=10.0, volume=100000)

@@ -59,15 +59,22 @@ JIANZONG_MAX_HOLD_DAYS = 30
 JIANZONG_ATR_MULTIPLIER = 1.0
 
 
-def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float]) -> Optional[str]:
+def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
+                     market_state: Optional[str] = None) -> Optional[str]:
     """由笨总等级推断交易模式。
 
     行业景气度=0 时模型失效（笨总大前提），即使 A 级也不设气宗。
+    跳法A阶段4（批次2回测发现）：气宗是牛市武器，调整/熊市死扛下跌有害。
+    market_state 作前置闸门——仅 RISK_ON(牛市)允许气宗；TRANSITION/RISK_OFF/PANIC
+    一律不定气宗（A 级降为剑宗，B 级保持剑宗），让调整年不被气宗压住该跑的跌。
+    market_state=None 时退回原逻辑（向后兼容，如未传大盘状态）。
     """
+    # 牛市闸门：非牛市环境，气宗降级为剑宗（不死扛，但仍保留纪律）
+    bull_only = market_state is not None and market_state != "RISK_ON"
     if grade == "A":
         if industry_prosperity is not None and industry_prosperity <= 0:
             return None  # 大前提失效，不强加气宗纪律
-        return "qizong"
+        return "jianzong" if bull_only else "qizong"
     if grade == "B":
         return "jianzong"
     return None
@@ -201,6 +208,7 @@ def generate_plan_draft(
     today: Optional[str] = None,
     benzong_grade: Optional[str] = None,
     industry_prosperity: Optional[float] = None,
+    market_state: Optional[str] = None,
 ) -> TradePlan:
     """生成 TradePlan 草稿（规则版必有，AI 增强可选）
 
@@ -215,6 +223,7 @@ def generate_plan_draft(
         today: 建仓日期 YYYY-MM-DD；缺失用今天
         benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
         industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
+        market_state: 大盘状态 RISK_ON/TRANSITION/RISK_OFF/PANIC；非牛市时气宗降级剑宗（跳法A阶段4）
 
     Returns:
         TradePlan: 完整的计划草稿，用户可逐字段编辑
@@ -223,7 +232,7 @@ def generate_plan_draft(
     plan_id = f"{stock_code}_{today}"
 
     # 笨总模式（跳法A 阶段1：建仓时一次定 mode，之后靠硬规则锁持有）
-    mode = _mode_from_grade(benzong_grade, industry_prosperity)
+    mode = _mode_from_grade(benzong_grade, industry_prosperity, market_state)
 
     # 阶段判断 + outlook
     if stock_data:
@@ -326,12 +335,14 @@ class TradePlanGenerator:
         stock_data: Optional[StockData] = None,
         benzong_grade: Optional[str] = None,
         industry_prosperity: Optional[float] = None,
+        market_state: Optional[str] = None,
     ) -> Tuple[TradePlan, dict]:
         """生成 TradePlan + 元数据（哪些来源生效、哪些降级）
 
         Args:
             benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
             industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
+            market_state: 大盘状态；非牛市时气宗降级剑宗（跳法A阶段4）
 
         Returns:
             (plan, meta)
@@ -349,7 +360,7 @@ class TradePlanGenerator:
             "ai_thesis_used": False,
             "weinstein_stage": "?",
             "benzong_grade": benzong_grade,
-            "mode": _mode_from_grade(benzong_grade, industry_prosperity),
+            "mode": _mode_from_grade(benzong_grade, industry_prosperity, market_state),
             "fallback_reasons": [],
         }
 
@@ -386,6 +397,7 @@ class TradePlanGenerator:
             ai_thesis=ai_thesis,
             benzong_grade=benzong_grade,
             industry_prosperity=industry_prosperity,
+            market_state=market_state,
         )
 
         return plan, meta

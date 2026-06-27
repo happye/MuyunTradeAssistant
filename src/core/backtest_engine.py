@@ -512,6 +512,13 @@ class BacktestEngine:
                                     # 跳法A阶段1.3: 建仓时笨总评分定 mode（A→气宗/B→剑宗）
                                     mode = self._resolve_benzong_mode(self.stock_code)
                                     grade_for_gen = {"qizong": "A", "jianzong": "B"}.get(mode)
+                                    # 跳法A阶段4: 大盘状态作mode判定牛市闸门（非牛市气宗降级剑宗）
+                                    ms = None
+                                    try:
+                                        from src.core.decision_engine import StateMachine
+                                        ms = StateMachine.determine_state(stock_data).name
+                                    except Exception:
+                                        pass
                                     gen = TradePlanGenerator()
                                     plan, _meta = gen.generate(
                                         stock_code=self.stock_code,
@@ -520,6 +527,7 @@ class BacktestEngine:
                                         ratio=account.position_ratio(current_price),
                                         stock_data=stock_data,
                                         benzong_grade=grade_for_gen,
+                                        market_state=ms,
                                     )
                                     # 用建仓日期，不是当前日期（pending 的 today=date 已经是 N 日）
                                     plan.opened_at = date

@@ -1410,11 +1410,19 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         console.print(f"   [yellow]⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）[/yellow]")
 
     gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
+    # 跳法A阶段4: 大盘状态作mode判定牛市闸门（非牛市气宗降级剑宗）
+    _ms = None
+    try:
+        from src.core.decision_engine import StateMachine
+        _ms = StateMachine.determine_state(stock_data).name
+    except Exception:
+        pass
     try:
         plan, meta = gen.generate(
             stock_code=stock_code, stock_name=stock_name,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
+            market_state=_ms,
         )
     except Exception as e:
         logger.error(f"TradePlan 生成失败: {e}")
@@ -1606,11 +1614,19 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             console.print(f"   [yellow]⚠ 笨总评分未获取，mode 不设定[/yellow]")
 
     gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
+    # 跳法A阶段4: 大盘状态作mode判定牛市闸门（非牛市气宗降级剑宗）
+    _ms = None
+    try:
+        from src.core.decision_engine import StateMachine
+        _ms = StateMachine.determine_state(stock_data).name
+    except Exception:
+        pass
     try:
         plan, meta = gen.generate(
             stock_code=stock_code, stock_name=pos.stock_name or stock_code,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
+            market_state=_ms,
         )
     except Exception as e:
         console.print(f"   [red]✗ {action_label}失败: {e}[/red]")
