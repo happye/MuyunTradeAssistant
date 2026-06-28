@@ -54,7 +54,7 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
             try:
                 return fut.result(timeout=to)
             except FuturesTimeout:
-                logger.warning(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
+                logger.debug(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
                 return None
     except Exception as e:
         err_str = str(e)
@@ -149,16 +149,19 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
 
 
 def _fetch_cninfo_disclosure(ak, code: str, days: int):
-    """巨潮信息网官方公告（备用新闻源）。返回 DataFrame 或 None。"""
+    """巨潮信息网官方公告（备用新闻源）。返回 DataFrame 或 None。
+
+    v0.8.6.5 修复：market 参数必须用 '沪深京'（akshare 默认值），不能用
+    '上证'/'深证'（会 KeyError），否则备用源从落地起就没生效过。
+    """
     try:
-        market = "深证" if code.startswith(("0", "3", "2")) else "上证"
         end = datetime.now().strftime("%Y%m%d")
         start = (datetime.now() - timedelta(days=days)).strftime("%Y%m%d")
         return ak.stock_zh_a_disclosure_report_cninfo(
-            symbol=code, market=market, start_date=start, end_date=end
+            symbol=code, market="沪深京", start_date=start, end_date=end
         )
     except Exception as e:
-        logger.warning(f"巨潮公告拉取失败 {code}: {e}")
+        logger.debug(f"巨潮公告拉取失败 {code}: {e}")
         return None
 
 

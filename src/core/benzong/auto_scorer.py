@@ -177,7 +177,7 @@ def auto_score(
     market_turnover = data_summary.get("market_turnover")
     if market_turnover is None:
         market_turnover = 1.0  # 中性默认
-        logger.warning("市场成交额未获取，流动性系数用 1.0")
+        logger.debug("市场成交额未获取，流动性系数用 1.0")
 
     # Step 5: 组装 BenzhongScore（复用 v0.8.6.1 dataclass）
     bs = score_one(

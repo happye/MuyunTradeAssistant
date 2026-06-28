@@ -108,7 +108,8 @@ class ScannerFilter:
 
         # 检查列是否存在
         if col_name not in df.columns:
-            logger.warning(f"ScannerFilter: DataFrame中无列 '{col_name}'(字段:{field})，跳过")
+            # 无害降级：如新浪源无量比字段，跳过该过滤条件即可（非错误）
+            logger.debug(f"ScannerFilter: DataFrame中无列 '{col_name}'(字段:{field})，跳过")
             return df
 
         # 确保数值列为float类型（AKShare有时返回object类型）

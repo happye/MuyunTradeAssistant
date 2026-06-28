@@ -39,12 +39,19 @@ def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
 def _ensure_baostock_login():
     """确保baostock已登录（模块级别全局状态）
 
-    核心设计：信任全局状态，不做验证查询（避免额外开销）。
-    如果连接异常断开，查询时会触发socket错误，
-    异常处理中调用_baostock_logout()重置状态，
-    下次调用本函数会自动重新登录。
+    v0.8.6.5 修复"过一会再跑就报错"：Baostock 连接闲置会被服务端断开，
+    但全局状态仍记着"已登录"，下次查询用死连接就报错。
+    现在已登录状态时先做轻量心跳(query_stock_basic)，失败则 logout+重 login。
     """
     global _bs_login_status
+    if _bs_login_status:
+        # 心跳检测：连接可能已被服务端闲置断开，验证一下还活着
+        if not _baostock_ping():
+            logger.info("Baostock 连接已断开(闲置超时)，重新登录")
+            _baostock_logout()
+            _bs_login_status = False
+        else:
+            return True
     if _bs_login_status:
         return True
 
@@ -59,6 +66,17 @@ def _ensure_baostock_login():
         logger.warning(f"Baostock登录异常: {e}")
         _bs_login_status = False
     return _bs_login_status
+
+
+def _baostock_ping() -> bool:
+    """轻量心跳：query_stock_basic 一只常见股，验证连接活着。失败返回 False。"""
+    try:
+        def _q():
+            return bs.query_stock_basic(code="sh.600000")
+        rs = _call_with_timeout(_q, timeout=8)
+        return rs is not None and rs.error_code == '0'
+    except Exception:
+        return False
 
 
 def _baostock_logout():
