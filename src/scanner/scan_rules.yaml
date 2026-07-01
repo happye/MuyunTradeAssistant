@@ -35,11 +35,11 @@ rules:
   # ===== 健康回调（推荐，默认规则） =====
   healthy_pullback:
     name: "健康回调"
-    description: "今日缩量小幅回调(-3%~0)、振幅不大、流动性正常 → 深度分析确认趋势阶段"
+    description: "今日缩量小幅回调(-3%~-0.1)、振幅不大、流动性正常 → 深度分析确认趋势阶段。排除0(平收股非回调，主力控盘做盘，易误选)"
     filters:
       - field: "change_pct"
         op: "between"
-        value: [-3.0, 0]
+        value: [-3.0, -0.1]
       - field: "volume_ratio"
         op: "lt"
         value: 1.0
@@ -59,11 +59,11 @@ rules:
   # ===== 温和上涨（趋势蓄势） =====
   steady_advance:
     name: "温和上涨"
-    description: "今日温和放量上涨(0~5%)、不追涨停、流动性好 → 深度分析确认是S2延续还是S3顶部"
+    description: "今日温和放量上涨(0.1%~5%)、不追涨停、流动性好 → 深度分析确认是S2延续还是S3顶部。排除0(平收股非上涨)"
     filters:
       - field: "change_pct"
         op: "between"
-        value: [0, 5.0]
+        value: [0.1, 5.0]
       - field: "volume_ratio"
         op: "between"
         value: [1.0, 3.0]
@@ -83,11 +83,11 @@ rules:
   # ===== 缩量回调 =====
   shrink_pullback:
     name: "缩量回调"
-    description: "缩量下跌(量比<0.8)、可能企稳 → 需深度分析确认是否在S2上升趋势中"
+    description: "缩量下跌(量比<0.8)、可能企稳 → 需深度分析确认是否在S2上升趋势中。排除0(平收股非回调)"
     filters:
       - field: "change_pct"
         op: "between"
-        value: [-5.0, 0]
+        value: [-5.0, -0.1]
       - field: "turnover_rate"
         op: "between"
         value: [0.5, 5.0]
