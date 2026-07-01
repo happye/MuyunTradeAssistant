@@ -292,6 +292,8 @@ def parse_input(user_input: str):
                     i += 2; continue
                 if low in ("--rule",) and i + 1 < len(rest):
                     scan_args["rule"] = rest[i + 1]; i += 2; continue
+                if low in ("--allrules", "--all-rules"):
+                    scan_args["allrules"] = True; i += 1; continue
                 if low in ("--limit",) and i + 1 < len(rest):
                     try: scan_args["limit"] = int(rest[i + 1])
                     except ValueError: pass
@@ -466,6 +468,7 @@ def run_benzong_scan(args: dict):
       bz scan                  默认 healthy_pullback 规则初筛 → 笨总评分 Top10
       bz scan AI,半导体        指定主题词缩小候选范围
       bz scan --top 5          Top5
+      bz scan --allrules       四规则全跑(各Top5合并去重)→笨总评分，不挑市况全覆盖
       bz scan --limit 15       限制初筛候选数（控制 AI 耗时，默认15）
       bz scan --backtest --start 2024-01-01 --end 2024-12-31  对 TopN 批量回测
     """
@@ -478,12 +481,14 @@ def run_benzong_scan(args: dict):
     limit = args.get("limit", 15)
     rule_name = args.get("rule", "healthy_pullback")
     force_refresh = args.get("refresh", False)
+    allrules = args.get("allrules", False)  # 方案C: 四规则全跑合并
 
     print()
     print("=" * 64)
     print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
     print("=" * 64)
-    print(f"  规则: {rule_name} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
+    rule_display = "四规则全跑(各Top5合并)" if allrules else rule_name
+    print(f"  规则: {rule_display} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
     print(f"  TopN: {top_n} | 回测: {'是' if do_backtest else '否'}")
     print()
 
@@ -579,27 +584,60 @@ def run_benzong_scan(args: dict):
             entry_exit_config=entry_exit_config,
         )
 
-        print("  [Step 1/3] 技术面初筛中...")
-        try:
-            candidates, scan_info = engine.quick_scan(
-                rule_name=rule_name,
-                market_query=None,
-                exclude_codes=exclude_codes,
-            )
-        except Exception as e:
-            print(f"  [red]✗ 初筛失败: {type(e).__name__}: {e}[/red]")
-            return
+        if allrules:
+            # 方案C: 四规则全跑，各取Top5合并去重
+            print("  [Step 1/3] 四规则全跑初筛（各Top5合并）...")
+            ALL_RULES = ["healthy_pullback", "steady_advance", "shrink_pullback", "value_pick"]
+            merged_codes = []
+            seen = set(exclude_codes)
+            rule_hits = {}  # 记录每只股被几条规则选中（多规则共振=强标的）
+            for r in ALL_RULES:
+                try:
+                    cands, info = engine.quick_scan(rule_name=r, market_query=None, exclude_codes=exclude_codes)
+                except Exception as e:
+                    print(f"  [dim]{r} 规则失败: {type(e).__name__}: {str(e)[:50]}[/dim]")
+                    continue
+                if not cands:
+                    print(f"  [dim]{r}: 无候选[/dim]")
+                    continue
+                added = 0
+                for c in cands:
+                    if c.stock_code not in seen and added < 5:
+                        seen.add(c.stock_code)
+                        merged_codes.append(c.stock_code)
+                        rule_hits[c.stock_code] = [r]
+                        added += 1
+                    elif c.stock_code in rule_hits:
+                        rule_hits[c.stock_code].append(r)  # 已被其他规则选，记共振
+                print(f"  ✓ {r}: 取 {added} 只")
+            codes = merged_codes[:limit] if limit else merged_codes
+            if not codes:
+                print(f"  [yellow]⚠ 四规则均无候选（可能非交易时段）[/yellow]")
+                return
+            print(f"  ✓ 四规则合并去重 {len(merged_codes)} 只 → 取前 {len(codes)} 只评分")
+            print()
+        else:
+            print("  [Step 1/3] 技术面初筛中...")
+            try:
+                candidates, scan_info = engine.quick_scan(
+                    rule_name=rule_name,
+                    market_query=None,
+                    exclude_codes=exclude_codes,
+                )
+            except Exception as e:
+                print(f"  [red]✗ 初筛失败: {type(e).__name__}: {e}[/red]")
+                return
 
-        if "error" in scan_info:
-            print(f"  [red]✗ 扫描失败: {scan_info['error']}[/red]")
-            return
-        if not candidates:
-            print(f"  [yellow]⚠ 初筛无候选股（可能非交易时段或条件过严）[/yellow]")
-            return
+            if "error" in scan_info:
+                print(f"  [red]✗ 扫描失败: {scan_info['error']}[/red]")
+                return
+            if not candidates:
+                print(f"  [yellow]⚠ 初筛无候选股（可能非交易时段或条件过严）[/yellow]")
+                return
 
-        codes = [c.stock_code for c in candidates[:limit]]
-        print(f"  ✓ 初筛 {len(candidates)} 只 → 取前 {len(codes)} 只评分")
-        print()
+            codes = [c.stock_code for c in candidates[:limit]]
+            print(f"  ✓ 初筛 {len(candidates)} 只 → 取前 {len(codes)} 只评分")
+            print()
 
     # ── Step 2: 笨总批量 AI 评分 ──
     print(f"  [Step 2/3] 笨总 6 维 AI 评分中（{len(codes)}只 × 5维 ≈ {len(codes)*5}次AI，请耐心）...")
