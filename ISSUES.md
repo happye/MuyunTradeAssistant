@@ -1188,3 +1188,19 @@ P3（已取消）:
   - shrink_pullback: `[-5.0, 0]` → `[-5.0, -0.1]`
 - **教训**：闭区间边界含0是隐蔽bug——"回调/上涨"语义要求有涨跌幅，0(平收)不该入选。市场平收股多时(震荡市主力控盘常见)必复现
 - **验证**: Baostock K线确认10只股收盘价=昨收价(27.05=27.05等)，非数据问题
+
+---
+
+### ISS-049: 逻辑缺陷全面筛查（ISS-048 同类延伸，审查5问题）
+- **状态**: ✅ 已解决（2026-07-01）
+- **优先级**: P0(高1) / P1(中2/中3) / P2(低4) — 边界语义一致性
+- **来源**: ISS-048 修复后系统审查同类隐蔽缺陷（code-reviewer agent）
+- **修复明细**:
+  1. **高-回测grade不一致**: `rule_scorer.py:256` 返回 `bs.grade()`(原始等级)，回测定mode用原始grade；实盘用 `effective_grade()`(含景气闸门)。一只"景气30原始A级"股，实盘effective=C→mode=None，回测原始A→mode=qizong。**回测气宗分配比实盘宽松，结果不可复现**。改 rule_scorer 返回 `effective_grade()` 对齐实盘
+  2. **中-换手率>=40含等号**: `exit_signals/stock.py:40` `turnover_pct >= 40.0`，注释写"换手率超40%"(严格大于)。40.0%是主板涨停常见整数值会误触发。改 `>` 严格大于
+  3. **中-成交额>=10万亿含等号**: `exit_signals/macro.py:40` `>= 10.0`，"破10万亿"语义是超过非等于。改 `>` 严格大于
+  4. **低-steady_advance量比下限含1.0**: `scan_rules.yaml` `volume_ratio between [1.0,3.0]`，1.0是平量非"放量"。改 [1.1, 3.0]
+  5. **低-极端行情阈值含等号**(strategy_layer <=-5/>=7): 保留不改，安全网偏激进是好事，改注释即可（审查判定影响小）
+- **审查无问题项**: effective_grade闸门层级无重叠、liquidity_coefficient三段无间隙、valuation_position涨幅阈值无跳变、plan_guard止损/时间止损边界合理、value_pick排除0负值合理、generator _mode_from_grade防护有效
+- **教训**: 闭区间/含等号边界要审视语义（[[feedback-closed-interval-boundary]]），跨路径(实盘vs回测)用同一逻辑要确保输入语义一致
+- **验证**: jumpA 26/26 + batch_scorer 6/6 全绿

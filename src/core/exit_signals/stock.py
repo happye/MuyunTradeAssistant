@@ -37,7 +37,7 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
         Optional[str]: 信号描述，如 "个股:换手率超40%(45.2%)"
     """
     # 信号1：换手率 > 40%
-    if turnover_pct is not None and turnover_pct >= TURNOVER_TOP_PCT:
+    if turnover_pct is not None and turnover_pct > TURNOVER_TOP_PCT:  # 严格大于，40.0%整数值(主板涨停常见)不误触发
         return f"个股:换手率超40%({turnover_pct:.1f}%)"
 
     # 信号2：缩量加速上涨（量比 < 0.7 且 涨幅 > 15%）

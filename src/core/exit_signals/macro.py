@@ -37,7 +37,7 @@ def check_macro_top_signal(market_turnover_trillion: Optional[float] = None) -> 
             logger.debug(f"宏观成交额获取失败: {e}")
             return None
 
-    if turnover is not None and turnover >= MARKET_TURNOVER_TOP_TRILLION:
+    if turnover is not None and turnover > MARKET_TURNOVER_TOP_TRILLION:  # 严格大于，"破10万亿"语义是超过非等于
         return f"宏观:成交额破10万亿({turnover:.1f}万亿)"
 
     # TODO 储蓄搬家>30%：无数据源

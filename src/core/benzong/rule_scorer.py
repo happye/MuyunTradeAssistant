@@ -253,5 +253,5 @@ def rule_score(code: str, name: str = "", data_summary: Optional[dict] = None) -
         stock_code=code, stock_name=name,
     )
     dims["total_score"] = bs.total_score
-    dims["grade"] = bs.grade()
+    dims["grade"] = bs.effective_grade()  # v0.8.6.5: 用 effective_grade(含景气闸门)对齐实盘，否则回测mode分配比实盘宽松
     return dims
