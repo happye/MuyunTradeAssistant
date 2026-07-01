@@ -616,11 +616,14 @@ def run_benzong_scan(args: dict):
                     elif c.stock_code in rule_hits:
                         rule_hits[c.stock_code].append(r)  # 已被其他规则选，记共振
                 print(f"  ✓ {r}: 取 {added} 只")
-            codes = merged_codes[:limit] if limit else merged_codes
+            # 四规则平等，全部合并去重后送笨总评分统一排序，不按规则顺序截断
+            # （否则排在后的 value_pick 会被机械砍掉，没机会评分）
+            codes = merged_codes
             if not codes:
                 print(f"  [yellow]⚠ 四规则均无候选（可能非交易时段）[/yellow]")
                 return
-            print(f"  ✓ 四规则合并去重 {len(merged_codes)} 只 → 取前 {len(codes)} 只评分")
+            resonate = {c: rs for c, rs in rule_hits.items() if len(rs) > 1}
+            print(f"  ✓ 四规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
             print()
         else:
             print("  [Step 1/3] 技术面初筛中...")
