@@ -192,8 +192,12 @@ class MarketCache:
             logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
             return self._stock_df
 
-        # 主数据源：新浪财经API
+        # 主数据源：新浪财经API（偶发返回空，加重试一次避免误切备用源）
         df = self._fetch_sina_market()
+        if (df is None or df.empty):
+            logger.info("MarketCache: 新浪源首次返回空，1秒后重试一次...")
+            import time as _t; _t.sleep(1)
+            df = self._fetch_sina_market()
         if df is not None and not df.empty:
             self._stock_df = df
             self._stock_timestamp = time.time()
@@ -342,18 +346,23 @@ class MarketCache:
         """通过efinance获取全市场行情（备用数据源）
 
         efinance使用东方财富API，无市净率字段。
+        东财 push2.eastmoney.com 偶发 RemoteDisconnected（反爬/服务端断连），
+        失败一次即放弃（不刷屏重试），降级走过期缓存兜底。
 
         Returns:
             标准化后的DataFrame，失败返回None
         """
         try:
             import efinance as ef
+            # 静音 efinance 内部 urllib3 分页重试刷屏（RemoteDisconnected 时它会重试4次刷屏）
+            import logging as _log
+            _log.getLogger("urllib3").setLevel(_log.CRITICAL)
             with self._without_proxy():
                 df = ef.stock.get_realtime_quotes()
             if df is not None and not df.empty:
                 return self._normalize_efinance_columns(df)
         except Exception as e:
-            logger.error(f"MarketCache: efinance获取失败: {e}")
+            logger.warning(f"MarketCache: efinance备用源失败({type(e).__name__})，走过期缓存兜底")
         return None
 
     @staticmethod
