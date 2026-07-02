@@ -620,7 +620,9 @@ def run_benzong_scan(args: dict):
             # （否则排在后的 value_pick 会被机械砍掉，没机会评分）
             codes = merged_codes
             if not codes:
-                print(f"  [yellow]⚠ 四规则均无候选（可能非交易时段）[/yellow]")
+                print(f"  [red]✗ 四规则均无候选(全市场行情源可能失效)[/red]")
+                print(f"  [yellow]→ 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)[/yellow]")
+                print(f"  [yellow]→ 或单股分析: l <代码> / bz <代码>(走Baostock)[/yellow]")
                 return
             resonate = {c: rs for c, rs in rule_hits.items() if len(rs) > 1}
             print(f"  ✓ 四规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
@@ -638,7 +640,14 @@ def run_benzong_scan(args: dict):
                 return
 
             if "error" in scan_info:
-                print(f"  [red]✗ 扫描失败: {scan_info['error']}[/red]")
+                err = scan_info['error']
+                if "全市场" in err or "行情数据" in err:
+                    print(f"  [red]✗ 全市场行情源失效(新浪/东财当前不可用)[/red]")
+                    print(f"  [yellow]→ 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)[/yellow]")
+                    print(f"  [yellow]→ 或单股分析: l <代码> / bz <代码>(走Baostock,不依赖全市场快照)[/yellow]")
+                    print(f"  [dim]全市场源失效是外部数据源问题,非代码bug,恢复后自动可用[/dim]")
+                else:
+                    print(f"  [red]✗ 扫描失败: {err}[/red]")
                 return
             if not candidates:
                 print(f"  [yellow]⚠ 初筛无候选股（可能非交易时段或条件过严）[/yellow]")

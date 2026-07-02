@@ -192,9 +192,21 @@ class MarketCache:
             logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
             return self._stock_df
 
-        # 主数据源：新浪财经API（偶发返回空，加重试一次避免误切备用源）
+        # 主数据源：新浪财经API（偶发返回空，加重试一次；返回HTML/456=源失效，直接判定）
         df = self._fetch_sina_market()
         if (df is None or df.empty):
+            # 重试前先判源是否失效（避免无意义重试+刷屏）
+            if self._sina_source_dead():
+                logger.warning("MarketCache: 新浪全市场源失效(接口返回HTML/456)，全市场模式不可用")
+                # 源失效时仍试 efinance 兜底（可能偶发可用）
+                df = self._fetch_efinance_market()
+                if df is not None and not df.empty:
+                    self._stock_df = df
+                    self._stock_timestamp = time.time()
+                    self._stock_count = len(df)
+                    logger.info(f"MarketCache: A股行情获取成功({self._stock_count}只, efinance备用)")
+                    return df
+                return pd.DataFrame()  # 全部失效，返回空（让上层引导用户改用主题词/单股模式）
             logger.info("MarketCache: 新浪源首次返回空，1秒后重试一次...")
             import time as _t; _t.sleep(1)
             df = self._fetch_sina_market()
@@ -220,6 +232,23 @@ class MarketCache:
             logger.warning("MarketCache: 所有数据源失败，使用过期缓存（兜底）")
             return self._stock_df
         return pd.DataFrame()
+
+    def _sina_source_dead(self) -> bool:
+        """检测新浪全市场源是否失效（接口返回HTML/非200=失效，非偶发空）。"""
+        try:
+            import requests as _requests
+            with self._without_proxy():
+                r = _requests.get(
+                    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData",
+                    params={"page": 1, "num": 5, "sort": "changepercent", "asc": 0, "node": "hs_a", "symbol": "", "_s_r_a": "init"},
+                    timeout=8, headers={"User-Agent": "Mozilla/5.0"},
+                )
+            # 返回HTML或非200=源失效（接口废弃/被封）
+            if r.status_code != 200 or "html" in (r.headers.get("content-type", "") + r.text[:50]).lower():
+                return True
+            return False
+        except Exception:
+            return False  # 网络异常不算源失效（可能偶发）
 
     def _fetch_sina_market(self) -> Optional[pd.DataFrame]:
         """通过新浪财经API获取全市场A股行情（并行分页）
