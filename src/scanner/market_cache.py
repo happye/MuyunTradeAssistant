@@ -115,6 +115,9 @@ class MarketCache:
         self._stock_df: Optional[pd.DataFrame] = None
         self._stock_timestamp: float = 0.0
         self._stock_count: int = 0
+        # 源失效标记：第一条规则发现源失效后设True，后续规则不重试(避免--allrules刷4×3=12条warning)
+        self._market_source_dead: bool = False
+        self._market_source_dead_ts: float = 0.0
 
         # L1 缓存: ETF行情
         self._etf_df: Optional[pd.DataFrame] = None
@@ -192,13 +195,15 @@ class MarketCache:
             logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
             return self._stock_df
 
-        # 主数据源：新浪财经API（偶发返回空，加重试一次；返回HTML/456=源失效，直接判定）
+        # 源失效缓存：60秒内已判定失效则直接返回空，不重试不刷屏(防--allrules 4规则各刷3条warning)
+        if self._market_source_dead and (time.time() - self._market_source_dead_ts) < 60:
+            return pd.DataFrame()
+
+        # 主数据源：新浪财经API（偶发返回空，加重试一次；返回HTML/456=源失效，标记不重试）
         df = self._fetch_sina_market()
         if (df is None or df.empty):
-            # 重试前先判源是否失效（避免无意义重试+刷屏）
             if self._sina_source_dead():
-                logger.warning("MarketCache: 新浪全市场源失效(接口返回HTML/456)，全市场模式不可用")
-                # 源失效时仍试 efinance 兜底（可能偶发可用）
+                # efinance 兜底(可能偶发可用)
                 df = self._fetch_efinance_market()
                 if df is not None and not df.empty:
                     self._stock_df = df
@@ -206,7 +211,11 @@ class MarketCache:
                     self._stock_count = len(df)
                     logger.info(f"MarketCache: A股行情获取成功({self._stock_count}只, efinance备用)")
                     return df
-                return pd.DataFrame()  # 全部失效，返回空（让上层引导用户改用主题词/单股模式）
+                # 全部失效：标记+返回空(只刷一次提示，后续规则不重试)
+                self._market_source_dead = True
+                self._market_source_dead_ts = time.time()
+                logger.warning("MarketCache: 全市场行情源失效(新浪+东财)，全市场模式不可用，改用主题词/单股模式")
+                return pd.DataFrame()
             logger.info("MarketCache: 新浪源首次返回空，1秒后重试一次...")
             import time as _t; _t.sleep(1)
             df = self._fetch_sina_market()
@@ -218,7 +227,6 @@ class MarketCache:
             return df
 
         # 备用：efinance
-        logger.warning("MarketCache: 新浪API失败，尝试efinance备用...")
         df = self._fetch_efinance_market()
         if df is not None and not df.empty:
             self._stock_df = df
@@ -229,7 +237,7 @@ class MarketCache:
 
         # 全部失败，返回过期缓存
         if self._stock_df is not None:
-            logger.warning("MarketCache: 所有数据源失败，使用过期缓存（兜底）")
+            logger.info("MarketCache: 所有数据源失败，使用过期缓存（兜底）")
             return self._stock_df
         return pd.DataFrame()
 
@@ -300,7 +308,7 @@ class MarketCache:
             return None
 
         if not all_stocks:
-            logger.warning("MarketCache: 新浪API返回空数据")
+            logger.debug("MarketCache: 新浪API返回空数据")
             return None
 
         # 去重
@@ -391,7 +399,7 @@ class MarketCache:
             if df is not None and not df.empty:
                 return self._normalize_efinance_columns(df)
         except Exception as e:
-            logger.warning(f"MarketCache: efinance备用源失败({type(e).__name__})，走过期缓存兜底")
+            logger.debug(f"MarketCache: efinance备用源失败({type(e).__name__})，走过期缓存兜底")
         return None
 
     @staticmethod
