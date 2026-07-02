@@ -20,12 +20,16 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 
 
 def _timed(label, fn, timeout=30):
-    """带超时跑 fn，返回 (ok, detail, elapsed)。"""
+    """带超时跑 fn。fn 返回 (ok, detail) 元组。返回 (ok, detail, elapsed)。
+    v0.8.6.5 修复：之前只看"没抛异常"就标True，把返回False的也标✅，误导。"""
     t0 = time.time()
     try:
         with ThreadPoolExecutor(max_workers=1) as ex:
             r = ex.submit(fn).result(timeout=timeout)
-        return True, r, time.time() - t0
+        # 测试函数返回 (ok, detail) 元组，解包判定
+        if isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], bool):
+            return r[0], r[1], time.time() - t0
+        return True, str(r)[:60], time.time() - t0
     except FuturesTimeout:
         return False, f"超时(>{timeout}s)", time.time() - t0
     except Exception as e:
