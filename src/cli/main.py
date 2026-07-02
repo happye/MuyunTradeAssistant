@@ -8,8 +8,14 @@ from pathlib import Path
 
 # Windows PowerShell 环境下设置 UTF-8（通过环境变量，不替换sys.stdout避免与Rich冲突）
 if sys.platform == 'win32':
-    import os
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
+
+# 清代理 + NO_PROXY=*：开clash等代理时，金融API直连更稳（代理会拦截返回456）
+# 命令行带参数直接走 main.py 不经 start.py，这里也要设
+for _k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]:
+    os.environ.pop(_k, None)
+os.environ["NO_PROXY"] = "*"
+os.environ["no_proxy"] = "*"
 
 import yaml
 from rich.console import Console

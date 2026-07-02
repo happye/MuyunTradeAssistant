@@ -36,24 +36,13 @@ def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
         return fut.result(timeout=timeout)
 
 
-def _suppress_stdout():
-    """临时重定向 stdout 抑制 baostock 库的 print（它直接 print 不走 logging，无法用 logger 静音）。
-    返回还原函数。"""
-    import os, sys
-    devnull = open(os.devnull, 'w', encoding='utf-8')
-    old = sys.stdout
-    sys.stdout = devnull
-    def _restore():
-        sys.stdout = old
-        devnull.close()
-    return _restore
-
-
 def _ensure_baostock_login():
     """确保baostock已登录（模块级别全局状态）
 
-    v0.8.6.5：心跳重连 + 静音 baostock 库的 print（login success/you don't login 等）。
-    baostock 直接 print 不走 logging，必须重定向 stdout 才能静音。
+    v0.8.6.5：心跳重连——连接闲置被服务端断开后，下次查询用死连接会报错，
+    现已登录状态先做轻量心跳(query_stock_basic)，失败则 logout+重 login。
+    注：baostock 库的 print(login success/you don't login)是它直接 print 的，
+    走 logging 静音不了，但无害，保留正常输出(不重定向stdout，避免改过头)。
     """
     global _bs_login_status
     if _bs_login_status:
@@ -64,7 +53,6 @@ def _ensure_baostock_login():
         else:
             return True
 
-    restore = _suppress_stdout()
     try:
         lg = bs.login()
         _bs_login_status = lg.error_code == '0'
@@ -75,39 +63,28 @@ def _ensure_baostock_login():
     except Exception as e:
         logger.warning(f"Baostock登录异常: {e}")
         _bs_login_status = False
-    finally:
-        restore()
     return _bs_login_status
 
 
 def _baostock_ping() -> bool:
-    """轻量心跳：query_stock_basic 一只常见股，验证连接活着。失败返回 False。
-    静音 baostock 的 "you don't login" print。"""
+    """轻量心跳：query_stock_basic 一只常见股，验证连接活着。失败返回 False。"""
     try:
-        restore = _suppress_stdout()
-        try:
-            def _q():
-                return bs.query_stock_basic(code="sh.600000")
-            rs = _call_with_timeout(_q, timeout=8)
-            return rs is not None and rs.error_code == '0'
-        finally:
-            restore()
+        def _q():
+            return bs.query_stock_basic(code="sh.600000")
+        rs = _call_with_timeout(_q, timeout=8)
+        return rs is not None and rs.error_code == '0'
     except Exception:
         return False
 
 
 def _baostock_logout():
-    """登出baostock并重置全局登录状态。静音库 print。"""
+    """登出baostock并重置全局登录状态"""
     global _bs_login_status
-    restore = _suppress_stdout()
     try:
         bs.logout()
     except Exception:
         pass
-    finally:
-        restore()
     _bs_login_status = False
-    _bs_login_status = None
 
 
 class AKShareClient:

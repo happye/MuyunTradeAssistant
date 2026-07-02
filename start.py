@@ -11,10 +11,14 @@ import subprocess
 # 确保工作目录为脚本所在目录
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
-# 清理代理环境变量：金融数据API(新浪/东财/同花顺)直连更稳，走代理会被拦截返回456/HTML
-# 必须在import数据模块前清，和 tests/test_all_api.py 保持一致，否则实跑会因代理失败但测试通过
+# 清理代理环境变量 + NO_PROXY=*：金融数据API(新浪/东财/同花顺)直连更稳，
+# 走代理会被clash拦截返回456/HTML。NO_PROXY=* 强制 requests/urllib3 对所有域名直连，
+# 即使开着 clash 系统代理也能跑。必须在import数据模块前设。
+# baostock 走自研socket不读NO_PROXY，无所谓；akshare/efinance 底层都是requests会读。
 for _k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]:
     os.environ.pop(_k, None)
+os.environ["NO_PROXY"] = "*"   # 所有域名强制直连(绕过clash系统代理)
+os.environ["no_proxy"] = "*"
 
 # Windows 下设置 UTF-8（通过环境变量，不替换sys.stdout避免与Rich冲突）
 if sys.platform == "win32":
