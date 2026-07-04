@@ -29,6 +29,9 @@ test_output*.txt
 test_*.txt
 tests/issue_027_round2/
 
+# 笨总评分报告（时间+代码+名字，本地阅读用，不入库）
+分析报告/
+
 # 系统文件
 Thumbs.db
 .DS_Store

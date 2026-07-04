@@ -385,8 +385,8 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
         print("\n  [!] 已取消")
         return
     except Exception as e:
-        print(f"\n  [red]✗ 评分失败: {type(e).__name__}: {e}[/red]")
-        print(f"  [dim]可尝试 bz --manual 走交互式兜底[/dim]")
+        print(f"\n  ✗ 评分失败: {type(e).__name__}: {e}")
+        print(f"  可尝试 bz --manual 走交互式兜底")
         return
 
     bs = result.score
@@ -416,12 +416,12 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
         print(f"  {warn_marker} {label} [conf {conf:.2f}]{cached} = {score:>5.1f} 分{conf_hint}")
         sources = m.get("sources", [])
         if sources:
-            print(f"      来源：{' / '.join(sources[:3])}")
+            print(f"      来源：{' / '.join(sources)}")
         reasoning = m.get("reasoning", "")
         if reasoning:
-            print(f"      AI: {reasoning[:100]}{'...' if len(reasoning) > 100 else ''}")
+            print(f"      AI: {reasoning}")
         for w in m.get("warnings", []):
-            print(f"      [yellow]⚠ {w}[/yellow]")
+            print(f"      ⚠ {w}")
         print()
 
     # 总分
@@ -439,15 +439,15 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
     downgrade_note = f"（原始 {raw_grade} 级，被行业景气度闸门降级）" if grade != raw_grade else ""
     if precondition_failed:
         print(f"  💯 评分：{norm:.0f}/100 → {grade_label}")
-        print(f"  [bold red]⚠ 大前提失效（行业景气度=0）：此评分/等级不具参考意义，不可作为买入依据！[/bold red]")
-        print(f"  [dim]笨总教学：没有高景气行业判断，其他维度再高也无意义（中免反面案例）[/dim]")
+        print(f"  ⚠ 大前提失效（行业景气度=0）：此评分/等级不具参考意义，不可作为买入依据！")
+        print(f"  笨总教学：没有高景气行业判断，其他维度再高也无意义（中免反面案例）")
     else:
         print(f"  💯 评分：{norm:.0f}/100 → {grade_label} {downgrade_note}")
         if downgrade_note:
-            print(f"  [dim]行业景气度 {bs.industry_prosperity:.0f} 偏低（笨总大前提存疑），实际等级已下调[/dim]")
+            print(f"  行业景气度 {bs.industry_prosperity:.0f} 偏低（笨总大前提存疑），实际等级已下调")
     print(f"  🎯 总体置信度：{result.overall_confidence:.2f}", end="")
     if result.overall_confidence < 0.5:
-        print("  [yellow]⚠ 偏低（有维度降级，总分仅供参考）[/yellow]")
+        print("  ⚠ 偏低（有维度降级，总分仅供参考）")
     else:
         print()
     if result.cache_hits:
@@ -459,19 +459,164 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
     if other_warnings:
         print()
         for w in other_warnings:
-            print(f"  [yellow]{w}[/yellow]")
+            print(f"  {w}")
         print()
 
     # 大前提警告（非失效时不显示，失效时上方已红字提示，此处保留兜底）
     if not precondition_failed:
         pre = bs.precondition_warning()
         if pre:
-            print(f"  [bold red]{pre}[/bold red]")
+            print(f"  {pre}")
             print()
 
     print(f"  📚 评分依据：笨总教学 + xlsx 打分表（v0.8.6.1 试金石 4 案例已验证）")
     print(f"  💡 提示：bz {code} --refresh 强制刷新；bz --manual 走交互式兜底；bz --check 体检数据源")
+    report_path = _persist_benzong_report(code, result, bs)
+    if report_path:
+        print(f"  📝 完整报告已保存：{report_path}")
     print()
+
+
+def _persist_benzong_report(code: str, result, bs) -> str:
+    """v0.8.6.7：把笨总 6 维评分完整报告持久化为 Markdown，方便回头阅读。
+
+    文件名：{YYYY-MM-DD_HH-MM}_{code}_{name}.md（时间+股票代码+股票名字）
+    路径：项目根/分析报告/bz/（已 gitignore，不污染仓库）
+    返回写入路径；失败返回空串（不抛异常，不影响主流程）。
+    """
+    from datetime import datetime
+    from pathlib import Path
+    import re
+
+    name = (getattr(bs, "stock_name", None) or "").strip() or code
+    safe_name = re.sub(r'[<>:"/\\|?*\s]+', "_", name).strip("_.") or code
+    now = datetime.now()
+    ts = now.strftime("%Y-%m-%d_%H-%M")
+    full_ts = now.strftime("%Y-%m-%d %H:%M:%S")
+
+    proj_root = Path(__file__).resolve().parent
+    report_dir = proj_root / "分析报告" / "bz"
+    try:
+        report_dir.mkdir(parents=True, exist_ok=True)
+    except OSError:
+        return ""
+    report_path = report_dir / f"{ts}_{code}_{safe_name}.md"
+
+    meta = result.dimensions_meta
+    dim_labels = [
+        ("industry_prosperity", "1️⃣ 行业景气度",   0.20,  "0.20"),
+        ("business_purity",     "2️⃣ 业务纯度",     0.40,  "0.40"),
+        ("valuation_position",  "3️⃣ 历史估值位置", 0.25,  "0.25"),
+        ("industry_leader",     "4️⃣ 细分行业龙头", 0.15,  "0.15"),
+        ("market_recognition",  "5️⃣ 市场辨识度",   0.20,  "0.20"),
+        ("risk_deduction",      "6️⃣ 个股风险值",   -0.20, "-0.20"),
+    ]
+
+    grade = bs.effective_grade()
+    raw_grade = bs.grade()
+    grade_label = {
+        "A": "🏆 A 级 — 超优质",
+        "B": "✅ B 级 — 优秀（可买入）",
+        "C": "🟡 C 级 — 可观察",
+        "D": "🔻 D 级 — 勉强观望",
+        "F": "❌ F 级 — 放弃",
+    }[grade]
+    downgrade_note = f"（原始 {raw_grade} 级，被行业景气度闸门降级）" if grade != raw_grade else ""
+    precondition_failed = (bs.industry_prosperity == 0)
+
+    L = []
+    L.append(f"# 笨总 6 维评分报告 — {code} {name}")
+    L.append("")
+    L.append(f"> 评分时间：{full_ts}")
+    L.append(f"> 股票代码：{code}  |  股票名称：{name}")
+    L.append(f"> 数据缓存：{len(result.cache_hits)}/6 维度命中（同股同日复用，--refresh 重算）")
+    L.append("")
+    L.append("---")
+    L.append("")
+    L.append("## 一、总评")
+    L.append("")
+    norm = bs.normalized_score()
+    L.append(f"- 归一化评分：**{norm:.0f}/100**")
+    L.append(f"- 实际等级：**{grade}** — {grade_label} {downgrade_note}".rstrip())
+    L.append(f"- 原始等级：{raw_grade}")
+    conf_hint = " ⚠偏低（有维度降级，总分仅供参考）" if result.overall_confidence < 0.5 else ""
+    L.append(f"- 总体置信度：{result.overall_confidence:.2f}{conf_hint}")
+    L.append(f"- 大前提失效（行业景气度=0）：{'是 ⚠ 评分不具参考意义，不可作买入依据' if precondition_failed else '否'}")
+    L.append(f"- 一票否决：{'是 🚨 强烈建议放弃' if result.invalidate else '否'}")
+    L.append("")
+
+    pre = bs.precondition_warning()
+    if pre:
+        L.append(f"> ⚠ {pre}")
+        L.append("")
+
+    L.append("## 二、6 维明细")
+    L.append("")
+    for key, label, _w, w_str in dim_labels:
+        m = meta.get(key, {})
+        score = m.get("score", 0)
+        conf = m.get("confidence", 0)
+        cached = "是" if key in result.cache_hits else "否"
+        degraded = " ⚠该维降级，分仅供参考（不影响其他维）" if conf < 0.5 else ""
+        L.append(f"### {label}（权重 {w_str}）")
+        L.append("")
+        L.append(f"- 得分：{score:.1f} / 100")
+        L.append(f"- 置信度：{conf:.2f}{degraded}")
+        L.append(f"- 命中缓存：{cached}")
+        sources = m.get("sources", [])
+        if sources:
+            L.append("- 数据来源：")
+            for s in sources:
+                L.append(f"  - {s}")
+        else:
+            L.append("- 数据来源：（无）")
+        reasoning = m.get("reasoning", "")
+        L.append("- AI 推理：")
+        if reasoning:
+            L.append("")
+            for rl in reasoning.splitlines():
+                L.append(f"  {rl}")
+        else:
+            L.append("  （无）")
+        warns = m.get("warnings", [])
+        if warns:
+            L.append("- 维度警告：")
+            for w in warns:
+                L.append(f"  - ⚠ {w}")
+        L.append("")
+
+    L.append(f"## 三、贡献分解（流动性系数 ×{bs.liquidity_coeff:.1f}）")
+    L.append("")
+    c = bs.contributions
+    L.append(f"- 行业景气度  ×0.20 = {c['industry_prosperity']:>+6.2f}")
+    L.append(f"- 业务纯度    ×0.40 = {c['business_purity']:>+6.2f}")
+    L.append(f"- 历史估值    ×0.25 = {c['valuation_position']:>+6.2f}")
+    L.append(f"- 细分龙头    ×0.15 = {c['industry_leader']:>+6.2f}")
+    L.append(f"- 市场辨识度  ×0.20 = {c['market_recognition']:>+6.2f}")
+    L.append(f"- 个股风险值  ×-0.20= {c['risk_deduction']:>+6.2f}（扣分）")
+    L.append(f"- 原始累加         = {bs.raw_sum:>+6.2f}")
+    L.append(f"- × 流动性系数 {bs.liquidity_coeff:.1f} = **{bs.total_score:.2f}**")
+    L.append("")
+
+    L.append("## 四、警告汇总")
+    L.append("")
+    if result.warnings:
+        for w in result.warnings:
+            L.append(f"- {w}")
+    else:
+        L.append("无")
+    L.append("")
+
+    L.append("---")
+    L.append("")
+    L.append("评分依据：笨总教学 + xlsx 打分表（v0.8.6.1 试金石 4 案例已验证）")
+    L.append("生成工具：暮云思辨投资助手")
+
+    try:
+        report_path.write_text("\n".join(L), encoding="utf-8")
+        return str(report_path)
+    except OSError:
+        return ""
 
 
 def run_benzong_scan(args: dict):
