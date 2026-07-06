@@ -38,7 +38,8 @@ def _make_result(total, grade="A", conf=0.9, invalidate=False, name="测试",
 def test_sort_descending():
     """1. 按总分降序"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "deepseek-chat")):
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "deepseek-chat")), \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         scores = {"A": 110, "B": 90, "C": 130}
         m_auto.side_effect = lambda code, **kw: _make_result(scores[code], name=code)
         from src.core.benzong.batch_scorer import auto_score_batch
@@ -51,7 +52,8 @@ def test_sort_descending():
 def test_top_n_truncation():
     """2. top_n 截断"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")):
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")), \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         m_auto.side_effect = lambda code, **kw: _make_result(int(code), name=code)
         from src.core.benzong.batch_scorer import auto_score_batch
         r = auto_score_batch(["10", "20", "30", "40", "50"], top_n=3)
@@ -64,7 +66,8 @@ def test_top_n_truncation():
 def test_failure_isolation():
     """3. 单只失败不阻塞批次"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")):
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")), \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         def fake(code, **kw):
             if code == "BAD":
                 raise RuntimeError("网络挂")
@@ -82,7 +85,8 @@ def test_failure_isolation():
 def test_client_built_once():
     """4. AI client 只 build 一次（注入复用）"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client") as m_build:
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client") as m_build, \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         m_build.return_value = (mock.MagicMock(), "deepseek-chat")
         m_auto.side_effect = lambda code, **kw: _make_result(100, name=code)
         from src.core.benzong.batch_scorer import auto_score_batch
@@ -97,7 +101,8 @@ def test_client_built_once():
 def test_invalidate_ranked_last():
     """5. invalidate 一票否决股排最后"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")):
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")), \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         m_auto.side_effect = lambda code, **kw: _make_result(
             50, name=code, invalidate=(code == "VETO"))
         from src.core.benzong.batch_scorer import auto_score_batch
@@ -110,7 +115,8 @@ def test_invalidate_ranked_last():
 def test_progress_cb():
     """6. progress_cb 回调被调用"""
     with mock.patch("src.core.benzong.batch_scorer.auto_score") as m_auto, \
-         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")):
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client", return_value=(mock.MagicMock(), "m")), \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2):
         m_auto.side_effect = lambda code, **kw: _make_result(100, name=code)
         calls = []
         from src.core.benzong.batch_scorer import auto_score_batch

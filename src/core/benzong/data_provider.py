@@ -288,8 +288,11 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
     返回：成交额（万亿，如 1.2 表示 1.2 万亿）。失败返回 None。
 
     数据源（v0.8.6.3 修复 ISS-041/1a：em 接口被反爬，换新浪源）：
-    复用 scanner.MarketCache 的新浪全市场快照（绕代理 + 带缓存），
-    若用户先 scan 后 bz 可缓存命中秒回。
+    复用 scanner.MarketCache 的新浪全市场快照（绕代理）。
+
+    注意：MarketCache._stock_df 是实例级缓存，本函数每次 `MarketCache()` 新建实例
+    → 缓存不跨调用共享。批量场景由 auto_score_batch 开头拉一次后经 market_turnover
+    参数注入 get_data_summary，避免每只股票重打 sina（20只×73页×3重试=4380请求自残）。
     """
     try:
         from src.scanner.market_cache import MarketCache
@@ -311,8 +314,13 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
         return None
 
 
-def get_data_summary(code: str) -> dict:
+def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict:
     """一次性拉所有可用数据，给 6 维评分器使用。
+
+    Args:
+        code: 股票代码
+        market_turnover: 外部注入的全市场成交额（万亿）。批量场景由 auto_score_batch
+            开头拉一次后注入，避免每只股票重打 sina。None 时本函数内部自调 get_market_turnover。
 
     返回：{business_intro, announcements, industry, kline, market_turnover, fetch_status}
     每个键对应一个数据源，失败的留 None；fetch_status 记录哪些拉到/拉失败。
@@ -339,8 +347,12 @@ def get_data_summary(code: str) -> dict:
     summary["kline"] = get_recent_kline(code)
     summary["fetch_status"]["kline"] = summary["kline"] is not None and not summary["kline"].empty if summary["kline"] is not None else False
 
-    summary["market_turnover"] = get_market_turnover()
-    summary["fetch_status"]["market_turnover"] = summary["market_turnover"] is not None
+    if market_turnover is not None:
+        summary["market_turnover"] = market_turnover
+        summary["fetch_status"]["market_turnover"] = True
+    else:
+        summary["market_turnover"] = get_market_turnover()
+        summary["fetch_status"]["market_turnover"] = summary["market_turnover"] is not None
 
     success_count = sum(1 for v in summary["fetch_status"].values() if v)
     logger.info(f"data_provider 数据拉取 {code}: {success_count}/5 成功")

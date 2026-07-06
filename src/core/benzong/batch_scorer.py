@@ -27,6 +27,7 @@ from typing import Optional
 
 from src.core.benzong import auto_score
 from src.core.benzong.auto_scorer import _build_ai_client
+from src.core.benzong.data_provider import get_market_turnover
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,12 @@ def auto_score_batch(
     if ai_client is None:
         logger.warning("[auto_score_batch] AI client 构建失败，全部维度将走降级")
 
+    # 全市场成交额整批只拉一次，循环注入（per-batch fresh：局部变量，函数返回即销毁，不跨批缓存）
+    # 否则每只 auto_score 各自新建 MarketCache → 实例缓存失效 → 20只×73页×3重试=4380 次 sina 自残
+    market_turnover = get_market_turnover()
+    if market_turnover is None:
+        logger.warning("[auto_score_batch] 全市场成交额获取失败，本批流动性系数降级到 1.0")
+
     ranked = []
     failures = []
 
@@ -73,6 +80,7 @@ def auto_score_batch(
                 ai_client=ai_client,
                 ai_model=ai_model,
                 rag_service=rag_service,
+                market_turnover=market_turnover,
             )
             bs = result.score
             dim_scores = {k: v["score"] for k, v in result.dimensions_meta.items()}

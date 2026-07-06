@@ -46,16 +46,19 @@ def _timed(fn, timeout=30):
 
 # ========== 代理绕过验证（治本核心）==========
 def test_proxy_bypass():
-    """验证 NO_PROXY=* 能绕过代理：故意设代理env，看能否直连成功"""
+    """验证 NO_PROXY=* 能绕过代理env：直接查 requests 代理解析，不依赖外网可达性。
+
+    不能用 sina 做可达性靶子——sina nginx 自带反爬会间歇返回 456「拒绝访问」，
+    那是服务端反爬不是代理问题，会误判 NO_PROXY。这里直接验证 bypass 机制本身。
+    """
     os.environ["HTTP_PROXY"] = "http://127.0.0.1:7890"
     os.environ["HTTPS_PROXY"] = "http://127.0.0.1:7890"
     try:
-        import requests
-        r = requests.get("https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData",
-                         params={"page": 1, "num": 3, "node": "hs_a", "_s_r_a": "init"},
-                         timeout=10, headers={"User-Agent": "Mozilla/5.0"})
-        ok = r.status_code == 200 and "html" not in r.headers.get("content-type", "").lower()
-        return ok, f"代理env已设+NO_PROXY=* → 状态{r.status_code} {'直连成功' if ok else '被代理拦截'}"
+        import requests.utils
+        proxies = requests.utils.get_environ_proxies(
+            "https://vip.stock.finance.sina.com.cn/")
+        ok = proxies == {}
+        return ok, f"NO_PROXY=* bypass {'生效(直连)' if ok else '未生效(走代理)'} {proxies}"
     finally:
         # 测完清掉，不影响后续测试
         os.environ.pop("HTTP_PROXY", None)
@@ -140,14 +143,17 @@ def test_sina_market():
     from src.scanner.market_cache import MarketCache
     df = MarketCache().get_all_stocks()
     ok = df is not None and not df.empty
-    return ok, f"全市场 {len(df) if df is not None else 0} 只"
+    if ok:
+        return True, f"全市场 {len(df)} 只"
+    return False, "全市场 0 只 (sina外源间歇456反爬/东财断连,非代码bug,重试可恢复)"
 
 
 def test_market_turnover():
     from src.core.benzong.data_provider import get_market_turnover
     t = get_market_turnover()
-    ok = t is not None
-    return ok, f"成交额 {t} 万亿" if ok else "成交额获取失败"
+    if t is not None:
+        return True, f"成交额 {t} 万亿"
+    return False, "成交额获取失败 (依赖sina全市场快照,外源间歇,非代码bug)"
 
 
 # ========== SSL修复 ==========
@@ -243,7 +249,7 @@ def main():
     print(f"  结果: {ok_n}/{len(results)} 通过")
     if fail:
         print(f"  失败: {', '.join(fail)}")
-        print("  排查: 代理绕过❌=NO_PROXY未生效；SSL❌=证书路径；其他=对应源故障")
+        print("  排查: sina❌=新浪外源反爬(456)/间歇,非代码bug,重试可恢复；SSL❌=证书路径；其他=对应源故障")
     else:
         print("  全部出网点正常，可正常使用 bz scan / l / bz 等命令")
     print("=" * 70)

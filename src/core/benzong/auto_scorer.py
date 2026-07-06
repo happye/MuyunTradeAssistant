@@ -103,6 +103,7 @@ def auto_score(
     ai_model: Optional[str] = None,
     rag_service=None,
     data_summary: Optional[dict] = None,
+    market_turnover: Optional[float] = None,
     today: Optional[str] = None,
 ) -> AutoScoredResult:
     """全自动笨总打分入口。
@@ -114,6 +115,8 @@ def auto_score(
         config: 复用现有 settings.yaml；None 时自动加载
         ai_client / ai_model / rag_service: 可注入（mock 测试用）
         data_summary: 可注入（mock 测试用）
+        market_turnover: 可注入的全市场成交额（万亿）。批量场景由 auto_score_batch
+            开头拉一次后注入，避免每只股票重打 sina。None 时由 get_data_summary 内部自拉。
         today: YYYY-MM-DD，缓存键和缓存过期判定用
 
     Returns:
@@ -130,7 +133,7 @@ def auto_score(
 
     # Step 2: 拉数据（如果未注入）
     if data_summary is None:
-        data_summary = data_provider.get_data_summary(code)
+        data_summary = data_provider.get_data_summary(code, market_turnover=market_turnover)
 
     if not name and data_summary.get("industry"):
         name = data_summary["industry"].get("stock_name", code)
