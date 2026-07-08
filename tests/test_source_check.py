@@ -12,7 +12,46 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.data.source_check import _classify_error, _probe, format_report
+from src.data.source_check import (
+    _classify_error,
+    _load_windows_cert_pems,
+    _probe,
+    _windows_cert_trusted_for_tls_server_auth,
+    format_report,
+)
+
+
+def test_windows_cert_trust_filter():
+    """0a. Windows 证书 trust 仅接受通配信任或 TLS Server Auth EKU。"""
+    assert _windows_cert_trusted_for_tls_server_auth(True) is True
+    assert _windows_cert_trusted_for_tls_server_auth({"1.3.6.1.5.5.7.3.1"}) is True
+    assert _windows_cert_trusted_for_tls_server_auth(("1.3.6.1.5.5.7.3.1",)) is True
+    assert _windows_cert_trusted_for_tls_server_auth({"1.2.3"}) is False
+    assert _windows_cert_trusted_for_tls_server_auth(None) is False
+    print("✓ Windows trust 过滤符合 TLS Server Auth 约束")
+
+
+def test_load_windows_cert_pems_filters_and_deduplicates():
+    """0b. Windows 证书合并会过滤非 server-auth 并按 DER 去重。"""
+    der_root = b"\x01\x02"
+    der_ca = b"\x03\x04"
+
+    def fake_enum_certificates(store: str):
+        if store == "ROOT":
+            return [
+                (der_root, "x509_asn", True),
+                (der_root, "x509_asn", {"1.3.6.1.5.5.7.3.1"}),
+                (b"\x05\x06", "x509_asn", {"1.2.3"}),
+            ]
+        return [
+            (der_ca, "x509_asn", {"1.3.6.1.5.5.7.3.1"}),
+            (b"\x07\x08", "pkcs_7_asn", True),
+        ]
+
+    pem_blocks = _load_windows_cert_pems(fake_enum_certificates)
+    assert len(pem_blocks) == 2
+    assert all(block.startswith("-----BEGIN CERTIFICATE-----") for block in pem_blocks)
+    print("✓ Windows 证书合并只保留 server-auth 且按 DER 去重")
 
 
 def test_classify_error():
