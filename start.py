@@ -20,6 +20,10 @@ for _k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY"
 os.environ["NO_PROXY"] = "*"   # 所有域名强制直连(绕过clash系统代理)
 os.environ["no_proxy"] = "*"
 
+from src.data.source_check import fix_curl_ssl_paths
+
+fix_curl_ssl_paths()
+
 # Windows 下设置 UTF-8（通过环境变量，不替换sys.stdout避免与Rich冲突）
 if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")

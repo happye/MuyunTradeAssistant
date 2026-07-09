@@ -2605,6 +2605,9 @@ def scan_events(ai_debug: bool = False):
 def main():
     """主入口"""
     import argparse
+    from src.data.source_check import fix_curl_ssl_paths
+
+    fix_curl_ssl_paths()
 
     parser = argparse.ArgumentParser(
         description="暮云思辨投资助手 - AI驱动的A股交易行为约束系统",

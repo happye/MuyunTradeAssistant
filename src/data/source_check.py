@@ -23,10 +23,11 @@
     }
 """
 
-import os
-import time
+import base64
 import logging
-import shutil
+import os
+import sys
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -39,10 +40,51 @@ logger = logging.getLogger(__name__)
 # 修复：把 certifi 证书复制到纯 ASCII 路径，设 CURL_CA_BUNDLE 等环境变量。
 # 笨总 data_provider / news_client / 任何走 curl_cffi 的接口都应调用。
 _CURL_SSL_FIXED = False
+_WINDOWS_TLS_SERVER_AUTH_OID = "1.3.6.1.5.5.7.3.1"
+
+
+def _windows_cert_trusted_for_tls_server_auth(trust) -> bool:
+    """Windows 证书仅接受通配信任或显式 TLS Server Auth EKU。"""
+    if trust is True:
+        return True
+    if not trust:
+        return False
+    if isinstance(trust, str):
+        return trust == _WINDOWS_TLS_SERVER_AUTH_OID
+    try:
+        return _WINDOWS_TLS_SERVER_AUTH_OID in trust
+    except TypeError:
+        return False
+
+
+def _der_to_pem(der_bytes: bytes) -> str:
+    b64 = base64.b64encode(der_bytes).decode("ascii")
+    lines = [b64[i:i + 64] for i in range(0, len(b64), 64)]
+    return "-----BEGIN CERTIFICATE-----\n" + "\n".join(lines) + "\n-----END CERTIFICATE-----\n"
+
+
+def _load_windows_cert_pems(enum_certificates) -> list[str]:
+    """从 Windows ROOT/CA 证书库提取可用于 TLS 服务端校验的 PEM 证书。"""
+    pem_blocks = []
+    seen_der = set()
+    for store in ("ROOT", "CA"):
+        try:
+            for der_bytes, encoding, trust in enum_certificates(store):
+                if encoding != "x509_asn":
+                    continue
+                if not _windows_cert_trusted_for_tls_server_auth(trust):
+                    continue
+                if der_bytes in seen_der:
+                    continue
+                seen_der.add(der_bytes)
+                pem_blocks.append(_der_to_pem(der_bytes))
+        except Exception as exc:
+            logger.debug("读取 Windows 证书 store %s 失败: %s", store, exc)
+    return pem_blocks
 
 
 def fix_curl_ssl_paths() -> bool:
-    """一次性把 certifi 证书复制到 ASCII 路径并设环境变量。幂等。
+    """一次性把 certifi 证书与 Windows 系统信任证书合并到 ASCII 路径并设环境变量。幂等。
 
     供所有走 akshare/curl_cffi 的模块在首次调用前调用。
     Returns: True 修复成功（或已修复）
@@ -52,12 +94,24 @@ def fix_curl_ssl_paths() -> bool:
         return True
     try:
         import certifi
+
         ascii_cert = Path.home() / ".muyun_cacert.pem"
-        src_mtime = Path(certifi.where()).stat().st_mtime
-        need_copy = (not ascii_cert.exists()
-                     or ascii_cert.stat().st_mtime < src_mtime)
-        if need_copy:
-            shutil.copy2(certifi.where(), ascii_cert)
+        full_pem_content = Path(certifi.where()).read_text(encoding="utf-8")
+
+        if sys.platform == "win32":
+            import ssl
+
+            win_pem_blocks = _load_windows_cert_pems(ssl.enum_certificates)
+            if win_pem_blocks:
+                full_pem_content = (
+                    f"{full_pem_content.rstrip()}\n\n"
+                    "# --- Windows System Certificates (TLS Server Auth) ---\n"
+                    f"{''.join(win_pem_blocks)}"
+                )
+
+        if not ascii_cert.exists() or ascii_cert.read_text(encoding="utf-8") != full_pem_content:
+            ascii_cert.write_text(full_pem_content, encoding="utf-8")
+
         for var in ("CURL_CA_BUNDLE", "REQUESTS_CA_BUNDLE", "SSL_CERT_FILE"):
             os.environ[var] = str(ascii_cert)
         _CURL_SSL_FIXED = True
