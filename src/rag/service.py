@@ -14,6 +14,7 @@ v0.8.1 增量索引：
   - 支持 force_rebuild 强制重建
 """
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -27,6 +28,8 @@ from src.rag.retrieval import HybridRetriever
 from src.rag.context import build_chat_context, build_event_context, build_modifier_context
 
 logger = logging.getLogger(__name__)
+
+EMBEDDER_METADATA_FILE = "embedder_metadata.json"
 
 
 class RAGService:
@@ -98,9 +101,7 @@ class RAGService:
 
         try:
             # 1. 创建嵌入器和存储
-            self._embedder = create_embedder(
-                self.embedding_provider, self.embedding_model
-            )
+            self._embedder = self._prepare_embedder()
             self._store = create_vector_store(prefer_faiss=True)
 
             # 2. 尝试加载已有索引
@@ -139,6 +140,7 @@ class RAGService:
 
             # 7. 持久化索引
             self._store.save(self.index_dir)
+            self._save_embedder_metadata()
 
             # 8. 保存文件指纹（用于增量检测）
             self._save_knowledge_fingerprint()
@@ -151,12 +153,135 @@ class RAGService:
             logger.error(f"RAG服务初始化失败: {e}")
             return False
 
+    def _prepare_embedder(self) -> Embedder:
+        """创建嵌入器，并在 sentence 模式下提前验证模型可用性。"""
+        embedder = create_embedder(self.embedding_provider, self.embedding_model)
+
+        if self.embedding_provider == "sentence" and hasattr(embedder, "_ensure_model"):
+            try:
+                self._verify_sentence_embedder_ready(embedder)
+            except Exception as e:
+                logger.warning(
+                    "句向量模型不可用，RAG自动降级为TF-IDF继续初始化: %s",
+                    e,
+                )
+                embedder = create_embedder("tfidf")
+
+        return embedder
+
+    def _verify_sentence_embedder_ready(self, embedder: Embedder) -> None:
+        """提前触发 sentence 模型加载，避免首次检索时才失败。"""
+        ensure_model = getattr(embedder, "_ensure_model", None)
+        if callable(ensure_model):
+            ensure_model()
+            return
+
+        embedder.embed(["bootstrap readiness check"])
+
+    def _get_embedder_provider(self, embedder: Optional[Embedder] = None) -> str:
+        """返回当前嵌入器提供方标识。"""
+        current = embedder or self._embedder
+        if current is None:
+            return self.embedding_provider
+
+        if hasattr(current, "_ensure_model") and hasattr(current, "_model_name"):
+            return "sentence"
+        if hasattr(current, "_max_features"):
+            return "tfidf"
+
+        cls_name = type(current).__name__
+        return cls_name.lower()
+
+    def _get_embedder_metadata(self, embedder: Optional[Embedder] = None) -> dict:
+        """描述当前嵌入器，用于校验索引兼容性。"""
+        current = embedder or self._embedder
+        provider = self._get_embedder_provider(current)
+
+        if provider == "sentence":
+            model = getattr(current, "_model_name", self.embedding_model)
+        elif provider == "tfidf":
+            max_features = getattr(current, "_max_features", 5000)
+            model = f"max_features={max_features}"
+        else:
+            model = getattr(current, "_model_name", "")
+
+        return {
+            "provider": provider,
+            "model": model or "",
+        }
+
+    def _embedder_metadata_path(self) -> Path:
+        return Path(self.index_dir) / EMBEDDER_METADATA_FILE
+
+    def _load_embedder_metadata(self) -> Optional[dict]:
+        """读取索引对应的嵌入器元数据。"""
+        metadata_path = self._embedder_metadata_path()
+        if not metadata_path.exists():
+            return None
+
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            logger.warning(f"读取RAG嵌入器元数据失败，将重建索引: {e}")
+            return {}
+
+        if not isinstance(data, dict):
+            return {}
+        return data
+
+    def _save_embedder_metadata(self) -> None:
+        """保存当前索引使用的嵌入器元数据。"""
+        metadata = self._get_embedder_metadata()
+        index_path = Path(self.index_dir)
+        index_path.mkdir(parents=True, exist_ok=True)
+
+        try:
+            with open(self._embedder_metadata_path(), "w", encoding="utf-8") as f:
+                json.dump(metadata, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            logger.warning(f"保存RAG嵌入器元数据失败: {e}")
+
+    def _is_legacy_index_compatible(self) -> bool:
+        """兼容无元数据的旧索引，仅在 sentence 降级到 TF-IDF 时强制重建。"""
+        return not (
+            self.embedding_provider == "sentence"
+            and self._get_embedder_provider() == "tfidf"
+        )
+
+    def _is_index_embedder_compatible(self) -> bool:
+        """检查已保存索引是否可被当前嵌入器安全复用。"""
+        saved = self._load_embedder_metadata()
+        current = self._get_embedder_metadata()
+
+        if saved is None:
+            if self._is_legacy_index_compatible():
+                return True
+
+            logger.info(
+                "旧RAG索引缺少嵌入器元数据，当前已降级为TF-IDF，改为重建索引"
+            )
+            return False
+
+        if saved.get("provider") != current.get("provider") or saved.get("model") != current.get("model"):
+            logger.info(
+                "RAG索引嵌入器不兼容，改为重建索引: saved=%s current=%s",
+                saved,
+                current,
+            )
+            return False
+
+        return True
+
     def _try_load_index(self) -> bool:
         """尝试加载已有索引
 
         Returns:
             是否成功加载
         """
+        if not self._is_index_embedder_compatible():
+            return False
+
         if self._store.load(self.index_dir):
             logger.info(f"RAG索引加载成功: {self._store.size}个文档")
             return True
@@ -281,7 +406,6 @@ class RAGService:
 
     def _save_knowledge_fingerprint(self):
         """保存知识文件指纹到索引目录"""
-        import json
         fingerprint = self._get_knowledge_fingerprint()
         if not fingerprint:
             return
@@ -305,8 +429,6 @@ class RAGService:
         Returns:
             True=文件有变化需要重建，False=无变化可使用缓存
         """
-        import json
-
         fingerprint_path = Path(self.index_dir) / "fingerprint.json"
         if not fingerprint_path.exists():
             # 首次升级：没有fingerprint记录，但索引已成功加载
