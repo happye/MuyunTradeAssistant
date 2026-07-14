@@ -60,21 +60,27 @@ JIANZONG_ATR_MULTIPLIER = 1.0
 
 
 def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
-                     market_state: Optional[str] = None) -> Optional[str]:
-    """由笨总等级推断交易模式。
+                     market_state: Optional[str] = None,
+                     stage: Optional[str] = None) -> Optional[str]:
+    """由笨总等级推断交易模式（跳法A 阶段1，ISS-051 加个股级 stage 闸门）。
 
     行业景气度=0 时模型失效（笨总大前提），即使 A 级也不设气宗。
 
-    注：market_state 参数保留但当前不参与判定。
+    注：market_state 保留不参与判定（阶段4 MarketState 闸门已回退）；
+    stage 参数做个股级趋势闸门（ISS-051，取代上述大盘级闸门）：
+    S3/S4 的 A 级降剑宗（不死扛下跌），S1/S2 及数据不足时保持气宗。
     跳法A阶段4曾尝试用 MarketState 作牛市闸门（非牛市气宗降剑宗），但回测证明
     矫枉过正——2022煤炭(神华/陕煤)是"大盘熊但个股牛"的典型，闸门误杀了这批
     气宗收益(原+4.07/+6.24pp归零)。MarketState 是大盘级信号，不该一刀切个股mode。
     调整年气宗有害是真的(批次2)，但正确解法应是**个股级**趋势判断(Weinstein S2阶段)，
-    而非大盘级。该方向留后续，当前回退保护批次1跑通的高收益逻辑。
+    而非大盘级。该方向已在 ISS-051 落地（stage 闸门），保留批次1跑通的高收益逻辑。
     """
     if grade == "A":
         if industry_prosperity is not None and industry_prosperity <= 0:
             return None  # 大前提失效，不强加气宗纪律
+        # ISS-051 个股级趋势闸门：顶部/下跌的 A 级降剑宗，不死扛下跌
+        if stage in ("S3", "S4"):
+            return "jianzong"
         return "qizong"
     if grade == "B":
         return "jianzong"
@@ -224,7 +230,7 @@ def generate_plan_draft(
         today: 建仓日期 YYYY-MM-DD；缺失用今天
         benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
         industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
-        market_state: 大盘状态 RISK_ON/TRANSITION/RISK_OFF/PANIC；非牛市时气宗降级剑宗（跳法A阶段4）
+        market_state: 保留参数，当前不参与判定（阶段4 MarketState 牛市闸门已回退，见 _mode_from_grade 注）；个股级趋势由内部 _detect_weinstein_stage 算 stage 传入（ISS-051）
 
     Returns:
         TradePlan: 完整的计划草稿，用户可逐字段编辑
@@ -232,15 +238,20 @@ def generate_plan_draft(
     today = today or datetime.now().strftime("%Y-%m-%d")
     plan_id = f"{stock_code}_{today}"
 
-    # 笨总模式（跳法A 阶段1：建仓时一次定 mode，之后靠硬规则锁持有）
-    mode = _mode_from_grade(benzong_grade, industry_prosperity, market_state)
-
-    # 阶段判断 + outlook
+    # 阶段判断（先算 stage，供 mode 闸门与 outlook 共用，ISS-051）
     if stock_data:
         stage = _detect_weinstein_stage(stock_data)
-        outlook = _infer_outlook_from_stage(stage, stock_data.change_pct)
     else:
         stage = "?"
+
+    # 笨总模式（跳法A 阶段1：建仓时一次定 mode，之后靠硬规则锁持有）
+    # ISS-051：stage 传入做个股级趋势闸门（S3/S4 的 A 级降剑宗）
+    mode = _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage)
+
+    # outlook
+    if stock_data:
+        outlook = _infer_outlook_from_stage(stage, stock_data.change_pct)
+    else:
         outlook = "neutral"
 
     # 数值计算
@@ -343,7 +354,7 @@ class TradePlanGenerator:
         Args:
             benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
             industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
-            market_state: 大盘状态；非牛市时气宗降级剑宗（跳法A阶段4）
+            market_state: 保留参数，当前不参与判定（阶段4 MarketState 闸门已回退）；个股级趋势由内部 stage 判定（ISS-051）
 
         Returns:
             (plan, meta)
@@ -356,12 +367,15 @@ class TradePlanGenerator:
                 "fallback_reasons": list[str],
             }
         """
+        # stage 先算（供 mode 闸门 + meta + RAG 查询共用，ISS-051）
+        stage = _detect_weinstein_stage(stock_data) if stock_data else "?"
+
         meta = {
             "rag_used": False,
             "ai_thesis_used": False,
-            "weinstein_stage": "?",
+            "weinstein_stage": stage,
             "benzong_grade": benzong_grade,
-            "mode": _mode_from_grade(benzong_grade, industry_prosperity, market_state),
+            "mode": _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage),
             "fallback_reasons": [],
         }
 
@@ -369,8 +383,6 @@ class TradePlanGenerator:
         rag_context = None
         if self.rag is not None:
             try:
-                stage = _detect_weinstein_stage(stock_data) if stock_data else "?"
-                meta["weinstein_stage"] = stage
                 query = f"{stock_name} 建仓 止损 {stage} 阶段"
                 rag_context = self.rag.get_context(query, target="modifier", max_length=600)
                 if rag_context:
