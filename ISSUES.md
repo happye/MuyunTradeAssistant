@@ -1245,7 +1245,7 @@ P3（已取消）:
   - 治本边界：本改动治**建仓时点** mode 判定（不在顶部/下跌建仓气宗）；不治**持有中**阶段转换（建仓时 S2 后转 S3/S4 仍气宗死扛）--那是 ISS-053 / top_signal 出口范畴。
 
 ### ISS-052: 退出信号数据天花板（出口堵死）
-- **状态**: 🟡 待评估数据可得性
+- **状态**: 🟢 已落地（Option A 最小切片，2026-07-15）--激活实控人减持子信号；换手率/宏观留后续
 - **优先级**: P0（气宗出口）/ P1
 - **根因**:
   - **宏观腿基本是死信号**：`macro.py:13` 阈值成交额>10万亿（ISS-049已修>严格大于），但A股历史峰值~3.5万亿，**阈值结构性不可达**；笨总3信号里储蓄搬家/官方发金牌是 TODO 无数据源（:28）。
@@ -1256,6 +1256,14 @@ P3（已取消）:
   - 个股：确认 orchestrator.py:297 `check_top_signals` 是否真传了 turnover_pct（live 可从 MarketCache 快照取）；补流通股本数据源以支持回测换手率。
   - 实控人减持：评估 akshare 公告接口可得性与稳定性。
 - **风险**: 数据源稳定性（akshare/sina 间歇失效）；改阈值需笨总拍板。
+- **已完成（2026-07-15，Option A 最小切片）**: 激活"实控人减持"子信号（三死信号之一）。把现有 `data_provider.get_recent_announcements(code)`（eastmoney `stock_news_em` 主源 + cninfo 备用源，笨总路径已用）接到 live StockData builder `calculate_indicators`（akshare_client.py:892 返回前），填充新字段 `StockData.recent_announcements`。orchestrator 已 `getattr(data,"recent_announcements",None)` 透传 -> `_check_holder_reduction` 双关键词 AND（减持词 + 主体词）扫标题 -> 命中即 PlanGuard 规则 P1 force-exit。改 3 文件 + 1 测试：models.py（字段）/ akshare_client.py（lazy import + fail-open+WARNING 填充）/ ISSUES.md / tests/test_top_signal_announcements.py（11 项：双关键词命中/单关键词不误报/空跳过/接线赋值/fail-open 降 None/字段缺省 None）。
+- **第3层 gap（诚实声明）**:
+  - **换手率子信号仍死**：`turnover_pct` 无 fetcher（Option A 排除）。需新建 fetcher（akshare `stock_zh_a_spot_em` 有换手率列，但流通股本/换手率 point-in-time 是另一数据工程，留后续 ISS）。减持是三信号里唯一本切片激活的。
+  - **宏观 10 万亿阈值不可达**：`MARKET_TURNOVER_TOP_TRILLION=10.0`，A 股峰值 ~3.5 万亿 -> 宏观子信号结构性永不触发。**笨总领域知识，不在本切片改**（需笨总拍板合理阈值）。声明但不改。
+  - **宏观回测自取前瞻（潜在，已掩盖）**：`check_macro_top_signal` 在 `market_turnover_trillion=None` 时自取当前成交额 -> 回测拿未来值。但被不可达阈值掩盖（永不触发）-> 不产生实际偏差。防兔子洞不修（修要动笨总阈值）。
+  - **回测公告不可得（by design）**：公告是 akshare "最近 N 天"接口，非 point-in-time -> 回测 `DataFeeder._build_stock_data` 不填 `recent_announcements` -> 缺省 None -> 减持子信号回测中跳过（stock.py:33-34 原意，诚实声明）。回测安全靠 builder 隔离（两套 builder），**不需 `is_backtest` 标志、不动 orchestrator 签名、不动 backtest_engine**。回测不验证减持信号；live 才生效。`test_jumpA_backtest_5year.py` 是回测安全活验证（DataFeeder 不改，原样绿）。
+  - **扫描网络成本**：持仓扫描每只多一次 `stock_news_em` 调用，fail-open + 已有 30s/股超时，最坏增时不崩。
+- **待办（后续阶段）**: 换手率 fetcher（数据工程）；宏观阈值笨总拍板；公告关键词扩展（造假/立案/审计非标，误报风险留后续）。
 
 ### ISS-053: 建仓后零信息更新（失明）
 - **状态**: 🟢 已落地（最小切片，2026-07-15）--持有期 ST + 业绩预告预亏/预减硬退出；高点回撤>X% 留后续
@@ -1276,15 +1284,22 @@ P3（已取消）:
 - **待办（后续阶段）**: 高点回撤>X% 失效条件（需 high_since_entry 追踪）；持有中阶段转换（建仓S2后转S3/S4 气宗死扛）。
 
 ### ISS-054: 七层架构与中长期错配（strategy_layer 空转）
-- **状态**: 🟢 待 ISS-051 稳定后清理
+- **状态**: 🟢 评估完成（结论：不清理，兔子洞风险>收益）--2026-07-15
 - **优先级**: P2
 - **根因**: v0.7.2 strategy_layer（惯性/确认/冷却/反转成本）为短期交易降噪设计；交接文档自承"拿短期扳手拧长期螺丝"。气宗用 `QIZONG_FIXED_PARAMS`（strategy_layer.py:134）整档覆盖 STATE_TUNED（:105），把这套机制大部分挂起空转。strategy_layer + plan_guard 两层控制叠加，优先级在所有路径上是否成立**未逐行验证**。
 - **影响**: 大量复杂代码在气宗路径空转，理解成本高；两层叠加的干扰不可知。
 - **方向**: mode逻辑（ISS-051）稳定后，评估 strategy_layer 在气宗路径是否还起作用，空转部分能否显式跳过/精简。不急（防误伤剑宗/技术层）。
 - **风险**: 误伤剑宗（还用技术层）和非气宗路径；架构清理易兔子洞。
+- **评估结论（2026-07-15，逐行过 strategy_layer.py:202-1128）**:
+  - **QIZONG_FIXED_PARAMS 只覆盖"仓位执行参数"**（`_get_state_params` :784-796，气宗返回固定 take_profit_keep/min_gain/trend_exit_break_pct），**不覆盖 5 大降噪机制**。`process()` 的 Step2-6（stability/inertia/confirmation/cooldown/reverse_cost）气宗照跑。
+  - **5 机制对气宗非纯空转，部分仍生效**：① inertia(:435) `inertia_counter>=3` 即 return False -> 气宗长持(>3天)惯性恒不触发，仅前3天生效（保护建仓初期）；② cooldown(:511) 清仓后5天禁买 -> 气宗致命止损退出后防 whipsaw 重入，**仍相关**；③ confirmation(:460) 单日SELL需连续2天 -> 信号有效性，与 PlanGuard weak_sell压制(规则1)是**不同关注点**（信号 vs 持仓纪律），部分重叠非纯冗余；④ reverse_cost(:558)/stability(:252) 对气宗 sell 侧确被 PlanGuard 大量覆盖，但它们也管 BUY 侧（加仓），非纯空转。
+  - **strategy_layer.process 对气宗做不可省略的工作**：Step7 `_calculate_position`(:583) 算 position_action/position_ratio（建仓/加仓/减仓档位）、Step8 `_update_lifecycle`(:867) 维护 FLAT->OPEN->HOLD->EXIT->COOLDOWN、`_should_block_*`(:998-1033) 减仓保护期/最短持有/加仓保护窗口。**这些气宗依赖，不能跳过整个 process**。
+  - **结论：不清理**。气宗的"空转"是局部的、纯逻辑(零 I/O 零开销)、与生效逻辑交织（前3天惯性/退出后冷却/信号确认）。显式 `if qizong: skip` 需精细条件分支，易误伤剑宗(共用 process)与气宗自身边界，收益≈0（非热点）。当前"QIZONG_FIXED_PARAMS 覆盖仓位参数 + PlanGuard 管纪律"是安全隔离，保留。
+  - **未发现安全可清理的真空转**：STATE_TUNED_PARAMS 仍被剑宗/非气宗用；5机制无气宗专用的可删除分支。
+- **待办**: 无代码改动。若未来气宗回测显示某机制产生明确负效应（如 confirmation 拖慢气宗该有的减仓），再单点评估；目前无证据，不动（防兔子洞 [[feedback-overfix-rabbit-hole]]）。
 
 ### ISS-055: 评分闸门立在最不可靠维度（景气度硬闸门）
-- **状态**: 🟡 仅评估，不动公式
+- **状态**: 🟢 评估完成 + 透明度警告已落地（2026-07-15）--不动公式，仅暴露降级依赖低置信度景气判断
 - **优先级**: P1（评估）
 - **根因**: `scorer.py` effective_grade 硬闸门：景气度 ip≤0->F，ip≤30->封C，ip≤50->封B。闸门立在 industry_prosperity 上，而这恰是 AI 最难判真的维度（[[project-ai-ceiling]]：景气度判真伪"对AI极难"，撞数据供给墙）。**闸门立在最软的柱子上**。
 - **影响**: 景气度判错（假景气判真）-> A级气宗错误长持；判错（真景气判假）-> 错杀。整个"买什么"质量受限于这一维可靠性。
@@ -1293,6 +1308,16 @@ P3（已取消）:
   2. 评估"景气度低 confidence"判定降权或加警告而非硬封顶。
 - **风险**: 动公式=动笨总体系，超出技术层；数据源仍是天花板。
 - **附加发现**: 回测用 rule_scorer（准确率低于AI版，ISS-046"方向性"结论），ISS-049 已修 rule_scorer 返回 effective_grade 对齐实盘。但回测整体仍用 rule 版定 mode，与实盘 AI 版存在一致性缺口，ISS-051 的回测验证需厘清用哪个版本。
+- **评估结论（2026-07-15）**:
+  - **闸门可靠性受限于数据供给**（[[project-ai-ceiling]]）：景气度判真伪撞数据天花板，换强模型无用。治本需客观数据源（行业营收增速/价格指数）--数据工程，非技术层代码修复，建议笨总数据战略。
+  - **effective_grade 公式属笨总域**：硬封顶/软封顶/降权均=动公式，**不擅自动**（需笨总拍板）。
+  - **关键可行性发现**：auto_scorer 已有**每维 confidence**（`dimensions_meta[industry_prosperity][confidence]`，overall_confidence=min），方向2"加警告而非硬封顶"**技术可行且不动公式**。
+  - **透明度已部分具备**：展示层已有"原X级"降级标注 + 景气标红 + overall_confidence 显示 + conf<0.5 提示。缺口：未把"降级"与"景气判定置信度"绑定暴露。
+- **已落地（2026-07-15，透明度切片）**: `auto_scorer.py` 在 all_warnings 汇总处（precondition_warning 后）加一条**目标性警告**：当 `ip>0 且 effective_grade()!=grade()`（景气闸门正降级）且 `industry_prosperity confidence < 0.5`（沿用 start.py overall_confidence 既有约定，非笨总公式阈值）时，追加"⚠ 评级受景气度闸门降级（原X->Y），但景气度判定置信度仅Z%--降级依据最不可靠维度，建议人工复核景气判断"。**不动 effective_grade 公式**；ip==0 由 precondition_warning 覆盖、`ip>0` 守卫避重复；高置信降级不扰民。改 1 文件 + 1 测试（tests/test_iss055_prosperity_conf_warning.py 4 项：低ip低conf警告/低ip高conf不警告/高ip无降级不警告/ip=0仅大前提警告）。验证：test_benzong_auto_scorer.py 6/6 回归不破坏。
+- **第3层 gap（诚实声明）**:
+  - **治本未做**：客观数据源（行业营收增速/价格指数）降低 AI 主观依赖--数据工程撞天花板，留笨总数据战略，非本切片。
+  - **回测一致性缺口**：回测用 rule_scorer 定 mode，与实盘 AI 版有差距（ISS-046 方向性结论）；本警告只在 auto_scorer（live bz/l 路径）触发，回测 rule_scorer 路径不展示（回测非交互展示场景，符合预期）。
+  - **阈值 0.5 沿用既有约定**：非笨总评分公式阈值，仅透明度提示阈值；若笨总要更敏感/更宽容可调 `_PROSPERITY_LOW_CONF_THRESHOLD`。
 
 ### ISS-056: 文档/代码脱节（stale docstring）
 - **状态**: 🟡 部分完成（2026-07-15）--代码侧已清，外部文档待同步

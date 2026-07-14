@@ -889,6 +889,16 @@ class AKShareClient:
             stock_data.weekly = cls._build_timeframe_snapshot(weekly_df)
             stock_data.monthly = cls._build_timeframe_snapshot(monthly_df)
 
+            # 实控人减持公告（ISS-052 激活 top_signal 数据源）-- live 路径填充。
+            # 回测路径 DataFeeder._build_stock_data 不走此函数 -> recent_announcements 缺省 None -> 跳过减持子信号
+            # （回测公告非 point-in-time，不可回测，诚实声明）。
+            try:
+                from src.core.benzong.data_provider import get_recent_announcements
+                stock_data.recent_announcements = get_recent_announcements(stock_code_val)
+            except Exception as e:
+                logger.warning(f"公告获取失败 {stock_code_val}（top_signal 减持子信号降级跳过）: {e}")
+                stock_data.recent_announcements = None
+
             return stock_data
 
         except Exception as e:

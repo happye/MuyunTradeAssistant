@@ -26,6 +26,11 @@ from src.core.benzong.dimensions import _lazy_load_dimensions
 
 logger = logging.getLogger(__name__)
 
+# 景气度判定低置信度阈值（ISS-055）：景气度闸门降级 + 景气判定置信度低于此值时
+# 额外警告"降级依赖最不可靠维度"。沿用 start.py overall_confidence<0.5 的既有约定，
+# 非笨总评分公式阈值，仅用于透明度提示。
+_PROSPERITY_LOW_CONF_THRESHOLD = 0.5
+
 
 @dataclass
 class AutoScoredResult:
@@ -210,6 +215,17 @@ def auto_score(
     pre = bs.precondition_warning()
     if pre:
         all_warnings.append(pre)
+
+    # ISS-055: 景气度闸门降级 + 景气判定低置信度 -> 警告（闸门立在最不可靠维度，诚实暴露）
+    # 不动 effective_grade 公式（笨总域），仅当降级依赖低置信度景气判断时提示人工复核。
+    # ip==0 已由 precondition_warning 覆盖，此处只管 0<ip<=50 的"软封顶"区。
+    if bs.industry_prosperity > 0 and bs.effective_grade() != bs.grade():
+        pros_conf = dim_results.get("industry_prosperity", {}).get("confidence", 0.0)
+        if pros_conf < _PROSPERITY_LOW_CONF_THRESHOLD:
+            all_warnings.append(
+                f"⚠ 评级受景气度闸门降级（原始{bs.grade()}->{bs.effective_grade()}），"
+                f"但景气度判定置信度仅{pros_conf:.0%}--降级依据最不可靠维度（AI难判真/撞数据天花板），建议人工复核景气判断"
+            )
 
     # 数据获取整体不全 → 警告
     fetch_status = data_summary.get("fetch_status", {})

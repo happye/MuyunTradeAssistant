@@ -219,6 +219,10 @@ class StockData(BaseModel):
     index_change_pct: Optional[float] = Field(default=None, description="沪深300涨跌幅(%)")
     index_high_250d: Optional[float] = Field(default=None, description="沪深300近250日最高价(用于计算回撤幅度)")
 
+    # ===== top_signal 数据源（ISS-052 激活实控人减持子信号） =====
+    # live 路径由 calculate_indicators 填充；回测 DataFeeder._build_stock_data 不填 -> None -> 跳过减持子信号（回测公告非 point-in-time，诚实声明）
+    recent_announcements: Optional[list] = Field(default=None, description="近期公告列表[{title,date,content,source}]（live 填充，回测缺省 None）")
+
     class Config:
         extra = "allow"  # 允许额外字段
 

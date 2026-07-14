@@ -46,7 +46,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）。
 
-当前版本：**v0.8.6.5**（ISS-047 续修：网络超时三层根治 + 风险维降级(新闻缺失中性50) + 缓存版本校验(改维度逻辑bump版本自动失效) + 业务纯度截断优化 + 新闻多源(巨潮备用)）。
+当前版本：**v0.8.6.6**（网络代理根治 `NO_PROXY=*` + 平收股误选修复 + 一键测试体系，详见 `docs/v0.8.6.6_交接.md`；ISS-052/053/055 增量见 `ISSUES.md`）。
 
 ---
 
@@ -119,6 +119,7 @@ docs/               # 详细文档
 - **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` / `pyramid_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点/金字塔仓位**整体失效**（ISS-032 已修复，用 `load_pyramid_config()` helper 加载）
 - **调策略卖出参数前先打 `trade['sell_path']`**：回测中实际卖出走的是 `src/core/strategy_layer.py` 的 `_infer_sell_path`（`take_profit_trim` / `trend_exit` / `weak_sell` / `stop_loss_*`），不是 `src/core/entry_exit/exit_rules.py`。两者各管一半，不能互相替代（详见 `.learnings/LEARNINGS.md` LRN-20260618-003）
 - **Chandelier force_exit 不设 sell_path**（v0.8.6.3 修复）：orchestrator 里 Chandelier/trend_break 的 force_exit 经 strategy_layer 后 sell_path 会落空，已在 orchestrator 明确标 `trend_exit` 让 PlanGuard 气宗能匹配压制
+- **`StockData.recent_announcements` 只在 live builder 填充，回测 builder 绝不可填**（ISS-052）：该字段供 top_signal 实控人减持子信号用，由 `calculate_indicators`（live，`get_stock_data` 别名）填充；回测走独立的 `DataFeeder._build_stock_data`（不调 calculate_indicators）保持 None -> 减持子信号回测跳过（公告是 akshare"最近N天"接口，非 point-in-time，回测取会拿未来公告前瞻）。**别为"完整性"给 DataFeeder 也填公告**--会注入未来信息污染回测。回测安全靠两套 builder 隔离，无 `is_backtest` 开关；若要回测验证减持信号须先备 point-in-time 历史公告数据源
 - **笨总评分体系的缓存键是 `(stock_code, date, dimension)`**：同股同日同维度只算一次 AI（`src/core/benzong/cache.py`，存 `~/.muyun/benzong_cache/`）。**改了任何维度评分逻辑（prompt/降级/公式）必须 bump `CACHE_VERSION`**（cache.py 顶部），否则旧缓存命中导致"改代码不生效"——get() 读旧版本自动当未命中。`bz <code> --refresh` 可单股强刷
 - **bz 不依赖 RAG**（v0.8.6.3）：笨总评分标准内嵌 SYSTEM_PROMPT，industry_prosperity 不再调 RAG。RAG 仍用于 scan/analysis 的事件/持仓策略增强
 - **curl_cffi SSL 证书路径修复**（v0.8.6.3，ISS-045）：项目路径含中文「暮云思辨投资助手」致 curl_cffi 的 libcurl 找不到 CA 证书（curl 77）。修复在 `src/data/source_check.py:fix_curl_ssl_paths`（公共函数），data_provider/news_client 共用，启动时把 certifi 证书复制到 ASCII 路径 `~/.muyun_cacert.pem`
@@ -201,7 +202,7 @@ docs/               # 详细文档
 
 ### 待办（优先级排序）
 
-详见 `ISSUES.md`。重点：跳法A 阶段3（客观基本面恶化监测）/阶段4（2020-2024 五年回测验证 LRN-20260619-003）/阶段5（板块维度信号）；行业景气度维接入更多客观数据源（治本，撞数据可得性，ISS-047 已分析）。
+详见 `ISSUES.md`。近期落地：ISS-053 建仓后基本面恶化硬退出（ST+业绩预亏，独立 fundamental_alert 通道）/ ISS-052 激活实控人减持公告 top_signal 子信号（live 生效，回测跳过）/ ISS-055 景气闸门降级+低置信度透明度警告（不动笨总公式）。待办重点：跳法A 阶段5（板块维度信号）；行业景气度维接入客观数据源（治本，撞数据可得性天花板，ISS-055 已评估）；换手率子信号 fetcher（ISS-052 gap）；宏观 10 万亿阈值笨总拍板。
 
 > 安全提醒：API key 已迁至 `configs/settings.local.yaml`（gitignored，ISS-042 已修）。历史 commit 泄露的旧 key 用户需去 DeepSeek/Moonshot 后台 rotate。
 
@@ -229,7 +230,7 @@ docs/               # 详细文档
 | `docs/选股与持仓规划实战工作流.md` | **v0.8.6.5 新增**：端到端用法主线（选股→评分→建仓→持有→离场），含不同市况用法 |
 | `docs/v0.8.6.3_交接.md` | **v0.8.6.3 交接文档**：笨总框架完工度/边际结论/跳法A方向决策（跳法A 阶段1+2 已落地，见 ISSUES ISS-046/047） |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-047） |
+| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-056） |
 | `portfolio.yaml` | 当前持仓记录 |
 | `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members） |
 | `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |
