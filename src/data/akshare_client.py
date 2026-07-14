@@ -446,6 +446,98 @@ class AKShareClient:
         return df
 
     @classmethod
+    def get_stock_basic_name(cls, code: str) -> Optional[str]:
+        """baostock query_stock_basic 取 code_name（含 ST/*ST 前缀）。ISS-053 基本面恶化判定用。
+
+        返回**当前** code_name（非历史日期），回测历史有前瞻偏差（见 ISS-053 gap）。
+        数据源实测：sz.000005 -> "ST星源"，sh.600519 -> "贵州茅台"。
+        失败/超时返回 None（fail-open，不假退出）。
+        """
+        if not _ensure_baostock_login():
+            return None
+        try:
+            prefix, _code = cls._normalize_stock_code(code)
+            bs_code = f"{prefix}.{_code}"
+
+            def _read():
+                rs = bs.query_stock_basic(code=bs_code)
+                if rs is None or rs.error_code != '0':
+                    return None
+                name = None
+                while rs.next():
+                    row = rs.get_row_data()
+                    if 'code_name' in rs.fields:
+                        name = row[rs.fields.index('code_name')]
+                return name
+            try:
+                return _call_with_timeout(_read, timeout=15)
+            except FuturesTimeout:
+                logger.warning(f"query_stock_basic 超时 {code}")
+                _baostock_logout()
+                return None
+        except Exception as e:
+            logger.warning(f"get_stock_basic_name 异常 {code}: {e}")
+            if 'socket' in str(e).lower() or '10038' in str(e):
+                _baostock_logout()
+            return None
+
+    @classmethod
+    def get_latest_forecast(cls, code: str, *, since_date: Optional[str] = None) -> Optional[dict]:
+        """baostock query_forecast_report 取最近一条业绩预告。ISS-053 预亏/预减判定用。
+
+        取近 540 天预告，按 profitForcastExpPubDate 倒序取最新；since_date (YYYY-MM-DD)
+        给定时滤 pub_date >= since_date（只取建仓后发布的新预告，避假退出，审视点3）。
+        全部预告都在 since_date 之前发布时返回 None。
+        返回 {type, abstract, pub_date, stat_date} 或 None。fail-open：异常返回 None。
+        """
+        if not _ensure_baostock_login():
+            return None
+        try:
+            prefix, _code = cls._normalize_stock_code(code)
+            bs_code = f"{prefix}.{_code}"
+            end = datetime.now().strftime("%Y-%m-%d")
+            start = (datetime.now() - timedelta(days=540)).strftime("%Y-%m-%d")
+
+            def _read():
+                rs = bs.query_forecast_report(code=bs_code, start_date=start, end_date=end)
+                if rs is None or rs.error_code != '0':
+                    return []
+                idx_pub = rs.fields.index('profitForcastExpPubDate')
+                idx_stat = rs.fields.index('profitForcastExpStatDate')
+                idx_type = rs.fields.index('profitForcastType')
+                idx_abs = rs.fields.index('profitForcastAbstract')
+                parsed = []
+                while rs.next():
+                    row = rs.get_row_data()
+                    parsed.append({
+                        "type": row[idx_type],
+                        "abstract": row[idx_abs],
+                        "pub_date": row[idx_pub],
+                        "stat_date": row[idx_stat],
+                    })
+                return parsed
+            try:
+                parsed = _call_with_timeout(_read, timeout=30)
+            except FuturesTimeout:
+                logger.warning(f"query_forecast_report 超时 {code}")
+                _baostock_logout()
+                return None
+            if not parsed:
+                return None
+            # 按 pub_date 倒序取最新；since_date 给定时跳过建仓前发布（已定价，避假退出）
+            for fc in sorted(parsed, key=lambda d: d.get("pub_date") or "", reverse=True):
+                pub = fc.get("pub_date")
+                if since_date and pub and pub < since_date:
+                    continue
+                return fc
+            return None  # 全部预告在建仓前发布
+        except Exception as e:
+            logger.warning(f"get_latest_forecast 异常 {code}: {e}")
+            if 'socket' in str(e).lower() or '10038' in str(e):
+                _baostock_logout()
+            return None
+
+    @classmethod
     def _fetch_baostock_realtime(cls, stock_code: str) -> Optional[dict]:
         """使用Baostock获取最新行情（当日最近交易日的收盘/最高/最低/成交量）
 

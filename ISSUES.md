@@ -1258,7 +1258,7 @@ P3（已取消）:
 - **风险**: 数据源稳定性（akshare/sina 间歇失效）；改阈值需笨总拍板。
 
 ### ISS-053: 建仓后零信息更新（失明）
-- **状态**: 🟡 待评估，分阶段
+- **状态**: 🟢 已落地（最小切片，2026-07-15）--持有期 ST + 业绩预告预亏/预减硬退出；高点回撤>X% 留后续
 - **优先级**: P0（中长期持仓最大损失源）
 - **根因**: 跳法A设计哲学（ISS-046）："全程零AI实时判定-不重跑评分，不靠AI区分回调vs死亡"。`plan_guard.py:54` "重大利空/财务造假"暂不实现（留到1.4，需新闻面）；气宗连技术面失效（MA60跌破/死叉）都跳过（:168）。**建仓瞬间冻结基本面认知，之后任凭世界变化不更新**。
 - **影响**: 基本面剧变（景气逆转/造假/政策突变）时无感知，硬扛到致命止损（-2×ATR，floor -30%）或180天。
@@ -1267,6 +1267,13 @@ P3（已取消）:
   2. **最小切片**：气宗增加"重大利空硬退出"1条规则（业绩预告转亏/审计非标/ST），走硬规则不走AI。不重跑全量评分，只扫利空信号。
   3. 评估补"高点回撤>X%"（plan_guard.py:53，需 high_since_entry 追踪）。
 - **风险**: 数据源；不能变成"重跑评分"（撞 AI天花板 [[project-ai-ceiling]] + 纪律摇摆）；防矫枉过正（别把回调当利空杀）。
+- **已完成（2026-07-15，最小切片）**: 加 `check_fundamental_alert` 硬规则（被ST + 业绩预告预亏/预减/续亏/首亏），走**独立 `fundamental_alert` 通道**（非 top_signal，避暴雷被日志记成高位止盈污染复盘）。改 5 文件：akshare_client（`get_stock_basic_name`/`get_latest_forecast` 复用 baostock 基建）/ exit_signals/fundamental.py（硬规则 + entry_date 过滤 + 自然日缓存）/ models.py（`fundamental_alert` 字段）/ orchestrator（Layer 3.84 fail-open+WARNING）/ plan_guard（规则4.5，urgency 在致命止损后/top_signal前）。业绩预告带 `pub_date >= entry_date` 过滤（建仓前发布已定价，避假退出）；entry_date 缺失跳过预告检查（仅查 ST）。验证：test_fundamental_alert.py 13/13 PASS（含假退出防护）+ test_trade_plan.py 22/22 回归 + PlanGuard 集成 smoke（规则4.5 强制 SELL+CLOSE_ALL、不误伤气宗 weak_sell 压制、urgency 止损>暴雷>技术顶）。
+- **第3层 gap（诚实声明）**:
+  - **回测 ST 前瞻偏差**：baostock `query_stock_basic` 返回**当前** code_name。回测历史日期时，当时 ST 但现摘帽查不到、当时非 ST 但现已 ST 会误判（前瞻）。-> **回测中 ST 检查应禁用**（或诚实声明 ST 不可回测），仅业绩预告侧可回测（带日期 + entry_date 过滤，point-in-time 正确）。
+  - **fail-open 透明**：baostock 超时/异常时 fundamental 检查跳过（不假退出，避数据中断误杀全市场），orchestrator 记 WARNING（非 DEBUG），用户可见"安全网当日有洞"。
+  - **稀疏性**：不是所有股发业绩预告（茅台不发）-> 有则强信号，无则不报，非 bug。
+  - **未上公告关键词**（造假/立案/退市/违规/审计非标）：误报风险，留后续；最小切片只上结构化零误报的 ST + 业绩预告。
+- **待办（后续阶段）**: 高点回撤>X% 失效条件（需 high_since_entry 追踪）；持有中阶段转换（建仓S2后转S3/S4 气宗死扛）。
 
 ### ISS-054: 七层架构与中长期错配（strategy_layer 空转）
 - **状态**: 🟢 待 ISS-051 稳定后清理

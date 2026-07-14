@@ -347,10 +347,12 @@ class StrategyDecision(BaseModel):
     decision: SignalType = Field(description="策略层最终决策")
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
     action_semantic: Optional[str] = Field(default=None, description="收紧后的交易语义: ENTRY/ADD/HOLD/TRIM/EXIT/STOP")
-    sell_path: Optional[str] = Field(default=None, description="卖出路径: flat_sell/stop_loss_trim/stop_loss_exit/take_profit_trim/trend_exit/weak_sell/top_signal")
+    sell_path: Optional[str] = Field(default=None, description="卖出路径: flat_sell/stop_loss_trim/stop_loss_exit/take_profit_trim/trend_exit/weak_sell/top_signal/fundamental_alert")
     position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例")
     # 跳法A 阶段2: 高位止盈3维度大顶信号（宏观/板块/个股），非空=强制离场，PlanGuard 不可压制
     top_signal: Optional[str] = Field(default=None, description="高位止盈大顶信号描述（如'宏观:成交额破10万亿'），触发即强制 SELL")
+    # ISS-053: 基本面恶化硬退出（被ST/业绩预亏），独立通道（非 top_signal），PlanGuard 规则4.5 不可压制
+    fundamental_alert: Optional[str] = Field(default=None, description="基本面恶化硬退出信号(被ST/业绩预亏)，触发即强制SELL+CLOSE_ALL")
 
     # 策略层过滤信息
     lifecycle_before: TradeLifecycle = Field(description="过滤前生命周期状态")

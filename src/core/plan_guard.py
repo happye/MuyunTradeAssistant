@@ -127,6 +127,19 @@ class PlanGuard:
             adjusted.strategy_reasons = reasons
             return adjusted
 
+        # 规则 4.5：基本面恶化硬退出（ISS-053）--不可压制，仅次于致命止损，先于高位止盈
+        # 持有期被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL（暴雷比技术顶更急）
+        # 独立 fundamental_alert 通道（非 top_signal），避暴雷被日志记成高位止盈污染复盘
+        if adjusted.fundamental_alert:
+            if adjusted.decision != SignalType.SELL:
+                reasons.insert(0, f"PlanGuard 重大利空(不可压): {adjusted.fundamental_alert}")
+                adjusted.decision = SignalType.SELL
+            adjusted.position_action = PositionAction.CLOSE_ALL
+            adjusted.sell_path = "fundamental_alert"
+            logger.warning(f"PlanGuard force EXIT by fundamental_alert: {adjusted.fundamental_alert}")
+            adjusted.strategy_reasons = reasons
+            return adjusted
+
         # 规则 P1：高位止盈3维度大顶信号（跳法A 阶段2）——仅次于致命止损，不可压制。
         # 即使气宗持有期内，宏观/个股大顶信号触发也强制离场（绕开"该不该卖"的 AI 判断）。
         if adjusted.top_signal:

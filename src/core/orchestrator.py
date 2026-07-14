@@ -287,6 +287,24 @@ class Orchestrator:
                 elif action in ("EXIT", "STOP", "TRIM"):
                     logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value} != SELL")
 
+        # Layer 3.84: 基本面恶化硬退出（ISS-053）--仅持仓检查，独立 fundamental_alert 通道
+        # 被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL。fail-open（异常跳过不假退出）但记 WARNING。
+        falert = None
+        if has_position:
+            try:
+                from src.core.exit_signals.fundamental import check_fundamental_alert
+                falert = check_fundamental_alert(
+                    data.stock_code,
+                    entry_date=trade_plan.opened_at if trade_plan else None,
+                )
+            except Exception as e:
+                logger.warning(f"[FundamentalAlert] 检查异常(安全网当日可能有洞): {e}")
+            if falert:
+                decision_result.decision = SignalType.SELL
+                decision_result.position_action = PositionAction.CLOSE_ALL
+                decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
+                logger.info(f"[FundamentalAlert] 强制离场: {falert}")
+
         # Layer 3.85: 高位止盈3维度大顶信号检查（跳法A 阶段2 / v0.8.6.4）
         # 仅持仓时检查；触发即作为 P1 信号强制 SELL（PlanGuard 不可压制，仅次于致命止损）。
         # 全客观硬规则（成交额/换手/缩量/减持），不依赖 AI 实时判断。
@@ -330,6 +348,12 @@ class Orchestrator:
             strategy_decision.top_signal = top_signal
             if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
                 strategy_decision.sell_path = "top_signal"
+
+        # ISS-053: fundamental_alert 标到策略决策，PlanGuard 规则4.5 按不可压处理
+        if falert:
+            strategy_decision.fundamental_alert = falert
+            if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
+                strategy_decision.sell_path = "fundamental_alert"
 
         # v0.8.6.3 (ISS-033): Chandelier/trend_break force_exit 经 strategy_layer 后 sell_path
         # 可能落空（_calculate_position 重算 position_action 致 _infer_sell_path 推断不到）。
