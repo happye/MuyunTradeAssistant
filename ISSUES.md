@@ -1264,6 +1264,10 @@ P3（已取消）:
   - **回测公告不可得（by design）**：公告是 akshare "最近 N 天"接口，非 point-in-time -> 回测 `DataFeeder._build_stock_data` 不填 `recent_announcements` -> 缺省 None -> 减持子信号回测中跳过（stock.py:33-34 原意，诚实声明）。回测安全靠 builder 隔离（两套 builder），**不需 `is_backtest` 标志、不动 orchestrator 签名、不动 backtest_engine**。回测不验证减持信号；live 才生效。`test_jumpA_backtest_5year.py` 是回测安全活验证（DataFeeder 不改，原样绿）。
   - **扫描网络成本**：持仓扫描每只多一次 `stock_news_em` 调用，fail-open + 已有 30s/股超时，最坏增时不崩。
 - **待办（后续阶段）**: 换手率 fetcher（数据工程）；宏观阈值笨总拍板；公告关键词扩展（造假/立案/审计非标，误报风险留后续）。
+- **对抗性审查（2026-07-15，已 push 244d3c9）**:
+  - **减持不按 entry_date 过滤（by design，非 bug）**：`_check_holder_reduction` 扫最近 30 天所有公告标题，建仓前发布的减持也会触发退出。区别于 ISS-053 fundamental_alert 的 entry_date 过滤--减持是**见顶 overhang**（实控人在减持=利空状态，跨时持续），非**点状恶化事件**（ST/业绩预告，建仓前=已定价=假退出）。语义自洽：建仓后明知有减持 overhang 仍持，触发离场是见顶信号本意。若笨总要"只对建仓后新发减持反应"，再加 entry_date 过滤（follow-up，非本切片）。
+  - **扫描超时影响（边缘，bounded）**：`calculate_indicators` 现多一次 `stock_news_em`（正常 ~1-3s，主源失败走 cninfo 备用最长 ~25s）。扫描 cli:494 的 30s/股线程超时会把这个 fetch 计入->慢网下个别股可能从"刚好完成"变"超时跳过"。fail-open + 跳过后扫描继续，非崩溃。**缓解路径（若观察到扫描跳过增多）**：给公告 fetch 套更紧的外层超时（如 8s），或把 fetch 移出每股扫描线程到 orchestrator has_position 块（仅持仓才取，且可独立超时）。当前不预防性改（防兔子洞，未观察到实际发生）。
+  - **无硬性破坏**：calculate_indicators 公告 fetch 在 try/except 内 fail-open->None；orchestrator `getattr` 缺省 None 跳过；PlanGuard P1 既有逻辑未动；回测 DataFeeder 不走此路径（已冒烟验证）。StockData 加 Optional 字段（缺省 None）不影响既有构造/序列化。
 
 ### ISS-053: 建仓后零信息更新（失明）
 - **状态**: 🟢 已落地（最小切片，2026-07-15）--持有期 ST + 业绩预告预亏/预减硬退出；高点回撤>X% 留后续
