@@ -177,7 +177,7 @@ def test_market_query_without_matches_should_not_raise_scan_error():
             return {"stocks": {"cached": True, "expired": False, "count": 2, "age_seconds": 0}}
 
     engine.market_cache = _QuickScanCache()
-    candidates, scan_info = engine.quick_scan(rule_name="default", market_query="AI")
+    candidates, scan_info = engine.quick_scan(rule_name="healthy_pullback", market_query="AI")
 
     assert "error" not in scan_info
     assert scan_info["fallback_unfiltered"] is True
