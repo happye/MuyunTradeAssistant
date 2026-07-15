@@ -369,12 +369,23 @@ class Orchestrator:
             if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
                 strategy_decision.sell_path = "fundamental_alert"
 
-        # v0.8.6.3 (ISS-033): Chandelier/trend_break force_exit 经 strategy_layer 后 sell_path
-        # 可能落空（_calculate_position 重算 position_action 致 _infer_sell_path 推断不到）。
-        # force_exit 本质是趋势退出，明确标 trend_exit，让 PlanGuard 气宗能匹配压制。
+        # v0.8.6.3 (ISS-033) + P1(a) 审查修复：Chandelier/trend_break force_exit 经 strategy_layer 后
+        # sell_path 可能落空（_calculate_position 重算 position_action 致 _infer_sell_path 推断不到）。
+        # P1(a)：force_exit(EXIT/STOP) 是技术安全网，strategy_layer 5机制可把 SELL 降级为 HOLD 致丢失，
+        # 触发即强制 SELL+CLOSE_ALL 覆盖降级（不被 confirmation/inertia 吞）。sell_path 标 trend_exit
+        # （气宗可压，ISS-033 设计；P1(b) 气宗是否该压 Chandelier 另议，待笨总+回测）。
         if (entry_exit_result
+                and entry_exit_result.override_action in ("EXIT", "STOP")
+                and entry_exit_result.exit_type in ("chandelier_stop", "trend_break")):
+            if strategy_decision.decision != SignalType.SELL:
+                strategy_decision.decision = SignalType.SELL
+                strategy_decision.strategy_reasons.insert(0, f"force_exit 救回: {entry_exit_result.exit_type}（覆盖 strategy_layer 降级）")
+            strategy_decision.position_action = PositionAction.CLOSE_ALL
+            if not strategy_decision.sell_path:
+                strategy_decision.sell_path = "trend_exit"
+        elif (entry_exit_result
                 and strategy_decision.decision == SignalType.SELL
-                and entry_exit_result.override_action in ("EXIT", "STOP", "TRIM")
+                and entry_exit_result.override_action == "TRIM"
                 and entry_exit_result.exit_type in ("chandelier_stop", "trend_break")
                 and not strategy_decision.sell_path):
             strategy_decision.sell_path = "trend_exit"
