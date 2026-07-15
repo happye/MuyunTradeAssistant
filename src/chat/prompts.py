@@ -87,8 +87,8 @@ TOOL_DEFINITIONS = [
                 "properties": {
                     "rule_name": {
                         "type": "string",
-                        "description": "扫描策略名称，可选: default(放量突破), shrink_pullback(缩量回调), strong_momentum(强势动量), low_valuation(低估值), oversold_bounce(超跌反弹)。也可输入中文关键词如'放量'、'缩量'、'动量'",
-                        "default": "default"
+                        "description": "扫描策略名称，可选: healthy_pullback(健康回调), steady_advance(温和上涨), shrink_pullback(缩量回调), value_pick(低估值筛选), theme_members(主题成分股)。也可输入中文关键词如'缩量'、'低估值'。注：放量突破/强势动量/超跌反弹等旧规则已删（不做追涨）",
+                        "default": "healthy_pullback"
                     },
                     "query": {
                         "type": "string",

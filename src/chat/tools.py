@@ -57,9 +57,14 @@ def init_engines(config: dict):
             logger.warning(f"RAG服务初始化异常: {e}，search_knowledge工具不可用")
             _rag_service = None
 
+    # 审查修复 H2：补 entry_exit_config + pyramid_config（原漏传 -> chat 买卖点计算器=None，
+    # 突破/Chandelier/止盈全不计算，chat 分析永不产生买卖点，与 CLI 不一致）
+    from src.cli.main import load_pyramid_config
     _orchestrator = Orchestrator(
         skills_dir, enabled_skills, weights, skill_types,
         ai_config=ai_config, event_config=event_config,
+        entry_exit_config=config.get("entry_exit"),
+        pyramid_config=load_pyramid_config(config),
         rag_service=_rag_service,  # v0.8.1: 传递RAG服务给子组件
     )
 
@@ -129,20 +134,29 @@ def analyze_stock(stock_code: str) -> str:
         pm = _portfolio_manager
         current_ratio = 0.0
         strategy_state = None
+        pos = None
         if pm:
             positions = pm.list_positions()
-            for pos in positions:
-                if pos.stock_code == stock_code:
-                    current_ratio = pos.current_ratio
+            for p in positions:
+                if p.stock_code == stock_code:
+                    pos = p
+                    current_ratio = p.current_ratio
                     strategy_state = pm.to_strategy_state(stock_code)
                     break
 
-        # 执行7层分析
+        has_position = pos is not None and pos.current_ratio > 0
+        # 执行7层分析（审查修复 H1：补齐 has_position/entry_price/high_since_entry/trade_plan，
+        # 与 CLI l 一致；原漏传 -> 即使持仓 has_position=False，fundamental_alert/top_signal/
+        # force_exit/PlanGuard 全失效，chat 与 CLI 对同一持仓股给不同决策）
         decision_result, strategy_decision, execution_eval, ai_result = _orchestrator.analyze(
             stock_data,
             current_position_ratio=current_ratio,
             strategy_state=strategy_state,
             ai_enabled=True,
+            has_position=has_position,
+            entry_price=pos.entry_price if pos else None,
+            high_since_entry=pos.high_since_entry if pos else None,
+            trade_plan=pos.trade_plan if pos else None,  # PlanGuard 守卫
         )
 
         from src.chat.formatter import format_analysis_result
@@ -156,7 +170,7 @@ def analyze_stock(stock_code: str) -> str:
         return f"分析 {stock_code} 时出错: {e}"
 
 
-def scan_market(rule_name: str = "default", query: Optional[str] = None) -> str:
+def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None) -> str:
     """全市场扫描"""
     if not _scanner_engine:
         return "错误：扫描引擎未初始化"

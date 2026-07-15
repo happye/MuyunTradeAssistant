@@ -152,7 +152,7 @@ def create_sample_data() -> StockData:
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        "[bold cyan]暮云思辨投资助手 v0.8.0[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.6.6[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -2737,7 +2737,7 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="%(prog)s v0.8.0 (AI调节层：新闻分析+情绪调节+三层信号调节)"
+        version="%(prog)s v0.8.6.6 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发)"
     )
     parser.add_argument(
         "--verbose",

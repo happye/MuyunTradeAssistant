@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.5"
+VERSION = "v0.8.6.6"
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）
@@ -244,12 +244,14 @@ def parse_input(user_input: str):
                 try:
                     args["price"] = float(parts[4])
                 except ValueError:
-                    pass
+                    print(f"  [!] 价格无效: '{parts[4]}'（需数字），pos add 取消")
+                    return None
             if len(parts) >= 6:
                 try:
                     args["ratio"] = float(parts[5])
                 except ValueError:
-                    pass
+                    print(f"  [!] 仓位无效: '{parts[5]}'（需数字 0-1），pos add 取消")
+                    return None
             return ("pos_add", args)
         elif sub in ("remove", "rm", "r", "del", "d"):
             if len(parts) < 3:
