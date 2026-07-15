@@ -216,12 +216,18 @@ def auto_score(
     if pre:
         all_warnings.append(pre)
 
-    # ISS-055: 景气度闸门降级 + 景气判定低置信度 -> 警告（闸门立在最不可靠维度，诚实暴露）
-    # 不动 effective_grade 公式（笨总域），仅当降级依赖低置信度景气判断时提示人工复核。
-    # ip==0 已由 precondition_warning 覆盖，此处只管 0<ip<=50 的"软封顶"区。
-    if bs.industry_prosperity > 0 and bs.effective_grade() != bs.grade():
-        pros_conf = dim_results.get("industry_prosperity", {}).get("confidence", 0.0)
-        if pros_conf < _PROSPERITY_LOW_CONF_THRESHOLD:
+    # ISS-055: 景气度闸门透明度警告（不动 effective_grade 公式，笨总域）
+    # ip==0 已由 precondition_warning 覆盖，此处只管 ip>0 区。
+    # H1 审查扩展：pros_conf==0（景气数据缺失，ip=50 兜底）时**无条件**警告--兜底值被当有效
+    # "稳定无拐点"违背体系第一前提，即使 effective==grade（其他维也低）也该提示，不依赖降级触发。
+    pros_conf = dim_results.get("industry_prosperity", {}).get("confidence", 0.0)
+    if bs.industry_prosperity > 0 and pros_conf < _PROSPERITY_LOW_CONF_THRESHOLD:
+        if pros_conf == 0.0:
+            all_warnings.append(
+                "⚠ 景气度数据缺失：评分为兜底值50（非真实判断），effective_grade 闸门立在最不可靠维度（无数据）。"
+                "强烈建议人工核实景气或等数据恢复，勿仅凭此分级买入"
+            )
+        elif bs.effective_grade() != bs.grade():
             all_warnings.append(
                 f"⚠ 评级受景气度闸门降级（原始{bs.grade()}->{bs.effective_grade()}），"
                 f"但景气度判定置信度仅{pros_conf:.0%}--降级依据最不可靠维度（AI难判真/撞数据天花板），建议人工复核景气判断"

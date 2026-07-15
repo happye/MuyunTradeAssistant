@@ -104,10 +104,22 @@ def test_ip_zero_precondition_only():
     cache.clear("ISS055_4")
 
 
+def test_data_missing_pros_conf_zero_warns():
+    """H1 修复：景气数据缺失（pros_conf=0，ip=50 兜底）-> 无条件警告，不依赖 effective!=grade。"""
+    cache.clear("ISS055_5")
+    ai = _make_ai(prosperity_score=50, prosperity_conf=0.0, other_score=85)
+    r = auto_score("ISS055_5", "测试", ai_client=ai, rag_service=None,
+                   data_summary=_full_data_summary(), today="2026-06-20", force_refresh=True)
+    assert any("景气度数据缺失" in w for w in r.warnings), f"pros_conf=0 应警告数据缺失, warnings={r.warnings}"
+    print(f"✓ pros_conf=0 (数据缺失/兜底50) -> 警告（H1 修复，不依赖降级触发）")
+    cache.clear("ISS055_5")
+
+
 if __name__ == "__main__":
     print("\n=== ISS-055 景气度闸门降级 + 低置信度透明度警告 单测 ===\n")
     test_low_ip_low_conf_warns()
     test_low_ip_high_conf_no_warn()
     test_high_ip_no_cap_no_warn()
     test_ip_zero_precondition_only()
-    print("\n=== 全部 4 项 PASS ===")
+    test_data_missing_pros_conf_zero_warns()
+    print("\n=== 全部 5 项 PASS ===")

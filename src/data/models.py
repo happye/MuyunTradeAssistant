@@ -241,7 +241,12 @@ class StrategyState(BaseModel):
     entry_price: Optional[float] = Field(default=None, description="开仓均价")
     current_position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例")
 
-    # v0.8.3 Phase D: 金字塔仓位档位`n    position_tier: PositionTier = Field(default=PositionTier.FLAT, description=`"当前仓位档位（试探/基础/重仓）`")`n    unrealized_profit_pct: float = Field(default=0.0, description=`"浮动盈亏百分比`")`n    days_held: int = Field(default=0, description=`"持仓天数`")`n`n    # 信号历史（用于信号确认和稳定性评估）
+    # v0.8.3 Phase D: 金字塔仓位档位
+    position_tier: PositionTier = Field(default=PositionTier.FLAT, description="当前仓位档位（试探/基础/重仓）")
+    unrealized_profit_pct: float = Field(default=0.0, description="浮动盈亏百分比")
+    days_held: int = Field(default=0, description="持仓天数")
+
+    # 信号历史（用于信号确认和稳定性评估）
     recent_signals: list[str] = Field(default_factory=list, description="最近N个交易日的信号序列(BUY/SELL/HOLD/WATCH)")
     signal_history_maxlen: int = Field(default=5, description="信号历史最大长度")
 

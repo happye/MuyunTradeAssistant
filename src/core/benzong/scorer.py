@@ -175,10 +175,13 @@ class BenzhongScore:
         return raw if order.index(raw) <= order.index(cap) else cap
 
     def precondition_warning(self) -> Optional[str]:
-        """大前提警告：行业景气度 == 0 时打分模型失效（教学 2 反面案例）"""
-        if self.industry_prosperity == 0:
+        """大前提警告：行业景气度 <= 0 时打分模型失效（教学 2 反面案例）
+
+        审查修复 L-D：原 `== 0` 漏掉负值（数据错误）；与 effective_grade 的 `ip<=0->F` 口径对齐用 `<= 0`。
+        """
+        if self.industry_prosperity <= 0:
             return (
-                "⚠ 大前提失效：行业景气度=0 时，本打分模型不能用！"
+                "⚠ 大前提失效：行业景气度≤0 时，本打分模型不能用！"
                 "教学 2 反面案例（中免）证明：没有高景气行业判断，其他得分再高也无意义。"
                 "请先确认是否真有现象级拐点 / 高景气行业。"
             )

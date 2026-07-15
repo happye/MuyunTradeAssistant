@@ -1500,8 +1500,10 @@ def _print_benzong_summary(stock_code: str, stock_name: str = ""):
     if len(cached) == 6:
         # 全缓存命中 → 算总分显示
         from src.core.benzong import score_one
-        # 流动性用缓存里的（或默认 1.0）
-        mt = cached.get("industry_prosperity", {}).get("market_turnover", 1.0)
+        # 流动性用缓存里的（或默认 1.0）。审查修复 L-B：market_turnover 不在维度结果 dict 里
+        # （维度结果只有 score/confidence/sources/...），.get(key,1.0) 在 key 缺失时返 1.0，
+        # 但若将来 key 存在且为 None 会传 None 给 liquidity_coefficient 崩溃。用 `or 1.0` 兜底 None/0。
+        mt = cached.get("industry_prosperity", {}).get("market_turnover") or 1.0
         bs = score_one(
             industry_prosperity=cached["industry_prosperity"]["score"],
             business_purity=cached["business_purity"]["score"],

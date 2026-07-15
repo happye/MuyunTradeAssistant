@@ -174,22 +174,26 @@ def test_planguard_take_profit_passthrough():
 
 
 def test_planguard_max_hold_force_exit():
-    """规则 3: 时间止损"""
+    """规则 3: 时间止损 -- 到期强制 CLOSE_ALL（审查修复 P0：必须设 position_action，否则 execution 不卖）"""
     sd = _sd(price=10.0)
     plan = _make_plan(opened_at="2025-01-01", max_hold_days=30)  # 远超
-    strategy = _make_strategy_decision(SignalType.HOLD)
+    strategy = _make_strategy_decision(SignalType.HOLD)  # strategy_layer 输出 HOLD（无卖出信号）
     result = PlanGuard().evaluate(strategy, plan, sd, today="2026-06-25")
     assert result.decision == SignalType.SELL
+    assert result.position_action == PositionAction.CLOSE_ALL, "时间止损必须设 CLOSE_ALL（execution 只读 position_action）"
+    assert result.sell_path == "time_stop"
     assert "时间止损" in result.strategy_reasons[0]
 
 
 def test_planguard_fatal_stop():
-    """规则 4: 致命止损（HOLD 也覆盖）"""
+    """规则 4: 致命止损（HOLD 也覆盖）-- 穿止损强制 CLOSE_ALL（审查修复 P0）"""
     sd = _sd(price=8.5)  # 跌破 stop=9.2
     plan = _make_plan()
-    strategy = _make_strategy_decision(SignalType.HOLD)
+    strategy = _make_strategy_decision(SignalType.HOLD)  # strategy_layer 输出 HOLD
     result = PlanGuard().evaluate(strategy, plan, sd)
     assert result.decision == SignalType.SELL
+    assert result.position_action == PositionAction.CLOSE_ALL, "致命止损必须设 CLOSE_ALL（execution 只读 position_action）"
+    assert result.sell_path == "stop_loss_exit"
     assert "致命止损" in result.strategy_reasons[0]
 
 
