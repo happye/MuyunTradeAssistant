@@ -108,6 +108,27 @@ class Orchestrator:
         rag_status = "enabled" if self.rag_service else "disabled"
         logger.info(f"Orchestrator initialized (v0.8.1: Signal→Decision→Event({event_status})→AI Modifier({ai_status})→Strategy→Execution, RAG={rag_status})")
 
+    @staticmethod
+    def _compute_fundamental_alert(data, has_position: bool, is_backtest: bool, trade_plan) -> Optional[str]:
+        """ISS-053 基本面恶化硬退出判定（被 ST / 业绩预告预亏预减）。
+
+        回测禁用（is_backtest=True）：baostock ST 状态/业绩预告均为**当前**数据，非 bar 时点的
+        point-in-time--回测里未来预亏预告会在第一根持仓bar即触发退出（前瞻偏差，审查修复）。
+        live（is_backtest=False）启用：持仓才查，最新预告/ST 状态正是 live 该用的。
+        fail-open：异常返回 None（不假退出）但记 WARNING。
+        """
+        if not has_position or is_backtest:
+            return None
+        try:
+            from src.core.exit_signals.fundamental import check_fundamental_alert
+            return check_fundamental_alert(
+                data.stock_code,
+                entry_date=trade_plan.opened_at if trade_plan else None,
+            )
+        except Exception as e:
+            logger.warning(f"[FundamentalAlert] 检查异常(安全网当日可能有洞): {e}")
+            return None
+
     def analyze(
         self,
         data: StockData,
@@ -121,6 +142,7 @@ class Orchestrator:
         high_since_entry: Optional[float] = None,
         trade_plan=None,  # v0.8.5 阶段 1.3: TradePlan 实例（来自 PortfolioManager）
         today: Optional[str] = None,  # v0.8.5: 用于 PlanGuard 的时间止损判定
+        is_backtest: bool = False,  # ISS-053 审查修复: 回测禁用 fundamental_alert（baostock 当前数据非 point-in-time，会前瞻）
     ) -> tuple[DecisionResult, StrategyDecision, ExecutionEvaluation, Optional[AIModifierResult]]:
         """执行完整分析流程（v0.8.0 六层架构）
 
@@ -289,21 +311,13 @@ class Orchestrator:
 
         # Layer 3.84: 基本面恶化硬退出（ISS-053）--仅持仓检查，独立 fundamental_alert 通道
         # 被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL。fail-open（异常跳过不假退出）但记 WARNING。
-        falert = None
-        if has_position:
-            try:
-                from src.core.exit_signals.fundamental import check_fundamental_alert
-                falert = check_fundamental_alert(
-                    data.stock_code,
-                    entry_date=trade_plan.opened_at if trade_plan else None,
-                )
-            except Exception as e:
-                logger.warning(f"[FundamentalAlert] 检查异常(安全网当日可能有洞): {e}")
-            if falert:
-                decision_result.decision = SignalType.SELL
-                decision_result.position_action = PositionAction.CLOSE_ALL
-                decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
-                logger.info(f"[FundamentalAlert] 强制离场: {falert}")
+        # 回测禁用（is_backtest）：baostock ST/预告为当前数据非 point-in-time，回测里未来预告/当前ST会前瞻（审查修复）。
+        falert = self._compute_fundamental_alert(data, has_position, is_backtest, trade_plan)
+        if falert:
+            decision_result.decision = SignalType.SELL
+            decision_result.position_action = PositionAction.CLOSE_ALL
+            decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
+            logger.info(f"[FundamentalAlert] 强制离场: {falert}")
 
         # Layer 3.85: 高位止盈3维度大顶信号检查（跳法A 阶段2 / v0.8.6.4）
         # 仅持仓时检查；触发即作为 P1 信号强制 SELL（PlanGuard 不可压制，仅次于致命止损）。

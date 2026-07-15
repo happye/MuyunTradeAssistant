@@ -1281,10 +1281,12 @@ P3（已取消）:
 - **风险**: 数据源；不能变成"重跑评分"（撞 AI天花板 [[project-ai-ceiling]] + 纪律摇摆）；防矫枉过正（别把回调当利空杀）。
 - **已完成（2026-07-15，最小切片）**: 加 `check_fundamental_alert` 硬规则（被ST + 业绩预告预亏/预减/续亏/首亏），走**独立 `fundamental_alert` 通道**（非 top_signal，避暴雷被日志记成高位止盈污染复盘）。改 5 文件：akshare_client（`get_stock_basic_name`/`get_latest_forecast` 复用 baostock 基建）/ exit_signals/fundamental.py（硬规则 + entry_date 过滤 + 自然日缓存）/ models.py（`fundamental_alert` 字段）/ orchestrator（Layer 3.84 fail-open+WARNING）/ plan_guard（规则4.5，urgency 在致命止损后/top_signal前）。业绩预告带 `pub_date >= entry_date` 过滤（建仓前发布已定价，避假退出）；entry_date 缺失跳过预告检查（仅查 ST）。验证：test_fundamental_alert.py 13/13 PASS（含假退出防护）+ test_trade_plan.py 22/22 回归 + PlanGuard 集成 smoke（规则4.5 强制 SELL+CLOSE_ALL、不误伤气宗 weak_sell 压制、urgency 止损>暴雷>技术顶）。
 - **第3层 gap（诚实声明）**:
-  - **回测 ST 前瞻偏差**：baostock `query_stock_basic` 返回**当前** code_name。回测历史日期时，当时 ST 但现摘帽查不到、当时非 ST 但现已 ST 会误判（前瞻）。-> **回测中 ST 检查应禁用**（或诚实声明 ST 不可回测），仅业绩预告侧可回测（带日期 + entry_date 过滤，point-in-time 正确）。
+  - **回测 ST 前瞻偏差**：baostock `query_stock_basic` 返回**当前** code_name。回测历史日期时，当时 ST 但现摘帽查不到、当时非 ST 但现已 ST 会误判（前瞻）。
+  - **回测 forecast 前瞻偏差（审查发现，已修）**：原声明"业绩预告带 pub_date + entry_date 过滤，point-in-time 正确"**不正确**--`get_latest_forecast` 只有下界 `pub_date >= entry_date`，**无上界 `pub_date <= bar_date`**，且用 `datetime.now()` 取近 540 天。回测里**未来**预亏预告（相对 bar）会触发，第一根持仓 bar 即退出。缓存键 `(code, date.today(), entry_date)` 用当前日期，回测所有 bar 同键。**修法（2026-07-16，用户拍板）**：回测整体禁用 fundamental_alert--orchestrator 加 `is_backtest` 参，`_compute_fundamental_alert` 静态方法 `if not has_position or is_backtest: return None`；backtest_engine 传 `is_backtest=True`。**live 不变**（仍启用，最新预告/ST 正是 live 该用的）。验证：test_fundamental_alert_backtest_guard.py 4/4（回测跳过/live 启用/无持仓跳过/异常 fail-open）+ test_fundamental_alert 13/13 + test_trade_plan 22/22 + 回测冒烟无崩溃。ST 路径回测同样禁用（一并解决，无需单独 historicalize）。
   - **fail-open 透明**：baostock 超时/异常时 fundamental 检查跳过（不假退出，避数据中断误杀全市场），orchestrator 记 WARNING（非 DEBUG），用户可见"安全网当日有洞"。
   - **稀疏性**：不是所有股发业绩预告（茅台不发）-> 有则强信号，无则不报，非 bug。
   - **未上公告关键词**（造假/立案/退市/违规/审计非标）：误报风险，留后续；最小切片只上结构化零误报的 ST + 业绩预告。
+  - **get_latest_forecast 缺失 pub_date 边缘**（次要，未修）：`pub` 为 None/空时 `pub and pub<since_date` 短路为 False -> 返回该预告（不跳过）。与"避假退出"略矛盾（无法定位日期应跳过更稳妥）。回测禁用后此问题仅 live 残留，且 live 取最新预告本就该容错，baostock pub_date 可靠-> 实际风险极低，留观察不修（防兔子洞）。
 - **待办（后续阶段）**: 高点回撤>X% 失效条件（需 high_since_entry 追踪）；持有中阶段转换（建仓S2后转S3/S4 气宗死扛）。
 
 ### ISS-054: 七层架构与中长期错配（strategy_layer 空转）

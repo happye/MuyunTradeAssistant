@@ -583,6 +583,7 @@ class BacktestEngine:
                     high_since_entry=high_since_entry,
                     trade_plan=_trade_plan,
                     today=date,
+                    is_backtest=True,  # ISS-053 审查修复: 禁用 fundamental_alert（baostock 当前数据非 point-in-time，回测会前瞻）
                 )
                 # PlanGuard 压制统计：strategy_reasons 含 "PlanGuard: 计划未失效"
                 if strategy_decision and strategy_decision.strategy_reasons:
