@@ -763,6 +763,13 @@ class StrategyLayer:
         ):
             return "take_profit_trim"
         if position_action == PositionAction.CLOSE_ALL:
+            # 审查修复 M-C：CLOSE_ALL 三源（stop_loss_exit / trend_exit / stop_loss+trend_exit）。
+            # 原默认全标 "trend_exit"，致 stop_loss 驱动（conf 0.70-0.85 浅亏 + trend_exit）的
+            # CLOSE_ALL 被气宗压（trend_exit 在 suppressible_paths）-> stop_loss 安全网被借壳压制。
+            # 有 stop_loss 信号（>=REDUCE 门槛 + 浅亏，未达 EXIT 0.85 门槛）标 stop_loss_exit（不可压）。
+            if (stop_loss_confidence >= self.STOP_LOSS_REDUCE_THRESHOLD
+                    and self._has_stop_loss_trim_loss(current_return_pct)):
+                return "stop_loss_exit"
             return "trend_exit"
         if position_action == PositionAction.REDUCE:
             return "weak_sell"

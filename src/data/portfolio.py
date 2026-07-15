@@ -352,9 +352,15 @@ class PortfolioManager:
             entry_date = None
             entry_price = None
 
-        # 仓位比例：优先用策略层计算的position_ratio，回退到new_state的值
-        # position_ratio是策略层计算的目标仓位，new_state.current_position_ratio可能未同步更新
-        actual_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else new_state.current_position_ratio
+        # 仓位比例：审查修复 M-E--HOLD_POSITION（含 PlanGuard 规则1压制 REDUCE->HOLD）时
+        # 必须保持原仓位（existing.current_ratio），否则回退到 new_state.current_position_ratio
+        # （strategy_layer 算的减仓目标 0.65×原值）会导致记录 desync：last_action=HOLD_POSITION
+        # 无实际卖出，但 current_ratio 被记成减仓后比例，持仓记录与券商 desync。
+        if pos_action == "HOLD_POSITION":
+            actual_ratio = existing.current_ratio if existing else 0.0
+        else:
+            # 非 HOLD：优先用策略层 position_ratio，回退到 new_state（OPEN/ADD/REDUCE/CLOSE_ALL 路径）
+            actual_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else new_state.current_position_ratio
 
         record = PositionRecord(
             stock_code=stock_code,

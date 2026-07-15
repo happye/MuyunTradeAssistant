@@ -210,6 +210,14 @@ class ScannerEngine:
                 ascending=not sort_desc,
                 na_position="last"
             )
+        else:
+            # 审查修复 M-G：sort_by 列缺失（如新浪/efinance 无 change_60d）静默跳过排序，
+            # 且下面 head() 先截断再 _enrich_trend_data 填 60d -> "按60d降序取前30"实际是任意30。
+            # 警告让用户知道候选非按 sort_by 排序的前列。彻底修需富集前置（enrich all，昂贵，留后续）。
+            logger.warning(
+                f"ScannerEngine: sort_by '{sort_by}'(列'{col_name}')在数据源不存在，排序跳过--"
+                f"候选为过滤后未排序集，head({rule.get('max_candidates', 30)})取前N非按 {sort_by} 排序"
+            )
 
         # 限制候选数量
         max_candidates = rule.get("max_candidates", 30)

@@ -106,10 +106,13 @@ class ScannerFilter:
             logger.warning(f"ScannerFilter: 未知字段 '{field}'，跳过")
             return df
 
-        # 检查列是否存在
+        # 检查列是否存在（审查修复 H2：列缺失时静默 return df + 仅 debug 日志，候选池不符规则名。
+        # 改 warning 级让用户可见"X 过滤因数据源无此列已跳过"）
         if col_name not in df.columns:
-            # 无害降级：如新浪源无量比字段，跳过该过滤条件即可（非错误）
-            logger.debug(f"ScannerFilter: DataFrame中无列 '{col_name}'(字段:{field})，跳过")
+            logger.warning(
+                f"ScannerFilter: 数据源无列 '{col_name}'(字段:{field})，该过滤条件跳过--"
+                f"候选池可能不符规则名所声称条件（如新浪源无量比->'缩量回调'未真缩量）"
+            )
             return df
 
         # 确保数值列为float类型（AKShare有时返回object类型）
