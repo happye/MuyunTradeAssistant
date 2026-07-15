@@ -1,3 +1,9 @@
+# ⚠ DEPRECATED（审查 M4）：本文件**不被任何代码加载**。EntryExitCalculator.__init__ 只接收传入的
+# config dict（calculator.py:66-68），实际生效的 entry_exit 配置来自 configs/settings.yaml 的
+# `entry_exit` 段（cli/main.py 各路径 `config.get("entry_exit")` 传入 orchestrator）。
+# 本文件是 v0.8.3 历史残留，与 settings.yaml:entry_exit 重复且有漂移风险。改本文件无效果。
+# 另：breakout.high_window=20 但 entry_rules.py:36-37 实际用 high_60d（StockData 无 high_20d），
+# 即"突破20日高点"实际要求突破60日高点（审查 M-D，待笨总确认窗口 20/60）。
 entry_exit:
   enabled: true
   atr:

@@ -230,9 +230,12 @@ class ChatAgent:
 
         try:
             result = func(**func_args)
-            # 截断过长的结果（防止token爆炸）
+            # 截断过长的结果（防止token爆炸）。审查修复 M5：原 result[:max-100] 截断末尾，
+            # 但 format_analysis_result 把 决策理由/风险提示 放在末尾 -> 被切掉，AI 基于残缺信息回答。
+            # 改为保留首尾（决策在前 + 理由/风险在末），截断中间。
             if len(result) > self.max_result_length:
-                result = result[:self.max_result_length - 100] + "\n...(结果过长已截断)"
+                keep = (self.max_result_length - 100) // 2
+                result = result[:keep] + "\n\n...(中间部分截断)...\n\n" + result[-keep:]
             return result
         except TypeError as e:
             return f"工具参数错误: {e}"
