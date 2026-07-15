@@ -1602,7 +1602,20 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     industry_prosperity = None
     if old_plan and old_plan.mode:
         benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
-        console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分）[/dim]")
+        # 审查修复 chat-M1：原 industry_prosperity=None 绕过 _mode_from_grade 大前提守卫
+        # （ip<=0 检查被 None 跳过 -> prosperity 崩到 0 仍保持气宗压制 exit）。取今日缓存的景气度
+        # （不重跑评分，符合"更新不重跑"意图），让大前提守卫生效；缓存无则回退 None（原行为）。
+        try:
+            from src.core.benzong import cache as bz_cache
+            from datetime import datetime as _dt
+            cached_ip = bz_cache.get(stock_code, _dt.now().strftime("%Y-%m-%d"), "industry_prosperity")
+            if cached_ip and "score" in cached_ip:
+                industry_prosperity = cached_ip["score"]
+                console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑评分，景气度取缓存={industry_prosperity:.0f}）[/dim]")
+            else:
+                console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分，景气度未知）[/dim]")
+        except Exception:
+            console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分）[/dim]")
     else:
         try:
             from src.core.benzong.auto_scorer import auto_score
