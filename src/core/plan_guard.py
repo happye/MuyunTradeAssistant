@@ -11,12 +11,12 @@
    → 压制 SELL → HOLD（写入 strategy_reasons）
    · mode=None/jianzong：仅压 weak_sell（原行为，破趋势线即走）
    · mode=qizong（气宗）：压 weak_sell + trend_exit（让牛股拿住主升浪，ISS-033）
-2. take_profit_trim / stop_loss_* → 不动（止盈分档/止损是主动获利与安全网，气宗也不压）
+2. stop_loss_* -> 不动（止损是安全网）；take_profit_trim 气宗在规则1压（ISS-033：止盈分档不减仓，让牛股拿住整波主升浪）
 3. 时间止损：当前日期 - opened_at >= max_hold_days → 强制 EXIT
 4. 价格穿透 current_stop（致命止损）→ 强制 STOP（不可压制）
 
 设计原则：
-- 不削弱现有安全网：致命止损/趋势退出/止盈分档不动
+- 不削弱现有安全网：致命止损不动（趋势退出/止盈分档 take_profit_trim 气宗在规则1压，ISS-033 让牛股拿住主升浪）
 - 失效条件触发优先：plan.when_sell_invalidate 任一触发就放过 SELL
 - 审计透明：每次压制写 reason 到 strategy_reasons，CLI 自然显示
 """
@@ -210,6 +210,5 @@ class PlanGuard:
             adjusted.strategy_reasons = reasons
             return adjusted
 
-        # 规则 2：take_profit_trim / stop_loss_* / 其他 → 不动（安全网保留）
-        # 注：气宗也不压 take_profit_trim（止盈分档是主动获利了结，非卖飞）
+        # 规则 2：stop_loss_* / 其他 -> 不动（安全网保留）；take_profit_trim 气宗在规则1压（ISS-033）
         return adjusted
