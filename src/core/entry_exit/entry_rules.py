@@ -32,14 +32,11 @@ def check_breakout(data: StockData, config: dict) -> Optional[EntrySignal]:
     high_window = breakout_cfg.get("high_window", 20)
     volume_ratio_min = breakout_cfg.get("volume_ratio", 1.5)
 
-    # 条件1: 价格突破N日高点
-    if high_window == 20:
-        high_nd = data.high_60d  # 实际存储的是20日高点
-    elif high_window == 60:
-        high_nd = data.high_60d
-    elif high_window == 120:
+    # 条件1: 价格突破N日高点。StockData 只有 high_60d / high_120d（无 high_20d），
+    # 故 20/60 均用 60 日高点。审查 M-D：配置已改 60 对齐实际（市场动荡避免假突破）。
+    if high_window == 120:
         high_nd = data.high_120d
-    else:
+    else:  # 60（或 20 兜底，均用 high_60d）
         high_nd = data.high_60d
 
     if high_nd is None or data.price < high_nd:

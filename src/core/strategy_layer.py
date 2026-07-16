@@ -152,11 +152,8 @@ class StrategyLayer:
 
     def __init__(self, pyramid_config: Optional[dict] = None):
         """初始化策略层"""
-        self.pyramid = None
         self._active_mode = None  # 跳法A: 当前持仓笨总 mode（process 透传），气宗走固定长持参数
-        if pyramid_config:
-            from src.core.position_tier import PyramidPositionManager
-            self.pyramid = PyramidPositionManager(pyramid_config)
+        # pyramid_config 保留参数（向后兼容调用方）；金字塔仓位管理已移除（从未生效，审查 chat-M3）
 
 
     def get_params(self) -> dict:
@@ -381,8 +378,6 @@ class StrategyLayer:
         )
         # 三阶段+3.3：强 BUY 时实际上限（牛市+高质量才走 cap，其余走 OPEN+ADD）
         buy_cap_actual = cap if (market_state == MarketState.RISK_ON and _hq) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
-        # ISS-032：金字塔仓位管理是否启用（用户可感知）
-        pyramid_label = "金字塔启用" if self.pyramid is not None else "金字塔未启用"
         # 阶段 3.3：质量信号是否成立（用户可感知）
         quality_label = "高质量(MA20+S2)" if _hq else "普通信号"
         tier_summary = (
@@ -391,7 +386,6 @@ class StrategyLayer:
             f"浮盈门槛{int(tier_params['take_profit_min_gain_pct']*100)}% / "
             f"趋势退出{tier_params['trend_exit_break_pct']*100:+.0f}% / "
             f"强买上限{int(buy_cap_actual*100)}% / "
-            f"{pyramid_label} / "
             f"{quality_label}"
         )
         strategy_reasons.insert(0, tier_summary)

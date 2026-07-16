@@ -80,19 +80,10 @@ def load_config(config_path: str = "./configs/settings.yaml") -> dict:
 
 
 def load_pyramid_config(config: dict, position_tiers_path: str = "./configs/position_tiers.yaml") -> dict | None:
-    """加载金字塔仓位配置（ISS-032）。
-
-    优先级：settings.yaml 的 pyramid 段 > position_tiers.yaml 兜底。
-    返回的 dict 直接传给 PyramidPositionManager（期望含 position_tiers 顶层 key）。
-    缺失返回 None（StrategyLayer 走默认仓位逻辑，行为与改动前等价）。
+    """[已废弃] 金字塔仓位管理已移除（审查 chat-M3：从未生效 + 无分仓需求，用户拍板删除）。
+    保留函数签名向后兼容调用方，恒返回 None（StrategyLayer 不再用 pyramid_config）。
     """
-    if config and config.get("pyramid"):
-        return config["pyramid"]
-    try:
-        with open(position_tiers_path, 'r', encoding='utf-8') as f:
-            return yaml.safe_load(f)
-    except FileNotFoundError:
-        return None
+    return None
 
 
 def apply_ai_overrides(config: dict, ai_overrides: dict) -> dict:

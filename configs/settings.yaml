@@ -160,7 +160,7 @@ entry_exit:
   atr:
     period: 14
   breakout:
-    high_window: 20
+    high_window: 60  # 60日突破（市场动荡，用60日避免假突破；StockData 无 high_20d，20/60 均走 high_60d）
     volume_ratio: 1.5
     atr_tolerance: 0.3
   pullback:
