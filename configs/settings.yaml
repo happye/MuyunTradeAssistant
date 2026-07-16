@@ -6,14 +6,6 @@ app:
   version: "0.8.6.6"
   mode: "CLI"  # CLI / API
 
-# 数据源配置
-data_source:
-  mode: "manual"  # manual / akshare
-  # akshare配置（Phase 2启用）
-  akshare:
-    enabled: false
-    cache_ttl: 300  # 秒
-
 # 向量数据库配置（v0.8.0已废弃，v0.8.1迁移到rag配置）
 # vector_store:
 #   enabled: false
@@ -122,8 +114,6 @@ ai:
 scanner:
   rules_path: "./src/scanner/scan_rules.yaml"
   cache_ttl: 300               # 全市场行情缓存TTL(秒)，盘中5分钟
-  deep_analysis_timeout: 30    # 单只股票深度分析超时(秒)
-  default_max_candidates: 30   # 默认最大候选股数量
   auto_exclude_holdings: true  # 自动排除已持仓股票
 
 # 事件驱动层配置（v0.8.0 Phase 3）
