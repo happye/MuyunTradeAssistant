@@ -137,6 +137,29 @@ def _is_stock_code(s: str) -> bool:
     return False
 
 
+def _resolve_index_arg(s: str):
+    """解析 #N 引用：取最近 scan 第 N 只（1-based）。返回 (code, name) 或 None。
+
+    供 l #1 / bz #3 / pos add #3 序号快捷用。无 scan 或越界时打印提示。
+    """
+    if not s.startswith("#") or not s[1:].isdigit():
+        return None
+    from src.cli.session_state import resolve_index, last_scan_count
+    n = int(s[1:])
+    r = resolve_index(n)
+    if r is None:
+        total = last_scan_count()
+        if total == 0:
+            print("  [!] 还没有扫描结果。先跑：bz scan [主题] 或 scan market")
+        else:
+            print(f"  [!] 序号 {n} 超出范围（最近扫描共 {total} 只）")
+        return None
+    item, warning = r
+    if warning:
+        print(f"  ⚠ {warning}")
+    return item.get("code", ""), item.get("name", "")
+
+
 def parse_input(user_input: str):
     """解析用户输入，返回 (mode, args_dict) 或 None"""
     text = user_input.strip().strip("\ufeff").strip()
@@ -154,7 +177,15 @@ def parse_input(user_input: str):
 
     # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
     if cmd in ("l", "live"):
-        if len(parts) < 2 or not _is_stock_code(parts[1]):
+        if len(parts) < 2:
+            print("  [!] 用法: l <6位代码> 或 l #N（取最近扫描第N只）")
+            return None
+        if parts[1].startswith("#"):
+            ref = _resolve_index_arg(parts[1])
+            if ref is None:
+                return None
+            return ("live", {"stock_code": ref[0]})
+        if not _is_stock_code(parts[1]):
             print("  [!] 用法: l <6位股票代码>  例如: l 600519")
             return None
         return ("live", {"stock_code": parts[1]})
@@ -235,23 +266,42 @@ def parse_input(user_input: str):
             return ("pos_list", {})
         elif sub in ("add", "a"):
             if len(parts) < 3:
-                print("  [!] 用法: pos add <代码> [名称] [价格] [仓位]")
+                print("  [!] 用法: pos add <代码|#N> [名称] [价格] [仓位]")
                 return None
-            args = {"stock_code": parts[2]}
-            if len(parts) >= 4:
-                args["name"] = parts[3]
-            if len(parts) >= 5:
-                try:
-                    args["price"] = float(parts[4])
-                except ValueError:
-                    print(f"  [!] 价格无效: '{parts[4]}'（需数字），pos add 取消")
+            if parts[2].startswith("#"):
+                # #N：code+name 取自最近扫描，后面是 price [ratio]
+                ref = _resolve_index_arg(parts[2])
+                if ref is None:
                     return None
-            if len(parts) >= 6:
-                try:
-                    args["ratio"] = float(parts[5])
-                except ValueError:
-                    print(f"  [!] 仓位无效: '{parts[5]}'（需数字 0-1），pos add 取消")
-                    return None
+                args = {"stock_code": ref[0], "name": ref[1]}
+                if len(parts) >= 4:
+                    try:
+                        args["price"] = float(parts[3])
+                    except ValueError:
+                        print(f"  [!] 价格无效: '{parts[3]}'（需数字），pos add 取消")
+                        return None
+                if len(parts) >= 5:
+                    try:
+                        args["ratio"] = float(parts[4])
+                    except ValueError:
+                        print(f"  [!] 仓位无效: '{parts[4]}'（需数字 0-1），pos add 取消")
+                        return None
+            else:
+                args = {"stock_code": parts[2]}
+                if len(parts) >= 4:
+                    args["name"] = parts[3]
+                if len(parts) >= 5:
+                    try:
+                        args["price"] = float(parts[4])
+                    except ValueError:
+                        print(f"  [!] 价格无效: '{parts[4]}'（需数字），pos add 取消")
+                        return None
+                if len(parts) >= 6:
+                    try:
+                        args["ratio"] = float(parts[5])
+                    except ValueError:
+                        print(f"  [!] 仓位无效: '{parts[5]}'（需数字 0-1），pos add 取消")
+                        return None
             return ("pos_add", args)
         elif sub in ("remove", "rm", "r", "del", "d"):
             if len(parts) < 3:
@@ -336,6 +386,12 @@ def parse_input(user_input: str):
                 check = True
             elif not meta:
                 meta = p
+        # #N 引用：取最近扫描第 N 只的 code
+        if meta.startswith("#"):
+            ref = _resolve_index_arg(meta)
+            if ref is None:
+                return None
+            meta = ref[0]
         return ("benzong", {"meta": meta, "manual": manual, "refresh": refresh, "check": check})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
@@ -882,6 +938,29 @@ def run_benzong_scan(args: dict):
     if batch["failures"]:
         print(f"  [dim]失败: {', '.join(f['code'] for f in batch['failures'])}[/dim]")
         print()
+
+    # v0.8.7 体验重构 Step1：scan 结果落盘 + 存状态供 #N 快捷接住
+    try:
+        from src.cli.session_state import save_last_scan, persist_scan_report
+        _items = []
+        for _it in batch["top_n"]:
+            _items.append({
+                "code": _it["code"], "name": _it["name"],
+                "score": _it.get("normalized_score", _it["total_score"]),
+                "grade": _it.get("effective_grade", _it["grade"]),
+                "confidence": _it["confidence"],
+                "dims": _it.get("dim_scores", {}),
+                "invalidate": _it.get("invalidate", False),
+            })
+        _src = f"bz scan {theme}".strip()
+        save_last_scan(_items, _src)
+        _rp = persist_scan_report(_items, _src)
+        if _rp:
+            print(f"  📝 扫描结果已存：{_rp}")
+            print(f"  💡 输序号快捷：bz #1 评分 / l #1 分析 / pos add #1 加仓")
+            print()
+    except Exception as _e:
+        print(f"  [dim]scan 落盘失败（不影响主流程）: {_e}[/dim]")
 
     # ── Step 4 (可选): 批量回测 TopN ──
     if not do_backtest:

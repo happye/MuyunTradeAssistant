@@ -2000,6 +2000,29 @@ def scan_market(
 
     console.print(table)
 
+    # v0.8.7 体验重构 Step1：候选池落盘 + 存状态供 #N 快捷接住
+    try:
+        from src.cli.session_state import save_last_scan, persist_scan_report
+        _items = []
+        for c in candidates:
+            _items.append({
+                "code": c.stock_code, "name": c.stock_name,
+                "price": c.price, "change_pct": c.change_pct,
+                "turnover_rate": c.turnover_rate, "volume_ratio": c.volume_ratio,
+                "amplitude": c.amplitude,
+                "amount_yi": round(c.amount / 1e8, 1) if c.amount else None,
+            })
+        _cols = [("price", "价"), ("change_pct", "涨跌%"), ("turnover_rate", "换手%"),
+                 ("volume_ratio", "量比"), ("amplitude", "振幅%"), ("amount_yi", "额(亿)")]
+        _src = f"scan market {rule_display}"
+        save_last_scan(_items, _src)
+        _rp = persist_scan_report(_items, _src, columns=_cols)
+        if _rp:
+            console.print(f"  [dim]📝 扫描结果已存：{_rp}[/dim]")
+            console.print(f"  [dim]💡 输序号快捷：l #1 分析 / bz #1 评分 / pos add #1 加仓[/dim]")
+    except Exception as _e:
+        logger.debug(f"scan market 落盘失败（不影响主流程）: {_e}")
+
     # ===== Step 2: 深度分析 =====
     # 已分析的代码集合，支持多轮选择
     analyzed_results = []
