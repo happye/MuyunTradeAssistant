@@ -4,6 +4,37 @@ Command failures and integration errors.
 
 ---
 
+## [ERR-20260718-001] uv_run_pytest
+
+**Logged**: 2026-07-18T00:15:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: tests
+
+### Summary
+`uv run pytest` 走系统 python（.venv 无 pytest），导致 import 第三方包（textual）失败。要用 `uv run python -m pytest` 走 .venv python。
+
+### Error
+```
+ModuleNotFoundError: No module named 'textual'
+```
+
+### Context
+- .venv 装了 textual（uv pip install textual），但没装 pytest（历史测试用系统 pytest）
+- `uv run pytest` 找到系统 PATH 的 pytest.exe（系统 python，无 textual）
+- `uv run python -c "import textual"` 成功（用 .venv python）
+- 已补装 pytest==9.1.1 + pytest-asyncio==1.4.0 到 .venv（requirements.txt 已加）
+
+### Suggested Fix
+测试统一用 `uv run python -m pytest tests/...`（强制 .venv python + pytest 模块），不用 `uv run pytest`。
+
+### Metadata
+- Reproducible: yes
+- Related Files: tests/test_tui.py, requirements.txt
+- Tags: uv, pytest, venv
+
+---
+
 ## [ERR-20260515-001] run_in_terminal
 
 **Logged**: 2026-05-15T15:40:00+08:00

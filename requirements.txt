@@ -6,6 +6,11 @@
 pyyaml==6.0.3
 pydantic==2.12.5
 rich==14.3.3                # CLI 美化输出
+textual==8.2.8              # TUI 框架（Phase 1，rich 同团队，多面板不滚动）
+
+# ── 测试（开发依赖，.venv 跑 pytest 用）──
+pytest==9.1.1
+pytest-asyncio==1.4.0       # async 测试（textual pilot）
 
 # ── 数据处理 ──
 numpy==2.4.4
