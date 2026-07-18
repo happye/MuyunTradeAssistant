@@ -185,6 +185,26 @@ def test_events(client, monkeypatch):
     assert "测试事件".encode("utf-8") in r.data
 
 
+def test_bz(client, monkeypatch):
+    from src.web import app as app_mod
+
+    def _fake_bz(code):
+        return {"code": code, "name": "贵州茅台", "norm": 82.0, "grade": "B",
+                "raw_grade": "B", "confidence": 0.75, "dims": {}, "warnings": []}
+    monkeypatch.setattr(app_mod, "_bz_work", _fake_bz)
+
+    r = client.post("/bz", data={"code": "600519"})
+    assert r.status_code == 200
+    assert "评分".encode("utf-8") in r.data
+    time.sleep(0.3)
+    m = re.search(r"/bz-task/([a-f0-9]+)", r.data.decode("utf-8"))
+    assert m, f"task_id 未找到: {r.data}"
+    r2 = client.get(f"/bz-task/{m.group(1)}")
+    assert r2.status_code == 200
+    assert "贵州茅台".encode("utf-8") in r2.data
+    assert b"B" in r2.data  # grade
+
+
 def test_backtest(client, monkeypatch):
     from src.web import app as app_mod
 

@@ -272,6 +272,56 @@ def events():
         return f'<div class="text-red-600 p-2">事件获取失败: {e}</div>'
 
 
+def _bz_work(code):
+    """后台：笨总6维评分 auto_score"""
+    if not _init_engines():
+        return {"error": "引擎初始化失败"}
+    from src.core.benzong import auto_score
+    result = auto_score(code, force_refresh=False)
+    bs = result.score
+    return {
+        "code": code,
+        "name": getattr(bs, "stock_name", code) or code,
+        "norm": bs.normalized_score(),
+        "grade": bs.effective_grade(),
+        "raw_grade": bs.grade(),
+        "confidence": result.overall_confidence,
+        "dims": result.dimensions_meta,
+        "warnings": result.warnings,
+    }
+
+
+@app.route("/bz", methods=["POST"])
+def bz():
+    """触发笨总评分（code 在 form，结果去 #bz-panel）"""
+    code = request.form.get("code", "")
+    if not code:
+        return '<div class="text-red-600 p-2">无代码</div>'
+    task_id = start_task(_bz_work, code)
+    return render_template("fragments/progress.html", status="running", task_id=task_id,
+                           action="bz-task", target="bz-panel",
+                           message=f"笨总评分 {code} 中（30-60s，6维AI）")
+
+
+@app.route("/bz-task/<task_id>")
+def bz_status(task_id):
+    task = get_task(task_id)
+    if task is None:
+        return render_template("fragments/progress.html", status="error",
+                               action="bz-task", target="bz-panel", error="任务不存在"), 404
+    if task["status"] == "running":
+        return render_template("fragments/progress.html", status="running", task_id=task_id,
+                               action="bz-task", target="bz-panel", message="评分中（30-60s）")
+    if task["status"] == "error":
+        return render_template("fragments/progress.html", status="error",
+                               action="bz-task", target="bz-panel", error=task["error"])
+    result = task["result"] or {}
+    if result.get("error"):
+        return render_template("fragments/progress.html", status="error",
+                               action="bz-task", target="bz-panel", error=result["error"])
+    return render_template("fragments/bz_result.html", **result)
+
+
 if __name__ == "__main__":
     import os
     app.run(debug=True, use_reloader=False, port=int(os.environ.get("PORT", 5000)))
