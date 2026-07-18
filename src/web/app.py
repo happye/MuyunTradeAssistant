@@ -171,9 +171,32 @@ def analyze_status(task_id):
 
 @app.route("/pos/add", methods=["POST"])
 def pos_add():
-    """加仓（Phase 1 占位，下轮接 PortfolioManager）"""
+    """加仓（接 PortfolioManager.add_position）"""
     code = request.form.get("code", "")
-    return f'<div class="text-green-600 p-2">加仓 {code}（功能开发中，下轮接 PortfolioManager）</div>'
+    name = request.form.get("name", "")
+    price_str = request.form.get("price", "")
+    if not code:
+        return '<div class="text-red-600 p-2">加仓失败：无代码</div>'
+    if not _init_engines():
+        return '<div class="text-red-600 p-2">引擎未初始化</div>'
+    try:
+        price = float(price_str) if price_str else None
+        _portfolio.add_position(stock_code=code, stock_name=name,
+                                entry_price=price, ratio=0.20)
+        positions = _portfolio.list_positions()
+        return render_template("fragments/positions.html", positions=positions,
+                               msg=f"已加仓 {code}（20%）")
+    except Exception as e:
+        return f'<div class="text-red-600 p-2">加仓失败: {e}</div>'
+
+
+@app.route("/pos", methods=["GET"])
+def pos_list():
+    """持仓列表（刷新持仓栏）"""
+    if not _init_engines():
+        return '<div class="text-red-600 p-2">引擎未初始化</div>'
+    positions = _portfolio.list_positions()
+    return render_template("fragments/positions.html", positions=positions)
 
 
 if __name__ == "__main__":

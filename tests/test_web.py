@@ -30,8 +30,24 @@ class _FakeScanner:
 
 
 class _FakePM:
+    def __init__(self):
+        self._positions = []
+
     def list_positions(self):
-        return []
+        return self._positions
+
+    def add_position(self, stock_code, stock_name="", entry_price=None, ratio=0.20, lifecycle="OPEN"):
+        class _Pos:
+            def __init__(self, code, name, ratio):
+                self.stock_code = code
+                self.stock_name = name
+                self.current_ratio = ratio
+                self.entry_price = None
+                self.lifecycle = "OPEN"
+        self._positions.append(_Pos(stock_code, stock_name, ratio))
+
+    def to_strategy_state(self, code):
+        return None
 
 
 # analyze mock 对象
@@ -143,7 +159,13 @@ def test_analyze_completes_to_panel(client):
     assert b"hx-post" in r2.data  # 加仓按钮联动
 
 
-def test_pos_add_placeholder(client):
-    r = client.post("/pos/add", data={"code": "600519"})
+def test_pos_add(client):
+    r = client.post("/pos/add", data={"code": "600519", "name": "贵州茅台", "price": "1800"})
     assert r.status_code == 200
-    assert "600519".encode("utf-8") in r.data
+    assert "已加仓".encode("utf-8") in r.data
+    assert "600519".encode("utf-8") in r.data  # positions 片段含
+
+
+def test_pos_list(client):
+    r = client.get("/pos")
+    assert r.status_code == 200

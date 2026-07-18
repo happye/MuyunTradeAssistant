@@ -1,0 +1,17 @@
+{% if msg %}
+<div class="text-green-600 text-sm mb-2 bg-green-50 p-2 rounded">{{ msg }}</div>
+{% endif %}
+{% if positions %}
+<div class="space-y-1">
+    {% for p in positions %}
+    <div class="flex justify-between items-center text-sm border-b border-gray-100 py-1.5 px-1">
+        <span class="font-mono text-gray-700">{{ p.stock_code }}</span>
+        <span class="text-gray-600 flex-1 px-2 truncate">{{ p.stock_name or '-' }}</span>
+        <span class="text-gray-400 text-xs">{{ p.lifecycle }}</span>
+        <span class="text-blue-600 font-semibold ml-2">{{ "%.0f"|format(p.current_ratio*100) }}%</span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-sm p-2">无持仓</p>
+{% endif %}
