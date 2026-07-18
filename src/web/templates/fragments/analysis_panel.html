@@ -26,6 +26,8 @@
         <button hx-post="/pos/add" hx-target="#positions-panel" hx-swap="innerHTML"
                 hx-vals='{"code":"{{ stock_data.stock_code }}","name":"{{ stock_data.stock_name }}","price":"{{ stock_data.price }}"}'
                 class="bg-green-500 hover:bg-green-600 text-white px-3 py-1.5 rounded text-sm font-medium">➕ 加仓</button>
+        <button hx-post="/backtest/{{ stock_data.stock_code }}" hx-target="#analysis-panel" hx-swap="innerHTML"
+                class="bg-purple-500 hover:bg-purple-600 text-white px-3 py-1.5 rounded text-sm font-medium">📊 回测</button>
     </div>
 </div>
 {% endif %}

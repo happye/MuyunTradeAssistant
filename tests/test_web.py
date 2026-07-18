@@ -169,3 +169,22 @@ def test_pos_add(client):
 def test_pos_list(client):
     r = client.get("/pos")
     assert r.status_code == 200
+
+
+def test_backtest(client, monkeypatch):
+    from src.web import app as app_mod
+
+    def _fake_bt(code, start, end, capital):
+        return {"code": code, "total_return": 15.5, "benchmark": 8.2, "trades": 5}
+    monkeypatch.setattr(app_mod, "_backtest_work", _fake_bt)
+
+    r = client.post("/backtest/600519")
+    assert r.status_code == 200
+    assert "回测".encode("utf-8") in r.data
+    time.sleep(0.3)
+    m = re.search(r"/backtest-task/([a-f0-9]+)", r.data.decode("utf-8"))
+    assert m, f"task_id 未找到: {r.data}"
+    r2 = client.get(f"/backtest-task/{m.group(1)}")
+    assert r2.status_code == 200
+    assert "15.50".encode("utf-8") in r2.data  # total_return
+    assert "8.20".encode("utf-8") in r2.data  # benchmark

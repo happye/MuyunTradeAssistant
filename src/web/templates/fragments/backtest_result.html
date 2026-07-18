@@ -1,0 +1,18 @@
+<div class="p-4">
+    <h3 class="text-lg font-bold mb-3">📊 回测结果: {{ code }}</h3>
+    <div class="grid grid-cols-3 gap-2 text-sm">
+        <div class="bg-gray-50 p-3 rounded">
+            <p class="text-gray-500 text-xs">总收益</p>
+            <p class="font-bold text-lg {{ 'text-red-500' if total_return < 0 else 'text-green-500' }}">{{ "%+.2f"|format(total_return) }}%</p>
+        </div>
+        <div class="bg-gray-50 p-3 rounded">
+            <p class="text-gray-500 text-xs">基准</p>
+            <p class="font-bold text-lg text-gray-700">{{ "%+.2f"|format(benchmark) }}%</p>
+        </div>
+        <div class="bg-gray-50 p-3 rounded">
+            <p class="text-gray-500 text-xs">超额</p>
+            <p class="font-bold text-lg {{ 'text-red-500' if (total_return - benchmark) < 0 else 'text-green-500' }}">{{ "%+.2f"|format(total_return - benchmark) }}%</p>
+        </div>
+    </div>
+    <p class="text-xs text-gray-400 mt-2">交易次数: {{ trades }}（近1年，初始资金 10万）</p>
+</div>

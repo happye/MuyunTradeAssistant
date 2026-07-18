@@ -199,6 +199,68 @@ def pos_list():
     return render_template("fragments/positions.html", positions=positions)
 
 
+def _backtest_work(code, start, end, capital):
+    """同步：BacktestEngine.run（后台线程，复用 run_benzong_scan 参数）"""
+    from src.core.backtest_engine import BacktestEngine
+    from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+
+    config = load_config()
+    eng = BacktestEngine(
+        stock_code=normalize_stock_code(code),
+        start_date=start, end_date=end, initial_capital=capital,
+        execution_mode="framework_strict",
+        layer_mode="decision_strategy_execution",
+        skills_dir=config.get("skills", {}).get("dir", "./src/skills"),
+        signal_weights=config.get("decision", {}).get("signal_weights"),
+        skill_types=config.get("skills", {}).get("types"),
+        entry_exit_config=config.get("entry_exit"),
+        pyramid_config=load_pyramid_config(config),
+    )
+    res = eng.run()
+    return {
+        "code": code,
+        "total_return": res.total_return_pct,
+        "benchmark": res.benchmark_return_pct,
+        "trades": getattr(res, "total_trades", 0) or 0,
+    }
+
+
+@app.route("/backtest/<code>", methods=["POST"])
+def backtest(code):
+    """触发回测（后台线程）"""
+    if not _init_engines():
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="analysis-panel", error="引擎未初始化"), 500
+    from datetime import datetime, timedelta
+    end = request.form.get("end") or datetime.now().strftime("%Y-%m-%d")
+    start = request.form.get("start") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    capital = float(request.form.get("capital", "100000"))
+    task_id = start_task(_backtest_work, code, start, end, capital)
+    return render_template("fragments/progress.html", status="running", task_id=task_id,
+                           action="backtest-task", target="analysis-panel",
+                           message=f"回测 {code} 中（1-3分钟）")
+
+
+@app.route("/backtest-task/<task_id>")
+def backtest_status(task_id):
+    """htmx 轮询回测状态"""
+    task = get_task(task_id)
+    if task is None:
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="analysis-panel", error="任务不存在"), 404
+    if task["status"] == "running":
+        return render_template("fragments/progress.html", status="running", task_id=task_id,
+                               action="backtest-task", target="analysis-panel", message="回测中（1-3分钟）")
+    if task["status"] == "error":
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="analysis-panel", error=task["error"])
+    result = task["result"] or {}
+    if result.get("error"):
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="analysis-panel", error=result["error"])
+    return render_template("fragments/backtest_result.html", **result)
+
+
 if __name__ == "__main__":
     import os
     app.run(debug=True, use_reloader=False, port=int(os.environ.get("PORT", 5000)))
