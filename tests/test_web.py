@@ -171,6 +171,20 @@ def test_pos_list(client):
     assert r.status_code == 200
 
 
+def test_events(client, monkeypatch):
+    from src.data import news_client
+
+    monkeypatch.setattr(
+        news_client.NewsClient, "get_macro_news",
+        classmethod(lambda cls, max_count=10: [
+            {"title": "测试事件", "time": "2026-07-18", "summary": "测试摘要"}
+        ])
+    )
+    r = client.get("/events")
+    assert r.status_code == 200
+    assert "测试事件".encode("utf-8") in r.data
+
+
 def test_backtest(client, monkeypatch):
     from src.web import app as app_mod
 

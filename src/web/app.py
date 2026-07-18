@@ -259,6 +259,19 @@ def pos_list():
     return render_template("fragments/positions.html", positions=positions)
 
 
+@app.route("/events")
+def events():
+    """事件预警（宏观新闻）"""
+    if not _init_engines():
+        return '<div class="text-red-600 p-2">引擎未初始化</div>'
+    try:
+        from src.data.news_client import NewsClient
+        news = NewsClient.get_macro_news(max_count=15)
+        return render_template("fragments/events.html", events=news)
+    except Exception as e:
+        return f'<div class="text-red-600 p-2">事件获取失败: {e}</div>'
+
+
 if __name__ == "__main__":
     import os
     app.run(debug=True, use_reloader=False, port=int(os.environ.get("PORT", 5000)))

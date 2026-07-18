@@ -55,15 +55,27 @@
             </div>
         </div>
     </div>
-    <!-- 底栏：持仓 -->
-    <div class="bg-white rounded-lg shadow p-3">
-        <div class="flex justify-between items-center mb-2 border-b pb-1">
-            <h2 class="font-semibold text-gray-700">持仓</h2>
-            <button hx-get="/pos" hx-target="#positions-panel" hx-swap="innerHTML"
-                    class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">↻ 刷新</button>
+    <!-- 底栏：持仓 + 事件预警 -->
+    <div class="grid grid-cols-2 gap-4">
+        <div class="bg-white rounded-lg shadow p-3">
+            <div class="flex justify-between items-center mb-2 border-b pb-1">
+                <h2 class="font-semibold text-gray-700">持仓</h2>
+                <button hx-get="/pos" hx-target="#positions-panel" hx-swap="innerHTML"
+                        class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">↻ 刷新</button>
+            </div>
+            <div id="positions-panel" hx-get="/pos" hx-trigger="load" hx-swap="innerHTML" class="overflow-auto" style="max-height:200px">
+                <p class="text-gray-400 text-sm p-2">加载中...</p>
+            </div>
         </div>
-        <div id="positions-panel" hx-get="/pos" hx-trigger="load" hx-swap="innerHTML" class="overflow-auto" style="max-height:200px">
-            <p class="text-gray-400 text-sm p-2">加载中...</p>
+        <div class="bg-white rounded-lg shadow p-3">
+            <div class="flex justify-between items-center mb-2 border-b pb-1">
+                <h2 class="font-semibold text-gray-700">事件预警</h2>
+                <button hx-get="/events" hx-target="#events-panel" hx-swap="innerHTML"
+                        class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">↻ 刷新</button>
+            </div>
+            <div id="events-panel" hx-get="/events" hx-trigger="load" hx-swap="innerHTML" class="overflow-auto" style="max-height:200px">
+                <p class="text-gray-400 text-sm p-2">加载中...</p>
+            </div>
         </div>
     </div>
 </div>

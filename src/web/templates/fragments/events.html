@@ -1,0 +1,15 @@
+{% if events %}
+<div class="space-y-1">
+    {% for e in events %}
+    <div class="text-sm border-b border-gray-100 py-1.5 px-1">
+        <span class="text-gray-400 text-xs mr-2">{{ e.get('time','') }}</span>
+        <span class="text-gray-700">{{ e.get('title','') }}</span>
+        {% if e.get('summary') %}
+        <p class="text-xs text-gray-400 pl-2 truncate">{{ e.get('summary','')[:80] }}</p>
+        {% endif %}
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-sm p-2">无事件</p>
+{% endif %}
