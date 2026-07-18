@@ -7,6 +7,7 @@ pyyaml==6.0.3
 pydantic==2.12.5
 rich==14.3.3                # CLI 美化输出
 textual==8.2.8              # TUI 框架（Phase 1，rich 同团队，多面板不滚动）
+flask==3.1.3               # web UI 框架（Phase 1，Jinja2+Tailwind+htmx 轻量栈）
 
 # ── 测试（开发依赖，.venv 跑 pytest 用）──
 pytest==9.1.1

@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>暮云思辨投资助手</title>
+    <script src="{{ url_for('static', filename='tailwind.js') }}"></script>
+    <script src="{{ url_for('static', filename='htmx.min.js') }}"></script>
+</head>
+<body class="bg-gray-50 min-h-screen">
+    {% block content %}{% endblock %}
+    <!-- htmx 自动 process 在本环境没触发（tailwind Play CDN 干扰），手动 process 绑定 hx-* + swap 后重 process -->
+    <script>
+      function _processHtmx(){ if(window.htmx){ htmx.process(document.body); } }
+      _processHtmx();
+      document.body.addEventListener('htmx:afterSwap', _processHtmx);
+      window.addEventListener('load', function(){
+        if(!window.htmx){
+          document.body.insertAdjacentHTML('beforeend',
+            '<div style="position:fixed;bottom:0;left:0;right:0;background:#dc2626;color:white;padding:10px;text-align:center;z-index:9999;font-size:14px">'
+            + '⚠ htmx 未加载，点扫描/点行无反应。</div>');
+        }
+      });
+    </script>
+</body>
+</html>

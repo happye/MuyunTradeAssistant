@@ -1,0 +1,8 @@
+{% if status == "running" %}
+<div hx-get="/{{ action }}/{{ task_id }}" hx-trigger="every 2s" hx-target="#{{ target }}" hx-swap="innerHTML"
+     class="text-blue-600 p-3">
+    {{ message|default("处理中") }} <span class="animate-pulse">⏳</span>
+</div>
+{% elif status == "error" %}
+<div class="text-red-600 p-3">{{ action }} 失败: {{ error }}</div>
+{% endif %}

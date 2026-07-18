@@ -1,0 +1,31 @@
+{% if candidates %}
+<table class="w-full text-sm">
+    <thead>
+        <tr class="bg-gray-100 text-gray-600 text-left">
+            <th class="p-2">#</th>
+            <th>代码</th>
+            <th>名称</th>
+            <th>价</th>
+            <th>涨跌%</th>
+            <th>换手%</th>
+            <th>量比</th>
+        </tr>
+    </thead>
+    <tbody>
+    {% for c in candidates %}
+        <tr class="hover:bg-blue-50 cursor-pointer border-b border-gray-100"
+            hx-post="/analyze/{{ c.stock_code }}" hx-target="#analysis-panel" hx-swap="innerHTML">
+            <td class="p-2">{{ loop.index }}</td>
+            <td class="font-mono">{{ c.stock_code }}</td>
+            <td>{{ c.stock_name }}</td>
+            <td>{{ "%.2f"|format(c.price) if c.price else "-" }}</td>
+            <td>{{ "%+.2f"|format(c.change_pct) if c.change_pct is not none else "-" }}</td>
+            <td>{{ "%.2f"|format(c.turnover_rate) if c.turnover_rate else "-" }}</td>
+            <td>{{ "%.2f"|format(c.volume_ratio) if c.volume_ratio else "-" }}</td>
+        </tr>
+    {% endfor %}
+    </tbody>
+</table>
+{% else %}
+<p class="text-gray-400 text-sm p-2">无候选股（可能非交易时段或条件过严）</p>
+{% endif %}
