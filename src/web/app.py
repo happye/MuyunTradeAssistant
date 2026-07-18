@@ -1,8 +1,7 @@
 """暮云思辨 web UI（flask + Jinja2 + Tailwind + htmx）
 
-Phase 1 接引擎：scan + analyze（threading 后台 + htmx 轮询）。
-复用 chat/tools.py 调引擎（quick_scan + _orchestrator.analyze）。
-pos/backtest 后续。
+Phase 1+2: scan + analyze + pos + backtest（threading 后台 + htmx 轮询）。
+_init_engines 在 work 函数内（不阻塞请求，progress 立即显示）。
 """
 
 import logging
@@ -23,7 +22,7 @@ _portfolio = None
 
 
 def _init_engines() -> bool:
-    """lazy 初始化引擎。成功返回 True。"""
+    """lazy 初始化引擎（线程安全：多线程调时只 init 一次，后续 return True）"""
     global _scanner, _orchestrator, _portfolio
     if _scanner is not None:
         return True
@@ -44,6 +43,9 @@ def _init_engines() -> bool:
 
 
 def _scan_work(rule="healthy_pullback", theme=None):
+    """后台：_init_engines + quick_scan（不阻塞请求）"""
+    if not _init_engines():
+        return {"error": "引擎初始化失败"}
     exclude = set()
     try:
         exclude = {p.stock_code for p in _portfolio.list_positions()}
@@ -56,7 +58,9 @@ def _scan_work(rule="healthy_pullback", theme=None):
 
 
 def _analyze_work(code):
-    """同步：_orchestrator.analyze（后台线程，复用 chat/tools.analyze_stock 模式）"""
+    """后台：_init_engines + _orchestrator.analyze"""
+    if not _init_engines():
+        return {"error": "引擎初始化失败"}
     from src.data.akshare_client import AKShareClient
     from src.data.models import StockData
 
@@ -98,6 +102,34 @@ def _analyze_work(code):
     return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai}
 
 
+def _backtest_work(code, start, end, capital):
+    """后台：_init_engines + BacktestEngine.run"""
+    if not _init_engines():
+        return {"error": "引擎初始化失败"}
+    from src.core.backtest_engine import BacktestEngine
+    from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+
+    config = load_config()
+    eng = BacktestEngine(
+        stock_code=normalize_stock_code(code),
+        start_date=start, end_date=end, initial_capital=capital,
+        execution_mode="framework_strict",
+        layer_mode="decision_strategy_execution",
+        skills_dir=config.get("skills", {}).get("dir", "./src/skills"),
+        signal_weights=config.get("decision", {}).get("signal_weights"),
+        skill_types=config.get("skills", {}).get("types"),
+        entry_exit_config=config.get("entry_exit"),
+        pyramid_config=load_pyramid_config(config),
+    )
+    res = eng.run()
+    return {
+        "code": code,
+        "total_return": res.total_return_pct,
+        "benchmark": res.benchmark_return_pct,
+        "trades": getattr(res, "total_trades", 0) or 0,
+    }
+
+
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -110,9 +142,7 @@ def ping():
 
 @app.route("/scan", methods=["POST"])
 def scan():
-    if not _init_engines():
-        return render_template("fragments/progress.html", status="error",
-                               action="scan", target="scan-panel", error="引擎初始化失败"), 500
+    """触发扫描（后台线程，progress 立即返回，_init_engines 在后台）"""
     rule = request.form.get("rule", "healthy_pullback")
     theme = request.form.get("theme") or None
     task_id = start_task(_scan_work, rule, theme)
@@ -133,16 +163,16 @@ def scan_status(task_id):
         return render_template("fragments/progress.html", status="error",
                                action="scan", target="scan-panel", error=task["error"])
     result = task["result"] or {}
+    if result.get("error"):
+        return render_template("fragments/progress.html", status="error",
+                               action="scan", target="scan-panel", error=result["error"])
     candidates = result.get("candidates", [])
     return render_template("fragments/scan_table.html", candidates=candidates)
 
 
 @app.route("/analyze/<code>", methods=["POST"])
 def analyze(code):
-    """触发深度分析（后台线程）"""
-    if not _init_engines():
-        return render_template("fragments/progress.html", status="error",
-                               action="analyze-task", target="analysis-panel", error="引擎初始化失败"), 500
+    """触发深度分析（后台，progress 立即）"""
     task_id = start_task(_analyze_work, code)
     return render_template("fragments/progress.html", status="running", task_id=task_id,
                            action="analyze-task", target="analysis-panel",
@@ -151,7 +181,6 @@ def analyze(code):
 
 @app.route("/analyze-task/<task_id>")
 def analyze_status(task_id):
-    """htmx 轮询分析状态（用 /analyze-task/ 避免和 /analyze/<code> 冲突）"""
     task = get_task(task_id)
     if task is None:
         return render_template("fragments/progress.html", status="error",
@@ -167,6 +196,38 @@ def analyze_status(task_id):
         return render_template("fragments/progress.html", status="error",
                                action="analyze-task", target="analysis-panel", error=result["error"])
     return render_template("fragments/analysis_panel.html", **result)
+
+
+@app.route("/backtest/<code>", methods=["POST"])
+def backtest(code):
+    """触发回测（后台，progress 立即，结果去 #backtest-panel 不覆盖分析）"""
+    from datetime import datetime, timedelta
+    end = request.form.get("end") or datetime.now().strftime("%Y-%m-%d")
+    start = request.form.get("start") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    capital = float(request.form.get("capital", "100000"))
+    task_id = start_task(_backtest_work, code, start, end, capital)
+    return render_template("fragments/progress.html", status="running", task_id=task_id,
+                           action="backtest-task", target="backtest-panel",
+                           message=f"回测 {code} 中（1-3分钟）")
+
+
+@app.route("/backtest-task/<task_id>")
+def backtest_status(task_id):
+    task = get_task(task_id)
+    if task is None:
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="backtest-panel", error="任务不存在"), 404
+    if task["status"] == "running":
+        return render_template("fragments/progress.html", status="running", task_id=task_id,
+                               action="backtest-task", target="backtest-panel", message="回测中（1-3分钟）")
+    if task["status"] == "error":
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="backtest-panel", error=task["error"])
+    result = task["result"] or {}
+    if result.get("error"):
+        return render_template("fragments/progress.html", status="error",
+                               action="backtest-task", target="backtest-panel", error=result["error"])
+    return render_template("fragments/backtest_result.html", **result)
 
 
 @app.route("/pos/add", methods=["POST"])
@@ -192,73 +253,10 @@ def pos_add():
 
 @app.route("/pos", methods=["GET"])
 def pos_list():
-    """持仓列表（刷新持仓栏）"""
     if not _init_engines():
         return '<div class="text-red-600 p-2">引擎未初始化</div>'
     positions = _portfolio.list_positions()
     return render_template("fragments/positions.html", positions=positions)
-
-
-def _backtest_work(code, start, end, capital):
-    """同步：BacktestEngine.run（后台线程，复用 run_benzong_scan 参数）"""
-    from src.core.backtest_engine import BacktestEngine
-    from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
-
-    config = load_config()
-    eng = BacktestEngine(
-        stock_code=normalize_stock_code(code),
-        start_date=start, end_date=end, initial_capital=capital,
-        execution_mode="framework_strict",
-        layer_mode="decision_strategy_execution",
-        skills_dir=config.get("skills", {}).get("dir", "./src/skills"),
-        signal_weights=config.get("decision", {}).get("signal_weights"),
-        skill_types=config.get("skills", {}).get("types"),
-        entry_exit_config=config.get("entry_exit"),
-        pyramid_config=load_pyramid_config(config),
-    )
-    res = eng.run()
-    return {
-        "code": code,
-        "total_return": res.total_return_pct,
-        "benchmark": res.benchmark_return_pct,
-        "trades": getattr(res, "total_trades", 0) or 0,
-    }
-
-
-@app.route("/backtest/<code>", methods=["POST"])
-def backtest(code):
-    """触发回测（后台线程）"""
-    if not _init_engines():
-        return render_template("fragments/progress.html", status="error",
-                               action="backtest-task", target="analysis-panel", error="引擎未初始化"), 500
-    from datetime import datetime, timedelta
-    end = request.form.get("end") or datetime.now().strftime("%Y-%m-%d")
-    start = request.form.get("start") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-    capital = float(request.form.get("capital", "100000"))
-    task_id = start_task(_backtest_work, code, start, end, capital)
-    return render_template("fragments/progress.html", status="running", task_id=task_id,
-                           action="backtest-task", target="analysis-panel",
-                           message=f"回测 {code} 中（1-3分钟）")
-
-
-@app.route("/backtest-task/<task_id>")
-def backtest_status(task_id):
-    """htmx 轮询回测状态"""
-    task = get_task(task_id)
-    if task is None:
-        return render_template("fragments/progress.html", status="error",
-                               action="backtest-task", target="analysis-panel", error="任务不存在"), 404
-    if task["status"] == "running":
-        return render_template("fragments/progress.html", status="running", task_id=task_id,
-                               action="backtest-task", target="analysis-panel", message="回测中（1-3分钟）")
-    if task["status"] == "error":
-        return render_template("fragments/progress.html", status="error",
-                               action="backtest-task", target="analysis-panel", error=task["error"])
-    result = task["result"] or {}
-    if result.get("error"):
-        return render_template("fragments/progress.html", status="error",
-                               action="backtest-task", target="analysis-panel", error=result["error"])
-    return render_template("fragments/backtest_result.html", **result)
 
 
 if __name__ == "__main__":
