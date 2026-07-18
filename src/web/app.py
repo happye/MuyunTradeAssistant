@@ -272,6 +272,21 @@ def events():
         return f'<div class="text-red-600 p-2">事件获取失败: {e}</div>'
 
 
+@app.route("/reports")
+def reports():
+    """列分析报告（bz/scan markdown，持久化整合）"""
+    from pathlib import Path
+    report_dir = Path(__file__).resolve().parents[2] / "分析报告"
+    reports = []
+    if report_dir.exists():
+        for sub in ["bz", "scan"]:
+            sub_dir = report_dir / sub
+            if sub_dir.exists():
+                for f in sorted(sub_dir.glob("*.md"), reverse=True)[:10]:
+                    reports.append({"type": sub, "name": f.stem})
+    return render_template("fragments/reports.html", reports=reports)
+
+
 def _bz_work(code):
     """后台：笨总6维评分 auto_score"""
     if not _init_engines():

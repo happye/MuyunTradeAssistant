@@ -171,6 +171,11 @@ def test_pos_list(client):
     assert r.status_code == 200
 
 
+def test_reports(client):
+    r = client.get("/reports")
+    assert r.status_code == 200  # 空或列表都 200
+
+
 def test_events(client, monkeypatch):
     from src.data import news_client
 

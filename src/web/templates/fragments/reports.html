@@ -1,0 +1,12 @@
+{% if reports %}
+<div class="space-y-1">
+    {% for r in reports %}
+    <div class="text-sm border-b border-gray-100 py-1.5 px-1">
+        <span class="text-xs text-gray-400 mr-2 bg-gray-100 px-1.5 py-0.5 rounded">{{ r.type }}</span>
+        <span class="text-gray-700">{{ r.name }}</span>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<p class="text-gray-400 text-sm p-2">无报告（跑过 bz/scan 后生成）</p>
+{% endif %}

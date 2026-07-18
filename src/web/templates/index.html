@@ -53,8 +53,8 @@
             </div>
         </div>
     </div>
-    <!-- 底栏：持仓 + 事件预警 -->
-    <div class="grid grid-cols-2 gap-4">
+    <!-- 底栏：持仓 + 事件预警 + 历史报告 -->
+    <div class="grid grid-cols-3 gap-4">
         <div class="bg-white rounded-lg shadow p-3">
             <div class="flex justify-between items-center mb-2 border-b pb-1">
                 <h2 class="font-semibold text-gray-700">持仓</h2>
@@ -72,6 +72,16 @@
                         class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">↻ 刷新</button>
             </div>
             <div id="events-panel" hx-get="/events" hx-trigger="load" hx-swap="innerHTML" class="overflow-auto" style="max-height:200px">
+                <p class="text-gray-400 text-sm p-2">加载中...</p>
+            </div>
+        </div>
+        <div class="bg-white rounded-lg shadow p-3">
+            <div class="flex justify-between items-center mb-2 border-b pb-1">
+                <h2 class="font-semibold text-gray-700">历史报告</h2>
+                <button hx-get="/reports" hx-target="#reports-panel" hx-swap="innerHTML"
+                        class="text-xs bg-gray-100 hover:bg-gray-200 text-gray-600 px-2 py-1 rounded">↻ 刷新</button>
+            </div>
+            <div id="reports-panel" hx-get="/reports" hx-trigger="load" hx-swap="innerHTML" class="overflow-auto" style="max-height:200px">
                 <p class="text-gray-400 text-sm p-2">加载中...</p>
             </div>
         </div>
