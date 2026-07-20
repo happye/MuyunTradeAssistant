@@ -96,8 +96,8 @@ ai:
   deepseek:
     api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 DEEPSEEK_API_KEY（ISS-042）
     base_url: "https://api.deepseek.com"
-    model: "deepseek-chat"        # 默认用chat（稳定JSON输出，快+便宜）
-    model_pro: "deepseek-chat"    # 深度分析时也用chat；v4-flash/v4-pro是思考型模型，偶尔返回空content
+    model: "deepseek-v4-flash"   # deepseek-chat 2026-07-24弃用->v4-flash；V4默认思考模式，非思考需调用处传thinking.type=disabled
+    model_pro: "deepseek-v4-flash"  # 深度分析也用flash非思考；v4-pro思考型更贵且偶有空content，不用
   kimi:
     api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 KIMI_API_KEY（ISS-042）
     base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）

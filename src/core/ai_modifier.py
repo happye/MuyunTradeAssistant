@@ -286,6 +286,9 @@ class AIModifier:
                 api_params["temperature"] = 0.1  # 低温度=更确定性输出
             api_params["max_completion_tokens"] = 800
             api_params["timeout"] = 30
+            # DeepSeek-V4 默认思考模式；保持非思考需 thinking.type=disabled（kimi 不支持，不传）
+            if model and model.startswith("deepseek"):
+                api_params["extra_body"] = {"thinking": {"type": "disabled"}}
 
             if self.debug:
                 logger.debug(f"AI Modifier DEBUG: API参数={api_params}")

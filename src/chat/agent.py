@@ -117,6 +117,10 @@ class ChatAgent:
         """
         params = dict(base_params)
         params["max_tokens"] = self.max_tokens
+        # DeepSeek-V4 默认思考模式；保持非思考（与旧 deepseek-chat 行为一致）需 thinking.type=disabled。
+        # kimi 不支持 thinking 参数，不传。
+        if self._model and self._model.startswith("deepseek"):
+            params["extra_body"] = {"thinking": {"type": "disabled"}}
         try:
             return self._client.chat.completions.create(**params)
         except Exception as e:

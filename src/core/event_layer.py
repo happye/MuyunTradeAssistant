@@ -591,6 +591,7 @@ class EventLayer:
                 temperature=0.1,
                 max_completion_tokens=300,
                 timeout=15,
+                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(self._ai_model).startswith("deepseek") else {}),
             )
 
             content = (response.choices[0].message.content or "").strip()
@@ -683,6 +684,7 @@ class EventLayer:
                 temperature=0.1,
                 max_completion_tokens=300,
                 timeout=15,
+                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(self._ai_model).startswith("deepseek") else {}),
             )
 
             content = (response.choices[0].message.content or "").strip()
