@@ -28,6 +28,10 @@ logger = logging.getLogger(__name__)
 DEFAULT_MAX_HISTORY = 20
 DEFAULT_MAX_TOOL_ROUNDS = 3
 DEFAULT_MAX_RESULT_LENGTH = 4000
+# max_tokens 默认值：DeepSeek-V4 单次输出上限 384K token（官方文档 api-docs.deepseek.com）。
+# 拉满使用——不自行设小的额度，避免长对话超额被静默截断、回答不完整损失用户。
+# 边界保护见 _call_api()：若 API 拒绝该值（超实际上限）自动降级重试。
+DEFAULT_MAX_TOKENS = 384000
 
 
 class ChatAgent:
@@ -46,6 +50,7 @@ class ChatAgent:
         self.max_history = chat_cfg.get("max_history_messages", DEFAULT_MAX_HISTORY)
         self.max_tool_rounds = chat_cfg.get("max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS)
         self.max_result_length = chat_cfg.get("max_result_length", DEFAULT_MAX_RESULT_LENGTH)
+        self.max_tokens = chat_cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
 
         # 初始化底层引擎
         init_engines(config)
@@ -102,6 +107,28 @@ class ChatAgent:
         unsupported_models = ("kimi-k2.6", "kimi-k2.5")
         return not model.startswith(unsupported_models)
 
+    def _call_api(self, base_params: dict):
+        """调用 chat.completions.create，注入 max_tokens 并兜底降级。
+
+        - 显式传 max_tokens（默认拉满 384K，DeepSeek-V4 输出上限），避免服务端
+          小默认值导致长回答被静默截断。
+        - 边界保护：若 API 拒绝该 max_tokens（超模型实际上限），降级到 32768 重试一次，
+          正常情况下不触发。
+        """
+        params = dict(base_params)
+        params["max_tokens"] = self.max_tokens
+        try:
+            return self._client.chat.completions.create(**params)
+        except Exception as e:
+            err = str(e).lower()
+            if "max_tokens" in err or "maximum" in err or "too long" in err or "exceed" in err:
+                logger.warning(
+                    f"Chat Agent: max_tokens={self.max_tokens} 被API拒绝({e})，降级到32768重试"
+                )
+                params["max_tokens"] = 32768
+                return self._client.chat.completions.create(**params)
+            raise
+
     def chat(self, user_input: str) -> str:
         """处理用户输入，返回AI回复
 
@@ -146,7 +173,7 @@ class ChatAgent:
                 api_params["temperature"] = 0.3
             api_params["timeout"] = 60  # Chat模式需要更长超时
 
-            response = self._client.chat.completions.create(**api_params)
+            response = self._call_api(api_params)
             message = response.choices[0].message
 
             # 检查是否需要调用工具
@@ -155,6 +182,13 @@ class ChatAgent:
             if not tool_calls:
                 # 无工具调用 → 直接返回文本
                 assistant_content = message.content or ""
+                # 检测输出截断（finish_reason=length 表示超 max_tokens 或上下文长度）
+                if response.choices[0].finish_reason == "length":
+                    assistant_content += (
+                        "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
+                        "可输入\"继续\"补全。"
+                    )
+                    logger.warning("Chat Agent: 回复被max_tokens截断(finish_reason=length)")
                 self._messages.append({
                     "role": "assistant",
                     "content": assistant_content
@@ -209,8 +243,15 @@ class ChatAgent:
             final_params["temperature"] = 0.3
         final_params["timeout"] = 60
 
-        final_response = self._client.chat.completions.create(**final_params)
+        final_response = self._call_api(final_params)
         final_content = final_response.choices[0].message.content or ""
+        # 检测输出截断
+        if final_response.choices[0].finish_reason == "length":
+            final_content += (
+                "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
+                "可输入\"继续\"补全。"
+            )
+            logger.warning("Chat Agent: 最终回复被max_tokens截断(finish_reason=length)")
         self._messages.append({"role": "assistant", "content": final_content})
         return final_content
 
