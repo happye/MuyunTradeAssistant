@@ -133,6 +133,23 @@ class ChatAgent:
                 return self._client.chat.completions.create(**params)
             raise
 
+    @staticmethod
+    def _trim_messages(messages: list[dict], max_history: int) -> list[dict]:
+        """裁剪对话历史（保留 system + 最近 N 条），保证 tool/tool_calls 配对完整。
+
+        裁剪切断 assistant(tool_calls)+tool 配对时，recent 开头会出现孤立 tool 消息
+        （其 assistant tool_calls 已被裁掉）-> API 400
+        "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"。
+        丢弃开头连续的孤立 tool 消息。
+        """
+        if len(messages) <= max_history + 1:
+            return messages
+        system_msg = messages[0]
+        recent = messages[-max_history:]
+        while recent and recent[0].get("role") == "tool":
+            recent.pop(0)
+        return [system_msg] + recent
+
     def chat(self, user_input: str) -> str:
         """处理用户输入，返回AI回复
 
@@ -149,10 +166,7 @@ class ChatAgent:
         self._messages.append({"role": "user", "content": user_input})
 
         # 裁剪历史（保留system消息 + 最近N条）
-        if len(self._messages) > self.max_history + 1:
-            system_msg = self._messages[0]
-            recent = self._messages[-self.max_history:]
-            self._messages = [system_msg] + recent
+        self._messages = self._trim_messages(self._messages, self.max_history)
 
         try:
             return self._run_conversation()
