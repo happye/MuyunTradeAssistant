@@ -89,7 +89,7 @@ def _call_ai_for_score(ai_client, system_prompt: str, user_prompt: str,
                 ],
                 temperature=0.2,  # 评分类任务低温
                 max_tokens=max_tokens,
-                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(model or "deepseek-v4-flash").startswith("deepseek") else {}),
+                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
             )
             text = response.choices[0].message.content or ""
             finish_reason = getattr(response.choices[0], "finish_reason", None)

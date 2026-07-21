@@ -100,6 +100,31 @@ def search_stocks_by_sector(keyword: str) -> str:
         return f"搜索行业板块时出错: {e}"
 
 
+def _get_stock_data_with_timeout(stock_code: str, timeout: int = 30):
+    """带超时的 get_stock_data，防 akshare/baostock 挂起卡死 chat。
+    复用 CLI main.py 的 daemon 线程 + t.join(timeout) 模式。超时返回 None 走降级。"""
+    import threading
+    from src.data.akshare_client import AKShareClient
+    result_container = [None]
+    error_container = [None]
+
+    def _fetch():
+        try:
+            result_container[0] = AKShareClient.calculate_indicators(stock_code)
+        except Exception as e:
+            error_container[0] = e
+
+    t = threading.Thread(target=_fetch, daemon=True)
+    t.start()
+    t.join(timeout=timeout)
+    if t.is_alive():
+        logger.warning(f"chat: 获取 {stock_code} 数据超时({timeout}s)，降级实时行情")
+        return None
+    if error_container[0]:
+        raise error_container[0]
+    return result_container[0]
+
+
 def analyze_stock(stock_code: str) -> str:
     """对单只股票进行深度分析"""
     if not _orchestrator:
@@ -111,7 +136,7 @@ def analyze_stock(stock_code: str) -> str:
         get_stock_data = AKShareClient.calculate_indicators
 
         # 获取数据
-        stock_data = get_stock_data(stock_code)
+        stock_data = _get_stock_data_with_timeout(stock_code)
 
         if not stock_data:
             # 降级：尝试仅获取实时行情
@@ -160,10 +185,24 @@ def analyze_stock(stock_code: str) -> str:
         )
 
         from src.chat.formatter import format_analysis_result
-        return format_analysis_result(
+        result = format_analysis_result(
             stock_data, decision_result, strategy_decision,
             execution_eval, ai_result
         )
+
+        # 审查修复H1：回写策略状态(inertia/cooldown/high_since_entry等)到portfolio.yaml，
+        # 与CLI一致；原chat只读不写->持仓股策略状态冻结，chat与CLI随时间分歧。
+        # 仅持仓股回写(非持仓回写会创建虚假持仓记录)
+        if has_position and pos and _portfolio_manager:
+            try:
+                _stock_name = stock_data.stock_name or stock_code
+                _portfolio_manager.update_from_strategy_decision(
+                    stock_code, _stock_name, strategy_decision, stock_data
+                )
+            except Exception as e:
+                logger.warning(f"chat回写策略状态失败({stock_code}): {e}")
+
+        return result
 
     except Exception as e:
         logger.error(f"analyze_stock失败: {e}")

@@ -727,7 +727,7 @@ class ScannerEngine:
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
-                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(self._match_model).startswith("deepseek") else {}),
+                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(self._match_model).startswith("deepseek-v4") else {}),
             )
             content = response.choices[0].message.content or "{}"
             parsed = json.loads(content)

@@ -154,7 +154,7 @@ def locate_theme_stocks(
             ],
             temperature=0.2,
             max_tokens=2400,
-            **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek") else {}),
+            **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
         )
         text = resp.choices[0].message.content or ""
     except Exception as e:

@@ -86,10 +86,12 @@ class ChatAgent:
             return
 
         base_url = provider_cfg.get("base_url", "")
+        if not base_url:
+            logger.warning(f"Chat Agent: {provider} base_url未配置，可能误连OpenAI官方端点")
         self._model = provider_cfg.get("model", "")
 
         try:
-            self._client = OpenAI(api_key=api_key, base_url=base_url)
+            self._client = OpenAI(api_key=api_key, base_url=base_url, max_retries=2, timeout=180)
             logger.info(
                 f"Chat Agent initialized: provider={provider}, "
                 f"model={self._model}"
@@ -116,21 +118,35 @@ class ChatAgent:
           正常情况下不触发。
         """
         params = dict(base_params)
-        params["max_tokens"] = self.max_tokens
-        # DeepSeek-V4 默认思考模式；保持非思考（与旧 deepseek-chat 行为一致）需 thinking.type=disabled。
-        # kimi 不支持 thinking 参数，不传。
-        if self._model and self._model.startswith("deepseek"):
+        _is_ds = bool(self._model and self._model.startswith("deepseek-v4"))
+        if _is_ds:
+            # DeepSeek-V4 默认思考模式；保持非思考需 thinking.type=disabled
             params["extra_body"] = {"thinking": {"type": "disabled"}}
+            params["max_tokens"] = self.max_tokens
+            _mt_key = "max_tokens"
+        else:
+            # kimi 等: 用 max_completion_tokens（kimi官方推荐，max_tokens已弃用）
+            params["max_completion_tokens"] = self.max_tokens
+            _mt_key = "max_completion_tokens"
         try:
             return self._client.chat.completions.create(**params)
         except Exception as e:
             err = str(e).lower()
-            if "max_tokens" in err or "maximum" in err or "too long" in err or "exceed" in err:
-                logger.warning(
-                    f"Chat Agent: max_tokens={self.max_tokens} 被API拒绝({e})，降级到32768重试"
-                )
-                params["max_tokens"] = 32768
-                return self._client.chat.completions.create(**params)
+            # 收窄匹配: 只对输出上限相关错误降级，避免context超限("maximum context length")误触发重试
+            if "max_tokens" in err or "max_completion_tokens" in err or ("输出" in err and "超过" in err):
+                for fallback in (32768, 8192, 4096):
+                    logger.warning(
+                        f"Chat Agent: {_mt_key}={self.max_tokens} 被API拒绝({e})，降级到{fallback}重试"
+                    )
+                    params[_mt_key] = fallback
+                    try:
+                        return self._client.chat.completions.create(**params)
+                    except Exception as e2:
+                        e2s = str(e2).lower()
+                        if "max_tokens" in e2s or "max_completion_tokens" in e2s or ("输出" in e2s and "超过" in e2s):
+                            continue
+                        raise
+                raise
             raise
 
     @staticmethod
@@ -142,6 +158,8 @@ class ChatAgent:
         "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"。
         丢弃开头连续的孤立 tool 消息。
         """
+        if max_history <= 0:
+            return [messages[0]] if messages else []
         if len(messages) <= max_history + 1:
             return messages
         system_msg = messages[0]
@@ -189,7 +207,7 @@ class ChatAgent:
             }
             if self._should_pass_temperature(self._model):
                 api_params["temperature"] = 0.3
-            api_params["timeout"] = 60  # Chat模式需要更长超时
+            api_params["timeout"] = 180  # Chat模式需要更长超时
 
             response = self._call_api(api_params)
             message = response.choices[0].message
@@ -213,11 +231,21 @@ class ChatAgent:
                 })
                 return assistant_content
 
+            # 审查修复M1: tool_calls被max_tokens截断(finish_reason=length)时arguments多半残缺
+            # -> json.loads失败->func_args={}->工具空参执行(AI装失忆)。检测length放弃执行残缺工具调用
+            if response.choices[0].finish_reason == "length":
+                _trunc_content = (message.content or "") + (
+                    "\n\n⚠️ 工具调用被截断（finish_reason=length），请重试或简化问题。"
+                )
+                logger.warning("Chat Agent: tool_calls被max_tokens截断(finish_reason=length)，放弃执行")
+                self._messages.append({"role": "assistant", "content": _trunc_content})
+                return _trunc_content
+
             # 有工具调用 → 执行工具 → 继续对话
             # 手动构建assistant消息dict（含tool_calls，不用model_dump()）
             self._messages.append({
                 "role": "assistant",
-                "content": message.content,
+                "content": message.content or "",
                 "tool_calls": [
                     {
                         "id": tc.id,
@@ -237,7 +265,7 @@ class ChatAgent:
 
                 try:
                     func_args = json.loads(func_args_str)
-                except json.JSONDecodeError:
+                except (json.JSONDecodeError, TypeError):
                     func_args = {}
 
                 # 执行工具
@@ -259,7 +287,7 @@ class ChatAgent:
         }
         if self._should_pass_temperature(self._model):
             final_params["temperature"] = 0.3
-        final_params["timeout"] = 60
+        final_params["timeout"] = 180
 
         final_response = self._call_api(final_params)
         final_content = final_response.choices[0].message.content or ""

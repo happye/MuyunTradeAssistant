@@ -287,7 +287,7 @@ class AIModifier:
             api_params["max_completion_tokens"] = 800
             api_params["timeout"] = 30
             # DeepSeek-V4 默认思考模式；保持非思考需 thinking.type=disabled（kimi 不支持，不传）
-            if model and model.startswith("deepseek"):
+            if model and model.startswith("deepseek-v4"):
                 api_params["extra_body"] = {"thinking": {"type": "disabled"}}
 
             if self.debug:

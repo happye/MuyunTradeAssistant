@@ -351,6 +351,16 @@ class PortfolioManager:
         if strategy_decision.position_action.value == "CLOSE_ALL":
             entry_date = None
             entry_price = None
+            high_since_entry_new = None
+        else:
+            # 持仓期最高价(Chandelier追踪止损用)：取 已存值/本次entry_exit算的/当前价 三者大值
+            # 审查修复H1关联：原PositionRecord构造未传high_since_entry -> to_dict覆盖重置None
+            # (CLI main.py:558手动改pos.high_since_entry会被suggest_update->本函数覆盖丢失)
+            _ee = getattr(strategy_decision, 'entry_exit', None) or {}
+            _ee_highest = _ee.get('highest_since_entry') if isinstance(_ee, dict) else None
+            _prev_high = existing.high_since_entry if existing else None
+            _cands = [v for v in [_prev_high, _ee_highest, price] if v is not None and v > 0]
+            high_since_entry_new = max(_cands) if _cands else None
 
         # 仓位比例：审查修复 M-E--HOLD_POSITION（含 PlanGuard 规则1压制 REDUCE->HOLD）时
         # 必须保持原仓位（existing.current_ratio），否则回退到 new_state.current_position_ratio
@@ -368,6 +378,7 @@ class PortfolioManager:
             entry_date=entry_date,
             entry_price=entry_price,
             current_ratio=actual_ratio,
+            high_since_entry=high_since_entry_new,
             last_action=pos_action,
             last_action_semantic=strategy_decision.action_semantic,
             last_sell_path=strategy_decision.sell_path,
