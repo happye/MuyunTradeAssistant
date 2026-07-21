@@ -141,3 +141,15 @@ rules:
     max_candidates: 80
     sort_by: "amount"
     sort_desc: true
+
+  # ===== 超跌错杀观察（oversold_confirm skill 深度确认）=====
+  oversold_watch:
+    name: "超跌错杀观察"
+    description: "当日大跌(<=-5%)+流动性好 -> 深度分析走 oversold_confirm skill 多维度AND确认到底(相对大盘超额跌幅+企稳信号+基本面+位置)"
+    filters:
+      - { field: "change_pct", op: "lte", value: -5.0 }
+      - { field: "amount", op: "gt", value: 50000000 }
+      - { field: "price", op: "gt", value: 2.0 }
+    max_candidates: 20
+    sort_by: "change_pct"
+    sort_desc: false

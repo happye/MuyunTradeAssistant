@@ -68,6 +68,8 @@ skills:
     - market_context
     - smart_money
     - take_profit
+    # 超跌到底确认（错杀观察，WATCH为主，6维AND）
+    - oversold_confirm
 
   # 技能分类（ISS-001: 信号去重）
   # base: 独立信号源，产出BUY/SELL/HOLD

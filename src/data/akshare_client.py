@@ -881,6 +881,7 @@ class AKShareClient:
                     stock_data.index_close = index_info["close"]
                     stock_data.index_change_pct = index_info.get("change_pct")
                     stock_data.index_high_250d = index_info.get("high_250d")
+                    stock_data.index_change_20d = index_info.get("change_20d")
                     ma250_str = f", MA250={index_info['ma250']:.0f}" if index_info.get('ma250') else ""
                     logger.info(f"大盘趋势: {index_info['trend']} (MA20={index_info['ma20']:.0f}, MA60={index_info['ma60']:.0f}{ma250_str})")
             except Exception as e:
@@ -888,6 +889,32 @@ class AKShareClient:
 
             stock_data.weekly = cls._build_timeframe_snapshot(weekly_df)
             stock_data.monthly = cls._build_timeframe_snapshot(monthly_df)
+
+            # ===== 超跌分析扩展字段（oversold_confirm skill 用）=====
+            # 多周期跌幅（个股绝对跌幅）
+            if len(df) >= 6:
+                stock_data.change_5d = round((close.iloc[-1] - close.iloc[-6]) / close.iloc[-6] * 100, 2)
+            if len(df) >= 21:
+                stock_data.change_20d = round((close.iloc[-1] - close.iloc[-21]) / close.iloc[-21] * 100, 2)
+            if len(df) >= 121:
+                stock_data.change_120d = round((close.iloc[-1] - close.iloc[-121]) / close.iloc[-121] * 100, 2)
+            # 120日高低点（补死字段，声明未填充）
+            if len(df) >= 120:
+                recent_120 = df.tail(120)
+                stock_data.high_120d = float(recent_120['最高'].max())
+                stock_data.low_120d = float(recent_120['最低'].min())
+            # 近20日收盘序列（企稳/底背离用）
+            stock_data.close_series = [round(float(x), 2) for x in close.tail(20).tolist() if pd.notna(x)]
+            # 近5日成交量序列（连续日企稳用）
+            stock_data.volume_series = [int(float(x)) for x in df['成交量'].tail(5).tolist() if pd.notna(x)]
+            # 近20日RSI-6序列（底背离用，单独算避免改_calculate_rsi签名）
+            if len(df) >= 24:
+                _delta = close.diff()
+                _gain = _delta.clip(lower=0).rolling(window=6, min_periods=6).mean()
+                _loss = (-_delta.clip(upper=0)).rolling(window=6, min_periods=6).mean()
+                _rs = _gain / _loss.replace(0, pd.NA)
+                _rsi_series = (100 - (100 / (1 + _rs))).round(2)
+                stock_data.rsi_6_series = [float(x) for x in _rsi_series.tail(20).dropna().tolist()]
 
             # 实控人减持公告（ISS-052 激活 top_signal 数据源）-- live 路径填充。
             # 回测路径 DataFeeder._build_stock_data 不走此函数 -> recent_announcements 缺省 None -> 跳过减持子信号
@@ -1124,6 +1151,11 @@ class AKShareClient:
             if pd.notna(df['preclose'].iloc[-1]) and df['preclose'].iloc[-1] > 0:
                 change_pct = round((df['close'].iloc[-1] - df['preclose'].iloc[-1]) / df['preclose'].iloc[-1] * 100, 2)
 
+            # 近20日涨跌幅（超跌相对跌幅用，oversold_confirm）
+            change_20d = None
+            if len(df) >= 21:
+                change_20d = round((df['close'].iloc[-1] - df['close'].iloc[-21]) / df['close'].iloc[-21] * 100, 2)
+
             # 判断趋势（基于年线的牛熊判断优先）
             trend = "NEUTRAL"
             if pd.notna(ma250):
@@ -1154,6 +1186,7 @@ class AKShareClient:
                 "close": round(float(latest_close), 2),
                 "change_pct": change_pct,
                 "high_250d": high_250d,
+                "change_20d": change_20d,
             }
 
         except Exception as e:

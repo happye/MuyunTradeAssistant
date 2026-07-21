@@ -1,0 +1,73 @@
+# 超跌到底确认技能（oversold_confirm）
+# 多维度AND交叉确认超跌到底，输出WATCH（错杀观察），永不直接BUY。
+# 设计依据：联网搜索(RSI<30+跌破布林下轨组合准确率87.5%、底背离=反转) +
+#   知识库(第23章S4不抢反弹/第26章涨幅>2倍按反转/第44章熊市超卖持续失效/第65章需资金催化) +
+#   笨总框架(valuation_position近3年低位) + Bocha查证2026-07市场技术性熊市(科技腰斩)。
+# A维度用相对大盘超额跌幅适配极端市场（绝对阈值在熊市全市场满足失效）。
+# C企稳信号是区分"下跌中继"vs"真到底"的关键（底背离/缩量止跌/下影线/站回MA5/布林收口≥2项）。
+
+name: oversold_confirm
+alias: 超跌到底确认
+type: regulator  # 调节器：不直接产BUY/SELL，修正其他信号得分
+description: 6维AND交叉确认超跌到底(A价格超跌/B技术超卖/C企稳/D价值/E基本面/F位置)，输出WATCH错杀观察
+
+rules:
+  # 规则1：6维全满足 -> WATCH（错杀观察，可入候选池）
+  # 全部维度通过才确认"真超跌已到底"，require:all 硬AND
+  - signal: SELL
+    confidence: 0.80
+    weight: 1.5
+    require: all
+    condition:
+      # A 价格超跌（多周期 + 相对大盘超额跌幅，适配极端市场）
+      change_5d_below:
+        threshold: -8.0
+        reason: "5日跌>8%"
+      relative_drop_to_index:
+        threshold: -15.0
+        reason: "20日超额跌>15%(相对大盘,只筛跌幅远超大盘的错杀)"
+      change_120d_below:
+        threshold: -25.0
+        reason: "120日跌>25%(长期超跌)"
+      # B 技术超卖（RSI+布林+KDJ组合,组合准确率87.5%）
+      rsi_6_below_30:
+        reason: "RSI-6超卖(<30)"
+      price_below_boll_lower:
+        reason: "跌破布林下轨(下轨是地下室,需企稳确认)"
+      kdj_j_below_20:
+        reason: "KDJ-J超卖(<20)"
+      # C 企稳信号(>=2项,区分下跌中继vs真到底)
+      stabilization_signals:
+        min_match: 2
+        reason: "企稳信号>=2项(底背离/缩量止跌/下影线/站回MA5/布林收口)"
+      # D 价值支撑(深度低位代理,阶段2加笨总valuation_position)
+      gain_from_60d_high_below:
+        threshold: -30.0
+        reason: "距60日高点跌>30%(深度低位,价值区域)"
+      # E 基本面排除(硬否决)
+      not_st:
+        reason: "非ST"
+      no_loss_forecast:
+        reason: "无预亏/预减/减持公告"
+      # F 位置排除(防追跌:月周共振=下跌中继不抄)
+      not_monthly_weekly_bearish:
+        reason: "非月周共振下跌(月周都跌=熊市中继,不抄)"
+
+  # 规则2：A+B超跌满足但未全确认企稳/基本面/位置 -> WATCH低置信(下跌中继观察,不抄)
+  # 仅A+B满足(超跌+超卖)但C/D/E/F未全通过=下跌中继,标观察不抄
+  - signal: SELL
+    confidence: 0.40
+    weight: 1.0
+    require: all
+    condition:
+      change_5d_below:
+        threshold: -8.0
+        reason: "5日跌>8%"
+      relative_drop_to_index:
+        threshold: -15.0
+        reason: "20日超额跌>15%"
+      rsi_6_below_30:
+        reason: "RSI-6超卖"
+      gain_from_60d_high_below:
+        threshold: -20.0
+        reason: "距60日高点跌>20%"

@@ -112,7 +112,7 @@ class YAMLBasedSkill(Skill):
         for rule in self.config.get("rules", []):
             rule_signal = rule.get("signal", "HOLD")
             condition = rule.get("condition", {})
-            condition_result = self._evaluate_condition(condition, data)
+            condition_result = self._evaluate_condition(condition, data, require=rule.get("require", "majority"))
             if condition_result["met"]:
                 matched_rules.append({
                     "signal": rule_signal,
@@ -506,7 +506,138 @@ class YAMLBasedSkill(Skill):
         reg["index_bearish"] = index_bearish
         reg["index_neutral"] = index_neutral
 
-    def _evaluate_condition(self, condition: dict, data: StockData) -> dict:
+        # ===== 超跌到底确认条件（oversold_confirm skill 用）=====
+        def change_n_below(d, p, n_days):
+            """近N日跌幅阈值（threshold为负数，如-8.0表示跌幅>=8%）"""
+            field_map = {5: d.change_5d, 20: d.change_20d, 120: d.change_120d}
+            val = field_map.get(n_days)
+            if val is None:
+                return False
+            threshold = p.get("threshold")
+            if threshold is None:
+                return False
+            return val <= threshold
+
+        def change_5d_below(d, p):
+            return change_n_below(d, p, 5)
+
+        def change_20d_below(d, p):
+            return change_n_below(d, p, 20)
+
+        def change_120d_below(d, p):
+            return change_n_below(d, p, 120)
+
+        def relative_drop_to_index(d, p):
+            """个股20日跌幅 - 大盘20日跌幅 = 超额跌幅（适配极端市场，只筛跌幅远超大盘的错杀）"""
+            if d.change_20d is None or d.index_change_20d is None:
+                return False
+            excess = d.change_20d - d.index_change_20d
+            threshold = p.get("threshold", -15.0)
+            return excess <= threshold
+
+        def gain_from_60d_high_below(d, p):
+            """距60日高点跌幅（回撤深度，threshold负数如-20.0）"""
+            if d.high_60d is None or d.high_60d <= 0 or d.price is None:
+                return False
+            drop = (d.price - d.high_60d) / d.high_60d * 100
+            threshold = p.get("threshold", -20.0)
+            return drop <= threshold
+
+        def rsi_bottom_divergence(d, p):
+            """RSI底背离：近20日价格创新低但RSI未创新低（RSI低点比前低高>=5）"""
+            if not d.close_series or len(d.close_series) < 10 or not d.rsi_6_series or len(d.rsi_6_series) < 10:
+                return False
+            mid = len(d.close_series) // 2
+            prev_low = min(d.close_series[:mid]) if d.close_series[:mid] else None
+            curr_low = min(d.close_series[mid:]) if d.close_series[mid:] else None
+            if prev_low is None or curr_low is None or curr_low >= prev_low:
+                return False  # 未创新低
+            rsi_mid = len(d.rsi_6_series) // 2
+            prev_rsi = min(d.rsi_6_series[:rsi_mid]) if d.rsi_6_series[:rsi_mid] else 100
+            curr_rsi = min(d.rsi_6_series[rsi_mid:]) if d.rsi_6_series[rsi_mid:] else 100
+            return curr_rsi >= prev_rsi + 5
+
+        def volume_shrink_stop(d, p):
+            """缩量止跌：近3日>=2日缩量(<0.8均量)且当日跌幅收窄到-2%以内"""
+            if not d.volume_series or len(d.volume_series) < 3 or d.avg_volume_20 is None or d.avg_volume_20 == 0:
+                return False
+            recent_3 = d.volume_series[-3:]
+            shrink_days = sum(1 for v in recent_3 if v < d.avg_volume_20 * 0.8)
+            if shrink_days < 2:
+                return False
+            if d.change_pct is None or d.change_pct <= -2.0:
+                return False
+            return True
+
+        def long_lower_shadow(d, p):
+            """长下影线：下影线占振幅>ratio(默认0.5)"""
+            if d.open is None or d.high is None or d.low is None or d.price is None:
+                return False
+            amplitude = d.high - d.low
+            if amplitude <= 0:
+                return False
+            lower_shadow = min(d.open, d.price) - d.low
+            ratio = p.get("ratio", 0.5)
+            return (lower_shadow / amplitude) > ratio
+
+        def not_monthly_weekly_bearish(d, p):
+            """非月周共振下跌（防追跌：月周都BEARISH=下跌中继不抄）"""
+            monthly = d.monthly or {}
+            weekly = d.weekly or {}
+            m_trend = monthly.get("trend")
+            w_trend = weekly.get("trend")
+            return not (m_trend == "BEARISH" and w_trend == "BEARISH")
+
+        def not_st(d, p):
+            """非ST股"""
+            return not (d.stock_name or "").startswith("ST")
+
+        def no_loss_forecast(d, p):
+            """无业绩预亏/预减/减持公告（硬否决基本面恶化）"""
+            if not d.recent_announcements:
+                return True  # 无公告数据，不否决（降级）
+            keywords = ["预亏", "预减", "亏损", "业绩下降", "减持", "立案", "警示"]
+            for ann in d.recent_announcements:
+                title = ann.get("title", "") if isinstance(ann, dict) else str(ann)
+                if any(kw in title for kw in keywords):
+                    return False
+            return True
+
+        def price_back_above_ma5(d, p):
+            """站回MA5（短期止跌确认）"""
+            return d.ma5 is not None and d.price is not None and d.price > d.ma5
+
+        def stabilization_signals(d, p):
+            """企稳信号复合条件：>=min_match项子条件满足才通过（区分下跌中继vs真到底）"""
+            min_match = p.get("min_match", 2)
+            met = 0
+            if rsi_bottom_divergence(d, {}):
+                met += 1
+            if volume_shrink_stop(d, {}):
+                met += 1
+            if long_lower_shadow(d, {}):
+                met += 1
+            if price_back_above_ma5(d, {}):
+                met += 1
+            if boll_width_narrow(d, {"threshold": 0.05}):
+                met += 1
+            return met >= min_match
+
+        reg["change_5d_below"] = change_5d_below
+        reg["change_20d_below"] = change_20d_below
+        reg["change_120d_below"] = change_120d_below
+        reg["relative_drop_to_index"] = relative_drop_to_index
+        reg["gain_from_60d_high_below"] = gain_from_60d_high_below
+        reg["rsi_bottom_divergence"] = rsi_bottom_divergence
+        reg["volume_shrink_stop"] = volume_shrink_stop
+        reg["long_lower_shadow"] = long_lower_shadow
+        reg["not_monthly_weekly_bearish"] = not_monthly_weekly_bearish
+        reg["not_st"] = not_st
+        reg["no_loss_forecast"] = no_loss_forecast
+        reg["price_back_above_ma5"] = price_back_above_ma5
+        reg["stabilization_signals"] = stabilization_signals
+
+    def _evaluate_condition(self, condition: dict, data: StockData, require: str = "majority") -> dict:
         """评估单个条件块（支持参数化条件）"""
         # 确保条件注册表已初始化
         self._register_conditions()
@@ -524,7 +655,7 @@ class YAMLBasedSkill(Skill):
 
         for cond_name, cond_value in condition.items():
             # 跳过非条件字段（condition块内的元数据字段）
-            if cond_name in ("signal", "weight", "confidence"):
+            if cond_name in ("signal", "weight", "confidence", "require"):
                 continue
 
             # 价格相对位置（特殊条件，保持原有逻辑）
@@ -575,7 +706,12 @@ class YAMLBasedSkill(Skill):
         result["weight"] = condition.get("weight", 1.0)
         result["confidence"] = condition.get("confidence", 0.5)
 
-        # 判断条件是否满足（至少满足关键条件）
-        result["met"] = conditions_met >= max(1, total_conditions // 2)
+        # 判断条件是否满足（require: all全满足/any任一/majority多数，默认majority向后兼容）
+        if require == "all":
+            result["met"] = total_conditions > 0 and conditions_met >= total_conditions
+        elif require == "any":
+            result["met"] = conditions_met >= 1
+        else:
+            result["met"] = conditions_met >= max(1, total_conditions // 2)
 
         return result

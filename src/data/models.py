@@ -219,6 +219,16 @@ class StockData(BaseModel):
     index_change_pct: Optional[float] = Field(default=None, description="沪深300涨跌幅(%)")
     index_high_250d: Optional[float] = Field(default=None, description="沪深300近250日最高价(用于计算回撤幅度)")
 
+    # ===== 超跌分析扩展字段（oversold_confirm skill 用，akshare_client.calculate_indicators 填充）=====
+    change_5d: Optional[float] = Field(default=None, description="5日涨跌幅(%)")
+    change_20d: Optional[float] = Field(default=None, description="20日涨跌幅(%)")
+    change_120d: Optional[float] = Field(default=None, description="120日涨跌幅(%)")
+    index_change_20d: Optional[float] = Field(default=None, description="沪深300近20日涨跌幅(%)，相对跌幅用")
+    rsi_6_series: Optional[list] = Field(default=None, description="近20日RSI-6序列（底背离用）")
+    close_series: Optional[list] = Field(default=None, description="近20日收盘价序列（企稳/底背离用）")
+    volume_series: Optional[list] = Field(default=None, description="近5日成交量序列（连续日企稳用）")
+    bz_valuation_position: Optional[float] = Field(default=None, description="笨总估值位置分(0-100)，Layer1.5预跑填充")
+
     # ===== top_signal 数据源（ISS-052 激活实控人减持子信号） =====
     # live 路径由 calculate_indicators 填充；回测 DataFeeder._build_stock_data 不填 -> None -> 跳过减持子信号（回测公告非 point-in-time，诚实声明）
     recent_announcements: Optional[list] = Field(default=None, description="近期公告列表[{title,date,content,source}]（live 填充，回测缺省 None）")
