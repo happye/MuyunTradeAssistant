@@ -74,6 +74,8 @@ def show_help():
     print("│      steady_advance  / 温和上涨   温和放量上涨       │")
     print("│      shrink_pullback / 缩量回调   缩量下跌企稳      │")
     print("│      value_pick      / 低估值筛选  PE/PB估值        │")
+    print("│      theme_members   / 主题成分股 宽口径(主题词过滤) │")
+    print("│      oversold_watch  / 超跌错杀   6维AND到底(WATCH) │")
     print("│    rules                  列出所有扫描规则          │")
     print("│    industries [关键词]    行业板块                  │")
     print("│    concepts   [关键词]    概念板块                  │")
@@ -95,12 +97,13 @@ def show_help():
     print("│    bz --manual           旧交互式手动打分（兜底）    │")
     print("│    bz --check            数据源连通性体检(ISS-043)  │")
     print("│    bz scan [主题] --top N  笨总选股初筛+批量评分    │")
-    print("│    bz scan --allrules    四规则全跑合并(各Top5)⭐     │")
+    print("│    bz scan --allrules    五规则全跑合并(各Top5)⭐     │")
     print("│    bz scan 规则简述(无主题词时按规则初筛):          │")
     print("│      healthy_pullback 健康回调 缩量小跌(-3%~-0.1%)   │")
     print("│      steady_advance  温和上涨 放量上涨(0.1%~5%)     │")
     print("│      shrink_pullback  缩量回调 深跌缩量(-5%~-0.1%)   │")
     print("│      value_pick      低估值   PE<20/PB<2            │")
+    print("│      oversold_watch  超跌错杀 6维AND到底(WATCH为主) │")
     print("│      (来自 B站「笨笨的韭菜」up 主教学体系)         │")
     print("│                                                    │")
     print("│  ★ 其他                                            │")
@@ -807,9 +810,9 @@ def run_benzong_scan(args: dict):
         )
 
         if allrules:
-            # 方案C: 四规则全跑，各取Top5合并去重
-            print("  [Step 1/3] 四规则全跑初筛（各Top5合并）...")
-            ALL_RULES = ["healthy_pullback", "steady_advance", "shrink_pullback", "value_pick"]
+            # 方案C: 五规则全跑，各取Top5合并去重
+            print("  [Step 1/3] 五规则全跑初筛（各Top5合并）...")
+            ALL_RULES = ["healthy_pullback", "steady_advance", "shrink_pullback", "value_pick", "oversold_watch"]
             merged_codes = []
             seen = set(exclude_codes)
             rule_hits = {}  # 记录每只股被几条规则选中（多规则共振=强标的）
