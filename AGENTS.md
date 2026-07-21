@@ -131,6 +131,8 @@ docs/               # 详细文档
 - **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
 - **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout
 - **bz scan 双通道选股**（ISS-047）：法C（theme_locator AI 报股，细分材料）+ 全市场客观筛选（`quick_scan(market_query=)` 走 THS 成分股，含中小盘）。提示词已去龙头偏向，别再加"宁可少报"类措辞
+- **DeepSeek-V4 模型迁移 + thinking=disabled**（2026-07-21）：`deepseek-chat` 2026-07-24 弃用 -> `deepseek-v4-flash`（`configs/settings.yaml` model）。V4 默认思考模式，保持非思考需调用处传 `extra_body={"thinking":{"type":"disabled"}}`，判断用 `model.startswith("deepseek-v4")`（7 处：chat/agent、ai_modifier、benzong dimensions/theme_locator、event_layer×2、source_check、scanner_engine）。回退旧 deepseek-chat 会因 thinking 参数不认报错
+- **chat analyze_stock 必须回写 strategy_state**（H1 修复，2026-07-21）：与 CLI 一致，调完 `_orchestrator.analyze` 后回写 `pm.update_from_strategy_decision`（仅持仓股，非持仓回写会创建虚假记录）。`portfolio.update_from_strategy_decision` 已修保留 `high_since_entry`（取已存值/entry_exit 算的/当前价三者大值，CLI 也受益）。chat 层 max_tokens 拉满 384K（V4 输出上限）+ finish_reason=length 截断检测
 
 ### 数据源
 
@@ -233,5 +235,5 @@ docs/               # 详细文档
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
 | `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-056） |
 | `portfolio.yaml` | 当前持仓记录 |
-| `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members） |
+| `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members/oversold_watch超跌错杀观察） |
 | `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |

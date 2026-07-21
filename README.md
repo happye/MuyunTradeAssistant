@@ -76,7 +76,7 @@ Scanner 近期改成了统一主题词扫描：
 │   │   ├── market_cache.py      # 全市场行情缓存（新浪/efinance/过期缓存3层降级）
 │   │   ├── scanner_engine.py    # 扫描引擎（初筛quick_scan + 深度分析deep_analyze）
 │   │   ├── scanner_filter.py    # 声明式过滤器（field/op/value三元组，YAML可配置）
-│   │   ├── scan_rules.yaml      # 扫描规则配置（5条规则+全局排除）
+│   │   ├── scan_rules.yaml      # 扫描规则配置（6条规则+全局排除）
 │   │   └── event_rules.yaml     # 事件触发规则（9条：政策/地缘/财报/黑天鹅/暴跌）⭐v0.8.0
 │   ├── data/
 │   │   ├── models.py            # Pydantic数据模型（含回测+策略层+执行层+AI调节层+事件层+排名层模型）
@@ -490,8 +490,8 @@ volume_ratio:
 - **ScannerFilter** (`scanner_filter.py`)：声明式过滤器
   - field/op/value三元组，YAML可配置
   - 自动跳过缺失字段（如新浪无量比）
-- **5条初筛规则** (`scan_rules.yaml`)：
-  - 放量突破 / 缩量回调 / 强势动量 / 低估值筛选 / 超跌反弹
+- **6条初筛规则** (`scan_rules.yaml`)：
+  - 健康回调(healthy_pullback) / 温和上涨(steady_advance) / 缩量回调(shrink_pullback) / 低估值筛选(value_pick) / 主题成分股(theme_members) / 超跌错杀观察(oversold_watch,6维AND到底确认)
   - 全局排除：停牌/北交所/退市（ST保留给用户判断）
 
 **Phase 3: 事件驱动层（Event Layer） — 从"只看价格"到"感知事件"，六层→七层架构**

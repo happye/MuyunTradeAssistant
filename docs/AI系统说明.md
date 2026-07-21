@@ -481,7 +481,7 @@ Chat模式**不是**CLI的替代品，而是**补充**：
 
 | 提供商 | 默认模型 | 优点 | 缺点 |
 |--------|---------|------|------|
-| DeepSeek | deepseek-chat | 稳定JSON输出，快+便宜 | 中文理解略弱 |
+| DeepSeek | deepseek-v4-flash | 稳定JSON输出，快+便宜 | V4默认思考模式，需调用处传thinking=disabled保持非思考 |
 | Kimi | moonshot-v1-auto | 中文理解强 | kimi-k2.6偶尔空响应 |
 
 ### 7.4 AI Debug模式
@@ -609,8 +609,8 @@ ai:
   deepseek:
     api_key: "sk-xxx"              # API Key（或环境变量DEEPSEEK_API_KEY）
     base_url: "https://api.deepseek.com"
-    model: "deepseek-chat"         # 日常分析模型
-    model_pro: "deepseek-chat"     # 深度分析模型
+    model: "deepseek-v4-flash"     # deepseek-chat 2026-07-24弃用->v4-flash
+    model_pro: "deepseek-v4-flash" # 深度分析也用flash非思考
   kimi:
     api_key: "sk-xxx"
     base_url: "https://api.moonshot.cn/v1"

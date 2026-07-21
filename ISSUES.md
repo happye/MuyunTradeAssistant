@@ -1336,3 +1336,15 @@ P3（已取消）:
 - **风险**: 几乎零，纯文档。
 - **已完成（2026-07-15）**: generator.py:233/:357 调用方 docstring 已对齐实际行为（"market_state 保留参数当前不参与判定，阶段4闸门已回退；个股级趋势由 stage 判定 ISS-051"），随 ISS-051 一并修。
 - **待办**: 外部文档（交接文档 456 归因改 sina反爬、阶段4状态去重）未同步，延后--不影响代码正确性。
+
+### ISS-057: chat对抗审查6类bug + 超跌到底规则 + DeepSeek模型迁移（2026-07-22）
+- **状态**: ✅ 完成（commit 6f661e2 chat修复 / 30709bd 超跌规则 / e432133 模型迁移 / 3c4eb54 max_tokens / 2bb0b0a 历史裁剪）
+- **优先级**: P1
+- **内容**:
+  1. **chat 对抗审查 6类bug**（3 agent 并行审查发现）: H1 analyze_stock 回写strategy_state + portfolio保留high_since_entry / M-H1 timeout60->180s+max_retries=2 / H2 get_stock_data 30s daemon超时 / M1 tool_calls+finish_reason=length检测 / M2 thinking收窄deepseek-v4(8处) / M3+低级 多级降级+kimi参数名+边界健壮性 / 历史裁剪fix _trim_messages丢弃孤立tool
+  2. **超跌到底确认规则**（oversold_confirm skill + oversold_watch初筛）: 6维AND(A相对跌幅/B超卖/C企稳≥2/D价值/E基本面/F位置) + regulator SELL降BUY抑制追跌永不直接BUY; 数据层扩展 StockData加change_5d/20d/120d/index_change_20d/rsi_6_series/close_series/volume_series; skill_engine加require:all/any/majority + 14新条件
+  3. **DeepSeek模型迁移**: deepseek-chat 2026-07-24弃用 -> deepseek-v4-flash + thinking=disabled保持非思考(7处)
+  4. **chat max_tokens**: 拉满384K(384000) + finish_reason=length截断检测
+- **验证**: 83测试PASS + 3场景实测(到底SELL0.64/中继SELL0.40/非超跌WATCH0.30) + 当前市场(技术性熊市月周共振)F维度排除生效正确不推荐抄底
+- **关联**: docs/2026-07-21_Chat功能说明.md(8.3 6类bug) / 记忆 deepseek_model_deprecation + bocha_mcp_search
+- **诚实边界**: 6维AND把抄错率从RSI<30的50%+降到~15%非100%银弹; 真正完全兜底配合strategy_layer confirmation(连续2天)+EntryExitCalculator突破买点触发; 阶段2笨总valuation_position进Orchestrator可选增强,D维度当前用深度低位代理
