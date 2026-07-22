@@ -912,8 +912,8 @@ class AKShareClient:
                 _delta = close.diff()
                 _gain = _delta.clip(lower=0).rolling(window=6, min_periods=6).mean()
                 _loss = (-_delta.clip(upper=0)).rolling(window=6, min_periods=6).mean()
-                _rs = _gain / _loss.replace(0, pd.NA)
-                _rsi_series = (100 - (100 / (1 + _rs))).round(2)
+                _rs = _gain / _loss.replace(0, float('nan'))
+                _rsi_series = (100 - (100 / (1 + _rs))).astype(float).round(2)
                 stock_data.rsi_6_series = [float(x) for x in _rsi_series.tail(20).dropna().tolist()]
 
             # 实控人减持公告（ISS-052 激活 top_signal 数据源）-- live 路径填充。
