@@ -240,7 +240,10 @@ def parse_input(user_input: str):
                 args["deep"] = True
                 rest = rest[1:]
             if rest:
-                args["market_query"] = " ".join(rest).strip()
+                # 第一个参数当rule_name（cli/main resolve_rule_name模糊匹配；匹配失败则当主题词）
+                args["rule_name"] = rest[0]
+                if len(rest) > 1:
+                    args["market_query"] = " ".join(rest[1:]).strip()
             return ("scan_market", args)
         return ("scan", {})
 
