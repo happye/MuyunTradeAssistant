@@ -97,6 +97,7 @@ def show_help():
     print("│    bz --manual           旧交互式手动打分（兜底）    │")
     print("│    bz --check            数据源连通性体检(ISS-043)  │")
     print("│    bz scan [主题] --top N  笨总选股初筛+批量评分    │")
+    print("│    bz scan --rule <规则> 指定规则初筛+评分(如超跌)  │")
     print("│    bz scan --allrules    五规则全跑合并(各Top5)⭐     │")
     print("│    bz scan 规则简述(无主题词时按规则初筛):          │")
     print("│      healthy_pullback 健康回调 缩量小跌(-3%~-0.1%)   │")
