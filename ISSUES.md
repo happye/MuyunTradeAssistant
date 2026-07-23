@@ -1348,3 +1348,4 @@ P3（已取消）:
 - **验证**: 83测试PASS + 3场景实测(到底SELL0.64/中继SELL0.40/非超跌WATCH0.30) + 当前市场(技术性熊市月周共振)F维度排除生效正确不推荐抄底
 - **关联**: docs/2026-07-21_Chat功能说明.md(8.3 6类bug) / 记忆 deepseek_model_deprecation + bocha_mcp_search
 - **诚实边界**: 6维AND把抄错率从RSI<30的50%+降到~15%非100%银弹; 真正完全兜底配合strategy_layer confirmation(连续2天)+EntryExitCalculator突破买点触发; 阶段2笨总valuation_position进Orchestrator可选增强,D维度当前用深度低位代理
+- **后续修复(2026-07-23)**: (1) rsi_6_series计算崩溃bug(_loss.replace(0,pd.NA)变object dtype致.round崩,oversold_confirm全None失效,commit 38aac55改float('nan)+astype); (2) scan market命令不支持规则名(parse_input参数全当主题词致oversold_watch走healthy_pullback,commit e7e40eb改第一个参数当rule_name); (3) chat新机器初始化缺依赖(开发机已装不暴露,commit 0eb6bd7加preflight ImportError提示uv sync)

@@ -133,6 +133,8 @@ docs/               # 详细文档
 - **bz scan 双通道选股**（ISS-047）：法C（theme_locator AI 报股，细分材料）+ 全市场客观筛选（`quick_scan(market_query=)` 走 THS 成分股，含中小盘）。提示词已去龙头偏向，别再加"宁可少报"类措辞
 - **DeepSeek-V4 模型迁移 + thinking=disabled**（2026-07-21）：`deepseek-chat` 2026-07-24 弃用 -> `deepseek-v4-flash`（`configs/settings.yaml` model）。V4 默认思考模式，保持非思考需调用处传 `extra_body={"thinking":{"type":"disabled"}}`，判断用 `model.startswith("deepseek-v4")`（7 处：chat/agent、ai_modifier、benzong dimensions/theme_locator、event_layer×2、source_check、scanner_engine）。回退旧 deepseek-chat 会因 thinking 参数不认报错
 - **chat analyze_stock 必须回写 strategy_state**（H1 修复，2026-07-21）：与 CLI 一致，调完 `_orchestrator.analyze` 后回写 `pm.update_from_strategy_decision`（仅持仓股，非持仓回写会创建虚假记录）。`portfolio.update_from_strategy_decision` 已修保留 `high_since_entry`（取已存值/entry_exit 算的/当前价三者大值，CLI 也受益）。chat 层 max_tokens 拉满 384K（V4 输出上限）+ finish_reason=length 截断检测
+- **scan market [参数] 第一个参数当 rule_name**（2026-07-23 修复）：parse_input（start.py）之前把 `scan market <参数>` 的参数全当 market_query（主题词），rule 固定 healthy_pullback。现第一个参数当 rule_name（resolve_rule_name 模糊匹配，失败才当主题词）。`scan market oversold_watch` 现走 oversold_watch 规则
+- **pandas replace(0, pd.NA) 会变 object dtype 致 .round() 崩**（rsi_6_series bug，2026-07-23）：`_loss.replace(0, pd.NA)` 在 float Series 上变 object，`.round(2)` 对 NAType 报 `TypeError`。用 `_loss.replace(0, float('nan'))` + `.astype(float).round(2)` 保 float NaN。**测试 oversold_confirm 必须跑真实 calculate_indicators**（mock StockData 不暴露此 bug）
 
 ### 数据源
 
