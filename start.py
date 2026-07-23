@@ -1290,7 +1290,13 @@ def run_cli(mode: str, args: dict):
                          update=args.get("update", False))
 
     elif mode == "chat":
-        from src.chat.agent import run_chat_repl
+        try:
+            from src.chat.agent import run_chat_repl
+        except ImportError as e:
+            print(f"\n  [!] Chat 依赖缺失: {e}")
+            print("  [!] 请先运行: uv sync")
+            print("  [!] 或: pip install openai jieba faiss-cpu sentence-transformers\n")
+            return
         config = load_config()
         run_chat_repl(config)
 
