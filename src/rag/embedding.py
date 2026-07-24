@@ -11,6 +11,7 @@ BGE模型使用说明：
 
 import logging
 import os
+import time
 from abc import ABC, abstractmethod
 from typing import Optional
 
@@ -18,15 +19,21 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 
-# HuggingFace镜像配置（中国大陆环境）
+# HuggingFace下载源：官方源优先，镜像仅作为备用
 # 必须在模块级设置，确保sentence_transformers import时就生效
+HF_OFFICIAL = "https://huggingface.co"
 HF_MIRROR = "https://hf-mirror.com"
+HF_ENDPOINTS = (
+    HF_OFFICIAL,
+    HF_MIRROR,
+)
 if not os.environ.get("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = HF_MIRROR
-# 优先离线加载，避免每次启动都尝试连接huggingface.co超时
-if not os.environ.get("HF_HUB_OFFLINE"):
-    os.environ["HF_HUB_OFFLINE"] = "1"
-
+    os.environ["HF_ENDPOINT"] = HF_OFFICIAL
+# Hugging Face Hub 默认可能长时间等待大文件连接；超时后才能切换下载源。
+if not os.environ.get("HF_HUB_ETAG_TIMEOUT"):
+    os.environ["HF_HUB_ETAG_TIMEOUT"] = "15"
+if not os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT"):
+    os.environ["HF_HUB_DOWNLOAD_TIMEOUT"] = "45"
 # BGE中文模型查询前缀（官方推荐，提升检索效果）
 BGE_QUERY_PREFIX = "为这个句子生成表示以检索相关文章："
 
@@ -95,16 +102,15 @@ class SentenceEmbedder(Embedder):
 
             # 设置HuggingFace镜像（如果未配置）
             if not os.environ.get("HF_ENDPOINT"):
-                os.environ["HF_ENDPOINT"] = HF_MIRROR
-                logger.info(f"使用HuggingFace镜像: {HF_MIRROR}")
+                os.environ["HF_ENDPOINT"] = HF_OFFICIAL
+                logger.info(f"使用HuggingFace官方源: {HF_OFFICIAL}")
 
-            # 优先离线加载：如果本地有缓存，直接用，不尝试连接huggingface.co
-            # 这样避免了每次启动都超时等待的问题
+            # 直接交给 Hugging Face Hub 处理缓存命中或在线下载。
+            # 不设置全局 HF_HUB_OFFLINE，避免库导入时锁死联网状态。
             logger.info(f"加载嵌入模型: {self._model_name}...")
 
             try:
-                # 先尝试离线加载（本地缓存）
-                os.environ["HF_HUB_OFFLINE"] = "1"
+                # 本地已有缓存时会直接命中；缺失时由下面的多源下载逻辑处理。
                 self._model = SentenceTransformer(self._model_name)
                 # 兼容新旧版本API
                 if hasattr(self._model, 'get_embedding_dimension'):
@@ -113,15 +119,57 @@ class SentenceEmbedder(Embedder):
                     self._dim = self._model.get_sentence_embedding_dimension()
                 logger.info(f"嵌入模型加载完成(离线): dim={self._dim}")
             except Exception as offline_err:
-                # 离线加载失败，清除离线标志，尝试在线下载
-                logger.info(f"离线加载失败({offline_err})，尝试在线下载...")
-                os.environ.pop("HF_HUB_OFFLINE", None)
-                self._model = SentenceTransformer(self._model_name)
-                if hasattr(self._model, 'get_embedding_dimension'):
-                    self._dim = self._model.get_embedding_dimension()
-                else:
-                    self._dim = self._model.get_sentence_embedding_dimension()
-                logger.info(f"嵌入模型加载完成(在线): dim={self._dim}")
+                # 缓存或当前下载源失败，进入多源在线重试。
+                logger.info(f"模型加载失败({offline_err})，尝试在线下载...")
+                retry_count = max(1, int(os.getenv("MUYUN_EMBEDDING_RETRIES", "3")))
+                configured_endpoints = os.getenv("MUYUN_HF_ENDPOINTS", "")
+                endpoints = tuple(
+                    item.strip().rstrip("/")
+                    for item in configured_endpoints.split(",")
+                    if item.strip()
+                ) or HF_ENDPOINTS
+                last_error = offline_err
+                loaded = False
+                for endpoint in endpoints:
+                    os.environ["HF_ENDPOINT"] = endpoint
+                    logger.info("尝试嵌入模型下载源: %s", endpoint)
+                    for attempt in range(1, retry_count + 1):
+                        try:
+                            self._model = SentenceTransformer(self._model_name)
+                            if hasattr(self._model, 'get_embedding_dimension'):
+                                self._dim = self._model.get_embedding_dimension()
+                            else:
+                                self._dim = self._model.get_sentence_embedding_dimension()
+                            logger.info(
+                                "嵌入模型在线加载完成: source=%s dim=%s (第%d/%d次)",
+                                endpoint,
+                                self._dim,
+                                attempt,
+                                retry_count,
+                            )
+                            loaded = True
+                            break
+                        except Exception as online_err:
+                            self._model = None
+                            last_error = online_err
+                            if attempt < retry_count:
+                                delay = min(30, 2 ** (attempt - 1))
+                                logger.warning(
+                                    "嵌入模型下载失败，源=%s，第%d/%d次重试，%d秒后继续: %s",
+                                    endpoint,
+                                    attempt,
+                                    retry_count,
+                                    delay,
+                                    online_err,
+                                )
+                                time.sleep(delay)
+                    if loaded:
+                        break
+                    logger.warning("下载源不可用，切换下一个源: %s", endpoint)
+                if not loaded:
+                    raise RuntimeError(
+                        f"嵌入模型下载失败，已尝试{len(endpoints)}个源、每源{retry_count}次: {last_error}"
+                    ) from last_error
 
         except ImportError:
             raise ImportError(

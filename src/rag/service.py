@@ -14,6 +14,7 @@ v0.8.1 增量索引：
   - 支持 force_rebuild 强制重建
 """
 
+import json
 import logging
 import os
 from pathlib import Path
@@ -27,6 +28,8 @@ from src.rag.retrieval import HybridRetriever
 from src.rag.context import build_chat_context, build_event_context, build_modifier_context
 
 logger = logging.getLogger(__name__)
+
+EMBEDDER_METADATA_FILE = "embedder_metadata.json"
 
 
 class RAGService:
@@ -98,9 +101,7 @@ class RAGService:
 
         try:
             # 1. 创建嵌入器和存储
-            self._embedder = create_embedder(
-                self.embedding_provider, self.embedding_model
-            )
+            self._embedder = self._prepare_embedder()
             self._store = create_vector_store(prefer_faiss=True)
 
             # 2. 尝试加载已有索引
@@ -139,6 +140,7 @@ class RAGService:
 
             # 7. 持久化索引
             self._store.save(self.index_dir)
+            self._save_embedder_metadata()
 
             # 8. 保存文件指纹（用于增量检测）
             self._save_knowledge_fingerprint()
@@ -151,12 +153,68 @@ class RAGService:
             logger.error(f"RAG服务初始化失败: {e}")
             return False
 
+    def _prepare_embedder(self) -> Embedder:
+        """创建嵌入器；sentence 模型不可用时自动降级为 TF-IDF。"""
+        embedder = create_embedder(self.embedding_provider, self.embedding_model)
+        if self.embedding_provider == "sentence" and hasattr(embedder, "_ensure_model"):
+            try:
+                embedder._ensure_model()
+            except Exception as exc:
+                logger.warning("句向量模型不可用，RAG自动降级为TF-IDF: %s", exc)
+                embedder = create_embedder("tfidf")
+        return embedder
+
+    def _get_embedder_metadata(self) -> dict:
+        """返回当前嵌入器标识，防止不同向量维度复用旧索引。"""
+        embedder = self._embedder
+        if embedder is not None and hasattr(embedder, "_ensure_model"):
+            return {
+                "provider": "sentence",
+                "model": getattr(embedder, "_model_name", self.embedding_model),
+            }
+        if embedder is not None and hasattr(embedder, "_max_features"):
+            return {
+                "provider": "tfidf",
+                "model": f"max_features={getattr(embedder, '_max_features', 5000)}",
+            }
+        return {"provider": self.embedding_provider, "model": self.embedding_model}
+
+    def _embedder_metadata_path(self) -> Path:
+        return Path(self.index_dir) / EMBEDDER_METADATA_FILE
+
+    def _save_embedder_metadata(self) -> None:
+        try:
+            index_dir = Path(self.index_dir)
+            index_dir.mkdir(parents=True, exist_ok=True)
+            with open(self._embedder_metadata_path(), "w", encoding="utf-8") as handle:
+                json.dump(self._get_embedder_metadata(), handle, ensure_ascii=False, indent=2)
+        except Exception as exc:
+            logger.warning("保存RAG嵌入器元数据失败: %s", exc)
+
+    def _is_index_embedder_compatible(self) -> bool:
+        metadata_path = self._embedder_metadata_path()
+        if not metadata_path.exists():
+            # 旧索引没有元数据；sentence 降级时必须重建，避免维度或算法不匹配。
+            return not (
+                self.embedding_provider == "sentence"
+                and self._get_embedder_metadata().get("provider") == "tfidf"
+            )
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as handle:
+                saved = json.load(handle)
+        except Exception:
+            return False
+        return saved == self._get_embedder_metadata()
+
     def _try_load_index(self) -> bool:
         """尝试加载已有索引
 
         Returns:
             是否成功加载
         """
+        if not self._is_index_embedder_compatible():
+            logger.info("RAG索引与当前嵌入器不兼容，重新构建索引")
+            return False
         if self._store.load(self.index_dir):
             logger.info(f"RAG索引加载成功: {self._store.size}个文档")
             return True
