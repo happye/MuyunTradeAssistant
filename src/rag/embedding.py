@@ -78,6 +78,17 @@ class Embedder(ABC):
 class SentenceEmbedder(Embedder):
     """主力嵌入器：sentence-transformers + BGE中文模型"""
 
+    @staticmethod
+    def _set_hf_endpoint(endpoint: str) -> None:
+        """Update both the environment and Hub's already-imported endpoint."""
+        os.environ["HF_ENDPOINT"] = endpoint
+        try:
+            import huggingface_hub.constants as hub_constants
+
+            hub_constants.ENDPOINT = endpoint
+        except ImportError:
+            pass
+
     def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
         """初始化
 
@@ -102,7 +113,7 @@ class SentenceEmbedder(Embedder):
 
             # 设置HuggingFace镜像（如果未配置）
             if not os.environ.get("HF_ENDPOINT"):
-                os.environ["HF_ENDPOINT"] = HF_OFFICIAL
+                self._set_hf_endpoint(HF_OFFICIAL)
                 logger.info(f"使用HuggingFace官方源: {HF_OFFICIAL}")
 
             # 直接交给 Hugging Face Hub 处理缓存命中或在线下载。
@@ -131,7 +142,7 @@ class SentenceEmbedder(Embedder):
                 last_error = offline_err
                 loaded = False
                 for endpoint in endpoints:
-                    os.environ["HF_ENDPOINT"] = endpoint
+                    self._set_hf_endpoint(endpoint)
                     logger.info("尝试嵌入模型下载源: %s", endpoint)
                     for attempt in range(1, retry_count + 1):
                         try:
