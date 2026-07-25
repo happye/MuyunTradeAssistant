@@ -2482,6 +2482,26 @@ def _display_unranked_results(success_results: list[dict]):
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
+def show_expect(days: int = 30):
+    """预期事件日历 + 预期透支度（v0.8.7 预期管理 Phase 1，纯展示不进决策链）
+
+    事前前瞻：事件落地前提示预期透支，与 events（事后反应）互补。
+    自动加载持仓股 codes 拉对应财报披露日；不进决策链。
+    """
+    from src.core.expectation import show_expect as _render_expect
+    codes = None
+    try:
+        from src.data.portfolio import PortfolioManager
+        pm = PortfolioManager()
+        positions = pm.list_positions()
+        if positions:
+            codes = [p.stock_code for p in positions]
+            console.print(f"  [dim]持仓 {len(codes)} 只，拉取对应财报披露日[/dim]")
+    except Exception as e:
+        logger.debug("持仓加载失败: %s", e)
+    _render_expect(days=days, codes=codes)
+
+
 def scan_events(ai_debug: bool = False):
     """事件驱动扫描 - 检测重大市场事件并预警"""
     from src.core.event_layer import EventLayer

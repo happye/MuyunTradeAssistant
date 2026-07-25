@@ -1,0 +1,70 @@
+{# 预期事件日历 + 预期透支度（v0.8.7 预期管理 Phase 1，纯展示不进决策链）#}
+<div class="p-2">
+  <h3 class="text-sm font-bold text-cyan-600 mb-2">⚡ 预期事件日历（未来30天）</h3>
+  {% if events %}
+  <table class="w-full text-xs border-collapse">
+    <thead>
+      <tr class="text-gray-400 border-b">
+        <th class="py-1 text-left">倒计时</th>
+        <th class="py-1 text-left">日期</th>
+        <th class="py-1 text-left">事件</th>
+        <th class="py-1 text-left">类型</th>
+        <th class="py-1 text-center">影响</th>
+        <th class="py-1 text-left">数据源</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr class="border-b border-gray-100">
+        <td class="py-1">{{ e.days_to_event }}天</td>
+        <td class="py-1">{{ e.date }}</td>
+        <td class="py-1 text-gray-700">{{ e.name }}</td>
+        <td class="py-1">{{ {'policy':'政策','macro':'宏观','earnings':'财报','other':'其他'}.get(e.event_type, e.event_type) }}</td>
+        <td class="py-1 text-center">{{ e.impact }}</td>
+        <td class="py-1">{{ e.source }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="text-gray-400 text-sm">未来30天无事件</p>
+  {% endif %}
+
+  {% if stale %}
+  <div class="mt-2 space-y-1">
+    {% for w in stale %}
+    <p class="text-xs text-yellow-600">⚠ {{ w }}</p>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <h3 class="text-sm font-bold text-cyan-600 mt-4 mb-2">🌡️ 预期透支度（环境温度计）</h3>
+  <div class="text-xs space-y-1 border border-cyan-200 rounded p-2">
+    <p class="text-gray-400">环境温度计（非预期差，一致预期值无数据源）</p>
+    {% if overdraw.data_status == 'failed' %}
+    <p class="text-red-600">⚠ 数据源全部失效，透支度无法计算</p>
+    {% else %}
+    <p>利率环境：
+      {% if overdraw.rate_value is not none %}
+        10Y国债 {{ overdraw.rate_value }}% （3年 {{ overdraw.rate_percentile }}%分位）
+      {% else %}<span class="text-red-600">数据失效</span>{% endif %}
+    </p>
+    <p>估值环境：
+      {% if overdraw.valuation_value is not none %}
+        沪深300 {{ overdraw.valuation_value }} （3年 {{ overdraw.valuation_percentile }}%分位）
+      {% else %}<span class="text-red-600">数据失效</span>{% endif %}
+    </p>
+    <p>短期动能：
+      {% if overdraw.momentum_20d is not none %}
+        近20日 {{ '%+.1f'|format(overdraw.momentum_20d) }}%
+      {% else %}<span class="text-red-600">数据失效</span>{% endif %}
+    </p>
+    <p class="font-bold mt-1">-&gt; 透支度 {{ overdraw.score }}/100</p>
+    <p class="text-gray-400">{{ overdraw.interpretation }}</p>
+    {% endif %}
+  </div>
+  <p class="text-xs text-gray-400 mt-2">
+    expect=事前预期日历 | events=事后事件预警<br>
+    透支度是环境信号非预期差，真正预期差需一致预期值（Phase 2）
+  </p>
+</div>

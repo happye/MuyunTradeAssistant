@@ -80,6 +80,7 @@ def show_help():
     print("│    industries [关键词]    行业板块                  │")
     print("│    concepts   [关键词]    概念板块                  │")
     print("│    events                 事件驱动预警              │")
+    print("│    expect                 预期事件日历(事前透支)    │")
     print("│                                                    │")
     print("│  ★ 持仓                                            │")
     print("│    pos                    查看持仓列表              │")
@@ -263,6 +264,14 @@ def parse_input(user_input: str):
     # ── 事件驱动 ──
     if cmd == "events":
         return ("events", {})
+    if cmd == "expect":
+        days = 30
+        if len(parts) >= 2:
+            try:
+                days = int(parts[1])
+            except ValueError:
+                pass
+        return ("expect", {"days": days})
 
     # ── 持仓管理 ──
     if cmd == "pos":
@@ -1154,7 +1163,7 @@ def run_cli(mode: str, args: dict):
     from src.cli.main import (
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
-        console, scan_market, scan_events,
+        console, scan_market, scan_events, show_expect,
     )
 
     ai_overrides = {}
@@ -1237,6 +1246,9 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "events":
         scan_events(ai_debug=_ai_debug)
+
+    elif mode == "expect":
+        show_expect(days=args.get("days", 30))
 
     elif mode == "noai":
         _no_ai = not _no_ai

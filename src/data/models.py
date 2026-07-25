@@ -603,3 +603,39 @@ class RankingResult(BaseModel):
     dimensions: list[DimensionScore] = Field(default_factory=list, description="各维度评分明细")
     decision: str = Field(default="", description="决策: BUY/SELL/HOLD/WATCH")
     ai_enabled: bool = Field(default=True, description="排名时AI是否启用")
+
+
+class CalendarEvent(BaseModel):
+    """预期事件日历条目（v0.8.7 预期管理 Phase 1）
+
+    事前前瞻的事件（财报披露日/宏观事件），落地前提示预期透支。
+    与 MarketEvent（事后反应）互补：日历驱动 vs 新闻驱动。
+    数据源：static（手动维护 configs/static_events.yaml）/ akshare（stock_report_disclosure 动态财报日历）。
+    """
+    name: str = Field(description="事件名称")
+    date: str = Field(description="事件日期 ISO8601 YYYY-MM-DD")
+    days_to_event: int = Field(default=0, description="距事件天数（负=已过期）")
+    event_type: str = Field(default="macro", description="事件类型: policy/macro/earnings/other")
+    impact: str = Field(default="medium", description="影响等级: high/medium/low")
+    source: str = Field(default="static", description="数据源: static/akshare")
+    note: str = Field(default="", description="备注（公布规律/窗口说明）")
+    date_window_days: int = Field(default=0, description="日期窗口天数（公布日不固定时±N天）")
+    affected_codes: list[str] = Field(default_factory=list, description="受影响股票代码（财报事件填）")
+    landed: bool = Field(default=False, description="是否已落地")
+
+
+class ExpectationOverdraw(BaseModel):
+    """预期透支度（环境温度计，v0.8.7 预期管理 Phase 1）
+
+    诚实降级：akshare 无一致预期值数据源，真正的"预期差"无法算。
+    本指标是三维度环境信号（利率/估值/短期动能），用价格反应代理预期透支。
+    明确标注"非预期差"，Phase 2 接入一致预期值后才升级为真预期差。
+    """
+    score: float = Field(default=0.0, ge=0.0, le=100.0, description="透支度评分 0-100（越高越透支）")
+    rate_percentile: Optional[float] = Field(default=None, description="10Y国债收益率3年百分位（None=数据失效）")
+    rate_value: Optional[float] = Field(default=None, description="当前10Y国债收益率(%)")
+    valuation_percentile: Optional[float] = Field(default=None, description="沪深300 close 3年百分位")
+    valuation_value: Optional[float] = Field(default=None, description="当前沪深300 close")
+    momentum_20d: Optional[float] = Field(default=None, description="沪深300近20日涨跌幅(%)")
+    interpretation: str = Field(default="", description="解读文本")
+    data_status: str = Field(default="ok", description="数据状态: ok/partial/failed")

@@ -18,6 +18,7 @@
 | 交互式 REPL（日常） | `uv run python start.py` |
 | CLI 单股分析 | `uv run python -m src.cli.main -l 600519` |
 | 笨总评分 | `bz 600519` / `bz scan 氮化镓,钽电容` / `bz --check` |
+| 预期事件日历 | REPL `expect` / `expect 60`（事前预期透支+环境温度计，v0.8.7） |
 | Web UI preview | preview_start 选 "web"（`uv run python -m src.web.app`，:5000，autoPort） |
 | 测试（脚本式，非 pytest） | `.\.venv\Scripts\python.exe tests\test_xxx.py` |
 | 依赖安装 | `uv sync` |

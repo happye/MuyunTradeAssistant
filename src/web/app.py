@@ -272,6 +272,33 @@ def events():
         return f'<div class="text-red-600 p-2">事件获取失败: {e}</div>'
 
 
+@app.route("/calendar")
+def calendar():
+    """预期事件日历 + 预期透支度（v0.8.7 预期管理 Phase 1，纯展示不进决策链）
+
+    不调 _init_engines()：本路由只用 EventCalendar + ExpectationOverdrawCalculator，
+    不依赖 RAG/AI 引擎，避免 HF 模型加载卡住（huggingface.co 超时）。
+    """
+    try:
+        from src.core.expectation import EventCalendar, ExpectationOverdrawCalculator
+        from src.data.portfolio import PortfolioManager
+        cal = EventCalendar()
+        codes = None
+        try:
+            pm = PortfolioManager()
+            positions = pm.list_positions()
+            if positions:
+                codes = [p.stock_code for p in positions]
+        except Exception:
+            pass
+        events = cal.get_upcoming_events(days=30, codes=codes)
+        stale = cal.check_stale_static_events()
+        overdraw = ExpectationOverdrawCalculator().calculate()
+        return render_template("fragments/calendar.html", events=events, stale=stale, overdraw=overdraw)
+    except Exception as e:
+        return f'<div class="text-red-600 p-2">日历获取失败: {e}</div>'
+
+
 @app.route("/reports")
 def reports():
     """列分析报告（bz/scan markdown，持久化整合）"""

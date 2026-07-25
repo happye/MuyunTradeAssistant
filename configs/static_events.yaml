@@ -1,0 +1,72 @@
+# 预期事件日历-手动维护的宏观事件表（v0.8.7 预期管理 Phase 1）
+#
+# akshare 无"经济事件日历"接口（含预期值/公布时间），故宏观事件用手动维护静态表。
+# 财报披露日历走 akshare stock_report_disclosure（动态源），不在此表。
+#
+# 维护规则：
+# - 每年初更新当年美联储议息日期（8次）、重要经济数据公布规律
+# - 事件落地后由 calendar.py 检测过期，输出黄色提示（不自动改本文件）
+# - date_window_days: 公布日不固定时±N天都算
+# - landed: 事件落地后手动改 true（或由 calendar.py 提示后改）
+#
+# 更新日期：2026-07-25
+
+events:
+  - name: "美联储议息-7月"
+    date: "2026-07-29"
+    type: policy
+    impact: high
+    note: "每年8次，北京时间次日凌晨公布，日期见美联储官网"
+    source: static
+    landed: false
+
+  - name: "美联储议息-9月"
+    date: "2026-09-17"
+    type: policy
+    impact: high
+    note: "每年8次，日期见美联储官网"
+    source: static
+    landed: false
+
+  - name: "中国二季度GDP"
+    date: "2026-07-15"
+    date_window_days: 3
+    type: macro
+    impact: high
+    note: "季度数据，7月中旬公布，国家统计局月初公告具体日期"
+    source: static
+    landed: true
+
+  - name: "中国7月CPI/PPI"
+    date: "2026-08-09"
+    date_window_days: 2
+    type: macro
+    impact: medium
+    note: "每月9-11日左右公布，国家统计局月初公告具体日期"
+    source: static
+    landed: false
+
+  - name: "中国8月CPI/PPI"
+    date: "2026-09-09"
+    date_window_days: 2
+    type: macro
+    impact: medium
+    note: "每月9-11日左右公布"
+    source: static
+    landed: false
+
+  - name: "A股三季报披露窗口"
+    date: "2026-10-15"
+    type: earnings
+    impact: medium
+    note: "10月15日-31日强制披露，具体见 akshare stock_report_disclosure"
+    source: static
+    landed: false
+
+  - name: "A股年报披露窗口"
+    date: "2027-01-15"
+    type: earnings
+    impact: medium
+    note: "1月-4月披露，具体见 akshare stock_report_disclosure"
+    source: static
+    landed: false

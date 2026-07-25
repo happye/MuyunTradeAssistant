@@ -271,6 +271,35 @@ def check_all_sources(code: str = "600989") -> dict:
     sources.append(_probe("AI-DeepSeek", lambda: _ai_probe("deepseek")))
     sources.append(_probe("AI-Kimi", lambda: _ai_probe("kimi")))
 
+    # --- 预期事件日历数据源（v0.8.7 预期管理 Phase 1） ---
+    def _cal_bond():
+        from src.data.calendar_client import CalendarClient
+        rates = CalendarClient.get_cn_10y_rate_series(years=3)
+        if not rates:
+            raise RuntimeError("国债收益率返回空")
+        return f"10Y国债 {len(rates)} 条，最新 {rates[-1]:.4f}%"
+
+    def _cal_index():
+        from src.data.calendar_client import CalendarClient
+        closes = CalendarClient.get_index_close_history(years=3)
+        if not closes:
+            raise RuntimeError("沪深300日K返回空")
+        return f"沪深300 {len(closes)} 条，最新 {closes[-1]:.2f}"
+
+    def _cal_disclosure():
+        from src.data.calendar_client import CalendarClient, current_disclosure_periods
+        periods = current_disclosure_periods()
+        if not periods:
+            raise RuntimeError("无当前财报期")
+        events = CalendarClient.get_stock_disclosure(periods[0])
+        if not events:
+            raise RuntimeError(f"{periods[0]} 披露日历返回空")
+        return f"{periods[0]} {len(events)} 条预约披露"
+
+    sources.append(_probe("日历-国债收益率", _cal_bond))
+    sources.append(_probe("日历-沪深300日K", _cal_index))
+    sources.append(_probe("日历-财报披露", _cal_disclosure))
+
     ok_count = sum(1 for s in sources if s["ok"])
     return {
         "sources": sources,
