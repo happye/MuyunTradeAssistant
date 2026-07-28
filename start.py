@@ -67,6 +67,7 @@ def show_help():
     print("│                                                    │")
     print("│  ★ 扫描 (v0.8.4 趋势选股)                          │")
     print("│    scan                   一键扫描所有持仓          │")
+    print("│    la                     一键l分析所有持仓(详细)    │")
     print("│    scan market [规则]     全市场扫描                │")
     print("│    scan market deep       全市场深度分析            │")
     print("│    可用规则:                                        │")
@@ -181,6 +182,9 @@ def parse_input(user_input: str):
         return ("help", {})
 
     # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
+    if cmd in ("la", "lall"):
+        return ("live_all", {})
+
     if cmd in ("l", "live"):
         if len(parts) < 2:
             print("  [!] 用法: l <6位代码> 或 l #N（取最近扫描第N只）")
@@ -1172,6 +1176,23 @@ def run_cli(mode: str, args: dict):
 
     if mode == "live":
         analyze_live(args["stock_code"], ai_overrides=ai_overrides, ai_debug=_ai_debug)
+
+    elif mode == "live_all":
+        from src.data.portfolio import PortfolioManager
+        pm = PortfolioManager()
+        positions = pm.list_positions()
+        if not positions:
+            print("\n  当前无持仓记录")
+            return
+        print(f"\n  一键分析所有持仓（{len(positions)}只），逐个跑 l 详细分析...\n")
+        for i, pos in enumerate(positions, 1):
+            print(f"\n{'='*60}")
+            print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")
+            print(f"{'='*60}")
+            try:
+                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug)
+            except Exception as e:
+                print(f"  [!] 分析失败: {e}")
 
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
