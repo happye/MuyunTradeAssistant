@@ -3074,6 +3074,13 @@ def scan_events(ai_debug: bool = False):
 
 def main():
     """主入口"""
+    # 启动时第一时间加载系统证书并合并（解决 Windows 物理中文路径 curl 77 及 360/内网 SSL 解密审计错误）
+    try:
+        from src.data.source_check import fix_curl_ssl_paths
+        fix_curl_ssl_paths()
+    except Exception:
+        pass
+
     import argparse
     from src.data.source_check import fix_curl_ssl_paths
 

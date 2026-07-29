@@ -186,3 +186,32 @@ RAG服务初始化失败: 嵌入模型加载失败: We couldn't connect to 'http
 - See Also: ERR-20260525-001
 
 ---
+
+## [ERR-20260724-001] powershell_nested_command
+
+**Logged**: 2026-07-24T00:00:00+08:00
+**Priority**: low
+**Status**: pending
+**Area**: infra
+
+### Summary
+PowerShell parsed an embedded Python `-c` command instead of passing it through to `cmd /c` because nested quoting was escaped for the wrong shell.
+
+### Error
+```text
+The 'from' keyword is not supported in this version of the language.
+```
+
+### Context
+- A validation command used nested PowerShell, `cmd`, and Python quoting.
+- The Python source was interpreted by PowerShell before `cmd` received it.
+
+### Suggested Fix
+Use separate short commands or a temporary script when validating Python expressions from PowerShell; avoid nested escaped quotes.
+
+### Metadata
+- Reproducible: yes
+- Related Files: src/rag/embedding.py
+- Tags: powershell, quoting, validation
+
+---

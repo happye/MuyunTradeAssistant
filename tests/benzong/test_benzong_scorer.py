@@ -11,8 +11,13 @@
 验收门槛：
 - A、B、D 与 xlsx 计算列严格一致（误差 < 0.1）
 - C 与 xlsx I10=90.6 不一致 — xlsx 笔误（求和 75.5×1.1 = 83.05）。
-  按公式严格计算应得 83.05，本测试记录这一发现，用户可知情。
+  按公式严格计算应得 83.05，本测试记录这一发现，用户可知情.
 """
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.core.benzong import score_one
 

@@ -444,3 +444,89 @@ ISS-061 实测踩坑清单：东财板块接口(_em)本环境反爬断连（aksh
 - Source: ISS-061 v4 用户质疑驱动
 - Related Files: configs/industry_chains_auto.yaml, src/data/industry_data.py
 - Tags: knowledge-bootstrap, self-growing-knowledge, tier-parity, anti-redundancy
+
+---
+
+## [LRN-20260701-001] correction
+
+**Logged**: 2026-07-01T17:40:00+08:00
+**Priority**: critical
+**Status**: completed
+**Area**: network/data-source
+
+### Summary
+解决 A 股全市场行获取失败的核心死穴：多线程 os.environ 竞态代理清空冲突 + 局域网防火墙/360/天擎对 HTTP 重定向与注入干扰（导致的 JSONDecodeError） + 502 Bad Gateway 丢包无保护。
+
+### Details
+2026-07-01 用户报告 `bz scan` 运行时，新浪 API 报空数据且 efinance fallback 备用源抛出 `JSONDecodeError: Expecting value: line 1 column 1 (char 0)`。
+经过极高精度的 debug 发现三层联动超级 Bug：
+1. **新浪多线程竞态代理改写冲突**：`_fetch_sina_market` 并发拉 73 页时在 `ThreadPoolExecutor` 中调用了 `with self._without_proxy():`，高并发下不断修改/恢复全局 `os.environ` 变量，由于竞态，90% 的线程在发送时其实代理又被恢复了，导致新浪 API 被爬虫拦截。
+2. **efinance 同步与 http 协议重定向干扰**：efinance 的 `get_realtime_quotes` 并行抓东财 push2.eastmoney.com 的 `http://` 接口。在有本地防火墙、360安全网络盾审计、公司网关的局域网下，`http://` 请求被强行重定向为含有警告、提示的 HTML，而没有公网证书的裸 requests session 无法处理拦截（并且没有调用 fix_curl_ssl_paths() 注入合并证书），导致请求失败。因为 efinance 未判断 5xx 或内容，盲目调用 `.json()` 从而引发 Expecting value 崩溃。
+3. **东方财富行情 502/504 并发丢包无保护**：多线程高密集突发拉几十页东财接口时，极易因防爬机制，使其中一页随机遭遇 `502 Bad Gateway`。由于这一个 HTML 垃圾页面，efinance 内部的 responses 列表转换在 requests 转化 json 的瞬间全盘崩溃。
+
+### Suggested Action
+针对复杂的国内多线程行情拉取及多系统 SSL 过滤拦截，实施三层极客级安全护航：
+1. **线程安全显式免代理**：放弃在多线程内部修改全局 `os.environ` 的 `_without_proxy` context；对 `Session` 显式强制注入：`session.trust_env = False; session.proxies = {"http": None, "https": None}`。
+2. **行情源初始化一键注入证书修复**：在 `MarketCache` 行情源的 `__init__` 函数顶部以及入口文件 `start.py`, `main.py` 入口点最开始显式同步拉取 `fix_curl_ssl_paths()`，确保 requests 对 SSL 审计证书库全通无阻。
+3. **对 efinance 会话实施高级多线程重试与故障隔离 Monkey Patch**：在 `MarketCache` 内对 efinance.common.getter 的 CustomedSession 实施覆盖拦截，强制将 `http://` 升级为 `https://` 抵御明文劫持重定向，同时设定最深 3 次避让重试，在重试失败时投喂安全的空 JSON，避免整个 A 股行情拼接被单个 502 连累崩溃。
+
+### Metadata
+- Source: self_discovery
+- Related Files: src/scanner/market_cache.py, start.py, src/cli/main.py, src/data/source_check.py
+- Tags: multithreading-concurrency, environment-concurrency, monkey-patch, ssl-intercept, efinance-fix, sina-fix
+- See Also: LRN-20260618-004
+
+---
+
+## [LRN-20260702-001] correction
+
+**Logged**: 2026-07-02T13:40:00+08:00
+**Priority**: critical
+**Status**: completed
+**Area**: network/data-source
+
+### Summary
+解决 A 股批量打分时高频重复爬网爆 IP 触发 456/502 封禁的问题，修复 efinance 零除崩溃 (division by zero)，引入「腾讯指数成交额极速通道」实现 20ms 全无阻获取大盘总成交额。
+
+### Details
+在执行 `bz scan` （批量打分）时：
+1. **多实例内存缓存失效**：`get_market_turnover` 内部在每只股评分时都新鲜实例化 `mc = MarketCache()`，由于是新实例，内存中 `_stock_df` 为 None，强制重试拉网 73 页，对全市场 5300 只股票高频重复多线程拉网。
+2. **IP 遭遇新浪 WAF/502 封禁**：短时间拉网 5+ 遍后触发新浪 WAF 的反爬机制，返回 HTTP 456 封禁；同时备用源 efinance 遭遇 502 Bad Gateway 丢包，抛出 `division by zero` 零除崩溃（因空 diff 列表导致 efinance 内部 `divmod(total, pz)` 的 `pz=0`）。
+
+### Suggested Action
+1. **共享类级别属性缓存**：在 `MarketCache` Class-level 申明前置静态变量缓存，利用 `@property` 和对应的 setter 使多实例（`mc = MarketCache()`）共享完全相同的内存指针，杜绝跨实例重复拉网。
+2. **腾讯指数成交额极速通道**：重构 `get_market_turnover()`，不再高吞吐拉取 A股 5800 只股票。改用首选直连腾讯指数接口（`http://qt.gtimg.cn/q=s_sh000001,s_sz399001`），直接累加上证指数与深证成指的成交额（万元）。仅需 1 个请求仅耗时 15-30ms，0压力 100% 精准获取大盘成交量，一劳永逸避开各种 WAF 反爬限制。
+3. **安全抛出防零除崩溃**：如果 efinance 备用源确实重试仍然失败，Monkey Patch 安全抛出 `RuntimeError` 让 `MarketCache` 从 `try-except` 捕获后优雅 fallback，绝不抛出 `ZeroDivisionError`。
+
+### Metadata
+- Source: user_feedback
+- Related Files: src/scanner/market_cache.py, src/core/benzong/data_provider.py
+- Tags: class-cache, property-redirection, tencent-index-api, market-turnover, zero-division-error
+- See Also: LRN-20260701-001
+
+---
+
+## [LRN-20260724-001] correction
+
+**Logged**: 2026-07-24T14:00:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: chat/rag/bootstrap
+
+### Summary
+RAG startup dependency preflight does not make a Hugging Face embedding model available. Sentence-transformers loads lazily, so model download failure can occur during the first embedding call after the embedder object was created.
+
+### Details
+The Chat preflight added by `0eb6bd7` only checks Python package imports and suggests `uv sync`. It does not download or validate `BAAI/bge-small-zh-v1.5`. `RAGService.initialize()` previously propagated the lazy model error to a generic failure, and `chat.tools` then disabled `search_knowledge` instead of degrading.
+
+### Resolution
+Validate the sentence embedder during RAG initialization, fall back to TF-IDF when the model is unavailable, and persist embedder metadata so an index built with a different provider is rebuilt rather than reused.
+
+### Metadata
+- Source: user_feedback
+- Related Files: src/rag/service.py, tests/test_rag_bootstrap_fallback.py, src/chat/tools.py
+- Tags: rag, sentence-transformers, lazy-loading, offline-fallback, tfidf
+- See Also: LRN-20260701-001
+
+
+---

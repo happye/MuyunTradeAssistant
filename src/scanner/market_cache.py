@@ -219,22 +219,28 @@ class MarketCache:
             if attempt < 2:
                 _t.sleep(1.5)  # 偶发空，等1.5秒重试
         if df is not None and not df.empty:
-            MarketCache._shared_stock_df = df
-            MarketCache._shared_stock_ts = time.time()
-            MarketCache._shared_stock_count = len(df)
-            MarketCache._shared_fail_ts = 0.0
-            logger.info(f"MarketCache: A股行情获取成功({len(df)}只, 新浪源, 第{attempt+1}次)")
-            return df
+            prices = pd.to_numeric(df["最新价"], errors="coerce").fillna(0) if "最新价" in df else None
+            if prices is None or (prices > 0).sum() > 10:
+                MarketCache._shared_stock_df = df
+                MarketCache._shared_stock_ts = time.time()
+                MarketCache._shared_stock_count = len(df)
+                MarketCache._shared_fail_ts = 0.0
+                logger.info(f"MarketCache: A股行情获取成功({len(df)}只, 新浪源, 第{attempt+1}次)")
+                return df
+            logger.warning("MarketCache: 新浪API返回无效全零行情，拒绝写入缓存并尝试备用")
 
         # 新浪3次都空 → 试 efinance 兜底（不锁死，每次都试，避免偶发失败放大）
         df = self._fetch_efinance_market()
         if df is not None and not df.empty:
-            MarketCache._shared_stock_df = df
-            MarketCache._shared_stock_ts = time.time()
-            MarketCache._shared_stock_count = len(df)
-            MarketCache._shared_fail_ts = 0.0
-            logger.info(f"MarketCache: A股行情获取成功({len(df)}只, efinance备用)")
-            return df
+            prices = pd.to_numeric(df["最新价"], errors="coerce").fillna(0) if "最新价" in df else None
+            if prices is None or (prices > 0).sum() > 10:
+                MarketCache._shared_stock_df = df
+                MarketCache._shared_stock_ts = time.time()
+                MarketCache._shared_stock_count = len(df)
+                MarketCache._shared_fail_ts = 0.0
+                logger.info(f"MarketCache: A股行情获取成功({len(df)}只, efinance备用)")
+                return df
+            logger.warning("MarketCache: efinance返回无效全零行情，拒绝写入缓存")
 
         # 全部失败：返回过期缓存兜底，不标记锁死（下次命令仍可重试，因新浪是间歇性失效）
         if MarketCache._shared_stock_df is not None:
@@ -374,7 +380,9 @@ class MarketCache:
             if change.fillna(0).abs().gt(1e-9).sum() == 0:
                 latest = pd.to_numeric(df["最新价"], errors="coerce")
                 prev = pd.to_numeric(df["昨收"], errors="coerce")
-                computed = ((latest - prev) / prev * 100).round(2)
+                mask = (latest > 1e-9) & (prev > 1e-9)
+                computed = change.copy()
+                computed[mask] = ((latest[mask] - prev[mask]) / prev[mask] * 100).round(2)
                 df["涨跌幅"] = computed
                 logger.info("MarketCache: Sina changepercent全为0，改用本地计算涨跌幅")
 

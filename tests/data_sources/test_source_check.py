@@ -63,7 +63,12 @@ def test_classify_error():
     assert "AI模型名" in _classify_error("404 Not found the model deepseek-chat")
     assert "AI认证" in _classify_error("401 invalid api key")
     assert "登录" in _classify_error("Baostock 登录失败")
-    print("✓ 错误归类 7 类全部正确")
+    
+    # 兼容处理 Windows GBK 控制台下 Unicode 打印报错
+    try:
+        print("✓ 错误归类 7 类全部正确")
+    except UnicodeEncodeError:
+        print("[OK] Error Classification: 7 categories verified")
 
 
 def test_probe_success():
@@ -73,7 +78,12 @@ def test_probe_success():
     assert r["detail"] == "ok-detail"
     assert r["latency_ms"] is not None and r["latency_ms"] >= 0
     assert r["error"] is None
-    print(f"✓ _probe 成功: {r['name']} {r['latency_ms']}ms")
+    
+    # 兼容处理 Windows GBK 控制台下 Unicode 打印报错
+    try:
+        print(f"✓ _probe 成功: {r['name']} {r['latency_ms']}ms")
+    except UnicodeEncodeError:
+        print(f"[OK] _probe success: {r['name']} {r['latency_ms']}ms")
 
 
 def test_probe_failure():
@@ -85,7 +95,12 @@ def test_probe_failure():
     assert "Connection aborted" in r["error"]
     assert "封禁" in r["hint"]
     assert r["latency_ms"] is None
-    print(f"✓ _probe 失败: error={r['error'][:40]}... hint含封禁")
+    
+    # 兼容处理 Windows GBK 控制台下 Unicode 打印报错
+    try:
+        print(f"✓ _probe 失败: error={r['error'][:40]}... hint含封禁")
+    except UnicodeEncodeError:
+        print(f"[FAIL] _probe failed: error={r['error'][:40]}... hint contain ban-warning")
 
 
 def test_format_report():

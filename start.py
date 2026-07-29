@@ -171,7 +171,21 @@ def _resolve_index_arg(s: str):
 
 def parse_input(user_input: str):
     """解析用户输入，返回 (mode, args_dict) 或 None"""
-    text = user_input.strip().strip("\ufeff").strip()
+    # 兼容处理：在 GBK/Windows 命令行下，如果输入通过管道输入且含有 UTF-8 BOM，
+    # 极易被误解码为 "锘" / "縝" 拼接词。此处在字节/字符层面予以智能过滤。
+    try:
+        raw_bytes = user_input.encode("gbk")
+        if raw_bytes.startswith(b"\xef\xbb\xbf"):
+            raw_bytes = raw_bytes[3:]
+        elif raw_bytes.startswith(b"\xff\xfe"):
+            raw_bytes = raw_bytes[2:]
+        text = raw_bytes.decode("gbk").strip()
+    except Exception:
+        text = user_input.strip()
+        for char in ["\ufeff", "锘", "縝", "锘?"]:
+            text = text.replace(char, "")
+        text = text.strip()
+
     if not text:
         return None
 
@@ -1454,6 +1468,13 @@ def run_cli(mode: str, args: dict):
 # ── 主循环 ────────────────────────────────────────────────
 def main():
     global _ai_debug
+
+    # 启动时第一时间加载系统证书并合并（解决 Windows 物理中文路径 curl 77 及 360/内网 SSL 解密审计错误）
+    try:
+        from src.data.source_check import fix_curl_ssl_paths
+        fix_curl_ssl_paths()
+    except Exception:
+        pass
 
     # 带命令行参数时直接代理给 src.cli.main（支持全部 argparse 参数）
     cli_args = sys.argv[1:]
