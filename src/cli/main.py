@@ -1780,6 +1780,92 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             _display_trade_plan(pos)
 
 
+def _scan_market_theme_fallback(engine, theme_query, resolved_rule, exclude_codes, config):
+    """法C AI 报股兜底：主题词非行业/概念名时，用 locate_theme_stocks 定位 A 股公司。
+
+    quick_scan 的 resolve_market_theme 只本地匹配行业/概念名，遇到 "AI漫剧"/"PBO树脂"
+    这类细分主题词会 fallback_unfiltered 回退全市场，规则过滤后常 0 只。此函数复用 bz scan
+    法C（AI 报股 + Baostock 验证）兜底，把法C 报的股拉行情 + 规则过滤后返回候选。
+
+    Args:
+        engine: ScannerEngine（复用其 market_cache 缓存 / rules / _df_to_candidates）
+        theme_query: 主题词（可能含逗号分隔多个）
+        resolved_rule: 已解析的规则 key（取 filters 用）
+        exclude_codes: 排除的股票代码集合
+        config: settings dict（传给 locate_theme_stocks 构造 AI client）
+
+    Returns:
+        (candidates, meta)
+        candidates: ScanCandidate 列表（规则过滤后 >0 则过滤后；0 则法C 全部有行情股）
+        meta: {error, located_count, invalid_count, has_quote, filtered_count, fallback_all, stocks}
+              error 非空表示法C 失败（AI 不可用/调用异常）
+              stocks: 法C 验证通过的股 [{code,name,term,why}]（供展示 why）
+    """
+    from src.core.benzong.theme_locator import locate_theme_stocks
+    from src.scanner.scanner_filter import ScannerFilter
+
+    terms = [t.strip() for t in (theme_query or "").split(",") if t.strip()]
+    located = locate_theme_stocks(theme_terms=terms, config=config)
+
+    meta = {
+        "error": located.get("error"),
+        "located_count": len(located.get("stocks", [])),
+        "invalid_count": len(located.get("invalid", [])),
+        "has_quote": 0,
+        "filtered_count": 0,
+        "fallback_all": False,
+        "stocks": located.get("stocks", []),
+    }
+    if meta["error"]:
+        return [], meta
+
+    located_stocks = located.get("stocks", [])
+    if not located_stocks:
+        return [], meta
+
+    located_codes = {s["code"] for s in located_stocks}
+
+    # 从全市场快照筛法C 股行情（复用 engine 缓存，秒级，避免逐只 get_realtime_quote）
+    df = engine.market_cache.get_all_stocks()
+    if df.empty:
+        meta["error"] = "全市场行情数据获取失败"
+        return [], meta
+
+    df = df[df["代码"].astype(str).isin(located_codes)].copy()
+
+    # 全局排除 ST/停牌/北交所（与 quick_scan 一致）
+    global_excludes = engine.rules.get("global_exclude", [])
+    df = ScannerFilter.apply_global_exclude(df, global_excludes)
+
+    # 排除已持仓
+    if exclude_codes and "代码" in df.columns:
+        df = df[~df["代码"].astype(str).isin(exclude_codes)]
+
+    meta["has_quote"] = len(df)
+    if df.empty:
+        return [], meta
+
+    df_all = df
+
+    # 规则过滤（健康回调等）
+    rule = engine.rules.get("rules", {}).get(resolved_rule, {})
+    filters = rule.get("filters", [])
+    df_filtered = ScannerFilter.apply(df, filters) if filters else df
+    meta["filtered_count"] = len(df_filtered)
+
+    # 过滤后 >0 用过滤后的；0 只用全部法C 股（调用方提示）
+    if not df_filtered.empty:
+        df_final = df_filtered
+    else:
+        df_final = df_all
+        meta["fallback_all"] = True
+
+    candidates = engine._df_to_candidates(df_final, resolved_rule)
+    candidates = engine._enrich_trend_data(candidates)
+
+    return candidates, meta
+
+
 def scan_market(
     rule_name: str = "healthy_pullback",
     market_query: str = None,
@@ -1914,6 +2000,32 @@ def scan_market(
                 console.print(f"  [cyan]{k:20s}[/cyan] ({n})")
         return
 
+    # ===== 主题词法C兜底 =====
+    # quick_scan 的 resolve_market_theme 只本地匹配行业/概念名，遇到 "AI漫剧"/"PBO树脂"
+    # 这类细分主题词会 fallback_unfiltered 回退全市场 -> 规则过滤后常 0 只。
+    # 复用 bz scan 法C（AI 报股 + Baostock 验证）兜底。
+    theme_fallback_meta = None
+    need_fallback = bool(theme_query) and (
+        scan_info.get("fallback_unfiltered") or not candidates
+    )
+    if need_fallback:
+        console.print(f"  [dim]主题词未匹配行业/概念，尝试 AI 报股兜底（法C）...[/dim]")
+        try:
+            fb_candidates, theme_fallback_meta = _scan_market_theme_fallback(
+                engine, theme_query, resolved_name, exclude_codes, config
+            )
+            if fb_candidates:
+                candidates = fb_candidates
+                # 法C 兜底成功：不再显示"回退全市场规则扫描"，total_stocks 改为法C 报股数
+                scan_info["fallback_unfiltered"] = False
+                scan_info["_theme_fallback"] = True
+                scan_info["total_stocks"] = theme_fallback_meta["located_count"]
+        except Exception as e:
+            logger.warning(f"scan_market 法C兜底异常: {e}")
+            theme_fallback_meta = {"error": f"法C兜底异常: {e}", "located_count": 0,
+                                   "invalid_count": 0, "has_quote": 0,
+                                   "filtered_count": 0, "fallback_all": False, "stocks": []}
+
     if not candidates:
         # 给出详细信息帮助用户理解为什么没有结果
         total = scan_info.get("total_stocks", "?")
@@ -1923,6 +2035,14 @@ def scan_market(
         if theme_query:
             console.print(f"  主题匹配后: {scan_info.get('after_theme', '?')} 只", highlight=False)
         console.print(f"  规则「{rule_display}」过滤后: 0 只", highlight=False)
+        # 法C 兜底也失败的提示
+        if theme_fallback_meta is not None:
+            if theme_fallback_meta.get("error"):
+                console.print(f"  [dim]AI 报股兜底失败: {theme_fallback_meta['error']}[/dim]")
+            elif theme_fallback_meta.get("located_count"):
+                console.print(f"  [dim]AI 报股 {theme_fallback_meta['located_count']} 只，但无可用行情（停牌/退市/被排除）[/dim]")
+            else:
+                console.print(f"  [dim]AI 报股兜底：未定位到相关 A 股公司（AI 可能不熟悉该细分领域）[/dim]")
         console.print(f"\n  [dim]可能原因:[/dim]")
         console.print(f"  [dim]1. 当前非交易时段，量比/换手率等实时指标可能为0或无效[/dim]")
         console.print(f"  [dim]2. 筛选条件较严格，可尝试其他规则（如 scan market 低估 或 scan market 超跌）[/dim]")
@@ -1945,6 +2065,20 @@ def scan_market(
             console.print(f"  概念匹配({source_label}): {', '.join(matched_concepts)}")
         if scan_info.get("fallback_unfiltered"):
             console.print("  [yellow]主题匹配失败，已回退为全市场规则扫描[/yellow]")
+
+    # 法C AI 报股兜底结果提示
+    if theme_fallback_meta is not None:
+        if theme_fallback_meta.get("error"):
+            console.print(f"  [dim]AI 报股兜底失败: {theme_fallback_meta['error']}，保留全市场规则扫描结果[/dim]")
+        elif scan_info.get("_theme_fallback"):
+            if theme_fallback_meta.get("invalid_count"):
+                console.print(f"  [dim]AI 报股丢弃 {theme_fallback_meta['invalid_count']} 只（代码不存在或名称不符）[/dim]")
+            if theme_fallback_meta.get("fallback_all"):
+                console.print(f"  [yellow]规则过滤 0 只，显示 AI 报股全部 {len(candidates)} 只（主题相关，法C）[/yellow]")
+            else:
+                console.print(f"  [green]AI 报股 {theme_fallback_meta['located_count']} 只 -> 规则过滤后 {len(candidates)} 只（法C）[/green]")
+            for s in theme_fallback_meta.get("stocks", [])[:5]:
+                console.print(f"  [dim]  {s['code']} {s['name'][:10]} [{s.get('term','')}] {s.get('why','')[:40]}[/dim]")
 
     # 展示候选池
     elapsed = scan_info.get("elapsed_seconds", 0)
