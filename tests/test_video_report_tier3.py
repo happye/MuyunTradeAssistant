@@ -100,6 +100,44 @@ def test_backward_compat_old_plans():
     print("✓ 旧 plan（无超配字段）向后兼容，默认 False/None")
 
 
+def test_market_breadth_washout():
+    """3.3 市场宽度：通杀（下跌>80%）"""
+    import src.core.exit_signals.macro as m
+    import pandas as pd
+    orig = m.MarketCache if hasattr(m, "MarketCache") else None
+    # mock MarketCache 返回90%跌的DataFrame
+    df = pd.DataFrame({"涨跌幅": [-1.0] * 900 + [1.0] * 100})
+    import src.scanner.market_cache as mc_mod
+    orig_init = mc_mod.MarketCache.get_all_stocks
+    mc_mod.MarketCache.get_all_stocks = lambda self, **kw: df
+    try:
+        # 重新import让macro引用到mock
+        import importlib
+        importlib.reload(m)
+        from src.core.exit_signals.macro import assess_market_breadth
+        r = assess_market_breadth()
+        assert r is not None and r[0] == "通杀", f"90%跌应判通杀，got {r}"
+    finally:
+        mc_mod.MarketCache.get_all_stocks = orig_init
+    print("✓ 市场宽度：90%跌->通杀")
+
+
+def test_market_breadth_normal():
+    """3.3 市场宽度：分化（60%跌，非通杀）"""
+    import pandas as pd
+    import src.scanner.market_cache as mc_mod
+    orig_init = mc_mod.MarketCache.get_all_stocks
+    df = pd.DataFrame({"涨跌幅": [-1.0] * 600 + [1.0] * 400})
+    mc_mod.MarketCache.get_all_stocks = lambda self, **kw: df
+    try:
+        from src.core.exit_signals.macro import assess_market_breadth
+        r = assess_market_breadth()
+        assert r is not None and r[0] == "分化", f"60%跌应判分化，got {r}"
+    finally:
+        mc_mod.MarketCache.get_all_stocks = orig_init
+    print("✓ 市场宽度：60%跌->分化")
+
+
 def main():
     tests = [
         test_overweight_fields_exist,
@@ -108,6 +146,8 @@ def main():
         test_rule3_expiry_window,
         test_overweight_persist,
         test_backward_compat_old_plans,
+        test_market_breadth_washout,
+        test_market_breadth_normal,
     ]
     failed = 0
     for t in tests:

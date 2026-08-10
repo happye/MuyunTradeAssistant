@@ -1492,13 +1492,17 @@ def _print_benzong_summary(stock_code: str, stock_name: str = ""):
         grade_colors = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}
         eff = bs.effective_grade()
         gc = grade_colors.get(eff, "white")
-        # 报告1.1 笨总实操流动性状态（教学二/五）
+        # 报告1.1 笨总实操流动性状态（教学二/五）+ 报告3.3 市场宽度
         try:
-            from src.core.exit_signals.macro import assess_liquidity_state
+            from src.core.exit_signals.macro import assess_liquidity_state, assess_market_breadth
             _liq = assess_liquidity_state(mt)
             if _liq:
                 _lc = {"枯竭": "red", "偏紧": "yellow", "正常": "green", "充沛": "green"}.get(_liq[0], "white")
                 console.print(f"  流动性[{_lc}]{_liq[0]}[/{_lc}]：{_liq[1]}")
+            _br = assess_market_breadth()
+            if _br:
+                _bc = {"通杀": "red", "分化": "yellow", "普涨": "green"}.get(_br[0], "white")
+                console.print(f"  市场宽度[{_bc}]{_br[0]}[/{_bc}]：{_br[1]}")
         except Exception:
             pass
         dg = f" [dim](原{bs.grade()})[/dim]" if eff != bs.grade() else ""

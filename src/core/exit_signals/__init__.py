@@ -10,12 +10,12 @@
 出现大顶信号也强制离场。
 """
 
-from src.core.exit_signals.macro import check_macro_top_signal, assess_liquidity_state
+from src.core.exit_signals.macro import check_macro_top_signal, assess_liquidity_state, assess_market_breadth
 from src.core.exit_signals.stock import check_stock_top_signal
 from src.core.exit_signals.sector import check_sector_top_signal
 
 __all__ = [
-    "check_macro_top_signal", "assess_liquidity_state",
+    "check_macro_top_signal", "assess_liquidity_state", "assess_market_breadth",
     "check_stock_top_signal", "check_sector_top_signal", "check_top_signals",
 ]
 

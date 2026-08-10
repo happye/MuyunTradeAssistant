@@ -545,10 +545,13 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
         print()
     # 报告1.1 笨总实操流动性状态（教学二/五，非10万亿极端顶）
     try:
-        from src.core.exit_signals.macro import assess_liquidity_state
+        from src.core.exit_signals.macro import assess_liquidity_state, assess_market_breadth
         _liq = assess_liquidity_state(result.market_turnover)
         if _liq:
             print(f"  流动性[{_liq[0]}]：{_liq[1]}")
+        _br = assess_market_breadth()
+        if _br:
+            print(f"  市场宽度[{_br[0]}]：{_br[1]}")
     except Exception:
         pass
     if result.cache_hits:

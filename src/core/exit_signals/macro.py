@@ -93,3 +93,44 @@ def assess_liquidity_state(market_turnover_trillion: Optional[float] = None) -> 
     if turnover < LIQUIDITY_ABUNDANT:
         return ("正常", f"成交额{turnover:.2f}万亿，流动性正常")
     return ("充沛", f"成交额{turnover:.2f}万亿>1.5万亿充沛线（笨总：×1.2加成，可格局）")
+
+
+# 报告3.3 市场宽度阈值（笨总直播：通杀/分化/普涨）
+BREADTH_WASHOUT_RATIO = 0.80   # 下跌家数占比>80% = 通杀（情绪杀，非个股逻辑问题）
+BREADTH_BROAD_RALLY_RATIO = 0.80  # 上涨家数占比>80% = 普涨
+
+
+def assess_market_breadth() -> Optional[tuple]:
+    """笨总市场宽度评估（报告3.3，advisory 环境温度计）。
+
+    用全市场涨跌家数比判断市场环境状态（笨总直播多视频共识）：
+    - 通杀：下跌>80%（"好公司也跌，市场情绪杀非个股逻辑"，别误杀）
+    - 普涨：上涨>80%（普涨行情，选股难度低）
+    - 分化：多空分歧（结构性行情，选对赛道比判断涨跌重要）
+
+    advisory 展示用，不触发强制清仓。数据源 MarketCache 全市场快照（新浪）。
+    fail-open（获取失败返回 None）。
+    """
+    try:
+        from src.scanner.market_cache import MarketCache
+        df = MarketCache().get_all_stocks()
+        if df is None or df.empty or "涨跌幅" not in df.columns:
+            return None
+        import pandas as pd
+        chg = pd.to_numeric(df["涨跌幅"], errors="coerce").dropna()
+        n = len(chg)
+        if n < 100:  # 样本不足不判断
+            return None
+        up = int((chg > 0).sum())
+        down = int((chg < 0).sum())
+        flat = n - up - down
+        down_ratio = down / n
+        up_ratio = up / n
+        if down_ratio > BREADTH_WASHOUT_RATIO:
+            return ("通杀", f"下跌{down}/{n}({down_ratio:.0%})>80%，市场情绪杀（好公司也跌，别误杀个股）")
+        if up_ratio > BREADTH_BROAD_RALLY_RATIO:
+            return ("普涨", f"上涨{up}/{n}({up_ratio:.0%})>80%，普涨行情（选股难度低）")
+        return ("分化", f"涨{up}/跌{down}/平{flat}（结构性行情，选对赛道比判断涨跌重要）")
+    except Exception as e:
+        logger.debug(f"市场宽度评估失败: {e}")
+        return None
