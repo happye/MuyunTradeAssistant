@@ -1746,6 +1746,14 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"[green]✓ 已添加持仓: {name or stock_code} ({stock_code})[/green]")
         console.print(f"  仓位: {ratio:.0%}" + (f"  开仓价: {price:.2f}" if price > 0 else ""))
 
+        # 报告2.3 笨总教学十"永不满仓留底牌"：总仓位>80% 警告留底牌
+        try:
+            _total_ratio = pm.get_total_position_ratio()
+            if _total_ratio > 0.80:
+                console.print(f"  [yellow]⚠ 总仓位 {_total_ratio:.0%}>80%，笨总教学十：任何时候给自己留一张底牌（建议≤80%，预留20%应对突发/抄底）[/yellow]")
+        except Exception:
+            pass
+
         # v0.8.5 阶段 1.2：AI 辅助建仓引导器
         # 入场价存在时自动生成 TradePlan 草稿，缺失则跳过（用户可后续手动补）
         if price > 0:

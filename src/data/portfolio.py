@@ -204,6 +204,13 @@ class PortfolioManager:
             for code, data in positions.items()
         ]
 
+    def get_total_position_ratio(self) -> float:
+        """所有持仓 current_ratio 之和（0-1+，可能>1表示满仓+杠杆）。
+
+        报告2.3 笨总教学十"永不满仓留底牌"：建议总仓位<=80%，预留20%底牌。
+        """
+        return sum(p.current_ratio for p in self.list_positions())
+
     def to_strategy_state(self, stock_code: str) -> StrategyState:
         """将持仓记录转为StrategyState（供策略层使用）
 

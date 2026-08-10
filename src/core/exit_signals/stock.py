@@ -17,6 +17,10 @@ SHRINK_VOLUME_RATIO = 0.7
 SHRINK_GAIN_PCT = 15.0
 # 三倍定律（教学六/八）：从近60日低点涨幅≥3倍 且 破5日线 -> 减仓/清仓
 TRIPLE_UP_MULTIPLE = 3.0
+# 股东户数激增（教学八）：近两期增幅>50% = 筹码分散主力派发
+HOLDER_COUNT_SURGE_PCT = 50.0
+# 融资余额激增（教学八）：近5日增幅>10% = 杠杆踩踏风险
+MARGIN_SURGE_PCT = 10.0
 
 # 实控人减持关键词（标题需同时命中减持词 + 主体词）
 _REDUCE_KEYWORDS = ("减持", "拟减持")
@@ -58,6 +62,10 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
     if triple:
         return triple
 
+    # 信号5/6：股东户数激增 + 融资余额激增（教学八）--已实现为独立函数
+    # _check_holder_count_surge / _check_margin_surge，但不在此自动调用：
+    # (a) 每次分析打 akshare 太重（import 慢 + 网络）；(b) 回测 point-in-time 不可用。
+    # 激活需 fetch+cache 层（类似 announcements 的预取传入），留后续。函数可独立调用。
     return None
 
 
@@ -108,4 +116,84 @@ def _check_triple_up_rule(stock_data) -> Optional[str]:
             return f"个股:三倍定律+破5日线(近60日涨{multiple:.1f}倍,price<MA5)"
     except Exception as e:
         logger.debug(f"三倍定律判定异常: {e}")
+    return None
+
+
+def _check_holder_count_surge(code: str) -> Optional[str]:
+    """股东户数激增（笨总教学八）：近两期增幅>50% = 筹码分散主力派发。
+
+    "5万->15-20万=筹码从主力分散到散户=主力派发出货"。
+    akshare stock_zh_a_gdhs 季报数据，用 data_provider._safe_call 包超时（fail-open）。
+    回测路径不应调用（point-in-time 问题，由调用方控制）；live 持仓检查用。
+    """
+    try:
+        from src.core.benzong.data_provider import _safe_call
+
+        def _fetch():
+            import akshare as ak
+            return ak.stock_zh_a_gdhs(symbol=code)
+
+        df = _safe_call("stock_zh_a_gdhs", _fetch, timeout=15)
+        if df is None or len(df) < 2:
+            return None
+        holder_col = None
+        for c in df.columns:
+            if "户数" in c:
+                holder_col = c
+                break
+        if holder_col is None:
+            return None
+        latest = float(df.iloc[0][holder_col])
+        prev = float(df.iloc[1][holder_col])
+        if prev <= 0:
+            return None
+        surge = (latest - prev) / prev * 100
+        if surge > HOLDER_COUNT_SURGE_PCT:
+            return f"个股:股东户数激增({prev:.0f}->{latest:.0f},+{surge:.0f}%)"
+    except Exception as e:
+        logger.debug(f"股东户数判定异常({code}): {e}")
+    return None
+
+
+def _check_margin_surge(code: str) -> Optional[str]:
+    """融资余额激增（笨总教学八）：近5日增幅>10% = 杠杆踩踏风险。
+
+    akshare 融资融券数据（沪市 stock_margin_detail_sse / 深市 stock_margin_detail_szse），
+    fail-open。融资余额是市场级杠杆温度，个股维度仅深沪两市标的可用。
+    """
+    try:
+        from src.core.benzong.data_provider import _safe_call
+
+        def _fetch():
+            import akshare as ak
+            # 沪市6开头，深市0/3开头
+            if code.startswith("6"):
+                df = ak.stock_margin_detail_sse(start_date="", end_date="", stock_code=code)
+            else:
+                df = ak.stock_margin_detail_szse(stock_code=code)
+            return df
+
+        df = _safe_call("stock_margin_detail", _fetch, timeout=15)
+        if df is None or len(df) < 2:
+            return None
+        # 找融资余额列
+        margin_col = None
+        for c in df.columns:
+            if "融资余额" in str(c):
+                margin_col = c
+                break
+        if margin_col is None:
+            return None
+        # 取最近5期，算近5日增幅
+        recent = df[margin_col].astype(float).tail(5)
+        if len(recent) < 2:
+            return None
+        first, last = recent.iloc[0], recent.iloc[-1]
+        if first <= 0:
+            return None
+        surge = (last - first) / first * 100
+        if surge > MARGIN_SURGE_PCT:
+            return f"个股:融资余额激增(近5日+{surge:.1f}%,杠杆踩踏风险)"
+    except Exception as e:
+        logger.debug(f"融资余额判定异常({code}): {e}")
     return None
