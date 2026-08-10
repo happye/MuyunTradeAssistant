@@ -532,6 +532,14 @@ def _run_benzong_auto(code: str, force_refresh: bool = False):
         print("  ⚠ 偏低（有维度降级，总分仅供参考）")
     else:
         print()
+    # 报告1.1 笨总实操流动性状态（教学二/五，非10万亿极端顶）
+    try:
+        from src.core.exit_signals.macro import assess_liquidity_state
+        _liq = assess_liquidity_state(result.market_turnover)
+        if _liq:
+            print(f"  流动性[{_liq[0]}]：{_liq[1]}")
+    except Exception:
+        pass
     if result.cache_hits:
         print(f"  💾 缓存命中：{len(result.cache_hits)}/6 维度（同股同日复用，--refresh 重算）")
     print("─" * 64)

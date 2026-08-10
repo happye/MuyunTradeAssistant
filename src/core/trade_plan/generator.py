@@ -61,7 +61,8 @@ JIANZONG_ATR_MULTIPLIER = 1.0
 
 def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
                      market_state: Optional[str] = None,
-                     stage: Optional[str] = None) -> Optional[str]:
+                     stage: Optional[str] = None,
+                     is_self_reliance: bool = False) -> Optional[str]:
     """由笨总等级推断交易模式（跳法A 阶段1，ISS-051 加个股级 stage 闸门）。
 
     行业景气度=0 时模型失效（笨总大前提），即使 A 级也不设气宗。
@@ -80,6 +81,9 @@ def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
             return None  # 大前提失效，不强加气宗纪律
         # ISS-051 个股级趋势闸门：顶部/下跌的 A 级降剑宗，不死扛下跌
         if stage in ("S3", "S4"):
+            return "jianzong"
+        # 报告1.3 笨总教学九：自主可控标的波动大、炒短期情绪，强制剑宗不长持
+        if is_self_reliance:
             return "jianzong"
         return "qizong"
     if grade == "B":
@@ -216,6 +220,7 @@ def generate_plan_draft(
     benzong_grade: Optional[str] = None,
     industry_prosperity: Optional[float] = None,
     market_state: Optional[str] = None,
+    is_self_reliance: bool = False,
 ) -> TradePlan:
     """生成 TradePlan 草稿（规则版必有，AI 增强可选）
 
@@ -231,6 +236,7 @@ def generate_plan_draft(
         benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
         industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
         market_state: 保留参数，当前不参与判定（阶段4 MarketState 牛市闸门已回退，见 _mode_from_grade 注）；个股级趋势由内部 _detect_weinstein_stage 算 stage 传入（ISS-051）
+        is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；True 时 A 级也强制剑宗不长持
 
     Returns:
         TradePlan: 完整的计划草稿，用户可逐字段编辑
@@ -246,7 +252,8 @@ def generate_plan_draft(
 
     # 笨总模式（跳法A 阶段1：建仓时一次定 mode，之后靠硬规则锁持有）
     # ISS-051：stage 传入做个股级趋势闸门（S3/S4 的 A 级降剑宗）
-    mode = _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage)
+    mode = _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage,
+                            is_self_reliance=is_self_reliance)
 
     # outlook
     if stock_data:
@@ -348,6 +355,7 @@ class TradePlanGenerator:
         benzong_grade: Optional[str] = None,
         industry_prosperity: Optional[float] = None,
         market_state: Optional[str] = None,
+        is_self_reliance: bool = False,
     ) -> Tuple[TradePlan, dict]:
         """生成 TradePlan + 元数据（哪些来源生效、哪些降级）
 
@@ -355,6 +363,7 @@ class TradePlanGenerator:
             benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
             industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
             market_state: 保留参数，当前不参与判定（阶段4 MarketState 闸门已回退）；个股级趋势由内部 stage 判定（ISS-051）
+            is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；True 时 A 级强制剑宗
 
         Returns:
             (plan, meta)
@@ -375,7 +384,8 @@ class TradePlanGenerator:
             "ai_thesis_used": False,
             "weinstein_stage": stage,
             "benzong_grade": benzong_grade,
-            "mode": _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage),
+            "mode": _mode_from_grade(benzong_grade, industry_prosperity, market_state, stage=stage,
+                                     is_self_reliance=is_self_reliance),
             "fallback_reasons": [],
         }
 
@@ -411,6 +421,7 @@ class TradePlanGenerator:
             benzong_grade=benzong_grade,
             industry_prosperity=industry_prosperity,
             market_state=market_state,
+            is_self_reliance=is_self_reliance,
         )
 
         return plan, meta

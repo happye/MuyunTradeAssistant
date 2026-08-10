@@ -409,6 +409,23 @@ class EventLayer:
         Returns:
             AIModifierResult: 可直接传入Orchestrator的调节结果
         """
+        # 报告1.2 笨总教学三：真实性一票否决权 -- 真实性<30 的事件不驱动交易信号
+        # （返回 neutral 空操作，仅靠 summary 标记提示用户核实）。
+        # "信号路径一票否决 + 展示层保留提示"折中：AI 真实性是单条文本猜测、无法交叉验证，
+        # 硬丢弃会误杀真事件；剥离信号影响已足够忠实笨总"假消息不该驱动行动"。
+        _fe = getattr(event, "four_elements", None) or {}
+        if isinstance(_fe, dict) and _fe.get("authenticity", 100) < 30:
+            return AIModifierResult(
+                sentiment="neutral",
+                confidence=0.0,
+                risk_level="low",
+                event_type=event.event_type,
+                summary=f"[真实性存疑-已忽略信号影响] {event.summary or event.source}",
+                adjusted=False,
+                score_adjustment=0.0,   # 不调整分数
+                position_cap=1.0,        # 1.0=不限制（空操作，不驱动任何仓位变化）
+            )
+
         # 基础映射
         result = AIModifierResult(
             sentiment=event.sentiment,
@@ -620,6 +637,10 @@ class EventLayer:
                 # 真实性存疑的"重大"事件降为"需关注"，避免伪信号放大
                 orig_level = int(data.get("impact_level", 2))
                 data["impact_level"] = max(2, orig_level - 2)
+                # 报告1.2 笨总教学三：真实性是一票否决权 -- 信号影响已在 to_ai_modifier_result 剥离(neutral)，
+                # summary 打标提示用户核实（调研报告: AI只出疑似伪信号，用户最终确认，不硬丢弃）
+                if data.get("summary"):
+                    data["summary"] = f"🚫真实性存疑(可能伪信号) {data['summary']}"
 
             return MarketEvent(
                 event_type=data.get("event_type", "macro"),
@@ -707,6 +728,10 @@ class EventLayer:
             if four_elements and four_elements.get("authenticity", 100) < 30:
                 orig_level = int(data.get("impact_level", 2))
                 data["impact_level"] = max(2, orig_level - 2)
+                # 报告1.2 笨总教学三：真实性是一票否决权 -- 信号影响已在 to_ai_modifier_result 剥离(neutral)，
+                # summary 打标提示用户核实（调研报告: AI只出疑似伪信号，用户最终确认，不硬丢弃）
+                if data.get("summary"):
+                    data["summary"] = f"🚫真实性存疑(可能伪信号) {data['summary']}"
 
             return MarketEvent(
                 event_type=data.get("event_type", "earnings"),

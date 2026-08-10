@@ -1377,12 +1377,14 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     # 跳法A 阶段1.2：笨总评分定 mode（建仓时一次评分，A→气宗/B→剑宗/其他→不设）
     benzong_grade = None
     industry_prosperity = None
+    is_self_reliance = False
     try:
         from src.core.benzong.auto_scorer import auto_score
         console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
         bz = auto_score(stock_code, name=stock_name)
         benzong_grade = bz.score.effective_grade()
         industry_prosperity = bz.score.industry_prosperity
+        is_self_reliance = bz.is_self_reliance
         console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
     except Exception as e:
         logger.warning(f"建仓笨总评分失败: {e}")
@@ -1396,6 +1398,7 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
             stock_code=stock_code, stock_name=stock_name,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
+            is_self_reliance=is_self_reliance,
         )
     except Exception as e:
         logger.error(f"TradePlan 生成失败: {e}")
@@ -1484,6 +1487,15 @@ def _print_benzong_summary(stock_code: str, stock_name: str = ""):
         grade_colors = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}
         eff = bs.effective_grade()
         gc = grade_colors.get(eff, "white")
+        # 报告1.1 笨总实操流动性状态（教学二/五）
+        try:
+            from src.core.exit_signals.macro import assess_liquidity_state
+            _liq = assess_liquidity_state(mt)
+            if _liq:
+                _lc = {"枯竭": "red", "偏紧": "yellow", "正常": "green", "充沛": "green"}.get(_liq[0], "white")
+                console.print(f"  流动性[{_lc}]{_liq[0]}[/{_lc}]：{_liq[1]}")
+        except Exception:
+            pass
         dg = f" [dim](原{bs.grade()})[/dim]" if eff != bs.grade() else ""
         console.print(f"  评分 [bold]{bs.normalized_score():.0f}[/bold]/100 → [{gc}]{eff} 级[/{gc}]{dg}")
         console.print(f"  [dim]（今日已评分，缓存命中。跑 bz {stock_code} --refresh 可重算）[/dim]")
@@ -1573,6 +1585,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     # 仅新生成时跑评分。
     benzong_grade = None
     industry_prosperity = None
+    is_self_reliance = False
     if old_plan and old_plan.mode:
         benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
         # 审查修复 chat-M1：原 industry_prosperity=None 绕过 _mode_from_grade 大前提守卫
@@ -1609,6 +1622,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             stock_code=stock_code, stock_name=pos.stock_name or stock_code,
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
+            is_self_reliance=is_self_reliance,
         )
     except Exception as e:
         console.print(f"   [red]✗ {action_label}失败: {e}[/red]")

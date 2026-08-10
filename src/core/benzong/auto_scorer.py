@@ -43,6 +43,8 @@ class AutoScoredResult:
     cache_hits: list = field(default_factory=list)
     fetch_status: dict = field(default_factory=dict)
     invalidate: bool = False                         # 风险维度触发的一票否决
+    is_self_reliance: bool = False                    # 自主可控概念（教学九，建仓强制剑宗的依据）
+    market_turnover: Optional[float] = None          # 全市场成交额(万亿)，供流动性状态展示
 
 
 def _build_ai_client(config: Optional[dict] = None):
@@ -187,6 +189,11 @@ def auto_score(
         market_turnover = 1.0  # 中性默认
         logger.debug("市场成交额未获取，流动性系数用 1.0")
 
+    # 自主可控概念检测（笨总教学九 / 视频理念优化报告 1.3）--建仓 mode 判定时强制剑宗的依据
+    # 仅计算，警告在 Step 6 all_warnings 汇总处追加
+    from src.core.benzong.self_reliance import detect_self_reliance_from_summary
+    is_self_reliance = detect_self_reliance_from_summary(data_summary)
+
     # Step 5: 组装 BenzhongScore（复用 v0.8.6.1 dataclass）
     bs = score_one(
         industry_prosperity=dim_results["industry_prosperity"]["score"],
@@ -210,6 +217,13 @@ def auto_score(
     # 一票否决警告
     if invalidate_flag:
         all_warnings.insert(0, "🚨 一票否决：风险维度发现红线（叛国/违禁/造假），强烈建议放弃本标的")
+
+    # 自主可控概念警告（笨总教学九 / 报告 1.3）--建仓 mode 强制剑宗，不长持
+    if is_self_reliance:
+        all_warnings.append(
+            "⚠ 自主可控概念（教学九）：笨总提示此类标的波动大、炒短期情绪，"
+            "不宜长期持有，建仓 mode 强制剑宗（不长持）。如不认可可手动改 portfolio.yaml 的 mode"
+        )
 
     # 大前提警告（行业景气度=0）
     pre = bs.precondition_warning()
@@ -247,4 +261,6 @@ def auto_score(
         cache_hits=cache_hits,
         fetch_status=fetch_status,
         invalidate=invalidate_flag,
+        is_self_reliance=is_self_reliance,
+        market_turnover=market_turnover if market_turnover != 1.0 else None,
     )
