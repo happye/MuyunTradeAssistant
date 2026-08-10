@@ -15,6 +15,8 @@ TURNOVER_TOP_PCT = 40.0
 SHRINK_VOLUME_RATIO = 0.7
 # 缩量加速：涨幅阈值(%)，缩量+大涨=加速赶顶
 SHRINK_GAIN_PCT = 15.0
+# 三倍定律（教学六/八）：从近60日低点涨幅≥3倍 且 破5日线 -> 减仓/清仓
+TRIPLE_UP_MULTIPLE = 3.0
 
 # 实控人减持关键词（标题需同时命中减持词 + 主体词）
 _REDUCE_KEYWORDS = ("减持", "拟减持")
@@ -51,6 +53,11 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
         if reduce_sig:
             return reduce_sig
 
+    # 信号4：三倍定律+5日线破位（教学六/八）--从近60日低点涨≥3倍且破5日线
+    triple = _check_triple_up_rule(stock_data)
+    if triple:
+        return triple
+
     return None
 
 
@@ -78,4 +85,27 @@ def _check_holder_reduction(announcements: list) -> Optional[str]:
         title = (ann.get("title") if isinstance(ann, dict) else str(ann)) or ""
         if any(k in title for k in _REDUCE_KEYWORDS) and any(k in title for k in _HOLDER_KEYWORDS):
             return f"个股:实控人减持({title[:20]})"
+    return None
+
+
+def _check_triple_up_rule(stock_data) -> Optional[str]:
+    """三倍定律+5日线破位（笨总教学六/八）。
+
+    "一口气涨三倍以上且持续拉升 -> 清五日线减仓或清仓"。
+    判定：price / low_60d >= 3.0 且 price < MA5（高位破5日线即卖，不等MA20确认）。
+    基准用 low_60d（近60日低点），捕获近期主升浪的"一口气涨三倍"。
+    """
+    if stock_data is None:
+        return None
+    try:
+        price = getattr(stock_data, "price", None)
+        ma5 = getattr(stock_data, "ma5", None)
+        low_60d = getattr(stock_data, "low_60d", None)
+        if not price or not ma5 or not low_60d or low_60d <= 0:
+            return None
+        multiple = price / low_60d
+        if multiple >= TRIPLE_UP_MULTIPLE and price < ma5:
+            return f"个股:三倍定律+破5日线(近60日涨{multiple:.1f}倍,price<MA5)"
+    except Exception as e:
+        logger.debug(f"三倍定律判定异常: {e}")
     return None

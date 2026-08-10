@@ -1378,6 +1378,8 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     benzong_grade = None
     industry_prosperity = None
     is_self_reliance = False
+    flagbearer_code = None
+    penetration_stage = None
     try:
         from src.core.benzong.auto_scorer import auto_score
         console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
@@ -1385,6 +1387,8 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         benzong_grade = bz.score.effective_grade()
         industry_prosperity = bz.score.industry_prosperity
         is_self_reliance = bz.is_self_reliance
+        flagbearer_code = bz.flagbearer_code
+        penetration_stage = bz.penetration_stage
         console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
     except Exception as e:
         logger.warning(f"建仓笨总评分失败: {e}")
@@ -1399,6 +1403,7 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
             is_self_reliance=is_self_reliance,
+            flagbearer_code=flagbearer_code, penetration_stage=penetration_stage,
         )
     except Exception as e:
         logger.error(f"TradePlan 生成失败: {e}")
@@ -1586,8 +1591,13 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     benzong_grade = None
     industry_prosperity = None
     is_self_reliance = False
+    flagbearer_code = None
+    penetration_stage = None
     if old_plan and old_plan.mode:
         benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
+        # 报告2.1: 更新模式保留建仓时标注的旗手/渗透率（不重跑 AI 标注）
+        flagbearer_code = old_plan.flagbearer_code
+        penetration_stage = old_plan.penetration_stage
         # 审查修复 chat-M1：原 industry_prosperity=None 绕过 _mode_from_grade 大前提守卫
         # （ip<=0 检查被 None 跳过 -> prosperity 崩到 0 仍保持气宗压制 exit）。取今日缓存的景气度
         # （不重跑评分，符合"更新不重跑"意图），让大前提守卫生效；缓存无则回退 None（原行为）。
@@ -1623,6 +1633,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             entry_price=entry_price, ratio=ratio, stock_data=stock_data,
             benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
             is_self_reliance=is_self_reliance,
+            flagbearer_code=flagbearer_code, penetration_stage=penetration_stage,
         )
     except Exception as e:
         console.print(f"   [red]✗ {action_label}失败: {e}[/red]")

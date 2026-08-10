@@ -136,6 +136,13 @@ class TradePlan(BaseModel):
         default=None,
         description="笨总模式: qizong=气宗(长期格局,持有期长,压制技术卖出) / jianzong=剑宗(一波流,破线即走)"
     )
+    # 报告2.1 笨总教学八板块层信号所需建仓标注（AI 填，用户可改）
+    # flagbearer: 板块旗手代码（"最大最核心的股是板块脸面"），持有期检查旗手滞涨
+    flagbearer_code: Optional[str] = Field(default=None, description="板块旗手代码(教学八)，持有期检查旗手滞涨=板块见顶预警")
+    # penetration_stage: 渗透率阶段（教学八"30%魔咒"），>30%=增速放缓见顶
+    penetration_stage: Optional[Literal["0-1", "1-10", "10-30", "30+"]] = Field(
+        default=None, description="行业渗透率阶段(教学八)；30+=增速放缓见顶，触发板块层信号"
+    )
     thesis_sources: list[str] = Field(
         default_factory=list,
         description="AI 引用的策略库章节 / 新闻摘要锚点（如['ch48-止损方法', 'news-2026-06-15-消费板块修复']）"

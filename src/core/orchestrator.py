@@ -331,6 +331,7 @@ class Orchestrator:
                     turnover_pct=getattr(data, "turnover_pct", None),
                     announcements=getattr(data, "recent_announcements", None),
                     market_turnover_trillion=getattr(data, "market_turnover_trillion", None),
+                    trade_plan=trade_plan,
                 )
             except Exception as e:
                 logger.debug(f"高位止盈信号检查失败: {e}")

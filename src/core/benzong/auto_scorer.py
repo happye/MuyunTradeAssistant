@@ -16,6 +16,7 @@
 
 import logging
 import os
+import json
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -45,6 +46,9 @@ class AutoScoredResult:
     invalidate: bool = False                         # 风险维度触发的一票否决
     is_self_reliance: bool = False                    # 自主可控概念（教学九，建仓强制剑宗的依据）
     market_turnover: Optional[float] = None          # 全市场成交额(万亿)，供流动性状态展示
+    # 报告2.1 笨总教学八板块层信号建仓标注（一次轻量 AI 标注）
+    flagbearer_code: Optional[str] = None              # 板块旗手代码（持有期检查旗手滞涨）
+    penetration_stage: Optional[str] = None            # 渗透率阶段 0-1/1-10/10-30/30+（30+触发板块见顶）
 
 
 def _build_ai_client(config: Optional[dict] = None):
@@ -82,6 +86,53 @@ def _build_ai_client(config: Optional[dict] = None):
         return client, model
     except Exception as e:
         logger.warning(f"AI client 构造失败: {e}")
+        return None, None
+
+
+def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
+    """报告2.1: 一次轻量 AI 标注板块旗手+渗透率阶段(笨总教学八, 建仓时一次定)。
+
+    用于板块层高位止盈信号(旗手滞涨/渗透率30%魔咒)。建仓时标注, 持有期检查。
+    AI 失败返回 (None, None), 不阻塞评分主流程。
+    """
+    if not ai_client or not ai_model:
+        return None, None
+    industry_info = (data_summary or {}).get("industry") or {}
+    industry_name = industry_info.get("industry_name", "") if isinstance(industry_info, dict) else ""
+    if not industry_name and not name:
+        return None, None
+    try:
+        prompt = (
+            f"判断股票 {name or code} (行业: {industry_name or '未知'}) 的板块属性:\n"
+            "1. flagbearer_code: 该行业最核心的旗手股票代码(6位数字, 不带前缀), "
+            "即板块脸面代表大资金态度的龙头. 不确定填 null.\n"
+            "2. penetration_stage: 渗透率阶段, 从 [0-1, 1-10, 10-30, 30+] 选一. "
+            "0-1=技术突破初期, 1-10=产业化起步, 10-30=快速增长, 30+=成熟增速放缓.\n"
+            '只输出 JSON: {"flagbearer_code":"600519" 或 null, "penetration_stage":"1-10"}'
+        )
+        extra = {"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model).startswith("deepseek-v4") else {}
+        resp = ai_client.chat.completions.create(
+            model=ai_model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.1, max_completion_tokens=120, timeout=20,
+            **extra,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+        js = content
+        if "```json" in content:
+            js = content.split("```json")[1].split("```")[0].strip()
+        elif "```" in content:
+            js = content.split("```")[1].split("```")[0].strip()
+        d = json.loads(js)
+        fb = d.get("flagbearer_code")
+        ps = d.get("penetration_stage")
+        if fb and not (isinstance(fb, str) and fb.isdigit() and len(fb) == 6):
+            fb = None
+        if ps not in ("0-1", "1-10", "10-30", "30+"):
+            ps = None
+        return fb, ps
+    except Exception as e:
+        logger.debug(f"板块元标注失败({code}): {e}")
         return None, None
 
 
@@ -194,6 +245,11 @@ def auto_score(
     from src.core.benzong.self_reliance import detect_self_reliance_from_summary
     is_self_reliance = detect_self_reliance_from_summary(data_summary)
 
+    # 报告2.1 笨总教学八板块层标注：一次轻量 AI 标注旗手+渗透率阶段（建仓时定，持有期检查）
+    flagbearer_code, penetration_stage = _annotate_sector_meta(
+        ai_client, ai_model, code, name, data_summary
+    )
+
     # Step 5: 组装 BenzhongScore（复用 v0.8.6.1 dataclass）
     bs = score_one(
         industry_prosperity=dim_results["industry_prosperity"]["score"],
@@ -263,4 +319,6 @@ def auto_score(
         invalidate=invalidate_flag,
         is_self_reliance=is_self_reliance,
         market_turnover=market_turnover if market_turnover != 1.0 else None,
+        flagbearer_code=flagbearer_code,
+        penetration_stage=penetration_stage,
     )

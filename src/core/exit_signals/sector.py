@@ -1,20 +1,119 @@
-"""板块层高位止盈信号（跳法A 阶段5 / v0.8.6.4）—— 阶段2 未实现，占位。
+"""板块层高位止盈信号（跳法A 阶段5 -> 报告2.1 实现，笨总教学八）
 
 笨总教学：板块见顶三信号 = 渗透率30%魔咒 + 旗手滞涨 + 新赛道虹吸。
+各层内部信号是"或"关系（笨总原话："不是and，而是或"），一条触发即准备撤退。
 
-数据源现状（诚实声明，阶段2 全部不可得）：
-- ❌ 渗透率30%魔咒：无现成渗透率数据库；考虑建仓时由 AI 标注行业渗透率阶段
-  （0-1/1-10/10-30/30+）写入 plan，持有期不自动追踪，靠用户判断
-- ⚠ 旗手滞涨：可计算（板块龙头近N日涨幅 vs 板块涨幅），但需板块→成分股映射基础设施
-- ❌ 新赛道虹吸：需全板块资金流对比，复杂度高
+实现现状（诚实声明）：
+- 渗透率30%魔咒：✅ 已实现（建仓时 AI 标注 penetration_stage 写入 TradePlan，持有期检查 30+）
+- 旗手滞涨：✅ 已实现（建仓时 AI 标注 flagbearer_code，持有期 baostock 拉旗手近20日涨幅对比）
+- 新赛道虹吸：❌ TODO（需全板块资金流对比基础设施，复杂度高，留后续）
 
-阶段2 决策：板块层全部不实现，靠"宏观层 + 个股层双保险"覆盖大顶离场，
-板块判断交由用户人工。本文件留作阶段5 实现入口。
+数据依赖：flagbearer_code / penetration_stage 由建仓时 AI 标注写入 TradePlan（报告2.1）。
 """
 
+import logging
 from typing import Optional
+from datetime import datetime, timedelta
+
+logger = logging.getLogger(__name__)
+
+# 旗手滞涨判定：旗手近20日涨幅 < 标的涨幅 × 1/3 视为滞涨（"带头大哥涨不动了，跟风小弟更没戏"）
+FLAGBEARER_LAG_RATIO = 0.33
+FLAGBEARER_LOOKBACK_DAYS = 20
+# 标的需已有可观涨幅(>10%)才有"旗手滞涨"语义；低位盘整不算板块见顶
+FLAGBEARER_MIN_STOCK_GAIN = 10.0
 
 
-def check_sector_top_signal(*args, **kwargs) -> Optional[str]:
-    """板块层大顶信号 —— 阶段2 占位，恒返回 None（数据源缺失，见模块 docstring）。"""
+def check_sector_top_signal(trade_plan=None, stock_data=None, code: str = "") -> Optional[str]:
+    """检查板块层大顶信号（报告2.1，笨总教学八）。
+
+    Args:
+        trade_plan: TradePlan（取 flagbearer_code / penetration_stage）。None 跳过板块层
+        stock_data: StockData（标的近20日涨幅，旗手滞涨对比用）
+        code: 标的代码
+
+    Returns:
+        Optional[str]: 触发信号描述，无则 None
+    """
+    if trade_plan is None:
+        return None
+
+    # 信号1：渗透率30%魔咒（教学八，纯逻辑无网络）--"1%->20%最快，>30%增速放缓见顶"
+    if trade_plan.penetration_stage == "30+":
+        return "板块:渗透率突破30%魔咒(增速放缓，成长->价值切换见顶)"
+
+    # 信号2：旗手滞涨（教学八）--"最大最核心的股是板块脸面，带头大哥涨不动=板块顶"
+    if trade_plan.flagbearer_code:
+        sig = _check_flagbearer_lag(trade_plan.flagbearer_code, stock_data, code)
+        if sig:
+            return sig
+
+    # 信号3：新赛道虹吸 -- TODO（需全板块资金流对比基础设施，留后续）
     return None
+
+
+def _check_flagbearer_lag(flagbearer_code: str, stock_data, code: str) -> Optional[str]:
+    """旗手滞涨：旗手近20日涨幅明显落后于标的 -> 板块见顶预警。
+
+    判定：标的近20日涨幅 > 10%（已有可观涨幅）且 旗手近20日涨幅 < 标的涨幅 × 1/3。
+    低位盘整（标的涨幅<10%）不判"见顶"，避免误触发。
+    """
+    try:
+        stock_20d = _get_20d_change_pct(stock_data) if stock_data else None
+        if stock_20d is None or stock_20d < FLAGBEARER_MIN_STOCK_GAIN:
+            return None  # 标的涨幅不足/无数据 -> 不判板块见顶
+        flag_20d = _fetch_20d_change_pct(flagbearer_code)
+        if flag_20d is None:
+            return None  # 旗手数据获取失败，fail-open 跳过
+        if flag_20d < stock_20d * FLAGBEARER_LAG_RATIO:
+            return (f"板块:旗手{flagbearer_code}滞涨"
+                    f"(旗手20日{flag_20d:.1f}% vs 标的{stock_20d:.1f}%)")
+    except Exception as e:
+        logger.debug(f"旗手滞涨判定异常({flagbearer_code}): {e}")
+    return None
+
+
+def _get_20d_change_pct(stock_data) -> Optional[float]:
+    """从 StockData 取近20日涨幅（ISS-057 已加 change_20d 字段）"""
+    v = getattr(stock_data, "change_20d", None)
+    if v is not None:
+        try:
+            return float(v)
+        except (TypeError, ValueError):
+            pass
+    return None
+
+
+def _fetch_20d_change_pct(code: str) -> Optional[float]:
+    """拉取某股近20日涨幅（baostock，fail-open）。
+
+    用于旗手滞涨对比。仅持仓检查时调用（has_position 门控），每次 analyze 多一次
+    baostock K线调用（~1-2s，同 announcements fetch，可接受）。失败返回 None -> 跳过。
+    """
+    try:
+        from src.data.akshare_client import AKShareClient
+        AKShareClient._ensure_baostock_login()
+        import baostock as bs
+        end = datetime.now().strftime("%Y-%m-%d")
+        start = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d")  # 多取防停牌
+        prefix = "sh" if code.startswith("6") else ("sz" if code.startswith(("0", "3")) else "bj")
+        rs = bs.query_history_k_data_plus(
+            f"{prefix}.{code}", "date,close",
+            start_date=start, end_date=end,
+        )
+        rows = []
+        while (rs.error_code == '0') and rs.next():
+            rows.append(rs.get_row_data())
+        if len(rows) < 2:
+            return None
+        try:
+            first = float(rows[0][1])
+            last = float(rows[-1][1])
+        except (ValueError, IndexError):
+            return None
+        if first <= 0:
+            return None
+        return (last - first) / first * 100
+    except Exception as e:
+        logger.debug(f"旗手{code}近20日涨幅获取失败: {e}")
+        return None

@@ -221,6 +221,8 @@ def generate_plan_draft(
     industry_prosperity: Optional[float] = None,
     market_state: Optional[str] = None,
     is_self_reliance: bool = False,
+    flagbearer_code: Optional[str] = None,
+    penetration_stage: Optional[str] = None,
 ) -> TradePlan:
     """生成 TradePlan 草稿（规则版必有，AI 增强可选）
 
@@ -327,6 +329,8 @@ def generate_plan_draft(
         mode=mode,
         thesis_sources=sources,
         adjustments=[],
+        flagbearer_code=flagbearer_code,
+        penetration_stage=penetration_stage,
     )
     return plan
 
@@ -356,6 +360,8 @@ class TradePlanGenerator:
         industry_prosperity: Optional[float] = None,
         market_state: Optional[str] = None,
         is_self_reliance: bool = False,
+        flagbearer_code: Optional[str] = None,
+        penetration_stage: Optional[str] = None,
     ) -> Tuple[TradePlan, dict]:
         """生成 TradePlan + 元数据（哪些来源生效、哪些降级）
 
@@ -422,6 +428,8 @@ class TradePlanGenerator:
             industry_prosperity=industry_prosperity,
             market_state=market_state,
             is_self_reliance=is_self_reliance,
+            flagbearer_code=flagbearer_code,
+            penetration_stage=penetration_stage,
         )
 
         return plan, meta
