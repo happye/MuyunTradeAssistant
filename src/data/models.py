@@ -143,6 +143,11 @@ class TradePlan(BaseModel):
     penetration_stage: Optional[Literal["0-1", "1-10", "10-30", "30+"]] = Field(
         default=None, description="行业渗透率阶段(教学八)；30+=增速放缓见顶，触发板块层信号"
     )
+    # 报告3.1 笨总教学十超配策略（事件驱动临时加倍+止盈降本，非添油战术）
+    # 只出手一次 + 1-2月时间窗口 + 涨幅3-10倍标的禁入
+    overweight_executed: bool = Field(default=False, description="是否已执行超配(教学十)；True=已出手，不再允许第二次(只出手一次)")
+    overweight_expiry: Optional[str] = Field(default=None, description="超配到期日 YYYY-MM-DD(教学十)；1-2月重新定价窗口，到期评估退出超配部分")
+    overweight_basis: Optional[str] = Field(default=None, description="超配依据(教学十)；事件驱动质变描述(基本面反转/价值重估)")
     thesis_sources: list[str] = Field(
         default_factory=list,
         description="AI 引用的策略库章节 / 新闻摘要锚点（如['ch48-止损方法', 'news-2026-06-15-消费板块修复']）"

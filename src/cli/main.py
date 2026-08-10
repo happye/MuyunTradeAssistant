@@ -1726,6 +1726,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                     f"前景 [{outlook_color}]{tp.fundamental_outlook}[/{outlook_color}]"
                 )
                 console.print(f"    [dim]thesis: {tp.why_buy[:60]}{'...' if len(tp.why_buy) > 60 else ''}[/dim]")
+                if tp.overweight_executed:
+                    console.print(f"    [magenta]超配已激活(教学十, 到期{tp.overweight_expiry}): {(tp.overweight_basis or '')[:40]}[/magenta]")
         else:
             console.print(f"\n[dim]💡 提示：持仓尚无 TradePlan。下次跑 `pos add` 时系统会自动 AI 辅助生成交易计划（v0.8.5 新增）[/dim]")
 
@@ -1770,6 +1772,53 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         pos = pm.get_position(stock_code)
         pm.remove_position(stock_code)
         console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
+
+    elif action == "overweight":
+        # 报告3.1 笨总教学十超配策略：事件驱动临时加倍+止盈降本
+        # 铁律：涨幅3-10倍标的禁入 / 只出手一次 / 1-2月时间窗口 / 非添油战术
+        if not stock_code:
+            console.print("[red]用法: pos overweight <代码> [超配依据][/red]")
+            return
+        if not pm.has_position(stock_code):
+            console.print(f"[yellow]⚠ {stock_code} 无持仓记录（超配需先有底仓）[/yellow]")
+            return
+        pos = pm.get_position(stock_code)
+        if pos.trade_plan is None:
+            console.print(f"[yellow]⚠ {stock_code} 无 TradePlan，先 pos plan {stock_code} 生成[/yellow]")
+            return
+        tp = pos.trade_plan
+        # 铁律2: 只出手一次
+        if tp.overweight_executed:
+            console.print(f"[yellow]⚠ {stock_code} 已执行过超配(到期{tp.overweight_expiry or '?'})，笨总铁律：只出手一次，非添油战术[/yellow]")
+            console.print(f"  [dim]如需新超配，等新质变事件并先 pos plan {stock_code} --update 重置[/dim]")
+            return
+        # 铁律1: 涨幅3-10倍标的禁入（笨总"短期3到10倍的标的我肯定自动pass"）
+        try:
+            from src.data.akshare_client import get_stock_data
+            sd = get_stock_data(stock_code)
+            if sd and sd.price and getattr(sd, "low_60d", None) and sd.low_60d > 0:
+                multiple = sd.price / sd.low_60d
+                if multiple >= 3.0:
+                    console.print(f"[red]✗ 拒绝超配：{stock_code} 近60日已涨 {multiple:.1f} 倍[/red]")
+                    console.print(f"  笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）[/red]")
+                    return
+                console.print(f"  [green]✓[/green] 涨幅检查通过（近60日 {multiple:.1f} 倍 < 3x）")
+        except Exception as e:
+            logger.warning(f"超配涨幅检查失败({stock_code}): {e}")
+            console.print(f"  [yellow]⚠ 涨幅检查数据获取失败，继续但建议人工核实未超3倍[/yellow]")
+        # 激活超配
+        from datetime import datetime, timedelta
+        basis = name if name else "事件驱动质变（用户未填依据，建议补）"
+        expiry = (datetime.now() + timedelta(days=45)).strftime("%Y-%m-%d")  # 1.5月中位
+        tp.overweight_executed = True
+        tp.overweight_expiry = expiry
+        tp.overweight_basis = basis
+        pm.attach_plan(stock_code, tp)
+        console.print(f"[green]✓ {stock_code} 超配已激活（笨总教学十）[/green]")
+        console.print(f"  依据: {basis}")
+        console.print(f"  到期: {expiry}（1-2月重新定价窗口，到期评估退出超配部分）")
+        console.print(f"  [cyan]操作建议[/cyan]: 底仓基础上临时加倍(用 pos add 加仓)，逻辑兑现后卖超配部分摊薄底仓成本")
+        console.print(f"  [dim]铁律: 只出手一次 / 永不满仓留底牌 / 涨幅3-10倍禁入[/dim]")
 
     elif action == "plan":
         # v0.8.5 查看/生成单只；v0.8.6.3 --update 更新 + all 批量

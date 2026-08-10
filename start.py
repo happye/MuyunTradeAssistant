@@ -92,6 +92,7 @@ def show_help():
     print("│    pos plan all           批量生成（无计划的持仓）   │")
     print("│    pos plan all --u       批量更新所有持仓计划       │")
     print("│    pos rm  <代码>         删除持仓记录              │")
+    print("│    pos overweight <代码> [依据]  超配策略(教学十)    │")
     print("│                                                    │")
     print("│  ★ 笨总「超景气价值投机」(v0.8.6.1)                │")
     print("│    bz <代码>             笨总 AI 自动 6 维评分       │")
@@ -340,8 +341,18 @@ def parse_input(user_input: str):
             target = parts[2]
             update = "--update" in parts[3:] or "-u" in parts[3:]
             return ("pos_plan", {"stock_code": target, "update": update})
+        elif sub in ("overweight", "ow"):
+            # 报告3.1 笨总教学十超配策略：pos overweight <代码> [依据...]
+            if len(parts) < 3:
+                print("  [!] 用法: pos overweight <代码> [超配依据]")
+                print("      pos overweight 600519 AI算力需求质变")
+                print("      铁律: 涨幅3-10倍禁入 / 只出手一次 / 1-2月到期 / 非添油战术")
+                return None
+            code = parts[2]
+            basis = " ".join(parts[3:]) if len(parts) > 3 else ""
+            return ("pos_overweight", {"stock_code": code, "name": basis})
         else:
-            print(f"  [!] 未知: pos {sub}  用法: pos / pos add / pos rm / pos plan")
+            print(f"  [!] 未知: pos {sub}  用法: pos / pos add / pos rm / pos plan / pos overweight")
             return None
 
     # ── 开关 ──
@@ -1329,6 +1340,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "pos_plan":
         manage_positions("plan", stock_code=args.get("stock_code", ""),
                          update=args.get("update", False))
+
+    elif mode == "pos_overweight":
+        manage_positions("overweight", stock_code=args.get("stock_code", ""),
+                         name=args.get("name", ""))
 
     elif mode == "chat":
         try:
