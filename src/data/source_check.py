@@ -162,6 +162,35 @@ def _probe(label: str, fn) -> dict:
                 "detail": None, "error": err_str, "hint": hint}
 
 
+def _probe_t(label: str, fn, timeout: float = 20.0) -> dict:
+    """带超时的探针（报告2.2/3.3 新增 akshare/baostock 源用，防 hang）。
+
+    akshare 底层 requests 无 timeout，股东户数/融资余额等接口卡住会拖垮整个体检。
+    用 ThreadPoolExecutor 包硬超时，超时即 shutdown(wait=False) 放弃不等线程。
+    """
+    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+    t0 = time.time()
+    ex = ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(fn)
+    try:
+        detail = fut.result(timeout=timeout)
+        ex.shutdown(wait=False)
+        latency = int((time.time() - t0) * 1000)
+        return {"name": label, "ok": True, "latency_ms": latency,
+                "detail": detail, "error": None, "hint": None}
+    except FuturesTimeout:
+        ex.shutdown(wait=False)  # 不等孤儿线程，立刻返回
+        return {"name": label, "ok": False, "latency_ms": None,
+                "detail": None, "error": f"超时(>{timeout:.0f}s)，接口可能 hang/反爬",
+                "hint": "超时 | 提示：网络慢或服务端响应慢，稍后重试"}
+    except Exception as e:
+        ex.shutdown(wait=False)
+        err_str = f"{type(e).__name__}: {str(e)[:120]}"
+        hint = _classify_error(err_str)
+        return {"name": label, "ok": False, "latency_ms": None,
+                "detail": None, "error": err_str, "hint": hint}
+
+
 def check_all_sources(code: str = "600989") -> dict:
     """一键测试全部数据源连通性。
 
@@ -172,6 +201,7 @@ def check_all_sources(code: str = "600989") -> dict:
         {sources: [...], summary: {total, ok, fail}}
     """
     _disable_proxy()
+    fix_curl_ssl_paths()  # 报告2.2: em 端点（股东户数等）需 SSL 修复
     os.environ["TQDM_DISABLE"] = "1"
     sources = []
 
@@ -245,6 +275,65 @@ def check_all_sources(code: str = "600989") -> dict:
         return f"{len(df)} 条新闻"
 
     sources.append(_probe("东方财富-个股新闻(em)", _em_news))
+
+    # --- 报告2.2 新增：akshare 股东户数（笨总教学八筹码分散信号） ---
+    def _ak_gdhs():
+        import akshare as ak
+        # 注意：stock_zh_a_gdhs 参数是日期(YYYYMMDD)非代码，会 hang；用 detail_em(symbol=代码)
+        df = ak.stock_zh_a_gdhs_detail_em(symbol=code)
+        if df is None or df.empty:
+            raise RuntimeError("股东户数返回空")
+        cur_col = next((c for c in df.columns if "本次" in c), None)
+        return f"{len(df)}期，列={list(df.columns)[:5]}，最新{df.iloc[0][cur_col] if cur_col else '?'}"
+
+    sources.append(_probe_t("akshare-股东户数", _ak_gdhs, timeout=25))
+
+    # --- 报告2.2 新增：akshare 融资余额（笨总教学八杠杆踩踏信号） ---
+    def _ak_margin():
+        import akshare as ak
+        from datetime import datetime, timedelta
+        # API 按日期返回全市场融资余额（非按个股），逐日查+过滤代码
+        for days_ago in range(0, 5):
+            d = (datetime.now() - timedelta(days=days_ago)).strftime("%Y%m%d")
+            try:
+                if code.startswith("6"):
+                    df = ak.stock_margin_detail_sse(date=d)
+                else:
+                    df = ak.stock_margin_detail_szse(date=d)
+            except Exception:
+                continue
+            if df is not None and not df.empty:
+                mcol = next((c for c in df.columns if "融资余额" in str(c)), None)
+                # 看测试股是否在该日数据里
+                code_col = next((c for c in df.columns if "代码" in str(c) or "code" in str(c).lower()), None)
+                hit = ""
+                if code_col is not None:
+                    hit = f"，{code}{'在' if (df[code_col].astype(str)==code).any() else '不在'}数据中"
+                return f"{d}: {len(df)}行，融资余额列={mcol}{hit}"
+        raise RuntimeError("近5日融资余额全空（可能非交易日或接口反爬）")
+
+    sources.append(_probe_t("akshare-融资余额", _ak_margin, timeout=25))
+
+    # --- 报告2.1 新增：baostock 旗手近20日涨幅（笨总教学八旗手滞涨信号） ---
+    def _bs_flagbearer():
+        from src.core.exit_signals.sector import _fetch_20d_change_pct
+        # 用一只已知龙头测试（茅台 600519，流动性好必有数据）
+        chg = _fetch_20d_change_pct("600519")
+        if chg is None:
+            raise RuntimeError("旗手20日涨幅返回 None（baostock K线查询失败）")
+        return f"600519 近20日涨幅 {chg:.2f}%"
+
+    sources.append(_probe_t("Baostock-旗手20日涨幅", _bs_flagbearer, timeout=25))
+
+    # --- 报告3.3 新增：新浪市场宽度（涨跌家数比，笨总通杀/分化/普涨） ---
+    def _sina_breadth():
+        from src.core.exit_signals.macro import assess_market_breadth
+        r = assess_market_breadth()
+        if r is None:
+            raise RuntimeError("市场宽度返回 None（MarketCache 涨跌幅列缺失或样本不足）")
+        return f"[{r[0]}] {r[1]}"
+
+    sources.append(_probe_t("新浪-市场宽度", _sina_breadth, timeout=25))
 
     # --- AI 接口（deepseek + kimi，轻量探针） ---
     def _ai_probe(provider: str):

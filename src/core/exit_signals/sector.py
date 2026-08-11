@@ -91,19 +91,25 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
     baostock K线调用（~1-2s，同 announcements fetch，可接受）。失败返回 None -> 跳过。
     """
     try:
-        from src.data.akshare_client import AKShareClient
-        AKShareClient._ensure_baostock_login()
+        from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout, AKShareClient
+        if not _ensure_baostock_login():
+            return None
         import baostock as bs
         end = datetime.now().strftime("%Y-%m-%d")
         start = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d")  # 多取防停牌
-        prefix = "sh" if code.startswith("6") else ("sz" if code.startswith(("0", "3")) else "bj")
+        prefix, _ = AKShareClient._normalize_stock_code(code)
         rs = bs.query_history_k_data_plus(
             f"{prefix}.{code}", "date,close",
             start_date=start, end_date=end,
         )
+        if rs.error_code != '0':
+            logger.debug(f"旗手{code}K线查询错误: {rs.error_msg}")
+            return None
         rows = []
-        while (rs.error_code == '0') and rs.next():
-            rows.append(rs.get_row_data())
+        def _drain():
+            while rs.next():
+                rows.append(rs.get_row_data())
+        _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
         if len(rows) < 2:
             return None
         try:

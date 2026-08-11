@@ -1493,9 +1493,10 @@ def _print_benzong_summary(stock_code: str, stock_name: str = ""):
         eff = bs.effective_grade()
         gc = grade_colors.get(eff, "white")
         # 报告1.1 笨总实操流动性状态（教学二/五）+ 报告3.3 市场宽度
+        # 用实时成交额（assess_liquidity_state(None) 自动拉取），非缓存 mt（缓存可能为默认1.0）
         try:
             from src.core.exit_signals.macro import assess_liquidity_state, assess_market_breadth
-            _liq = assess_liquidity_state(mt)
+            _liq = assess_liquidity_state(None)  # 实时拉取，避免缓存默认值失真
             if _liq:
                 _lc = {"枯竭": "red", "偏紧": "yellow", "正常": "green", "充沛": "green"}.get(_liq[0], "white")
                 console.print(f"  流动性[{_lc}]{_liq[0]}[/{_lc}]：{_liq[1]}")

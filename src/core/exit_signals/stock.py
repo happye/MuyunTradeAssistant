@@ -123,33 +123,32 @@ def _check_holder_count_surge(code: str) -> Optional[str]:
     """股东户数激增（笨总教学八）：近两期增幅>50% = 筹码分散主力派发。
 
     "5万->15-20万=筹码从主力分散到散户=主力派发出货"。
-    akshare stock_zh_a_gdhs 季报数据，用 data_provider._safe_call 包超时（fail-open）。
-    回测路径不应调用（point-in-time 问题，由调用方控制）；live 持仓检查用。
+    akshare stock_zh_a_gdhs_detail_em(symbol=代码) 返回该股历次股东户数，
+    用 _safe_call 包超时（fail-open）。注意 stock_zh_a_gdhs 参数是日期非代码（会 hang）。
+    回测路径不应调用（point-in-time 问题）；live 持仓检查用，当前未自动触发。
     """
     try:
         from src.core.benzong.data_provider import _safe_call
 
         def _fetch():
             import akshare as ak
-            return ak.stock_zh_a_gdhs(symbol=code)
+            return ak.stock_zh_a_gdhs_detail_em(symbol=code)
 
-        df = _safe_call("stock_zh_a_gdhs", _fetch, timeout=15)
+        df = _safe_call("stock_zh_a_gdhs_detail_em", _fetch, timeout=15)
         if df is None or len(df) < 2:
             return None
-        holder_col = None
-        for c in df.columns:
-            if "户数" in c:
-                holder_col = c
-                break
-        if holder_col is None:
+        # 列：股东户数-本次 / 股东户数-上次（detail_em 结构）
+        cur_col = next((c for c in df.columns if "本次" in c), None)
+        prev_col = next((c for c in df.columns if "上次" in c), None)
+        if cur_col is None or prev_col is None:
             return None
-        latest = float(df.iloc[0][holder_col])
-        prev = float(df.iloc[1][holder_col])
-        if prev <= 0:
+        latest_cur = float(df.iloc[0][cur_col])
+        latest_prev = float(df.iloc[0][prev_col])
+        if latest_prev <= 0:
             return None
-        surge = (latest - prev) / prev * 100
+        surge = (latest_cur - latest_prev) / latest_prev * 100
         if surge > HOLDER_COUNT_SURGE_PCT:
-            return f"个股:股东户数激增({prev:.0f}->{latest:.0f},+{surge:.0f}%)"
+            return f"个股:股东户数激增({latest_prev:.0f}->{latest_cur:.0f},+{surge:.0f}%)"
     except Exception as e:
         logger.debug(f"股东户数判定异常({code}): {e}")
     return None
@@ -158,42 +157,49 @@ def _check_holder_count_surge(code: str) -> Optional[str]:
 def _check_margin_surge(code: str) -> Optional[str]:
     """融资余额激增（笨总教学八）：近5日增幅>10% = 杠杆踩踏风险。
 
-    akshare 融资融券数据（沪市 stock_margin_detail_sse / 深市 stock_margin_detail_szse），
-    fail-open。融资余额是市场级杠杆温度，个股维度仅深沪两市标的可用。
+    akshare 融资余额 API 按日期返回全市场（非按个股），需逐日查+过滤代码。
+    查近2个有数据的交易日（间隔~5天）算增幅。用 _safe_call 包超时 fail-open。
+    回测路径不应调用；live 持仓检查用，且当前未自动触发（需 cache 层激活）。
     """
     try:
+        import akshare as ak
+        from datetime import datetime, timedelta
         from src.core.benzong.data_provider import _safe_call
+        is_sse = code.startswith("6")
 
-        def _fetch():
-            import akshare as ak
-            # 沪市6开头，深市0/3开头
-            if code.startswith("6"):
-                df = ak.stock_margin_detail_sse(start_date="", end_date="", stock_code=code)
-            else:
-                df = ak.stock_margin_detail_szse(stock_code=code)
-            return df
+        def _get_balance(date_str):
+            def _fetch():
+                df = (ak.stock_margin_detail_sse(date=date_str) if is_sse
+                      else ak.stock_margin_detail_szse(date=date_str))
+                if df is None or df.empty:
+                    return None
+                mcol = next((c for c in df.columns if "融资余额" in str(c)), None)
+                code_col = next((c for c in df.columns if "代码" in str(c) or "code" in str(c).lower()), None)
+                if not mcol or not code_col:
+                    return None
+                row = df[df[code_col].astype(str).str.contains(code, na=False)]
+                if row.empty:
+                    return None
+                return float(row.iloc[0][mcol])
+            return _safe_call("margin_detail_" + date_str, _fetch, timeout=15)
 
-        df = _safe_call("stock_margin_detail", _fetch, timeout=15)
-        if df is None or len(df) < 2:
+        # 取最近2个有数据的交易日（间隔尽量≥4天）
+        dates = [(datetime.now() - timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 9)]
+        latest = prev = None
+        for d in dates:
+            v = _get_balance(d)
+            if v is not None and v > 0:
+                if latest is None:
+                    latest = (d, v)
+                elif prev is None:
+                    # 取间隔较远的一个
+                    prev = (d, v)
+                    break
+        if not latest or not prev or prev[1] <= 0:
             return None
-        # 找融资余额列
-        margin_col = None
-        for c in df.columns:
-            if "融资余额" in str(c):
-                margin_col = c
-                break
-        if margin_col is None:
-            return None
-        # 取最近5期，算近5日增幅
-        recent = df[margin_col].astype(float).tail(5)
-        if len(recent) < 2:
-            return None
-        first, last = recent.iloc[0], recent.iloc[-1]
-        if first <= 0:
-            return None
-        surge = (last - first) / first * 100
+        surge = (latest[1] - prev[1]) / prev[1] * 100
         if surge > MARGIN_SURGE_PCT:
-            return f"个股:融资余额激增(近5日+{surge:.1f}%,杠杆踩踏风险)"
+            return f"个股:融资余额激增({prev[0]}->{latest[0]},+{surge:.1f}%,杠杆踩踏风险)"
     except Exception as e:
         logger.debug(f"融资余额判定异常({code}): {e}")
     return None
