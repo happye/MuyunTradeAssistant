@@ -51,9 +51,9 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 >
 > v0.8.6.4「跳法A」**笨总升为中长期决策主驾**：建仓时笨总评分定气宗/剑宗 mode（笨总首次真正参与买卖决策，此前仅展示），技术层降级为持仓内择时。详见 `ISSUES.md` ISS-046。
 
-核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）。
+核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-当前版本：**v0.8.6.6**（网络代理根治 `NO_PROXY=*` + 平收股误选修复 + 一键测试体系，详见 `docs/v0.8.6.6_交接.md`；ISS-052/053/055 增量见 `ISSUES.md`）。
+当前版本：**v0.8.6.8**（笨总 51 份视频理念优化：宏观流动性状态/真实性一票否决/自主可控强制剑宗/板块层渗透率+旗手/三倍定律/超配策略/市场宽度/股东户数+融资余额激活；详见 `docs/2026-08-10_笨总视频理念优化报告.md` + `docs/2026-08-12_未做事项评估.md`）。
 
 ---
 
@@ -142,6 +142,9 @@ docs/               # 详细文档
 - **chat analyze_stock 必须回写 strategy_state**（H1 修复，2026-07-21）：与 CLI 一致，调完 `_orchestrator.analyze` 后回写 `pm.update_from_strategy_decision`（仅持仓股，非持仓回写会创建虚假记录）。`portfolio.update_from_strategy_decision` 已修保留 `high_since_entry`（取已存值/entry_exit 算的/当前价三者大值，CLI 也受益）。chat 层 max_tokens 拉满 384K（V4 输出上限）+ finish_reason=length 截断检测
 - **scan market [参数] 第一个参数当 rule_name**（2026-07-23 修复）：parse_input（start.py）之前把 `scan market <参数>` 的参数全当 market_query（主题词），rule 固定 healthy_pullback。现第一个参数当 rule_name（resolve_rule_name 模糊匹配，失败才当主题词）。`scan market oversold_watch` 现走 oversold_watch 规则
 - **pandas replace(0, pd.NA) 会变 object dtype 致 .round() 崩**（rsi_6_series bug，2026-07-23）：`_loss.replace(0, pd.NA)` 在 float Series 上变 object，`.round(2)` 对 NAType 报 `TypeError`。用 `_loss.replace(0, float('nan'))` + `.astype(float).round(2)` 保 float NaN。**测试 oversold_confirm 必须跑真实 calculate_indicators**（mock StockData 不暴露此 bug）
+- **akshare 股东户数/融资余额 API 参数反直觉**（v0.8.6.8，LRN-20260812-001）：`stock_zh_a_gdhs(symbol)` 参数是**日期**(YYYYMMDD)非代码，传代码会 hang（em 端点反爬）。取单股股东户数用 `stock_zh_a_gdhs_detail_em(symbol=代码)`（列"股东户数-本次/上次"）。`stock_margin_detail_sse/szse` 参数是**单日期**返回全市场（无 start_date/stock_code），取单股需查日期+过滤代码。`AKShareClient._ensure_baostock_login` 不存在--是模块级函数 `from src.data.akshare_client import _ensure_baostock_login`；代码前缀用 `AKShareClient._normalize_stock_code` 类方法。新增 akshare 调用前先 `inspect.signature` 查参数，别按函数名猜
+- **exit_signal 日缓存 + live 门控**（v0.8.6.8）：股东户数/融资余额信号 `stock.py:_check_holder_count_surge/_check_margin_surge` 用日缓存（`~/.muyun/exit_signal_cache/{code}_{date}_{signal}.json`，`_MISS` 哨兵区分未命中vs缓存None）。`check_stock_top_signal(live=...)`：回测 `is_backtest=True` 传 `live=False` 跳过 akshare（point-in-time+网络），orchestrator 传 `live=not is_backtest`。**回测路径不可触发 akshare 网络调用**。`ThreadPoolExecutor` 超时后 `shutdown(wait=False)`（`wait=True` 会阻塞等孤儿线程）
+- **三倍定律气宗跳过**（v0.8.6.8 回测发现）：`_check_triple_up_rule`（price/low_60d≥3+破MA5）是 force-exit top_signal，气宗牛股被过早离场。`check_stock_top_signal(mode=...)`：气宗(`qizong`)跳过三倍定律（同 take_profit_trim 可压，气宗靠换手/减持/渗透率/旗手等真见顶信号逃顶），剑宗/非气宗(`mode!=qizong`，含None)照常触发
 
 ### 数据源
 
@@ -196,7 +199,7 @@ docs/               # 详细文档
 
 - AI 调节层（技术面感知 + 新闻情绪）
 - 全市场扫描（4 条规则 + 大盘风控 + 60 日趋势排序）
-- 事件驱动预警 + **现象级事件四要素**（v0.8.6.3，真实性低降级）
+- 事件驱动预警 + **现象级事件四要素**（v0.8.6.3，真实性<30 信号一票否决 v0.8.6.8 强化）
 - 四维排名 + RAG 策略知识检索（Recall@5=0.800）
 - 买卖点精确触发（Chandelier/趋势破坏/止盈）
 - 金字塔仓位管理
@@ -211,6 +214,7 @@ docs/               # 详细文档
 - **阶段4 五年回测验证通过**（v0.8.6.5，ISS-046）：12 股 × 2020-2024，牛股组 8 只平均 Δ +8.13pp（7/8 正向），见顶/对照组不恶化。相比 ISS-033 的 +2.46pp 边际收益是质变级证据。反例寒武纪 -14.59pp 暴露高波动题材股该定剑宗（后续优化方向）
 - **景气度硬闸门 + 双通道选股 + 网络超时修复**（v0.8.6.4，ISS-047）：`effective_grade()` 让景气度成为真闸门；`bz scan` 双通道去龙头偏向；AI client 加 timeout
 - **网络根治+缓存版本+风险维降级+截断优化**（v0.8.6.5，ISS-047 续）：akshare/baostock 三层线程级硬超时根治冻结；缓存版本校验杜绝"改代码不生效"；风险维新闻缺失改中性50；业务纯度 prompt 限 reasoning≤60字
+- **笨总视频理念优化**（v0.8.6.8，来源 51 份视频总结）：宏观流动性状态 `assess_liquidity_state`(0.8/1.3/1.5万亿分档) + 市场宽度 `assess_market_breadth`(通杀/分化/普涨) advisory 展示；自主可控标的强制剑宗(`_mode_from_grade` is_self_reliance 闸门)；板块层 `sector.py`(渗透率30%魔咒+旗手滞涨baostock fetch)；个股层三倍定律(气宗跳过)+股东户数/融资余额激活(日缓存+live门控)；`pos overweight` 超配策略(三铁律)；永不满仓警告+弱势期+高位利好提示；AI标注旗手+渗透率。单股回测 sanity(宁德2020 Δ+68.64pp)未破坏气宗。详见 `docs/2026-08-10_笨总视频理念优化报告.md`+`docs/2026-08-12_未做事项评估.md`
 
 ### 待办（优先级排序）
 
