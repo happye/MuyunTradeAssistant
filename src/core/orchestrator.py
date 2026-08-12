@@ -342,6 +342,20 @@ class Orchestrator:
                 decision_result.reason.append(f"[TopSignal] 高位止盈: {top_signal}")
                 logger.info(f"[TopSignal] 大顶信号强制离场: {top_signal}")
 
+        # 报告④ 高位利好=出货风险（笨总"主升浪时最怕利好，出货良机"）
+        # 高位(从60日低点翻倍) + AI利好 -> advisory 警告（非强制清仓，提示用户兑现勿贪婪）
+        if has_position and not top_signal and ai_result and ai_result.sentiment in ("看涨", "bullish"):
+            try:
+                _price = getattr(data, "price", None)
+                _low60 = getattr(data, "low_60d", None)
+                if _price and _low60 and _low60 > 0 and _price / _low60 >= 2.0:
+                    decision_result.reason.append(
+                        f"[高位利好提示] 笨总: 主升浪高位遇利好=出货良机"
+                        f"（近60日涨{_price / _low60:.1f}倍+AI看多），注意兑现勿贪婪"
+                    )
+            except Exception:
+                pass
+
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:
             strategy_state = StrategyState(
