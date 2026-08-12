@@ -21,7 +21,7 @@ __all__ = [
 
 
 def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None,
-                      market_turnover_trillion=None, trade_plan=None):
+                      market_turnover_trillion=None, trade_plan=None, live: bool = False):
     """汇总宏观+板块+个股高位止盈信号，返回首个触发的信号描述（无则 None）。
 
     检查顺序：宏观(全市场) -> 板块(赛道) -> 个股(操作层)。笨总原话各层内部"或"关系。
@@ -35,6 +35,7 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
         market_turnover_trillion: 全市场成交额(万亿)，传 None 时 macro 层自行拉取
         trade_plan: TradePlan（板块层取 flagbearer_code / penetration_stage，报告2.1）；
                     None 时板块层跳过（向后兼容）
+        live: True 时启用股东户数/融资余额信号（akshare 网络+日缓存）。回测传 False。
 
     Returns:
         Optional[str]: 触发的信号描述，如 "个股:换手率超40%(45.2%)"；无触发返回 None
@@ -48,5 +49,6 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
         return sector
 
     return check_stock_top_signal(
-        stock_data, code, turnover_pct=turnover_pct, announcements=announcements
+        stock_data, code, turnover_pct=turnover_pct, announcements=announcements,
+        live=live, mode=trade_plan.mode if trade_plan else None
     )

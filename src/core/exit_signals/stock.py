@@ -4,10 +4,44 @@
 全部客观硬规则，不依赖 AI 判断。
 """
 
+import json
 import logging
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+
+# 报告② 日缓存助手：股东户数(季报，日级缓存足够)/融资余额(日级)避免每次分析都打 akshare
+def _holder_cache_dir() -> Path:
+    d = Path.home() / ".muyun" / "exit_signal_cache"
+    d.mkdir(parents=True, exist_ok=True)
+    return d
+
+
+def _daily_cache_get(code: str, signal: str) -> Optional[object]:
+    """读日缓存（key=code_date_signal）。命中返回缓存值（可能是 None哨兵），未命中返回 _MISS。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    f = _holder_cache_dir() / f"{code}_{today}_{signal}.json"
+    if f.exists():
+        try:
+            return json.loads(f.read_text(encoding="utf-8"))
+        except Exception:
+            return _MISS
+    return _MISS
+
+
+def _daily_cache_set(code: str, signal: str, value) -> None:
+    today = datetime.now().strftime("%Y-%m-%d")
+    f = _holder_cache_dir() / f"{code}_{today}_{signal}.json"
+    try:
+        f.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+
+
+_MISS = object()  # 哨兵：缓存未命中（区别于缓存的 None 值）
 
 # 个股换手率见顶阈值(%)
 TURNOVER_TOP_PCT = 40.0
@@ -28,7 +62,9 @@ _HOLDER_KEYWORDS = ("控股股东", "实际控制人", "实控人", "大股东")
 
 
 def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[float] = None,
-                           announcements: Optional[list] = None) -> Optional[str]:
+                           announcements: Optional[list] = None,
+                           live: bool = False,
+                           mode: Optional[str] = None) -> Optional[str]:
     """检查个股层大顶信号，返回首个触发的描述（无则 None）。
 
     Args:
@@ -58,14 +94,24 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
             return reduce_sig
 
     # 信号4：三倍定律+5日线破位（教学六/八）--从近60日低点涨≥3倍且破5日线
-    triple = _check_triple_up_rule(stock_data)
-    if triple:
-        return triple
+    # 报告①回测发现：气宗牛股被三倍定律 force-exit 致过早离场（与气宗"拿住整波主升浪"冲突）。
+    # 设计修正：气宗(mode=qizong)跳过三倍定律（同 take_profit_trim 可压，气宗靠换手/减持/渗透率/旗手等真见顶信号逃顶）；
+    # 剑宗/非气宗照常触发（一波流涨三倍该止盈就走）。
+    if mode != "qizong":
+        triple = _check_triple_up_rule(stock_data)
+        if triple:
+            return triple
 
-    # 信号5/6：股东户数激增 + 融资余额激增（教学八）--已实现为独立函数
-    # _check_holder_count_surge / _check_margin_surge，但不在此自动调用：
-    # (a) 每次分析打 akshare 太重（import 慢 + 网络）；(b) 回测 point-in-time 不可用。
-    # 激活需 fetch+cache 层（类似 announcements 的预取传入），留后续。函数可独立调用。
+    # 信号5/6：股东户数激增 + 融资余额激增（教学八，akshare 网络+日缓存）
+    # 仅 live 路径启用（回测 point-in-time 不可用+网络成本）；日缓存避免重复打 akshare
+    if live and code:
+        hc = _check_holder_count_surge(code)
+        if hc:
+            return hc
+        mg = _check_margin_surge(code)
+        if mg:
+            return mg
+
     return None
 
 
@@ -123,10 +169,14 @@ def _check_holder_count_surge(code: str) -> Optional[str]:
     """股东户数激增（笨总教学八）：近两期增幅>50% = 筹码分散主力派发。
 
     "5万->15-20万=筹码从主力分散到散户=主力派发出货"。
-    akshare stock_zh_a_gdhs_detail_em(symbol=代码) 返回该股历次股东户数，
-    用 _safe_call 包超时（fail-open）。注意 stock_zh_a_gdhs 参数是日期非代码（会 hang）。
-    回测路径不应调用（point-in-time 问题）；live 持仓检查用，当前未自动触发。
+    akshare stock_zh_a_gdhs_detail_em(symbol=代码) 返回该股历次股东户数。
+    日缓存（季报数据，日内不变）避免每次分析都打 akshare。
+    回测路径不应调用（point-in-time）；由 check_stock_top_signal live 门控。
     """
+    cached = _daily_cache_get(code, "holder_count")
+    if cached is not _MISS:
+        return cached
+    result = None
     try:
         from src.core.benzong.data_provider import _safe_call
 
@@ -135,32 +185,33 @@ def _check_holder_count_surge(code: str) -> Optional[str]:
             return ak.stock_zh_a_gdhs_detail_em(symbol=code)
 
         df = _safe_call("stock_zh_a_gdhs_detail_em", _fetch, timeout=15)
-        if df is None or len(df) < 2:
-            return None
-        # 列：股东户数-本次 / 股东户数-上次（detail_em 结构）
-        cur_col = next((c for c in df.columns if "本次" in c), None)
-        prev_col = next((c for c in df.columns if "上次" in c), None)
-        if cur_col is None or prev_col is None:
-            return None
-        latest_cur = float(df.iloc[0][cur_col])
-        latest_prev = float(df.iloc[0][prev_col])
-        if latest_prev <= 0:
-            return None
-        surge = (latest_cur - latest_prev) / latest_prev * 100
-        if surge > HOLDER_COUNT_SURGE_PCT:
-            return f"个股:股东户数激增({latest_prev:.0f}->{latest_cur:.0f},+{surge:.0f}%)"
+        if df is not None and len(df) >= 1:
+            cur_col = next((c for c in df.columns if "本次" in c), None)
+            prev_col = next((c for c in df.columns if "上次" in c), None)
+            if cur_col and prev_col:
+                latest_cur = float(df.iloc[0][cur_col])
+                latest_prev = float(df.iloc[0][prev_col])
+                if latest_prev > 0:
+                    surge = (latest_cur - latest_prev) / latest_prev * 100
+                    if surge > HOLDER_COUNT_SURGE_PCT:
+                        result = f"个股:股东户数激增({latest_prev:.0f}->{latest_cur:.0f},+{surge:.0f}%)"
     except Exception as e:
         logger.debug(f"股东户数判定异常({code}): {e}")
-    return None
+    _daily_cache_set(code, "holder_count", result)
+    return result
 
 
 def _check_margin_surge(code: str) -> Optional[str]:
     """融资余额激增（笨总教学八）：近5日增幅>10% = 杠杆踩踏风险。
 
     akshare 融资余额 API 按日期返回全市场（非按个股），需逐日查+过滤代码。
-    查近2个有数据的交易日（间隔~5天）算增幅。用 _safe_call 包超时 fail-open。
-    回测路径不应调用；live 持仓检查用，且当前未自动触发（需 cache 层激活）。
+    查近2个有数据的交易日算增幅。用 _safe_call 包超时 fail-open。
+    日缓存避免重复打 akshare。回测路径不应调用；由 check_stock_top_signal live 门控。
     """
+    cached = _daily_cache_get(code, "margin")
+    if cached is not _MISS:
+        return cached
+    result = None
     try:
         import akshare as ak
         from datetime import datetime, timedelta
@@ -183,23 +234,35 @@ def _check_margin_surge(code: str) -> Optional[str]:
                 return float(row.iloc[0][mcol])
             return _safe_call("margin_detail_" + date_str, _fetch, timeout=15)
 
-        # 取最近2个有数据的交易日（间隔尽量≥4天）
+        # 取最近2个有数据的交易日，间隔≥4天（算"近5日增幅"，非1日波动，防误触发）
         dates = [(datetime.now() - timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 9)]
         latest = prev = None
+        _none_streak = 0
         for d in dates:
             v = _get_balance(d)
-            if v is not None and v > 0:
-                if latest is None:
-                    latest = (d, v)
-                elif prev is None:
-                    # 取间隔较远的一个
+            if v is None or v <= 0:
+                _none_streak += 1
+                if _none_streak >= 3:
+                    break  # 连续3次无数据，放弃（防最坏9×15s=135s阻塞）
+                continue
+            _none_streak = 0
+            if latest is None:
+                latest = (d, v)
+            else:
+                d_date = datetime.strptime(d, "%Y%m%d")
+                latest_date = datetime.strptime(latest[0], "%Y%m%d")
+                if (latest_date - d_date).days >= 4:
                     prev = (d, v)
                     break
+                # 否则继续往更早日期找间隔≥4天的
         if not latest or not prev or prev[1] <= 0:
-            return None
-        surge = (latest[1] - prev[1]) / prev[1] * 100
-        if surge > MARGIN_SURGE_PCT:
-            return f"个股:融资余额激增({prev[0]}->{latest[0]},+{surge:.1f}%,杠杆踩踏风险)"
+            # 无数据 -> result 保持 None，落到末尾缓存+返回（避免下次重打 akshare）
+            pass
+        else:
+            surge = (latest[1] - prev[1]) / prev[1] * 100
+            if surge > MARGIN_SURGE_PCT:
+                result = f"个股:融资余额激增({prev[0]}->{latest[0]},+{surge:.1f}%,杠杆踩踏风险)"
     except Exception as e:
         logger.debug(f"融资余额判定异常({code}): {e}")
-    return None
+    _daily_cache_set(code, "margin", result)
+    return result

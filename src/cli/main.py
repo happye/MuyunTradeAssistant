@@ -1731,6 +1731,14 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                     f"前景 [{outlook_color}]{tp.fundamental_outlook}[/{outlook_color}]"
                 )
                 console.print(f"    [dim]thesis: {tp.why_buy[:60]}{'...' if len(tp.why_buy) > 60 else ''}[/dim]")
+                # 报告④ 弱势期提醒：建仓<30天大概率跑输大盘（笨总"调仓后首月跑输"）
+                try:
+                    from datetime import datetime as _dt
+                    _days = (_dt.now() - _dt.strptime(tp.opened_at, "%Y-%m-%d")).days
+                    if 0 <= _days < 30:
+                        console.print(f"    [yellow]弱势期(建仓{_days}天<30)：笨总提示调仓后首月大概率跑输大盘，预期管理勿恐慌[/yellow]")
+                except Exception:
+                    pass
                 if tp.overweight_executed:
                     console.print(f"    [magenta]超配已激活(教学十, 到期{tp.overweight_expiry}): {(tp.overweight_basis or '')[:40]}[/magenta]")
         else:

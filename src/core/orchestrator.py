@@ -332,6 +332,7 @@ class Orchestrator:
                     announcements=getattr(data, "recent_announcements", None),
                     market_turnover_trillion=getattr(data, "market_turnover_trillion", None),
                     trade_plan=trade_plan,
+                    live=not is_backtest,
                 )
             except Exception as e:
                 logger.debug(f"高位止盈信号检查失败: {e}")
@@ -465,6 +466,7 @@ class Orchestrator:
         decision_result, _, _, _ = self.analyze(
             data, force_state, current_position_ratio,
             ai_enabled=ai_enabled,
+            is_backtest=True,  # 报告②审查修复：legacy 接口供回测用，传 is_backtest=True 避免 live 信号(股东户数/融资余额)误触 akshare
         )
         return decision_result
 
