@@ -28,7 +28,7 @@ HF_ENDPOINTS = (
     HF_MIRROR,
 )
 if not os.environ.get("HF_ENDPOINT"):
-    os.environ["HF_ENDPOINT"] = HF_OFFICIAL
+    os.environ["HF_ENDPOINT"] = HF_MIRROR  # 国内优先镜像(huggingface.co被墙)
 # Hugging Face Hub 默认可能长时间等待大文件连接；超时后才能切换下载源。
 if not os.environ.get("HF_HUB_ETAG_TIMEOUT"):
     os.environ["HF_HUB_ETAG_TIMEOUT"] = "15"
