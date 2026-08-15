@@ -1377,3 +1377,12 @@ P3（已取消）:
 - **验证**: pytest 22/22（新增 test_chat_shutdown.py 4用例：置空全部单例/close被调用/幂等/坏close容错）+ weakref实测RAGService与SentenceTransformer模型均被GC回收、get_referrers确认无残留引用者 + 真实REPL两次进出chat退出干净无报错、无baostock噪声
 - **诚实边界**: 实测进程RSS 551.7→497.0MB只降~55MB——剩余~440MB是torch/pandas/faiss等库的**导入开销**（Python进程内无法卸载模块，进程级成本，CLI同样存在）；若要连导入开销一起彻底释放，唯一方案是chat跑独立子进程（start.py subprocess化，退出即OS整体回收），列为可选后续
 - **关联**: ISS-058 / docs/2026-08-14_chat问题交接.md
+
+### ISS-061: chat 行业分析深度优化（产业链数据层）（2026-08-15）
+- **状态**: 🟡 方案已完成，Phase 1 待开工（用户确认后实施）
+- **优先级**: P1（用户明确反馈"回答毫无专业性"）
+- **问题**: chat 无行业基本面数据工具，答锂矿只能靠训练记忆+新闻标题——没结合需求端、供给端没细分、没挖掘上下游（garbage in garbage out，记忆 project_ai_ceiling 在 chat 层的具体化）
+- **方案**: docs/2026-08-15_chat行业分析深度优化方案.md——(1) 产业链知识图谱 configs/industry_chains.yaml（环节-公司-关键变量，静态）；(2) 行业数据层 src/data/industry_data.py（商品价格/需求/仓单，动态，25s超时降级）；(3) 新工具 analyze_industry 组装≤3500字行业数据包；(4) 方法论 .md 进知识库（供需平衡表/周期判断，自动进RAG）；(5) prompt 行业回答强制框架（三阶段×供需分端×上下游×周期位置+数据缺口诚实标注）
+- **数据源实测**（2026-08-15 live-probe，akshare 1.18.51）: 可用——碳酸锂日线/现货基差/仓单(futures_zh_daily_sina LC0 / futures_spot_price vars_list=["LC"] / futures_inventory_em 碳酸锂)、主营构成 stock_zygc_em(须带SZ前缀)、新能源渗透率/厂商月销(car_market_*_cpca)、用电量、PMI/PPI(表倒序head最新)；失败——生意社锂价(解析bug)、car_market_cate_cpca；**缺口——动力电池装机量/储能装机量 akshare 无接口(Phase 2 调研替代源)、SMM 周度产量库存(付费墙,用仓单+公告代理)**
+- **红线**: 不改笨总 effective_grade 公式；chat 工具纯加法不碰 analyze_stock/scan；Phase 3 与笨总景气度联动必须配回测+bump CACHE_VERSION（沿用 docs/2026-07-17 报告 §6）
+- **关联**: ISS-058 / ISS-059 / docs/2026-07-17_免费股票数据源调研.md
