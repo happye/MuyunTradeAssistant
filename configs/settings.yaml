@@ -186,6 +186,7 @@ chat:
   enabled: true                    # 是否启用Chat模式
   max_history_messages: 20         # 对话历史最大消息数（控制token消耗）
   max_tool_rounds: 3               # 单次对话最大工具调用轮次（防无限循环）
+  max_failed_rounds: 3             # 工具全部失败的连续轮次上限（失败不占轮次，AI可重试）
   max_result_length: 4000          # 工具结果最大字符数（防token爆炸）
   max_tokens: 384000               # 单次回复最大输出token；DeepSeek-V4输出上限384K（官方文档），拉满避免长回答被截断
 

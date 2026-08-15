@@ -21,7 +21,7 @@ from typing import Optional
 from openai import OpenAI
 
 from src.chat.prompts import CHAT_SYSTEM_PROMPT, TOOL_DEFINITIONS
-from src.chat.tools import TOOL_REGISTRY, init_engines
+from src.chat.tools import TOOL_REGISTRY, init_engines, TOOL_ERROR_MARK
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,9 @@ DEFAULT_MAX_RESULT_LENGTH = 4000
 # 拉满使用——不自行设小的额度，避免长对话超额被静默截断、回答不完整损失用户。
 # 边界保护见 _call_api()：若 API 拒绝该值（超实际上限）自动降级重试。
 DEFAULT_MAX_TOKENS = 384000
+# 工具全部失败的连续轮次上限：失败轮不占 max_tool_rounds 轮次（失败信息回传AI，
+# AI自行重试），但连续全失败超过此次数则停止循环（防工具坏了无限重试）。
+DEFAULT_MAX_FAILED_ROUNDS = 3
 
 # 伪工具调用文本：模型在请求不带tools时（如硬上限后的兜底调用）还想调工具，
 # 会把 <tool_calls> 当正文输出并停止，用户看到的是一段假XML而非回答。剥离用。
@@ -54,6 +57,7 @@ class ChatAgent:
         chat_cfg = config.get("chat", {})
         self.max_history = chat_cfg.get("max_history_messages", DEFAULT_MAX_HISTORY)
         self.max_tool_rounds = chat_cfg.get("max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS)
+        self.max_failed_rounds = chat_cfg.get("max_failed_rounds", DEFAULT_MAX_FAILED_ROUNDS)
         self.max_result_length = chat_cfg.get("max_result_length", DEFAULT_MAX_RESULT_LENGTH)
         self.max_tokens = chat_cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
 
@@ -245,18 +249,24 @@ class ChatAgent:
     def _run_conversation(self) -> str:
         """执行一轮对话（含function calling循环）
 
-        工具轮次硬上限 = max_tool_rounds * 2（防无限循环）。
-        复杂问题（如"行业看法+持仓+多阶段展望"）常需4-5个工具轮
-        （查持仓→检索知识→个股分析→查新闻→再检索），3轮不够。
-        原实现达到max_tool_rounds后最终调用不带tools，模型还想调工具时
-        会把<tool_calls>伪XML当正文输出并停止 → 用户看到假工具调用、无真实回答。
-        现改为：硬上限内每轮都带tools，模型可一直调工具直到给出回答；
-        超限后追加提示消息要求直接回答。
+        轮次语义：
+        - 工具轮次硬上限 = max_tool_rounds * 2（防无限循环）。
+          复杂问题（如"行业看法+持仓+多阶段展望"）常需4-5个工具轮
+          （查持仓→检索知识→个股分析→查新闻→再检索），3轮不够。
+        - 失败轮不占轮次上限：一轮内所有工具都失败（TOOL_ERROR_MARK）时，
+          失败信息已回传AI、AI下一轮可重试，不消耗轮次；
+          连续全失败达 max_failed_rounds 则停止（防工具坏了无限重试）。
+        - 原实现达到max_tool_rounds后最终调用不带tools，模型还想调工具时
+          会把<tool_calls>伪XML当正文输出并停止 → 用户看到假工具调用、无真实回答。
+          现改为：上限内每轮都带tools；超限后追加提示消息要求直接回答。
+        - 控制台流式进度：⏳等待AI / 模型叙述 / 🔧工具调用 / ✓✗结果。
         """
         hard_cap = self.max_tool_rounds * 2
         round_num = 0
-        while round_num < hard_cap:
+        consecutive_failures = 0
+        while round_num < hard_cap and consecutive_failures < self.max_failed_rounds:
             # 调用AI（每轮都带tools：模型想调工具时走真tool_calls，而非输出伪XML文本）
+            print("⏳ 等待 AI 响应...")
             api_params = {
                 "model": self._model,
                 "messages": self._messages,
@@ -291,7 +301,9 @@ class ChatAgent:
                 self._messages.append({"role": "assistant", "content": _trunc_content})
                 return _trunc_content
 
-            # 有工具调用 → 执行工具 → 继续对话
+            # 有工具调用 → 流式显示模型叙述 + 执行工具 → 继续对话
+            if message.content and message.content.strip():
+                print(f"\n{message.content.strip()}")
             # 手动构建assistant消息dict（含tool_calls，不用model_dump()）
             self._messages.append({
                 "role": "assistant",
@@ -309,6 +321,7 @@ class ChatAgent:
                 ],
             })
 
+            round_had_success = False
             for tool_call in tool_calls:
                 func_name = tool_call.function.name
                 func_args_str = tool_call.function.arguments
@@ -318,9 +331,20 @@ class ChatAgent:
                 except (json.JSONDecodeError, TypeError):
                     func_args = {}
 
-                # 执行工具
+                # 执行工具（流式进度：先打心跳，再报结果）
+                args_brief = func_args_str.strip()
+                if len(args_brief) > 80:
+                    args_brief = args_brief[:80] + "..."
+                print(f"  🔧 调用工具 {func_name}({args_brief})...")
                 logger.info(f"Chat Agent调用工具: {func_name}({func_args})")
                 tool_result = self._execute_tool(func_name, func_args)
+
+                if self._is_tool_failure(tool_result):
+                    err_brief = tool_result[len(TOOL_ERROR_MARK):].splitlines()[0][:100]
+                    print(f"  ✗ {func_name} 执行失败：{err_brief}")
+                else:
+                    round_had_success = True
+                    print(f"  ✓ {func_name} 完成（{len(tool_result)}字）")
 
                 # 将工具结果加入历史
                 self._messages.append({
@@ -329,17 +353,33 @@ class ChatAgent:
                     "content": tool_result,
                 })
 
-            round_num += 1
+            # 失败轮不占轮次上限（AI下轮可重试）；有任一成功则计一轮并清零失败计数
+            if round_had_success:
+                consecutive_failures = 0
+                round_num += 1
+            else:
+                consecutive_failures += 1
+                logger.warning(
+                    f"Chat Agent: 工具轮全部失败({consecutive_failures}/{self.max_failed_rounds})，"
+                    f"不占轮次上限({round_num}/{hard_cap})"
+                )
 
-        # 达到硬上限：追加提示消息，要求直接回答（此调用不带tools，防止继续循环）
-        logger.warning(f"Chat Agent: 达到工具轮次硬上限({hard_cap})，要求模型直接回答")
-        self._messages.append({
-            "role": "user",
-            "content": (
+        # 循环结束：追加提示消息，要求直接回答（此调用不带tools，防止继续循环）
+        if round_num >= hard_cap:
+            exit_note = "工具调用轮次已达上限"
+            nudge = (
                 "（系统提示：工具调用轮次已达上限，"
                 "请基于以上已获取的信息直接给出完整回答，不要再调用工具。）"
-            ),
-        })
+            )
+        else:
+            exit_note = f"工具已连续失败 {consecutive_failures} 轮"
+            nudge = (
+                "（系统提示：工具已连续失败多次，请基于已有信息给出回答，"
+                "并如实说明哪些数据未能获取。）"
+            )
+        print(f"  ⚠ {exit_note}，请 AI 直接作答...")
+        logger.warning(f"Chat Agent: {exit_note}，要求模型直接回答")
+        self._messages.append({"role": "user", "content": nudge})
         final_params = {
             "model": self._model,
             "messages": self._messages,
@@ -356,6 +396,15 @@ class ChatAgent:
         self._messages.append({"role": "assistant", "content": final_content})
         return final_content
 
+    @staticmethod
+    def _is_tool_failure(text: str) -> bool:
+        """判断工具结果是否为失败（TOOL_ERROR_MARK 开头）。
+
+        失败的工具调用不占工具轮次上限（失败信息已回传AI，AI会自行重试）；
+        连续全失败轮次由 max_failed_rounds 单独兜底。
+        """
+        return bool(text) and text.startswith(TOOL_ERROR_MARK)
+
     def _execute_tool(self, func_name: str, func_args: dict) -> str:
         """执行单个工具函数
 
@@ -364,11 +413,11 @@ class ChatAgent:
             func_args: 工具参数
 
         Returns:
-            工具执行结果（纯文本）
+            工具执行结果（纯文本；失败以 TOOL_ERROR_MARK 开头，供 _is_tool_failure 识别）
         """
         func = TOOL_REGISTRY.get(func_name)
         if not func:
-            return f"未知工具: {func_name}"
+            return f"{TOOL_ERROR_MARK}未知工具: {func_name}"
 
         try:
             result = func(**func_args)
@@ -380,10 +429,10 @@ class ChatAgent:
                 result = result[:keep] + "\n\n...(中间部分截断)...\n\n" + result[-keep:]
             return result
         except TypeError as e:
-            return f"工具参数错误: {e}"
+            return f"{TOOL_ERROR_MARK}工具参数错误: {e}"
         except Exception as e:
             logger.error(f"工具执行异常 {func_name}: {e}")
-            return f"工具执行失败: {e}"
+            return f"{TOOL_ERROR_MARK}工具执行失败: {e}"
 
     def reset_history(self):
         """重置对话历史（保留system消息）"""

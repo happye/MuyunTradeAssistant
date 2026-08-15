@@ -14,6 +14,10 @@ from typing import Optional
 
 logger = logging.getLogger(__name__)
 
+# 工具失败标记：所有失败返回（内部异常/坏参数/数据源失败）统一以此开头，
+# agent 据此识别失败的工具调用——失败轮不占工具轮次上限，允许AI重试。
+TOOL_ERROR_MARK = "[工具失败] "
+
 # 模块级引擎实例（由ChatAgent启动时通过init_engines()初始化）
 _orchestrator = None
 _scanner_engine = None
@@ -86,7 +90,7 @@ def init_engines(config: dict):
 def search_stocks_by_sector(keyword: str) -> str:
     """按行业/板块搜索股票"""
     if not _scanner_engine:
-        return "错误：扫描引擎未初始化"
+        return TOOL_ERROR_MARK + "扫描引擎未初始化"
 
     try:
         industries = _scanner_engine.get_industry_list(keyword=keyword)
@@ -97,7 +101,7 @@ def search_stocks_by_sector(keyword: str) -> str:
         return format_industry_list(industries, keyword)
     except Exception as e:
         logger.error(f"search_stocks_by_sector失败: {e}")
-        return f"搜索行业板块时出错: {e}"
+        return TOOL_ERROR_MARK + f"搜索行业板块时出错: {e}"
 
 
 def _get_stock_data_with_timeout(stock_code: str, timeout: int = 30):
@@ -128,7 +132,7 @@ def _get_stock_data_with_timeout(stock_code: str, timeout: int = 30):
 def analyze_stock(stock_code: str) -> str:
     """对单只股票进行深度分析"""
     if not _orchestrator:
-        return "错误：编排器未初始化"
+        return TOOL_ERROR_MARK + "编排器未初始化"
 
     try:
         from src.data.akshare_client import AKShareClient
@@ -153,7 +157,7 @@ def analyze_stock(stock_code: str) -> str:
                 )
                 return format_basic_quote(stock_data) + "\n\n[技术指标不可用，无法进行深度分析]"
 
-            return f"无法获取 {stock_code} 的数据，请检查股票代码是否正确"
+            return TOOL_ERROR_MARK + f"无法获取 {stock_code} 的数据，请检查股票代码是否正确"
 
         # 获取持仓状态
         pm = _portfolio_manager
@@ -206,13 +210,13 @@ def analyze_stock(stock_code: str) -> str:
 
     except Exception as e:
         logger.error(f"analyze_stock失败: {e}")
-        return f"分析 {stock_code} 时出错: {e}"
+        return TOOL_ERROR_MARK + f"分析 {stock_code} 时出错: {e}"
 
 
 def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None) -> str:
     """全市场扫描"""
     if not _scanner_engine:
-        return "错误：扫描引擎未初始化"
+        return TOOL_ERROR_MARK + "扫描引擎未初始化"
 
     try:
         from src.data.portfolio import PortfolioManager
@@ -234,7 +238,7 @@ def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None
         )
 
         if "error" in scan_info:
-            return f"扫描失败: {scan_info['error']}"
+            return TOOL_ERROR_MARK + f"扫描失败: {scan_info['error']}"
 
         if not candidates:
             return (
@@ -248,7 +252,7 @@ def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None
 
     except Exception as e:
         logger.error(f"scan_market失败: {e}")
-        return f"市场扫描时出错: {e}"
+        return TOOL_ERROR_MARK + f"市场扫描时出错: {e}"
 
 
 def get_portfolio() -> str:
@@ -267,7 +271,7 @@ def get_portfolio() -> str:
 
     except Exception as e:
         logger.error(f"get_portfolio失败: {e}")
-        return f"获取持仓时出错: {e}"
+        return TOOL_ERROR_MARK + f"获取持仓时出错: {e}"
 
 
 def get_news(stock_code: str, max_count: int = 5) -> str:
@@ -287,7 +291,7 @@ def get_news(stock_code: str, max_count: int = 5) -> str:
 
     except Exception as e:
         logger.error(f"get_news失败: {e}")
-        return f"获取新闻时出错: {e}"
+        return TOOL_ERROR_MARK + f"获取新闻时出错: {e}"
 
 
 # 工具名 → 函数 的映射
@@ -314,10 +318,10 @@ def search_knowledge(query: str) -> str:
         策略知识检索结果（纯文本）
     """
     if not _rag_service or not _rag_service.is_available():
-        return "策略知识库未启用或初始化失败"
+        return TOOL_ERROR_MARK + "策略知识库未启用或初始化失败"
 
     if not query.strip():
-        return "请提供查询内容，如'止损怎么设'、'突破买入注意事项'"
+        return TOOL_ERROR_MARK + "请提供查询内容，如'止损怎么设'、'突破买入注意事项'"
 
     try:
         context = _rag_service.get_context(
@@ -333,4 +337,4 @@ def search_knowledge(query: str) -> str:
 
     except Exception as e:
         logger.error(f"search_knowledge失败: {e}")
-        return f"搜索策略知识时出错: {e}"
+        return TOOL_ERROR_MARK + f"搜索策略知识时出错: {e}"
