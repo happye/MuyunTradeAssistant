@@ -1349,3 +1349,12 @@ P3（已取消）:
 - **关联**: docs/2026-07-21_Chat功能说明.md(8.3 6类bug) / 记忆 deepseek_model_deprecation + bocha_mcp_search
 - **诚实边界**: 6维AND把抄错率从RSI<30的50%+降到~15%非100%银弹; 真正完全兜底配合strategy_layer confirmation(连续2天)+EntryExitCalculator突破买点触发; 阶段2笨总valuation_position进Orchestrator可选增强,D维度当前用深度低位代理
 - **后续修复(2026-07-23)**: (1) rsi_6_series计算崩溃bug(_loss.replace(0,pd.NA)变object dtype致.round崩,oversold_confirm全None失效,commit 38aac55改float('nan)+astype); (2) scan market命令不支持规则名(parse_input参数全当主题词致oversold_watch走healthy_pullback,commit e7e40eb改第一个参数当rule_name); (3) chat新机器初始化缺依赖(开发机已装不暴露,commit 0eb6bd7加preflight ImportError提示uv sync)
+
+### ISS-058: chat提问无回答（模型输出伪<tool_calls>文本）（2026-08-15）
+- **状态**: ✅ 完成
+- **优先级**: P1
+- **现象**: chat 提问后无回答（如"锂矿+持仓+三阶段展望"复杂问题），控制台显示模型输出的伪 `<tool_calls>` XML 文本后直接回到提示符；再发"继续"才有结果
+- **根因**: 复杂问题需4-5个工具轮（查持仓→检索知识→个股分析→查新闻→再检索），max_tool_rounds=3不够；达上限后 `_run_conversation` 最终调用不带 tools，模型还想调工具时把 `<tool_calls>` 当正文输出并停止 → 用户看到假XML、无真实回答。探针复现：final调用返回"让我再搜索…<tool_calls>…"235字即停(finish_reason=stop)
+- **修复**: 硬上限=max_tool_rounds*2（上限内每轮都带tools，模型可一直调工具直到给出回答）；超限后追加提示消息要求直接回答；新增 `_finalize_reply` 三兜底（content空→reasoning_content→占位提示 / 剥离伪<tool_calls>并提示"继续" / length截断提示统一收口）；系统提示词加"禁止正文输出伪工具调用文本"
+- **验证**: pytest 13/13 + 真实chat REPL跑用户原问题输出完整三阶段真实回答（含RAG知识库第11/3章引用）
+- **关联**: docs/2026-08-14_chat问题交接.md / ISS-057

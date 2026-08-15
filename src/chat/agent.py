@@ -13,6 +13,7 @@
 """
 
 import os
+import re
 import json
 import logging
 from typing import Optional
@@ -32,6 +33,10 @@ DEFAULT_MAX_RESULT_LENGTH = 4000
 # 拉满使用——不自行设小的额度，避免长对话超额被静默截断、回答不完整损失用户。
 # 边界保护见 _call_api()：若 API 拒绝该值（超实际上限）自动降级重试。
 DEFAULT_MAX_TOKENS = 384000
+
+# 伪工具调用文本：模型在请求不带tools时（如硬上限后的兜底调用）还想调工具，
+# 会把 <tool_calls> 当正文输出并停止，用户看到的是一段假XML而非回答。剥离用。
+_FAKE_TOOL_CALL_RE = re.compile(r"<tool_calls>.*?(?:</tool_calls>|$)", re.DOTALL)
 
 
 class ChatAgent:
@@ -192,13 +197,66 @@ class ChatAgent:
             logger.error(f"Chat Agent对话异常: {e}")
             return f"对话处理出错: {e}"
 
+    @staticmethod
+    def _finalize_reply(message, finish_reason: str) -> str:
+        """整理AI回复为最终输出文本（三个兜底，绝不静默输出空）。
+
+        - content 为空：reasoning_content 兜底（思考型模型偶发空content，
+          同 ai_modifier._parse_response 模式）；再空则占位提示。
+        - 剥离伪 <tool_calls> XML 文本：模型在请求不带tools时还想调工具，
+          会把工具调用当正文输出并停止（用户看到假XML、无真实回答）。
+        - finish_reason=length：追加截断提示。
+        """
+        text = (message.content or "").strip()
+
+        if not text:
+            reasoning = getattr(message, "reasoning_content", "") or ""
+            if reasoning.strip():
+                logger.warning("Chat Agent: content为空，用reasoning_content兜底")
+                text = reasoning.strip()
+            else:
+                logger.warning("Chat Agent: content为空且无reasoning_content")
+                text = "（模型本次未返回有效回答，请重新提问或输入\"继续\"。）"
+
+        # 剥离伪工具调用文本（模型无tools可用时可能把<tool_calls>当正文输出并停止）。
+        # 含伪工具调用 = 模型本轮没答完（多半只剩一句"让我再搜索"引导语），
+        # 必须提示用户，否则剥离后剩下的引导语仍是"无回答"。
+        stripped = _FAKE_TOOL_CALL_RE.sub("", text).strip()
+        if _FAKE_TOOL_CALL_RE.search(text):
+            logger.warning("Chat Agent: 回复含伪工具调用文本，模型本轮未完成回答")
+            if stripped:
+                text = stripped + (
+                    "\n\n⚠️ 模型试图继续调用工具，本次回答不完整，"
+                    "可输入\"继续\"让模型继续。"
+                )
+            else:
+                text = "（模型本次仅返回工具调用占位文本，未生成回答，请重新提问或输入\"继续\"。）"
+        else:
+            text = stripped
+
+        if finish_reason == "length":
+            text += (
+                "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
+                "可输入\"继续\"补全。"
+            )
+            logger.warning("Chat Agent: 回复被max_tokens截断(finish_reason=length)")
+        return text
+
     def _run_conversation(self) -> str:
         """执行一轮对话（含function calling循环）
 
-        最多 self.max_tool_rounds 轮工具调用（防止无限循环）
+        工具轮次硬上限 = max_tool_rounds * 2（防无限循环）。
+        复杂问题（如"行业看法+持仓+多阶段展望"）常需4-5个工具轮
+        （查持仓→检索知识→个股分析→查新闻→再检索），3轮不够。
+        原实现达到max_tool_rounds后最终调用不带tools，模型还想调工具时
+        会把<tool_calls>伪XML当正文输出并停止 → 用户看到假工具调用、无真实回答。
+        现改为：硬上限内每轮都带tools，模型可一直调工具直到给出回答；
+        超限后追加提示消息要求直接回答。
         """
-        for round_num in range(self.max_tool_rounds):
-            # 调用AI
+        hard_cap = self.max_tool_rounds * 2
+        round_num = 0
+        while round_num < hard_cap:
+            # 调用AI（每轮都带tools：模型想调工具时走真tool_calls，而非输出伪XML文本）
             api_params = {
                 "model": self._model,
                 "messages": self._messages,
@@ -211,20 +269,12 @@ class ChatAgent:
 
             response = self._call_api(api_params)
             message = response.choices[0].message
-
-            # 检查是否需要调用工具
+            finish_reason = response.choices[0].finish_reason
             tool_calls = message.tool_calls
 
             if not tool_calls:
-                # 无工具调用 → 直接返回文本
-                assistant_content = message.content or ""
-                # 检测输出截断（finish_reason=length 表示超 max_tokens 或上下文长度）
-                if response.choices[0].finish_reason == "length":
-                    assistant_content += (
-                        "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
-                        "可输入\"继续\"补全。"
-                    )
-                    logger.warning("Chat Agent: 回复被max_tokens截断(finish_reason=length)")
+                # 无工具调用 → 整理并返回文本
+                assistant_content = self._finalize_reply(message, finish_reason)
                 self._messages.append({
                     "role": "assistant",
                     "content": assistant_content
@@ -233,7 +283,7 @@ class ChatAgent:
 
             # 审查修复M1: tool_calls被max_tokens截断(finish_reason=length)时arguments多半残缺
             # -> json.loads失败->func_args={}->工具空参执行(AI装失忆)。检测length放弃执行残缺工具调用
-            if response.choices[0].finish_reason == "length":
+            if finish_reason == "length":
                 _trunc_content = (message.content or "") + (
                     "\n\n⚠️ 工具调用被截断（finish_reason=length），请重试或简化问题。"
                 )
@@ -279,8 +329,17 @@ class ChatAgent:
                     "content": tool_result,
                 })
 
-        # 超过最大轮次，再做一次无工具的调用获取最终回复
-        logger.info("Chat Agent: 达到最大工具调用轮次，获取最终回复")
+            round_num += 1
+
+        # 达到硬上限：追加提示消息，要求直接回答（此调用不带tools，防止继续循环）
+        logger.warning(f"Chat Agent: 达到工具轮次硬上限({hard_cap})，要求模型直接回答")
+        self._messages.append({
+            "role": "user",
+            "content": (
+                "（系统提示：工具调用轮次已达上限，"
+                "请基于以上已获取的信息直接给出完整回答，不要再调用工具。）"
+            ),
+        })
         final_params = {
             "model": self._model,
             "messages": self._messages,
@@ -290,14 +349,10 @@ class ChatAgent:
         final_params["timeout"] = 180
 
         final_response = self._call_api(final_params)
-        final_content = final_response.choices[0].message.content or ""
-        # 检测输出截断
-        if final_response.choices[0].finish_reason == "length":
-            final_content += (
-                "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
-                "可输入\"继续\"补全。"
-            )
-            logger.warning("Chat Agent: 最终回复被max_tokens截断(finish_reason=length)")
+        final_message = final_response.choices[0].message
+        final_content = self._finalize_reply(
+            final_message, final_response.choices[0].finish_reason
+        )
         self._messages.append({"role": "assistant", "content": final_content})
         return final_content
 
