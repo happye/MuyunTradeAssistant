@@ -1368,3 +1368,12 @@ P3（已取消）:
   2. **控制台流式进度**：每轮 API 调用前打印 `⏳ 等待 AI 响应...`；模型调用工具时先打印其叙述文本，再逐工具打印 `🔧 调用工具 xxx(args)...` 心跳 → `✓ xxx 完成（N字）` / `✗ xxx 执行失败：原因`；循环退出时打印 `⚠ ...请 AI 直接作答`
 - **验证**: pytest 18/18（新增 test_chat_tool_failure.py 5用例：FakeClient模拟API序列验证失败不占轮次/重试成功/连续失败兜底/混合轮语义）+ 真实chat REPL流式进度实测
 - **关联**: ISS-058 / docs/2026-08-14_chat问题交接.md
+
+### ISS-060: chat退出资源清理 shutdown_engines（2026-08-15）
+- **状态**: ✅ 完成
+- **优先级**: P2（用户要求检查）
+- **问题**: chat 退出后资源不释放——RAG torch模型+FAISS索引随模块级单例(`tools.py` `_rag_service`等)驻留整个start.py会话，重进chat二次加载(峰值叠加)；baostock登录后不logout(CLI scan结束有logout，chat没抄)；OpenAI/httpx连接池无显式close
+- **修复**: tools.py 加 `shutdown_engines()`（关闭编排器AI客户端→仅登录过才baostock登出→置空4个模块级引擎单例→gc.collect()）；run_chat_repl 用 try/finally 覆盖所有退出路径（q/EOF/Ctrl+C/异常），先 close agent 自身 AI 客户端再 shutdown
+- **验证**: pytest 22/22（新增 test_chat_shutdown.py 4用例：置空全部单例/close被调用/幂等/坏close容错）+ weakref实测RAGService与SentenceTransformer模型均被GC回收、get_referrers确认无残留引用者 + 真实REPL两次进出chat退出干净无报错、无baostock噪声
+- **诚实边界**: 实测进程RSS 551.7→497.0MB只降~55MB——剩余~440MB是torch/pandas/faiss等库的**导入开销**（Python进程内无法卸载模块，进程级成本，CLI同样存在）；若要连导入开销一起彻底释放，唯一方案是chat跑独立子进程（start.py subprocess化，退出即OS整体回收），列为可选后续
+- **关联**: ISS-058 / docs/2026-08-14_chat问题交接.md

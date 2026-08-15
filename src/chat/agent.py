@@ -21,7 +21,9 @@ from typing import Optional
 from openai import OpenAI
 
 from src.chat.prompts import CHAT_SYSTEM_PROMPT, TOOL_DEFINITIONS
-from src.chat.tools import TOOL_REGISTRY, init_engines, TOOL_ERROR_MARK
+from src.chat.tools import (
+    TOOL_REGISTRY, init_engines, shutdown_engines, TOOL_ERROR_MARK,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -444,59 +446,74 @@ def run_chat_repl(config: dict):
 
     Args:
         config: settings.yaml完整配置
+
+    退出时（q/EOF/Ctrl+C/异常）finally释放chat资源：RAG模型/引擎/连接，
+    避免几百MB的torch模型驻留整个start.py会话。
     """
-    agent = ChatAgent(config)
+    agent = None
+    try:
+        agent = ChatAgent(config)
 
-    print()
-    print("=" * 50)
-    print("  暮云思辨投资助手 - Chat Agent Mode")
-    print("  输入自然语言与AI对话，输入 q 退出")
-    print("=" * 50)
-    print()
-
-    if not agent._client:
-        print("  [!] AI未配置，请在 configs/settings.yaml 中配置 AI API Key")
-        print("  [!] 仍然可以尝试对话（部分功能可能不可用）")
+        print()
+        print("=" * 50)
+        print("  暮云思辨投资助手 - Chat Agent Mode")
+        print("  输入自然语言与AI对话，输入 q 退出")
+        print("=" * 50)
         print()
 
-    while True:
-        try:
-            user_input = input("chat> ").strip()
-        except (EOFError, KeyboardInterrupt):
-            print("\n  退出Chat模式")
-            break
-
-        if not user_input:
-            continue
-
-        if user_input.lower() in ("q", "quit", "exit"):
-            print("  退出Chat模式")
-            break
-
-        if user_input.lower() in ("h", "help", "?"):
+        if not agent._client:
+            print("  [!] AI未配置，请在 configs/settings.yaml 中配置 AI API Key")
+            print("  [!] 仍然可以尝试对话（部分功能可能不可用）")
             print()
-            print("  可用操作（自然语言）：")
-            print("    - 查询行业: '半导体板块有哪些股票'")
-            print("    - 分析股票: '分析 600519' 或 '茅台怎么样'")
-            print("    - 市场扫描: '帮我扫描放量突破的股票'")
-            print("    - 查看持仓: '我的持仓' 或 '查看持仓'")
-            print("    - 获取新闻: '600519有什么新闻'")
-            print("    - 策略查询: '止损怎么设' 或 '套牢了怎么办' (v0.8.1)")
-            print("    - 重置对话: 'reset'")
-            print("    - 退出: 'q'")
-            print()
-            continue
 
-        if user_input.lower() == "reset":
-            agent.reset_history()
-            print("  对话历史已重置")
-            continue
+        while True:
+            try:
+                user_input = input("chat> ").strip()
+            except (EOFError, KeyboardInterrupt):
+                print("\n  退出Chat模式")
+                break
 
-        # 调用Chat Agent
-        try:
-            reply = agent.chat(user_input)
-            print()
-            print(reply)
-            print()
-        except Exception as e:
-            print(f"\n  [错误] {e}\n")
+            if not user_input:
+                continue
+
+            if user_input.lower() in ("q", "quit", "exit"):
+                print("  退出Chat模式")
+                break
+
+            if user_input.lower() in ("h", "help", "?"):
+                print()
+                print("  可用操作（自然语言）：")
+                print("    - 查询行业: '半导体板块有哪些股票'")
+                print("    - 分析股票: '分析 600519' 或 '茅台怎么样'")
+                print("    - 市场扫描: '帮我扫描放量突破的股票'")
+                print("    - 查看持仓: '我的持仓' 或 '查看持仓'")
+                print("    - 获取新闻: '600519有什么新闻'")
+                print("    - 策略查询: '止损怎么设' 或 '套牢了怎么办' (v0.8.1)")
+                print("    - 重置对话: 'reset'")
+                print("    - 退出: 'q'")
+                print()
+                continue
+
+            if user_input.lower() == "reset":
+                agent.reset_history()
+                print("  对话历史已重置")
+                continue
+
+            # 调用Chat Agent
+            try:
+                reply = agent.chat(user_input)
+                print()
+                print(reply)
+                print()
+            except Exception as e:
+                print(f"\n  [错误] {e}\n")
+    finally:
+        # 释放chat资源：RAG模型/引擎/AI连接/baostock，退出后内存还给主程序
+        if agent is not None:
+            try:
+                _client = getattr(agent, "_client", None)
+                if _client is not None and hasattr(_client, "close"):
+                    _client.close()
+            except Exception:
+                pass
+        shutdown_engines()

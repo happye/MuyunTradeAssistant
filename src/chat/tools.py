@@ -87,6 +87,46 @@ def init_engines(config: dict):
     logger.info("Chat Agent工具引擎初始化完成")
 
 
+def shutdown_engines():
+    """释放Chat Agent占用的底层引擎资源（chat退出时调用）。
+
+    退出chat后若不清理：RAG的torch嵌入模型+FAISS索引（内存大头）随模块级
+    单例驻留整个start.py会话，重进chat还会二次加载（峰值叠加）；baostock
+    连接不登出（CLI的scan结束时有logout，chat补齐）；httpx连接池无可靠析构，
+    不显式close则socket挂到进程退出。
+    """
+    global _orchestrator, _scanner_engine, _portfolio_manager, _rag_service
+
+    # 关闭编排器内的AI客户端连接池（httpx）
+    try:
+        _mod = getattr(_orchestrator, "ai_modifier", None) if _orchestrator else None
+        _cl = getattr(_mod, "_client", None) if _mod else None
+        if _cl is not None and hasattr(_cl, "close"):
+            _cl.close()
+    except Exception as e:
+        logger.warning(f"chat清理: 关闭AI客户端失败: {e}")
+
+    # baostock登出：仅当本次会话实际登录过才登出
+    # （未登录时调bs.logout()会打印"you don't login."噪声，无意义）
+    try:
+        from src.data import akshare_client
+        if getattr(akshare_client, "_bs_login_status", False):
+            akshare_client._baostock_logout()
+    except Exception as e:
+        logger.warning(f"chat清理: baostock登出失败: {e}")
+
+    # 置空模块级引擎引用（RAG的torch模型/FAISS索引随之失去引用，可被GC回收）
+    _orchestrator = None
+    _scanner_engine = None
+    _portfolio_manager = None
+    _rag_service = None
+
+    # 触发GC，实际回收torch/faiss等C扩展分配的内存
+    import gc
+    gc.collect()
+    logger.info("Chat Agent引擎资源已释放（RAG模型/引擎实例/AI连接/baostock）")
+
+
 def search_stocks_by_sector(keyword: str) -> str:
     """按行业/板块搜索股票"""
     if not _scanner_engine:
