@@ -135,6 +135,97 @@ def test_build_report_degrades_per_section(monkeypatch=None):
     assert "002192" in out
 
 
+# ── 全行业通用引擎（v2）──────────────────────────────────
+
+def test_match_commodity_mapping():
+    """商品链映射：生猪/钢铁/白酒 各自命中或明确未命中。"""
+    m = ind.match_commodity("生猪养殖怎么样")
+    assert m is not None and m[0] == "生猪养殖链"
+    assert any(v == "LH" for v, _ in m[1])
+    m2 = ind.match_commodity("钢铁板块")
+    assert m2 is not None and m2[0] == "钢铁链"
+    assert ind.match_commodity("白酒") is None, "白酒无商品锚，应返回None"
+
+
+def test_clean_query_strips_common_words():
+    """提问清洗：剔掉'板块/行业/怎么样'等非行业词。"""
+    assert ind._clean_query("白酒板块怎么样") == "白酒"
+    assert ind._clean_query("生猪养殖行业前景") == "生猪养殖"
+
+
+def test_generic_report_unknown_all_fails():
+    """板块和商品锚都未命中 -> [工具失败] 并列出精链支持范围。"""
+    out = ind.build_industry_report("不存在的量子行业", [], scanner_engine=None)
+    assert out.startswith("[工具失败]")
+
+
+def test_generic_report_with_fake_board():
+    """通用引擎：命中商品锚（无板块）也能出报告，含价格锚+宏观+指引。"""
+    # 不给 scanner（板块解析跳过），只靠商品锚
+    out = ind.build_industry_report("生猪养殖", [], scanner_engine=None)
+    assert "生猪" in out
+    assert "商品价格锚" in out
+    assert "分析指引" in out
+
+
+def test_generic_report_board_positions_crossref():
+    """通用引擎：成分股与持仓交叉定位（mock scanner）。"""
+    class FakeSnap:
+        def __init__(self, df):
+            import pandas as pd
+            self._df = df
+            self.columns = list(df.columns)
+        def copy(self):
+            return self._df
+        def __getitem__(self, k):
+            return self._df[k]
+        def sort_values(self, k, ascending=False):
+            return self._df.sort_values(k, ascending=ascending)
+        def head(self, n):
+            return self._df.head(n)
+        def iterrows(self):
+            return self._df.iterrows()
+
+    import pandas as pd
+    df = pd.DataFrame({
+        "代码": ["002714", "300498", "600519"],
+        "名称": ["牧原股份", "温氏股份", "贵州茅台"],
+        "总市值": [2e11, 1.5e11, 3e12],
+    })
+
+    class FakeMarketCache:
+        def get_all_stocks(self):
+            return FakeSnap(df)
+        def get_stocks_by_industry(self, name):
+            return ["002714", "300498"]
+        def get_stocks_by_concept(self, name):
+            return []
+
+    class FakeScanner:
+        market_cache = FakeMarketCache()
+        def get_industry_list(self, keyword=None):
+            return [{"name": "养殖业"}]
+        def get_concept_list(self, keyword=None):
+            return []
+
+    orig_resolve = ind._resolve_board
+    orig_business = ind.fetch_main_business
+    ind._resolve_board = lambda q, se: ("养殖业", "行业", ["002714", "300498"])
+    ind.fetch_main_business = lambda c: f"{c} 主营构成mock"
+    try:
+        out = ind.build_generic_report(
+            "生猪养殖", [{"stock_code": "002714", "current_ratio": 0.1}],
+            scanner_engine=FakeScanner())
+    finally:
+        ind._resolve_board = orig_resolve
+        ind.fetch_main_business = orig_business
+    assert "同花顺行业板块「养殖业」" in out
+    assert "牧原股份" in out and "总市值Top8" in out
+    assert "002714 仓位10%" in out, "持仓交叉定位应出现"
+    assert "主营构成mock" in out
+    assert "生猪" in out, "商品锚（LH）应命中"
+
+
 # ── chat 落盘 ─────────────────────────────────────────────
 
 def test_persist_turn_writes_daily_file(tmp_path=None):
