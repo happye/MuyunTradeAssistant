@@ -342,6 +342,8 @@ TOOL_REGISTRY = {
     "get_portfolio": get_portfolio,
     "get_news": get_news,
     "search_knowledge": lambda query="": search_knowledge(query),  # v0.8.1
+    "analyze_industry": lambda industry="": analyze_industry(industry),      # ISS-061（定义在文件尾）
+    "get_main_business": lambda stock_code="": get_main_business(stock_code),  # ISS-061（定义在文件尾）
 }
 
 
@@ -378,3 +380,99 @@ def search_knowledge(query: str) -> str:
     except Exception as e:
         logger.error(f"search_knowledge失败: {e}")
         return TOOL_ERROR_MARK + f"搜索策略知识时出错: {e}"
+
+
+def analyze_industry(industry: str) -> str:
+    """行业产业链深度分析（ISS-061）。
+
+    组装"行业数据包"：产业链图谱(环节-公司-周期锚点+用户持仓定位)
+    + 商品价格(期货/现货基差/仓单) + 需求端月度数据 + 宏观底色(PMI/PPI)。
+    数据源为 2026-08-15 实测可用的 akshare 接口；单项失败降级标注[数据缺失]。
+    """
+    try:
+        from src.data.industry_data import build_industry_report
+
+        # 持仓交叉定位：图谱内公司与用户持仓比对
+        positions = []
+        try:
+            pm = _portfolio_manager or PortfolioManager()
+            positions = [
+                {"stock_code": p.stock_code, "current_ratio": p.current_ratio}
+                for p in pm.list_positions()
+            ]
+        except Exception:
+            pass
+
+        return build_industry_report(industry, positions)
+    except Exception as e:
+        logger.error(f"analyze_industry失败: {e}")
+        return f"{TOOL_ERROR_MARK}行业分析时出错: {e}"
+
+
+def get_main_business(stock_code: str) -> str:
+    """个股主营构成（ISS-061）--个股在产业链中的环节定位证据。
+
+    东财主营构成接口（2026-08-15 实测）：必须带交易所前缀（SZ002192 格式），
+    裸代码报 KeyError。返回按产品的收入构成（最新报告期）。
+    """
+    code = (stock_code or "").strip().split(".")[0]
+    if not (code.isdigit() and len(code) == 6):
+        return f"{TOOL_ERROR_MARK}股票代码格式错误: {stock_code}（需6位数字）"
+    # 交易所前缀：6开头=沪(SH)，0/3开头=深(SZ)，其余（北交所等）不支持
+    if code.startswith("6"):
+        symbol = f"SH{code}"
+    elif code.startswith(("0", "3")):
+        symbol = f"SZ{code}"
+    else:
+        return f"{TOOL_ERROR_MARK}暂不支持该板块代码: {code}（仅沪深A股）"
+
+    def _pull():
+        import akshare as ak
+        df = ak.stock_zygc_em(symbol=symbol)
+        if df is None or len(df) == 0:
+            return f"{TOOL_ERROR_MARK}未获取到 {code} 的主营构成数据"
+        # 表含 按行业/按产品/按地区 分类，优先取"按产品分"
+        try:
+            cat_col = next(c for c in df.columns if "分类" in str(c))
+            prod = df[df[cat_col].astype(str).str.contains("产品", na=False)]
+        except StopIteration:
+            prod = df
+        if len(prod) == 0:
+            prod = df
+        # 取最新报告期
+        period = ""
+        try:
+            date_col = next(c for c in df.columns if "日期" in str(c) or "报告" in str(c))
+            latest = prod[date_col].astype(str).max()
+            prod = prod[prod[date_col].astype(str) == latest]
+            period = f"（报告期 {latest}）"
+        except StopIteration:
+            pass
+        # 收入占比列（名称含"占比"或"比例"）
+        ratio_col = next((c for c in prod.columns if "占比" in str(c) or "比例" in str(c)), None)
+        lines = [f"{code} 主营构成（按产品）{period}:"]
+        for _, r in prod.head(6).iterrows():
+            name = str(r.iloc[0])
+            if ratio_col is not None:
+                lines.append(f"  - {name}: 收入占比 {r[ratio_col]}%")
+            else:
+                lines.append(f"  - {name}")
+        return "\n".join(lines)
+
+    box = [None, None]
+
+    def _f():
+        try:
+            box[0] = _pull()
+        except Exception as e:
+            box[1] = f"{type(e).__name__}: {str(e)[:80]}"
+
+    import threading
+    t = threading.Thread(target=_f, daemon=True)
+    t.start()
+    t.join(timeout=25)
+    if t.is_alive():
+        return f"{TOOL_ERROR_MARK}获取 {code} 主营构成超时"
+    if box[1]:
+        return f"{TOOL_ERROR_MARK}获取主营构成失败: {box[1]}"
+    return box[0]

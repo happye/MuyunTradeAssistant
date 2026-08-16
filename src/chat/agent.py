@@ -35,6 +35,8 @@ DEFAULT_MAX_RESULT_LENGTH = 4000
 # 拉满使用——不自行设小的额度，避免长对话超额被静默截断、回答不完整损失用户。
 # 边界保护见 _call_api()：若 API 拒绝该值（超实际上限）自动降级重试。
 DEFAULT_MAX_TOKENS = 384000
+# chat对话落盘目录（ISS-061顺带消化交接文档待办#2：每天一个文件，追加）
+CHAT_REPORT_DIR = "./分析报告/chat"
 # 工具全部失败的连续轮次上限：失败轮不占 max_tool_rounds 轮次（失败信息回传AI，
 # AI自行重试），但连续全失败超过此次数则停止循环（防工具坏了无限重试）。
 DEFAULT_MAX_FAILED_ROUNDS = 3
@@ -61,6 +63,7 @@ class ChatAgent:
         self.max_tool_rounds = chat_cfg.get("max_tool_rounds", DEFAULT_MAX_TOOL_ROUNDS)
         self.max_failed_rounds = chat_cfg.get("max_failed_rounds", DEFAULT_MAX_FAILED_ROUNDS)
         self.max_result_length = chat_cfg.get("max_result_length", DEFAULT_MAX_RESULT_LENGTH)
+        self.persist = chat_cfg.get("persist", False)
         self.max_tokens = chat_cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
 
         # 初始化底层引擎
@@ -440,6 +443,21 @@ class ChatAgent:
         """重置对话历史（保留system消息）"""
         self._messages = [self._messages[0]]
 
+    def _persist_turn(self, question: str, reply: str):
+        """对话落盘：分析报告/chat/YYYY-MM-DD.md（每天一个文件，追加）。失败不影响主流程。"""
+        from datetime import datetime
+        from pathlib import Path
+        try:
+            report_dir = Path(CHAT_REPORT_DIR)
+            report_dir.mkdir(parents=True, exist_ok=True)
+            path = report_dir / f"{datetime.now().strftime('%Y-%m-%d')}.md"
+            ts = datetime.now().strftime("%H:%M")
+            entry = f"\n## {ts} 提问\n\n{question}\n\n### 回答\n\n{reply}\n\n---\n"
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(entry)
+        except OSError as e:
+            logger.warning(f"chat落盘失败（不影响主流程）: {e}")
+
 
 def run_chat_repl(config: dict):
     """Chat REPL主循环
@@ -505,6 +523,8 @@ def run_chat_repl(config: dict):
                 print()
                 print(reply)
                 print()
+                if agent.persist:
+                    agent._persist_turn(user_input, reply)
             except Exception as e:
                 print(f"\n  [错误] {e}\n")
     finally:

@@ -1,0 +1,178 @@
+"""测试行业数据层（ISS-061）：图谱匹配/格式化/持仓定位/降级/落盘。
+
+不依赖真实网络：网络函数用 industry_data 内部注入点（_cached 的 fn 参数不可注入，
+故直接 monkeypatch 模块级 get_commodity_section / get_demand_section / format_macro）。
+"""
+import os
+import sys
+from datetime import datetime, timedelta
+
+import pandas as pd
+
+# 确保项目根在 path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.data import industry_data as ind
+
+
+# ── 图谱匹配 ──────────────────────────────────────────────
+
+def test_match_chain_aliases():
+    """别名匹配：锂矿/碳酸锂/光模块/金价 各命中正确链。"""
+    assert ind.match_chain("锂矿")[0] == "锂电"
+    assert ind.match_chain("碳酸锂")[0] == "锂电"
+    assert ind.match_chain("光模块")[0] == "AI算力"
+    assert ind.match_chain("金价")[0] == "黄金"
+    assert ind.match_chain("动力煤")[0] == "煤炭"
+    assert ind.match_chain("光伏组件怎么看")[0] == "光伏"
+    assert ind.match_chain("量子计算") is None
+
+
+def test_match_chain_longest_alias_wins():
+    """最长别名优先：'碳酸锂' 应命中别名'碳酸锂'而非单字'锂'。"""
+    name, cfg = ind.match_chain("碳酸锂")
+    assert name == "锂电"
+    assert "碳酸锂" in cfg.get("aliases", [])
+
+
+# ── 纯格式化 ──────────────────────────────────────────────
+
+def _daily_df(last_date: str, days: int = 300):
+    dates = pd.date_range(end=last_date, periods=days).strftime("%Y-%m-%d")
+    base = 100000
+    closes = [base + i * 100 for i in range(days)]
+    return pd.DataFrame({"date": dates, "close": closes})
+
+
+def test_format_daily_fresh():
+    """新鲜数据：输出含最新价/分位，无过期标注。"""
+    today = datetime.now().strftime("%Y-%m-%d")
+    out = ind.format_daily(_daily_df(today), "LC")
+    assert "最新收盘" in out and "分位" in out
+    assert "数据过期" not in out
+
+
+def test_format_daily_stale_marks_expired():
+    """过期数据（休眠合约如ZC0停在2022）：必须标注过期且不给分位分析。"""
+    stale = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
+    out = ind.format_daily(_daily_df(stale), "ZC")
+    assert "数据过期" in out
+    assert "分位" not in out, "过期数据不得给出分位等分析"
+
+
+def test_format_spot_and_inventory():
+    spot = pd.DataFrame([{
+        "symbol": "LC", "date": "20260814", "spot_price": 151000.0,
+        "dominant_contract_price": 155240.0, "dom_basis": 4240.0,
+    }])
+    out = ind.format_spot(spot, ["LC"])
+    assert "现货" in out and "升水" in out
+
+    spot2 = spot.copy()
+    spot2["dom_basis"] = -2000.0
+    assert "贴水" in ind.format_spot(spot2, ["LC"])
+
+    inv = pd.DataFrame({"日期": ["2026-08-14"], "库存": [36098.0], "增减": [590.0]})
+    out2 = ind.format_inventory(inv)
+    assert "仓单" in out2
+
+
+def test_format_demand_nev_and_gap():
+    """需求格式化：NEV行+锂电缺口标注；无数据时给缺口提示。"""
+    dfs = {
+        "nev": pd.DataFrame({"月份": ["2026-6月", "2026-7月"], "NEV": [62.9, 64.2], "ICE": [37.1, 35.8]}),
+    }
+    out = ind.format_demand(dfs)
+    assert "64.2" in out and "渗透率" in out
+    # 完全无数据
+    assert "数据缺失" in ind.format_demand({})
+
+
+# ── 持仓交叉定位 ──────────────────────────────────────────
+
+def test_format_chain_graph_holdings_mapping():
+    """图谱+持仓交叉定位：融捷002192应被定位到锂电上游环节。"""
+    chains = ind.load_chains()
+    cfg = chains["锂电"]
+    positions = [
+        {"stock_code": "002192", "current_ratio": 0.27},
+        {"stock_code": "002594", "current_ratio": 0.13},
+        {"stock_code": "600000", "current_ratio": 0.05},  # 不在链内
+    ]
+    out = ind.format_chain_graph("锂电", cfg, positions)
+    assert "用户持仓在链条中的位置" in out
+    assert "002192" in out and "002594" in out
+    assert "600000" not in out, "链外持仓不应出现在定位段"
+
+
+# ── 组装与降级 ────────────────────────────────────────────
+
+def test_build_report_unknown_industry_fails_marked():
+    """未识别行业：返回[工具失败]开头并列出支持范围。"""
+    out = ind.build_industry_report("区块链", [])
+    assert out.startswith("[工具失败]")
+    assert "锂电" in out
+
+
+def test_build_report_degrades_per_section(monkeypatch=None):
+    """单项数据源失败：该节降级为[数据缺失]，整体报告不崩。"""
+    chains = ind.load_chains()
+    cfg = chains["锂电"]
+    # 直接调 build_industry_report 会走网络；monkeypatch 三个网络节
+    orig_com, orig_dem, orig_macro = (
+        ind.get_commodity_section, ind.get_demand_section, ind.format_macro)
+    ind.get_commodity_section = lambda c: "[数据缺失]（模拟超时）"
+    ind.get_demand_section = lambda c: "需求正常文本"
+    ind.format_macro = lambda: "宏观正常文本"
+    try:
+        out = ind.build_industry_report("锂矿", [{"stock_code": "002192", "current_ratio": 0.27}])
+    finally:
+        ind.get_commodity_section, ind.get_demand_section, ind.format_macro = (
+            orig_com, orig_dem, orig_macro)
+    assert "[数据缺失]（模拟超时）" in out
+    assert "需求正常文本" in out and "宏观正常文本" in out
+    assert "【锂电产业链结构】" in out
+    assert "002192" in out
+
+
+# ── chat 落盘 ─────────────────────────────────────────────
+
+def test_persist_turn_writes_daily_file(tmp_path=None):
+    """chat落盘：追加写 分析报告/chat/YYYY-MM-DD.md，失败不抛异常。"""
+    from src.chat.agent import ChatAgent
+    agent = object.__new__(ChatAgent)
+    import src.chat.agent as agent_mod
+    orig_dir = agent_mod.CHAT_REPORT_DIR
+    agent_mod.CHAT_REPORT_DIR = "./分析报告/chat_test_tmp"
+    try:
+        agent._persist_turn("测试问题", "测试回答")
+        agent._persist_turn("第二个问题", "第二个回答")
+        path = os.path.join(agent_mod.CHAT_REPORT_DIR,
+                            datetime.now().strftime("%Y-%m-%d") + ".md")
+        assert os.path.exists(path)
+        content = open(path, encoding="utf-8").read()
+        assert "测试问题" in content and "第二个回答" in content
+        os.remove(path)
+        os.rmdir(agent_mod.CHAT_REPORT_DIR)
+    finally:
+        agent_mod.CHAT_REPORT_DIR = orig_dir
+
+
+if __name__ == "__main__":
+    import traceback
+
+    tests = [
+        (name, fn) for name, fn in sorted(globals().items())
+        if name.startswith("test_") and callable(fn)
+    ]
+    failed = 0
+    for name, fn in tests:
+        try:
+            fn()
+            print(f"PASS {name}")
+        except AssertionError as e:
+            failed += 1
+            print(f"FAIL {name}: {e}")
+            traceback.print_exc()
+    print(f"\n{len(tests)-failed}/{len(tests)} passed")
+    sys.exit(1 if failed else 0)
