@@ -806,6 +806,20 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
     console.print(f"  当前价: {stock_data.price}")
     console.print(f"  涨跌幅: {stock_data.change_pct}%")
 
+    # 产业链定位（ISS-061 v5：图谱命中即展示一行，只读不进评分；不在链内不显示）
+    try:
+        from src.data.industry_data import load_chains, graph_source, _company_codes
+        _code = stock_data.stock_code.split(".")[0]
+        for _name, _cfg in load_chains().items():
+            _map = _company_codes(_cfg)
+            if _code in _map:
+                _src = graph_source(_name)
+                _src_tag = "手写" if _src == "manual" else "AI自举"
+                console.print(f"  产业链定位: [cyan]{_name} · {_map[_code][0]}[/cyan] [dim](图谱:{_src_tag})[/dim]")
+                break
+    except Exception:
+        pass  # 定位失败不影响分析主流程
+
     # 有技术指标时执行完整分析
     if has_indicators:
         indicators = []

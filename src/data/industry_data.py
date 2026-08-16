@@ -27,6 +27,7 @@ logger = logging.getLogger(__name__)
 
 _CACHE_TTL = 3600          # 日线/月度数据 1 小时缓存
 _STALE_DAYS = 15           # 期货日线最后交易日距今超过此天数 = 休眠/过期
+_STALE_GRAPH_DAYS = 30     # 自举图谱沉淀超过此天数提示重新分析覆盖
 _MISSING = "[数据缺失]"
 _cache: dict = {}          # key -> (ts, text)
 
@@ -192,6 +193,8 @@ def save_auto_chain(name: str, graph: dict) -> str:
     graph = copy.deepcopy(graph)
     graph["aliases"] = [str(a)[:12] for a in (graph.get("aliases") or [])][:10]
     graph["source_note"] = "AI自举生成（基于当次板块成分股+主营构成数据），未经人工复核"
+    # 沉淀日期：动态维护用（>STALE_GRAPH_DAYS 展示时提示重新分析覆盖；重存同名自动刷新）
+    graph["created_at"] = datetime.now().strftime("%Y-%m-%d")
 
     data = {"chains": {}}
     try:
@@ -215,6 +218,59 @@ def graph_source(name: str) -> str:
     """图谱来源：manual（手写）/ auto（AI自举）/ ""（不在图谱）。"""
     load_chains()
     return _graph_sources.get(name, "")
+
+
+def _auto_graph_age_note(cfg: dict) -> str:
+    """自举图谱时效备注：沉淀日期+天数；超30天提示重新分析覆盖（同名重存即刷新）。"""
+    created = str(cfg.get("created_at", "") or "")
+    if not created:
+        return ""
+    try:
+        age = (datetime.now() - datetime.strptime(created, "%Y-%m-%d")).days
+    except ValueError:
+        return ""
+    note = f"，沉淀于{created}（{age}天前）"
+    if age > _STALE_GRAPH_DAYS:
+        note += "；⚠️已超30天，公司名单可能过时，建议重新完整分析该行业并再次save_chain_graph覆盖更新"
+    return note
+
+
+def list_graphs() -> list[dict]:
+    """列出全部图谱（chains 管理命令用）：名称/来源/沉淀日/别名/公司数。"""
+    load_chains()
+    out = []
+    for name, cfg in _graph_cache.items():
+        companies = _company_codes(cfg) if isinstance(cfg, dict) else {}
+        out.append({
+            "name": name,
+            "source": _graph_sources.get(name, "?"),
+            "created_at": str(cfg.get("created_at", "")) if isinstance(cfg, dict) else "",
+            "aliases": (cfg.get("aliases", []) if isinstance(cfg, dict) else [])[:5],
+            "company_count": len(companies),
+        })
+    return out
+
+
+def delete_auto_graph(name: str) -> str:
+    """删除自举图谱（chains rm 用）。手写图谱不可删。"""
+    global _graph_cache, _graph_sources
+    load_chains()
+    if name not in _graph_cache:
+        return f"[失败] 图谱'{name}'不存在"
+    if _graph_sources.get(name) != "auto":
+        return f"[失败] '{name}'是手写图谱，不可删（直接编辑 configs/industry_chains.yaml）"
+    data = {"chains": {}}
+    try:
+        with open(AUTO_GRAPH_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {"chains": {}}
+        data.setdefault("chains", {}).pop(name, None)
+        with open(AUTO_GRAPH_PATH, "w", encoding="utf-8") as f:
+            yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, width=100)
+    except FileNotFoundError:
+        return f"[失败] 自举图谱文件不存在"
+    _graph_cache, _graph_sources = None, {}
+    load_chains()
+    return f"已删除自举图谱'{name}'"
 
 
 def match_chain(query: str):
@@ -852,7 +908,7 @@ def build_industry_report(query: str, positions: list | None = None,
         graph_text = format_chain_graph(name, cfg, positions)
         if src == "auto":
             graph_text = (
-                "（AI自举图谱：由AI基于板块数据梳理沉淀，未经人工复核）\n" + graph_text)
+                f"（AI自举图谱{_auto_graph_age_note(cfg)}，未经人工复核）\n" + graph_text)
         # 数据绑定兜底：手写链都有绑定；自举链多半没有 -> 关键词映射兜底
         if cfg.get("commodity"):
             com_text = get_commodity_section(cfg)

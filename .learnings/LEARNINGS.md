@@ -343,3 +343,104 @@ v0.8.5 ISS-033 + 阶段 3 累计跑了 5 轮调参（一阶段 +0.22pp / 二阶�
 - See Also: LRN-20260619-001, LRN-20260619-002
 
 ---
+
+## [LRN-20260812-001] knowledge_gap
+
+**Logged**: 2026-08-12
+**Priority**: high
+**Status**: resolved
+**Area**: backend
+
+### Summary
+akshare 股东户数/融资余额 API 参数与直觉相反，直接传股票代码会 hang
+
+### Details
+- `stock_zh_a_gdhs(symbol)` 参数是**日期**(YYYYMMDD)非股票代码，传代码会 hang（em 端点反爬+参数错）。
+  正确取单股股东户数历史：`stock_zh_a_gdhs_detail_em(symbol=代码)`，列含「股东户数-本次/上次/增减」。
+- `stock_margin_detail_sse` / `stock_margin_detail_szse` 参数是**单日期**(YYYYMMDD)，返回全市场该日融资余额，
+  无 start_date/end_date/stock_code 参数。取单股近5日增幅需查2个日期+过滤代码（2次调用）。
+- `AKShareClient._ensure_baostock_login` 不存在（是模块级函数 `from src.data.akshare_client import _ensure_baostock_login`）。
+  baostock 代码前缀用 `AKShareClient._normalize_stock_code(code)` 类方法。
+- akshare 底层 requests 无 timeout，卡住会拖垮；必须用 `_safe_call`(data_provider) 或 `ThreadPoolExecutor`+`shutdown(wait=False)` 包硬超时。
+  注意 `with ThreadPoolExecutor` 超时后 shutdown(wait=True) 仍阻塞等线程，要显式 `shutdown(wait=False)`。
+
+### Suggested Action
+新增 akshare 调用前先查 signature(`inspect.signature`)，别按函数名猜参数；网络调用必包超时。
+
+### Metadata
+- Source: error
+- Related Files: src/core/exit_signals/stock.py, src/core/exit_signals/sector.py, src/data/source_check.py
+- Tags: akshare, api-gotcha, timeout, connectivity
+- Pattern-Key: akshare.api_signature_guess
+- Recurrence-Count: 3
+- First-Seen: 2026-08-12
+- Last-Seen: 2026-08-12
+
+---
+
+## [LRN-20260816-001] insight
+
+**Logged**: 2026-08-16
+**Priority**: high
+**Status**: resolved
+**Area**: backend
+
+### Summary
+AI 输出"没专业度"类问题，先查数据供给缺口，再动 prompt--garbage in garbage out。
+
+### Details
+用户反馈 chat 行业分析"毫无专业性"（不结合需求端/供给不细分/不挖上下游）。排查确认根因不是 prompt：chat 6 个工具全是技术面/新闻/策略知识，模型手里根本没有供需/价格/产业链数据，只能靠训练记忆空谈。补数据层（期货价格/仓单/需求数据/产业链图谱）后同一问题回答质量质变（真实数据带日期、供需分端、持仓链条定位、四阶段周期判断）。另一个教训：chat"提问无回答"的根因是模型在无 tools 的调用里把 <tool_calls> 伪 XML 当正文输出并停止--工具轮次不足时优先让模型能继续真调工具，而不是逼它"直接回答"。
+
+### Suggested Action
+模型输出质量问题先做"输入盘点"（模型实际拿到什么数据），缺口在数据层就补数据层；function calling 循环达上限后宁可追加轮次/提示消息，也不要发不带 tools 的"逼答"调用（会触发伪工具调用文本）。
+
+### Metadata
+- Source: ISS-061 全程 / ISS-058
+- Related Files: src/data/industry_data.py, src/chat/agent.py
+- Tags: data-first, prompt-engineering, function-calling, root-cause
+
+---
+
+## [LRN-20260816-002] best_practice
+
+**Logged**: 2026-08-16
+**Priority**: high
+**Status**: pending
+**Area**: backend
+
+### Summary
+外部数据接口必须登记台账（来源/性质/坑/实测状态），接入前必须 live-probe 实测，不许凭记忆写接口调用。
+
+### Details
+ISS-061 实测踩坑清单：东财板块接口(_em)本环境反爬断连（akshare 文档说能用）；PMI/PPI 表倒序（tail 会拿到 2008 年数据）；stock_zygc_em 必须带 SZ/SH 前缀且收入比例是小数；乘用车表未来月份为 NaN；动力煤 ZC0 期货休眠停在 2022-12（旧数据会冒充新数据）；现货接口非交易日返回空表需日期回退；THS 成分股通道是自研爬虫（v_code cookie 机制）需限速保护。全部坑都是 live-probe 发现的，没有一个能从文档看出来。台账落地 docs/数据接口台账.md，规矩：改代码不改进台账=半成品。
+
+### Suggested Action
+新接任何外部接口：(1) 先 live-probe 打印真实返回结构（列名/顺序/单位/空值行为）再写 formatter；(2) 登记台账含失败行为；(3) 全部调用带超时+降级标注；(4) 数据带日期+新鲜度守卫防旧数据冒充新数据。
+
+### Metadata
+- Source: ISS-061 v2-v4
+- Related Files: docs/数据接口台账.md, src/data/industry_data.py, src/scanner/market_cache.py
+- Tags: api-contract, live-probe, anti-crawl, data-hygiene, ledger-discipline
+
+---
+
+## [LRN-20260816-003] insight
+
+**Logged**: 2026-08-16
+**Priority**: medium
+**Status**: resolved
+**Area**: backend
+
+### Summary
+知识库类功能的全量覆盖用"通用引擎+模型自举沉淀"架构，不手写全量（不可维护）也不留降级路径（用户会质疑二等公民）。
+
+### Details
+产业链图谱最初手写 6 条，用户质疑"其他 100+ 行业为什么降级、6 条你维护了吗"。正解不是手写 100 条：手写不可维护（那 6 条其实也没人持续维护）。落地 v4：通用引擎保证任意行业数据待遇对等（板块解析+商品锚+主营抽样+持仓定位），save_chain_graph 让 AI 首次分析后把梳理的结构沉淀到 auto yaml（同名覆盖防冗余、created_at+30天超期提示防过时、手写优先防污染、"只写工具结果出现过的代码"防幻觉、chains rm 给用户删除权）。知识自增长且每层降级不说谎。
+
+### Suggested Action
+覆盖型知识需求：先做通用路径保证人人平等，再让模型在使用中沉淀高质量结构（带时效标注+人工可删改），种子数据只做质量标杆不做特权层。
+
+### Metadata
+- Source: ISS-061 v4 用户质疑驱动
+- Related Files: configs/industry_chains_auto.yaml, src/data/industry_data.py
+- Tags: knowledge-bootstrap, self-growing-knowledge, tier-parity, anti-redundancy

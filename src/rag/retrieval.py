@@ -17,6 +17,10 @@ from collections import defaultdict
 import numpy as np
 import jieba
 
+# jieba __init__ 会把自己的 logger 设为 DEBUG，chat/CLI 控制台被
+# "Building prefix dict..." 等 DEBUG 日志刷屏。压回 WARNING（不影响分词功能）。
+logging.getLogger("jieba").setLevel(logging.WARNING)
+
 from src.rag.models import RAGDocument, RetrievalResult
 from src.rag.embedding import Embedder
 from src.rag.store import VectorStore

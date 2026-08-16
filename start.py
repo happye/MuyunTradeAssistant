@@ -112,6 +112,7 @@ def show_help():
     print("│                                                    │")
     print("│  ★ 其他                                            │")
     print("│    noai                   切换 AI 开关（纯技术面）  │")
+    print("│    chains                 产业链图谱列表/管理       │")
     print("│    debug                  切换 AI 调试模式          │")
     print("│    chat                   AI 对话模式               │")
     print("│    h                      显示帮助                  │")
@@ -354,6 +355,25 @@ def parse_input(user_input: str):
         else:
             print(f"  [!] 未知: pos {sub}  用法: pos / pos add / pos rm / pos plan / pos overweight")
             return None
+
+    # ── 产业链图谱管理（ISS-061 v5 动态维护）──
+    if cmd == "chains":
+        from src.data.industry_data import list_graphs, delete_auto_graph
+        if len(parts) >= 3 and parts[1].lower() in ("rm", "remove", "del"):
+            print("  " + delete_auto_graph(parts[2]))
+            return None
+        graphs = list_graphs()
+        if not graphs:
+            print("  [!] 无图谱（手写 configs/industry_chains.yaml + 自举 industry_chains_auto.yaml）")
+            return None
+        print(f"\n  产业链图谱（{len(graphs)}条，手写=人工维护 / 自举=AI沉淀可rm）：\n")
+        for g in sorted(graphs, key=lambda x: (x["source"], x["name"])):
+            src = "手写" if g["source"] == "manual" else f"自举@{g['created_at'] or '?'}"
+            alias = ",".join(g["aliases"][:4])
+            print(f"    {g['name']:<8s} [{src}] {g['company_count']}家公司"
+                  + (f"  别名:{alias}" if alias else ""))
+        print("\n  用法: chains rm <链名>（删自举图谱，重新分析会再沉淀）\n")
+        return None
 
     # ── 开关 ──
     if cmd == "noai":
