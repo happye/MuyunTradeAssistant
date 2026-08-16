@@ -226,6 +226,158 @@ def test_generic_report_board_positions_crossref():
     assert "生猪" in out, "商品锚（LH）应命中"
 
 
+# ── 图谱自举（v4）───────────────────────────────────────
+
+_AUTO_GRAPH_SAMPLE = """
+sections:
+  上游:
+    - 环节: 军工电子元器件
+      代表公司: ["002049 紫光国微(特种IC)"]
+  下游:
+    - 环节: 主机厂
+      代表公司: ["600760 中航沈飞(战机)"]
+aliases: [军工, 国防]
+"""
+
+
+def _with_auto_graph(name="军工测试链"):
+    """在临时自举图谱文件环境下执行 fn（用完恢复）。"""
+    import src.data.industry_data as mod
+    orig_path = mod.AUTO_GRAPH_PATH
+    mod.AUTO_GRAPH_PATH = "./configs/_test_auto_graph.yaml"
+    mod._graph_cache, mod._graph_sources = None, {}
+    try:
+        import yaml
+        graph = yaml.safe_load(_AUTO_GRAPH_SAMPLE)
+        mod.save_auto_chain(name, graph)
+        yield mod
+    finally:
+        import os
+        if os.path.exists(mod.AUTO_GRAPH_PATH):
+            os.remove(mod.AUTO_GRAPH_PATH)
+        mod.AUTO_GRAPH_PATH = orig_path
+        mod._graph_cache, mod._graph_sources = None, {}
+        mod.load_chains()
+
+
+def test_save_auto_chain_and_match():
+    """自举图谱：保存后可被 match_chain 命中，来源标记 auto。"""
+    for mod in _with_auto_graph():
+        m = mod.match_chain("军工测试链怎么看")
+        assert m is not None and m[0] == "军工测试链"
+        assert mod.graph_source("军工测试链") == "auto"
+
+
+def test_manual_graph_wins_over_auto_same_name():
+    """手写图谱优先：自举同名链不覆盖手写（锂电）。"""
+    for mod in _with_auto_graph(name="锂电"):
+        m = mod.match_chain("锂矿")
+        assert m[0] == "锂电"
+        assert mod.graph_source("锂电") == "manual"
+
+
+def test_save_auto_chain_rejects_bad_schema():
+    """schema 校验：无 sections 拒绝。"""
+    import pytest
+    from src.data.industry_data import save_auto_chain
+    with pytest.raises(ValueError):
+        save_auto_chain("坏链", {"aliases": ["x"]})
+
+
+def test_premium_path_falls_back_to_commodity_map():
+    """图谱路径数据兜底：自举链（无 commodity 绑定）仍拿到关键词映射的商品锚。"""
+    for mod in _with_auto_graph():
+        # 锂电是手写链有绑定；这里验证兜底分支：把一个自举链塞进报告
+        # 用"生猪"别名建自举链（无 commodity 字段），报告应含 LH 价格锚
+        import yaml
+        graph = yaml.safe_load("""
+sections:
+  上游:
+    - 环节: 养殖
+      代表公司: ["002714 牧原股份(生猪)"]
+aliases: [生猪, 猪]
+""")
+        mod.save_auto_chain("生猪自举链", graph)
+        orig_com = mod.get_commodity_section
+        orig_gcom = mod.get_generic_commodity_section
+        orig_dem = mod.get_demand_section
+        orig_gdem = mod.generic_demand_section
+        orig_macro = mod.format_macro
+        mod.get_commodity_section = lambda c: "SHOULD_NOT_APPEAR"
+        mod.get_generic_commodity_section = lambda q: "生猪价格锚(mock LH)"
+        mod.get_demand_section = lambda c, cache_key=None: "需求mock"
+        mod.generic_demand_section = lambda q: "需求mock"
+        mod.format_macro = lambda: "宏观mock"
+        try:
+            out = mod.build_industry_report("生猪", [])
+        finally:
+            mod.get_commodity_section = orig_com
+            mod.get_generic_commodity_section = orig_gcom
+            mod.get_demand_section = orig_dem
+            mod.generic_demand_section = orig_gdem
+            mod.format_macro = orig_macro
+        assert "生猪自举链" in out
+        assert "生猪价格锚(mock LH)" in out, "无绑定的自举链必须走商品映射兜底"
+        assert "SHOULD_NOT_APPEAR" not in out
+        assert "AI自举图谱" in out, "自举图谱必须标注未经人工复核"
+
+
+def test_board_section_temperature_stats():
+    """板块温度：成分股涨跌中位数/涨跌家数/PE中位数。"""
+    import pandas as pd
+
+    class FakeSnap:
+        def __init__(self, df):
+            self._df = df
+            self.columns = list(df.columns)
+        def copy(self):
+            return self._df
+        def __getitem__(self, k):
+            return self._df[k]
+        def isin(self, codes):
+            return self._df["代码"].isin(codes)
+        def sort_values(self, k, ascending=False):
+            return self._df.sort_values(k, ascending=ascending)
+        def head(self, n):
+            return self._df.head(n)
+        def iterrows(self):
+            return self._df.iterrows()
+
+    df = pd.DataFrame({
+        "代码": ["600519", "000858"],
+        "名称": ["贵州茅台", "五粮液"],
+        "总市值": [3e12, 2.8e11],
+        "涨跌幅": [1.5, -0.5],
+        "市盈率-动态": [25.0, 15.0],
+    })
+
+    class FakeMC:
+        def get_all_stocks(self):
+            return FakeSnap(df)
+        def get_stocks_by_industry(self, name):
+            return ["600519", "000858"]
+        def get_stocks_by_concept(self, name):
+            return []
+
+    class FakeScanner:
+        market_cache = FakeMC()
+        def get_industry_list(self, keyword=None):
+            return [{"name": "白酒"}]
+        def get_concept_list(self, keyword=None):
+            return []
+
+    orig = ind._resolve_board
+    ind._resolve_board = lambda q, se: ("白酒", "行业", ["600519", "000858"])
+    try:
+        text, top = ind._board_section("白酒", [], FakeScanner())
+    finally:
+        ind._resolve_board = orig
+    assert "板块温度" in text
+    assert "涨1/跌1" in text
+    assert "PE中位数" in text
+    assert top and top[0][0] == "600519"
+
+
 # ── chat 落盘 ─────────────────────────────────────────────
 
 def test_persist_turn_writes_daily_file(tmp_path=None):

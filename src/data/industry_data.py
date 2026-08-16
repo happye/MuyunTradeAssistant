@@ -25,12 +25,10 @@ import yaml
 
 logger = logging.getLogger(__name__)
 
-GRAPH_PATH = "./configs/industry_chains.yaml"
 _CACHE_TTL = 3600          # 日线/月度数据 1 小时缓存
 _STALE_DAYS = 15           # 期货日线最后交易日距今超过此天数 = 休眠/过期
 _MISSING = "[数据缺失]"
 _cache: dict = {}          # key -> (ts, text)
-_graph_cache: dict | None = None
 
 # 品种单位（期货报价单位不同品种不同）
 _VAR_UNITS = {"LC": "元/吨", "PS": "元/吨", "SI": "元/吨", "AU": "元/克", "AG": "元/千克"}
@@ -145,19 +143,78 @@ def _cached(key: str, fn):
 
 # ── 图谱加载与匹配 ─────────────────────────────────────────
 
+GRAPH_PATH = "./configs/industry_chains.yaml"
+# 自举图谱：AI首次完整分析非图谱行业后，通过 save_chain_graph 工具沉淀的结构。
+# 与手写图谱同 schema；手写优先（同名冲突时），来源标记为 auto（输出时注明未经人工复核）。
+AUTO_GRAPH_PATH = "./configs/industry_chains_auto.yaml"
+_graph_cache: dict | None = None
+_graph_sources: dict = {}   # 链名 -> "manual" / "auto"
+
+
 def load_chains() -> dict:
-    """加载产业链图谱（进程内缓存）。失败返回空 dict（工具层降级）。"""
-    global _graph_cache
+    """加载产业链图谱（手写+自举合并，进程内缓存）。失败返回空 dict（工具层降级）。"""
+    global _graph_cache, _graph_sources
     if _graph_cache is not None:
         return _graph_cache
-    try:
-        with open(GRAPH_PATH, "r", encoding="utf-8") as f:
-            data = yaml.safe_load(f) or {}
-        _graph_cache = data.get("chains", {}) or {}
-    except Exception as e:
-        logger.warning(f"产业链图谱加载失败: {e}")
-        _graph_cache = {}
+    chains, sources = {}, {}
+    for path, tag in ((GRAPH_PATH, "manual"), (AUTO_GRAPH_PATH, "auto")):
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f) or {}
+            for name, cfg in (data.get("chains", {}) or {}).items():
+                if isinstance(cfg, dict) and name not in chains:  # 手写优先
+                    chains[name] = cfg
+                    sources[name] = tag
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(f"产业链图谱加载失败({path}): {e}")
+    _graph_cache, _graph_sources = chains, sources
     return _graph_cache
+
+
+def save_auto_chain(name: str, graph: dict) -> str:
+    """把AI梳理的产业链结构沉淀到自举图谱文件（save_chain_graph 工具入口）。
+
+    校验 schema（必须含 sections）后写入 AUTO_GRAPH_PATH 并刷新缓存；
+    同名覆盖。graph 由调用方（chat 工具层）解析 YAML 得到。
+    """
+    import copy
+    name = (name or "").strip()
+    if not name or len(name) > 20:
+        raise ValueError(f"链名无效: {name!r}")
+    if not isinstance(graph, dict) or not graph.get("sections"):
+        raise ValueError("图谱必须包含 sections（上中下游环节结构）")
+    sections = graph["sections"]
+    if not isinstance(sections, dict) or not any(sections.values()):
+        raise ValueError("sections 必须是非空 dict（如 {上游: [...], 下游: [...]}）")
+    # 大小保护：防模型输出超长结构撑爆文件
+    graph = copy.deepcopy(graph)
+    graph["aliases"] = [str(a)[:12] for a in (graph.get("aliases") or [])][:10]
+    graph["source_note"] = "AI自举生成（基于当次板块成分股+主营构成数据），未经人工复核"
+
+    data = {"chains": {}}
+    try:
+        with open(AUTO_GRAPH_PATH, "r", encoding="utf-8") as f:
+            data = yaml.safe_load(f) or {"chains": {}}
+        if not isinstance(data.get("chains"), dict):
+            data = {"chains": {}}
+    except FileNotFoundError:
+        pass
+    data["chains"][name] = graph
+    with open(AUTO_GRAPH_PATH, "w", encoding="utf-8") as f:
+        yaml.safe_dump(data, f, allow_unicode=True, sort_keys=False, width=100)
+    # 刷新缓存
+    global _graph_cache, _graph_sources
+    _graph_cache, _graph_sources = None, {}
+    load_chains()
+    return f"已沉淀「{name}」产业链图谱（自举，下次分析直接复用）"
+
+
+def graph_source(name: str) -> str:
+    """图谱来源：manual（手写）/ auto（AI自举）/ ""（不在图谱）。"""
+    load_chains()
+    return _graph_sources.get(name, "")
 
 
 def match_chain(query: str):
@@ -365,69 +422,99 @@ def _resolve_board(query: str, scanner_engine):
         return None
 
 
-def build_generic_report(query: str, positions: list | None = None,
-                         scanner_engine=None, board=None) -> str:
-    """全行业通用引擎（图谱外行业的兜底分析路径）。
+def _board_section(query: str, positions: list | None, scanner_engine):
+    """板块解析节（通用引擎与自举图谱路径共用）。
 
-    组成：THS板块成分股(按总市值Top8+持仓交叉定位) + 主营构成抽样Top3
-    + 商品价格锚(关键词映射命中才有) + 宏观底色 + 分析指引。
-    静态图谱（industry_chains.yaml）命中时优先走精链报告，此为泛化兜底。
-    board: 可传入 _resolve_board 的结果避免重复解析。
+    返回 (节文本, [(code, name, mcap), ...])；板块未命中返回 (None, [])。
+    内容：板块名/成分股数/总市值Top8/板块温度(涨跌中位数+涨跌家数+Top8 PE中位数)/持仓定位。
     """
-    parts = []
-    top_stocks = []      # [(code, name, 总市值元)] 供抽样与定位
-    board_label = None
-
-    if board is None:
-        board = _resolve_board(query, scanner_engine)
-    if board:
-        board_name, board_type, codes = board
-        board_label = f"同花顺{board_type}板块「{board_name}」（成分股{len(codes)}只）"
-        # 名称/市值：从全市场快照join（失败降级只列代码）
-        try:
-            snapshot = scanner_engine.market_cache.get_all_stocks()
-            snap = snapshot[snapshot["代码"].isin(codes)] if "代码" in snapshot.columns else None
-            if snap is not None and len(snap) and "总市值" in snap.columns:
-                snap = snap.copy()
+    board = _resolve_board(query, scanner_engine)
+    if not board:
+        return None, []
+    board_name, board_type, codes = board
+    lines = [f"【行业板块解析】{query} -> 同花顺{board_type}板块「{board_name}」（成分股{len(codes)}只）"]
+    top_stocks = []
+    snap = None
+    # 名称/市值/涨跌/PE：从全市场快照join（失败降级只列代码）
+    try:
+        snapshot = scanner_engine.market_cache.get_all_stocks()
+        if "代码" in snapshot.columns:
+            snap = snapshot[snapshot["代码"].isin(codes)].copy()
+            if len(snap) and "总市值" in snap.columns:
                 snap["总市值"] = _to_float(snap["总市值"])
                 snap = snap.sort_values("总市值", ascending=False)
                 top_stocks = [
                     (str(r["代码"]), str(r.get("名称", r["代码"])), r["总市值"])
                     for _, r in snap.head(8).iterrows()
                 ]
-        except Exception as e:
-            logger.warning(f"成分股快照join失败（降级只列代码）: {e}")
+    except Exception as e:
+        logger.warning(f"成分股快照join失败（降级只列代码）: {e}")
 
-    if board_label:
-        parts.append(f"【行业板块解析】{query} -> {board_label}")
-        if top_stocks:
-            mcap_str = ", ".join(
-                f"{c} {n}" + (f"(市值{m/1e8:.0f}亿)" if m == m and m else "")
-                for c, n, m in top_stocks)
-            parts.append(f"总市值Top8: {mcap_str}")
-        else:
-            parts.append(f"成分股代码样本: {', '.join(codes[:10])}")
-        # 持仓交叉定位
-        if positions:
-            code_set = {str(c) for c in codes}
-            hits = []
-            for p in positions:
-                pc = str(p.get("stock_code", "")).split(".")[0]
-                if pc in code_set:
-                    ratio = p.get("current_ratio")
-                    ratio_s = f" 仓位{ratio*100:.0f}%" if isinstance(ratio, (int, float)) else ""
-                    hits.append(f"{pc}{ratio_s}")
-            if hits:
-                parts.append(f"用户持仓在该板块内: {'、'.join(hits)}")
+    if top_stocks:
+        mcap_str = ", ".join(
+            f"{c} {n}" + (f"(市值{m/1e8:.0f}亿)" if m == m and m else "")
+            for c, n, m in top_stocks)
+        lines.append(f"总市值Top8: {mcap_str}")
+    else:
+        lines.append(f"成分股代码样本: {', '.join(list(codes)[:10])}")
+
+    # 板块温度：涨跌中位数/涨跌家数/Top8 PE中位数（快照可用才有）
+    if snap is not None and len(snap) and "涨跌幅" in snap.columns:
+        try:
+            chg = _to_float(snap["涨跌幅"]).dropna()
+            if len(chg):
+                up = int((chg > 0).sum())
+                down = int((chg < 0).sum())
+                stat = f"板块温度: 成分股涨跌中位数 {chg.median():+.2f}%（涨{up}/跌{down}）"
+                if top_stocks and "市盈率-动态" in snap.columns:
+                    top8_codes = [c for c, _, _ in top_stocks]
+                    pe = _to_float(
+                        snap[snap["代码"].isin(top8_codes)]["市盈率-动态"]).dropna()
+                    pe = pe[(pe > 0) & (pe < 500)]
+                    if len(pe):
+                        stat += f"；市值Top8 PE中位数 {pe.median():.1f}"
+                lines.append(stat)
+        except Exception:
+            pass
+
+    # 持仓交叉定位
+    if positions:
+        code_set = {str(c) for c in codes}
+        hits = []
+        for p in positions:
+            pc = str(p.get("stock_code", "")).split(".")[0]
+            if pc in code_set:
+                ratio = p.get("current_ratio")
+                ratio_s = f" 仓位{ratio*100:.0f}%" if isinstance(ratio, (int, float)) else ""
+                hits.append(f"{pc}{ratio_s}")
+        if hits:
+            lines.append(f"用户持仓在该板块内: {'、'.join(hits)}")
+    return "\n".join(lines), top_stocks
+
+
+def build_generic_report(query: str, positions: list | None = None,
+                         scanner_engine=None, board=None) -> str:
+    """全行业通用引擎（图谱外行业的分析路径）。
+
+    组成：THS板块成分股(市值Top8+板块温度+持仓定位) + 主营构成抽样(市值前5+持仓股)
+    + 商品价格锚(关键词映射命中才有) + 需求兜底 + 宏观底色 + 分析指引。
+    与精链路径数据对等；差别仅在环节结构由AI现场梳理（随后可经 save_chain_graph 沉淀为图谱）。
+    """
+    parts = []
+
+    section, top_stocks = _board_section(query, positions, scanner_engine)
+    if section:
+        parts.append(section)
     else:
         parts.append(f"【行业板块解析】未匹配到同花顺行业/概念板块（query清洗后为'{_clean_query(query)}'）。"
                      "可换更通用的板块名（如'白酒'、'军工'、'半导体'），或用具体股票代码提问。")
 
-    # 主营构成抽样：板块解析成功才抽（判断业务集中度/链条环节的证据）
+    # 主营构成抽样：市值前5 + 持仓在板块内的股（链条环节判断证据）
     if top_stocks:
+        sample_codes = [c for c, _, _ in top_stocks[:5]]
         parts.append("")
-        parts.append("【主营构成抽样（链条环节判断证据，取总市值前3）】")
-        for code, name, _m in top_stocks[:3]:
+        parts.append("【主营构成抽样（链条环节判断证据，市值前5+持仓股）】")
+        for code in sample_codes:
             try:
                 ok, text = _fetch_with_timeout(lambda c=code: fetch_main_business(c))
                 parts.append(text if ok else f"{_MISSING}（{code} 主营获取失败: {text}）")
@@ -438,15 +525,20 @@ def build_generic_report(query: str, positions: list | None = None,
     parts.append("")
     parts.append(f"【商品价格锚】\n{get_generic_commodity_section(query)}")
 
+    # 需求兜底（行业关键词猜数据源）
+    parts.append("")
+    parts.append(f"【需求端】\n{generic_demand_section(query)}")
+
     # 宏观底色（通用）
     parts.append("")
     parts.append(f"【宏观底色】\n{format_macro()}")
 
     parts.append("")
     parts.append(
-        "【分析指引】该行业不在精链图谱内（精链: 锂电/光伏/半导体/AI算力/黄金/煤炭），"
-        "请基于上方成分股+主营构成抽样自行梳理上下游结构，套用知识库"
-        "\"供需平衡表与周期分析框架\"的四阶段方法作答；无商品锚时价格维度用新闻/财报代理，数据缺口如实说明。"
+        "【分析指引】请基于上方成分股+板块温度+主营构成抽样梳理上下游结构"
+        "（环节/代表公司/成本利润特征），套用知识库\"供需平衡表与周期分析框架\"的四阶段方法作答；"
+        "完成分析后调用 save_chain_graph 把你梳理的产业链结构沉淀为图谱（只写工具结果里出现过的代码，"
+        "不确定的公司不要写），供下次直接复用；数据缺口如实说明。"
     )
     return "\n".join(parts)
 
@@ -658,7 +750,7 @@ def get_commodity_section(chain_cfg: dict) -> str:
     return _cached(f"commodity:{name}", _pull)
 
 
-def get_demand_section(chain_cfg: dict) -> str:
+def get_demand_section(chain_cfg: dict, cache_key: str = None) -> str:
     """需求组：按链绑定的数据源拉取。"""
     wanted = chain_cfg.get("demand_data") or []
 
@@ -690,7 +782,21 @@ def get_demand_section(chain_cfg: dict) -> str:
             text += "\n[数据缺口] 动力电池装机量/储能装机量无免费接口，用销量渗透率+排产新闻代理"
         return text
 
-    return _cached(f"demand:{chain_cfg.get('aliases', [''])[0]}", _pull)
+    return _cached(f"demand:{cache_key or chain_cfg.get('aliases', [''])[0]}", _pull)
+
+
+def generic_demand_section(query: str) -> str:
+    """通用需求兜底：图谱链未绑定需求数据时，按关键词猜可用数据源。
+
+    汽车类->NEV渗透率+乘用车产销；电力/煤炭类->用电量；其余仅诚实标注缺口。
+    """
+    q = _clean_query(query)
+    wanted = []
+    if any(k in q for k in ("汽车", "新能源车", "整车", "电动车", "锂电")):
+        wanted = ["nev_penetration", "car_sales"]
+    elif any(k in q for k in ("电力", "煤炭", "煤", "用电", "工业")):
+        wanted = ["electricity"]
+    return get_demand_section({"demand_data": wanted}, cache_key=f"generic_demand:{wanted}")
 
 
 def format_chain_graph(name: str, chain_cfg: dict, positions: list | None = None) -> str:
@@ -732,27 +838,48 @@ def build_industry_report(query: str, positions: list | None = None,
                           scanner_engine=None) -> str:
     """组装行业数据包（chat analyze_industry 工具入口）。
 
-    两级路由：精链图谱（industry_chains.yaml，环节结构+专属数据绑定）命中优先；
-    未命中走全行业通用引擎（THS板块成分股+主营抽样+商品映射+宏观）。
+    两级路由，数据待遇对等：
+    - 图谱命中（手写6条 + AI自举N条）：图谱结构 + 专属数据绑定；
+      绑定缺失时自动兜底（商品锚走关键词映射、需求走通用兜底）；
+      自举图谱额外附板块解析节（成分股是动态的，图谱结构是静态的）
+    - 未命中：通用引擎（板块成分股+主营抽样+商品锚+需求兜底+宏观+指引）
     板块和商品锚都未命中才返回 [工具失败]（ISS-059 语义）。
     """
     matched = match_chain(query)
     if matched:
         name, cfg = matched
+        src = graph_source(name)
+        graph_text = format_chain_graph(name, cfg, positions)
+        if src == "auto":
+            graph_text = (
+                "（AI自举图谱：由AI基于板块数据梳理沉淀，未经人工复核）\n" + graph_text)
+        # 数据绑定兜底：手写链都有绑定；自举链多半没有 -> 关键词映射兜底
+        if cfg.get("commodity"):
+            com_text = get_commodity_section(cfg)
+        else:
+            com_text = get_generic_commodity_section(
+                name + " " + " ".join(cfg.get("aliases", [])))
+        dem_text = (get_demand_section(cfg) if cfg.get("demand_data")
+                    else generic_demand_section(name + " " + " ".join(cfg.get("aliases", []))))
         sections = [
-            format_chain_graph(name, cfg, positions),
+            graph_text,
             "",
-            f"【商品价格】\n{get_commodity_section(cfg)}",
+            f"【商品价格】\n{com_text}",
             "",
-            f"【需求端】\n{get_demand_section(cfg)}",
+            f"【需求端】\n{dem_text}",
             "",
-            f"【供给端】\n{cfg.get('supply_note', '')}",
+            f"【供给端】\n{cfg.get('supply_note', '供给端细分数据以公告新闻为主（get_news），库存代理见商品价格节')}",
             "",
             f"【宏观底色】\n{format_macro()}",
         ]
+        # 自举图谱：附板块解析节（成分股动态，补图谱静态公司列表的时效性）
+        if src == "auto":
+            board_section, _ = _board_section(query, positions, scanner_engine)
+            if board_section:
+                sections.insert(2, "\n" + board_section)
         return "\n".join(sections)
 
-    # 图谱未命中 -> 全行业通用引擎（板块解析只做一次）
+    # 图谱未命中 -> 全行业通用引擎
     board = _resolve_board(query, scanner_engine)
     has_anchor = match_commodity(query) is not None
     if board is None and not has_anchor:
@@ -760,10 +887,10 @@ def build_industry_report(query: str, positions: list | None = None,
         supported = "、".join(
             f"{n}({','.join(list(c.get('aliases', []))[:3])})" for n, c in chains.items())
         return (
-            f"[工具失败] 未识别行业'{query}'（既不在精链图谱，也未匹配到板块/商品锚）。"
-            f"精链支持: {supported}；其他行业可换常用板块名（如'白酒'、'军工'、'生猪'）重试。"
+            f"[工具失败] 未识别行业'{query}'（既不在图谱，也未匹配到板块/商品锚）。"
+            f"图谱支持: {supported}；其他行业可换常用板块名（如'白酒'、'军工'、'生猪'）重试。"
         )
-    return build_generic_report(query, positions, scanner_engine, board=board)
+    return build_generic_report(query, positions, scanner_engine)
 
 
 def clear_cache():

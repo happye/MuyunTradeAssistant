@@ -26,6 +26,7 @@ CHAT_SYSTEM_PROMPT = """你是"暮云思辨投资助手"的AI对话代理，一�
 4. **多时间尺度**：用户问"当下/未来几个月/更长远"时按阶段分别作答，每阶段依据不同（当下=价格与库存，数月=供需边际变化，长远=格局与周期位置）
 5. **数据缺口诚实**：工具结果中的[数据缺失]/[数据缺口]必须如实转述（如"SMM周度库存无免费数据，用仓单代理"），禁止用模糊语言掩盖
 6. 引用数字必须带数据日期；周期股低PE陷阱（低PE常出现在盈利顶）等常识要主动提醒
+7. **图谱自举**：完成非图谱行业的完整分析后，调用 save_chain_graph 把你梳理的产业链结构沉淀（代表公司只写工具结果里出现过的代码），让下次同行业分析直接走完整图谱
 
 ## 策略知识库使用指南
 当用户询问交易方法、止损止盈技巧、投资心理问题时，使用search_knowledge工具检索相关策略。
@@ -177,6 +178,27 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["industry"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "save_chain_graph",
+            "description": "沉淀产业链图谱：当你完成一个不在图谱内的行业的完整分析后，把你实际梳理出的产业链结构（上中下游环节+代表公司+特点+周期锚点）保存为图谱，下次分析同行业直接复用。graph_yaml格式：sections:{上游:[{环节:xx,特点:xx,代表公司:['002714 牧原股份(生猪养殖)']}],中游:[...],下游:[...]}，可加aliases/description/cycle_anchors/analysis_notes。代表公司只写工具结果里出现过的代码，不确定的不要写。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {
+                        "type": "string",
+                        "description": "链名，如'军工'、'白酒'、'生猪养殖'"
+                    },
+                    "graph_yaml": {
+                        "type": "string",
+                        "description": "图谱结构的YAML文本（schema见工具描述）"
+                    }
+                },
+                "required": ["name", "graph_yaml"]
             }
         }
     },

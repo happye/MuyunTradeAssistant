@@ -344,6 +344,7 @@ TOOL_REGISTRY = {
     "search_knowledge": lambda query="": search_knowledge(query),  # v0.8.1
     "analyze_industry": lambda industry="": analyze_industry(industry),      # ISS-061（定义在文件尾）
     "get_main_business": lambda stock_code="": get_main_business(stock_code),  # ISS-061（定义在文件尾）
+    "save_chain_graph": lambda name="", graph_yaml="": save_chain_graph(name, graph_yaml),  # ISS-061 v4 图谱自举（定义在文件尾）
 }
 
 
@@ -435,3 +436,29 @@ def get_main_business(stock_code: str) -> str:
     if box[1]:
         return f"{TOOL_ERROR_MARK}获取主营构成失败: {box[1]}"
     return box[0]
+
+
+def save_chain_graph(name: str, graph_yaml: str) -> str:
+    """图谱自举（ISS-061 v4）：AI把梳理出的产业链结构沉淀到 configs/industry_chains_auto.yaml。
+
+    校验 YAML 与 schema 后写入（同名覆盖），下次该行业分析直接走图谱路径。
+    失败返回 TOOL_ERROR_MARK 开头（ISS-059 语义）。
+    """
+    import yaml as _yaml
+    from src.data.industry_data import save_auto_chain
+
+    if not name or not name.strip():
+        return f"{TOOL_ERROR_MARK}链名不能为空"
+    if not graph_yaml or len(graph_yaml) > 8000:
+        return f"{TOOL_ERROR_MARK}图谱YAML为空或超长(>{len(graph_yaml or '')}字符)"
+    try:
+        graph = _yaml.safe_load(graph_yaml)
+    except _yaml.YAMLError as e:
+        return f"{TOOL_ERROR_MARK}YAML解析失败: {str(e)[:100]}"
+    if not isinstance(graph, dict):
+        return f"{TOOL_ERROR_MARK}YAML顶层必须是dict（含 sections/aliases 等键）"
+    try:
+        return save_auto_chain(name.strip(), graph)
+    except Exception as e:
+        logger.error(f"save_chain_graph失败: {e}")
+        return f"{TOOL_ERROR_MARK}图谱沉淀失败: {e}"
