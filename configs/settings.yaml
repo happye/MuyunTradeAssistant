@@ -188,6 +188,7 @@ chat:
   max_tool_rounds: 5               # 单次对话最大工具调用轮次（ISS-061行业分析需多轮：行业+持仓+个股分析+新闻）
   max_failed_rounds: 3             # 工具全部失败的连续轮次上限（失败不占轮次，AI可重试）
   persist: true                    # chat对话落盘 分析报告/chat/（每天一个文件，追加）
+  stream: true                     # 回答流式输出（正文增量打印；流式失败自动回退非流式）
   max_result_length: 4000          # 工具结果最大字符数（防token爆炸）
   max_tokens: 384000               # 单次回复最大输出token；DeepSeek-V4输出上限384K（官方文档），拉满避免长回答被截断
 

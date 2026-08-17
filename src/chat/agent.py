@@ -16,6 +16,7 @@ import os
 import re
 import json
 import logging
+from types import SimpleNamespace
 from typing import Optional
 
 from openai import OpenAI
@@ -65,6 +66,10 @@ class ChatAgent:
         self.max_result_length = chat_cfg.get("max_result_length", DEFAULT_MAX_RESULT_LENGTH)
         self.persist = chat_cfg.get("persist", False)
         self.max_tokens = chat_cfg.get("max_tokens", DEFAULT_MAX_TOKENS)
+        # 流式输出：正文增量打印（工具进度流式在ISS-059已做）；流式失败自动回退非流式
+        self.stream = chat_cfg.get("stream", True)
+        # 上一轮回答是否已流式打印到控制台（REPL据此避免重复打印）
+        self._last_reply_printed = False
 
         # 初始化底层引擎
         init_engines(config)
@@ -123,14 +128,8 @@ class ChatAgent:
         unsupported_models = ("kimi-k2.6", "kimi-k2.5")
         return not model.startswith(unsupported_models)
 
-    def _call_api(self, base_params: dict):
-        """调用 chat.completions.create，注入 max_tokens 并兜底降级。
-
-        - 显式传 max_tokens（默认拉满 384K，DeepSeek-V4 输出上限），避免服务端
-          小默认值导致长回答被静默截断。
-        - 边界保护：若 API 拒绝该 max_tokens（超模型实际上限），降级到 32768 重试一次，
-          正常情况下不触发。
-        """
+    def _build_params(self, base_params: dict) -> tuple[dict, str]:
+        """构造 create 参数（thinking/max_tokens 按模型分派）。返回 (params, max_tokens键名)。"""
         params = dict(base_params)
         _is_ds = bool(self._model and self._model.startswith("deepseek-v4"))
         if _is_ds:
@@ -142,6 +141,17 @@ class ChatAgent:
             # kimi 等: 用 max_completion_tokens（kimi官方推荐，max_tokens已弃用）
             params["max_completion_tokens"] = self.max_tokens
             _mt_key = "max_completion_tokens"
+        return params, _mt_key
+
+    def _call_api(self, base_params: dict):
+        """调用 chat.completions.create，注入 max_tokens 并兜底降级。
+
+        - 显式传 max_tokens（默认拉满 384K，DeepSeek-V4 输出上限），避免服务端
+          小默认值导致长回答被静默截断。
+        - 边界保护：若 API 拒绝该 max_tokens（超模型实际上限），降级到 32768 重试一次，
+          正常情况下不触发。
+        """
+        params, _mt_key = self._build_params(base_params)
         try:
             return self._client.chat.completions.create(**params)
         except Exception as e:
@@ -162,6 +172,74 @@ class ChatAgent:
                         raise
                 raise
             raise
+
+    def _call_api_stream(self, base_params: dict):
+        """流式调用：增量打印到控制台，返回 (message, finish_reason)。
+
+        message 与非流式形状兼容（.content/.tool_calls/.reasoning_content）。
+        创建阶段或中途异常向上抛，由调用方回退非流式 _call_api。
+        """
+        params, _ = self._build_params(base_params)
+        stream = self._client.chat.completions.create(**params, stream=True)
+
+        content_parts: list[str] = []
+        reasoning_parts: list[str] = []
+        tool_acc: dict = {}   # index -> {"id","name","args": [str]}
+        finish_reason = None
+        printed = False
+
+        for chunk in stream:
+            if not getattr(chunk, "choices", None):
+                continue
+            choice = chunk.choices[0]
+            delta = getattr(choice, "delta", None)
+            if delta is None:
+                delta = {}
+            # 正文增量：实时打印
+            piece = getattr(delta, "content", None)
+            if piece:
+                if not printed:
+                    print()   # 与提示符换行
+                    printed = True
+                content_parts.append(piece)
+                print(piece, end="", flush=True)
+            rc = getattr(delta, "reasoning_content", None)
+            if rc:
+                reasoning_parts.append(rc)
+            # 工具调用增量：按 index 聚合 id/name/arguments
+            for tc in (getattr(delta, "tool_calls", None) or []):
+                acc = tool_acc.setdefault(tc.index or 0, {"id": "", "name": "", "args": []})
+                if tc.id:
+                    acc["id"] = tc.id
+                fn = getattr(tc, "function", None)
+                if fn is not None:
+                    if getattr(fn, "name", None):
+                        acc["name"] = fn.name
+                    if getattr(fn, "arguments", None):
+                        acc["args"].append(fn.arguments)
+            if getattr(choice, "finish_reason", None):
+                finish_reason = choice.finish_reason
+
+        if printed:
+            print()   # 收尾换行
+
+        # 组装与非流式兼容的 message 对象
+        tool_calls = None
+        if tool_acc:
+            tool_calls = [
+                SimpleNamespace(
+                    id=acc["id"] or f"call_stream_{idx}",
+                    type="function",
+                    function=SimpleNamespace(name=acc["name"], arguments="".join(acc["args"])),
+                )
+                for idx, acc in sorted(tool_acc.items())
+            ]
+        message = SimpleNamespace(
+            content="".join(content_parts) or None,
+            reasoning_content="".join(reasoning_parts) or None,
+            tool_calls=tool_calls,
+        )
+        return message, finish_reason
 
     @staticmethod
     def _trim_messages(messages: list[dict], max_history: int) -> list[dict]:
@@ -207,14 +285,15 @@ class ChatAgent:
             return f"对话处理出错: {e}"
 
     @staticmethod
-    def _finalize_reply(message, finish_reason: str) -> str:
-        """整理AI回复为最终输出文本（三个兜底，绝不静默输出空）。
+    def _reply_parts(message, finish_reason: str) -> tuple[str, str]:
+        """整理AI回复为 (base正文, suffix追加提示)。
 
         - content 为空：reasoning_content 兜底（思考型模型偶发空content，
           同 ai_modifier._parse_response 模式）；再空则占位提示。
         - 剥离伪 <tool_calls> XML 文本：模型在请求不带tools时还想调工具，
           会把工具调用当正文输出并停止（用户看到假XML、无真实回答）。
-        - finish_reason=length：追加截断提示。
+        - finish_reason=length：截断提示。
+        流式输出时 base 已实时打印，只补打 suffix。
         """
         text = (message.content or "").strip()
 
@@ -227,6 +306,7 @@ class ChatAgent:
                 logger.warning("Chat Agent: content为空且无reasoning_content")
                 text = "（模型本次未返回有效回答，请重新提问或输入\"继续\"。）"
 
+        suffix = ""
         # 剥离伪工具调用文本（模型无tools可用时可能把<tool_calls>当正文输出并停止）。
         # 含伪工具调用 = 模型本轮没答完（多半只剩一句"让我再搜索"引导语），
         # 必须提示用户，否则剥离后剩下的引导语仍是"无回答"。
@@ -234,22 +314,25 @@ class ChatAgent:
         if _FAKE_TOOL_CALL_RE.search(text):
             logger.warning("Chat Agent: 回复含伪工具调用文本，模型本轮未完成回答")
             if stripped:
-                text = stripped + (
-                    "\n\n⚠️ 模型试图继续调用工具，本次回答不完整，"
-                    "可输入\"继续\"让模型继续。"
-                )
+                text = stripped
+                suffix += ("\n\n⚠️ 模型试图继续调用工具，本次回答不完整，"
+                           "可输入\"继续\"让模型继续。")
             else:
                 text = "（模型本次仅返回工具调用占位文本，未生成回答，请重新提问或输入\"继续\"。）"
         else:
             text = stripped
 
         if finish_reason == "length":
-            text += (
-                "\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
-                "可输入\"继续\"补全。"
-            )
+            suffix += ("\n\n⚠️ 本回复触及模型输出上限被截断（finish_reason=length），"
+                       "可输入\"继续\"补全。")
             logger.warning("Chat Agent: 回复被max_tokens截断(finish_reason=length)")
-        return text
+        return text, suffix
+
+    @classmethod
+    def _finalize_reply(cls, message, finish_reason: str) -> str:
+        """完整最终文本 = base + suffix（非流式路径）。"""
+        base, suffix = cls._reply_parts(message, finish_reason)
+        return base + suffix
 
     def _run_conversation(self) -> str:
         """执行一轮对话（含function calling循环）
@@ -282,14 +365,32 @@ class ChatAgent:
                 api_params["temperature"] = 0.3
             api_params["timeout"] = 180  # Chat模式需要更长超时
 
-            response = self._call_api(api_params)
-            message = response.choices[0].message
-            finish_reason = response.choices[0].finish_reason
+            # 流式优先（正文增量打印）；创建/中途失败回退非流式（max_tokens降级逻辑在非流式路径）
+            streamed = False
+            message = None
+            finish_reason = None
+            if self.stream:
+                try:
+                    message, finish_reason = self._call_api_stream(api_params)
+                    streamed = True
+                except Exception as e:
+                    logger.warning(f"Chat Agent: 流式调用失败回退非流式: {e}")
+                    print("  ⚠ 流式中断，回退完整响应...")
+            if message is None:
+                response = self._call_api(api_params)
+                message = response.choices[0].message
+                finish_reason = response.choices[0].finish_reason
             tool_calls = message.tool_calls
 
             if not tool_calls:
                 # 无工具调用 → 整理并返回文本
-                assistant_content = self._finalize_reply(message, finish_reason)
+                base, suffix = self._reply_parts(message, finish_reason)
+                assistant_content = base + suffix
+                # 正文已流式打印时 REPL 不再重复打印，只在此处补提示语
+                self._last_reply_printed = bool(
+                    streamed and (message.content or "").strip())
+                if self._last_reply_printed and suffix.strip():
+                    print(suffix.strip())
                 self._messages.append({
                     "role": "assistant",
                     "content": assistant_content
@@ -304,10 +405,11 @@ class ChatAgent:
                 )
                 logger.warning("Chat Agent: tool_calls被max_tokens截断(finish_reason=length)，放弃执行")
                 self._messages.append({"role": "assistant", "content": _trunc_content})
+                self._last_reply_printed = streamed
                 return _trunc_content
 
             # 有工具调用 → 流式显示模型叙述 + 执行工具 → 继续对话
-            if message.content and message.content.strip():
+            if not streamed and message.content and message.content.strip():
                 print(f"\n{message.content.strip()}")
             # 手动构建assistant消息dict（含tool_calls，不用model_dump()）
             self._messages.append({
@@ -393,11 +495,27 @@ class ChatAgent:
             final_params["temperature"] = 0.3
         final_params["timeout"] = 180
 
-        final_response = self._call_api(final_params)
-        final_message = final_response.choices[0].message
-        final_content = self._finalize_reply(
-            final_message, final_response.choices[0].finish_reason
-        )
+        # 最终兜底调用：流式优先，失败回退非流式
+        streamed_final = False
+        final_message = None
+        final_fr = None
+        if self.stream:
+            try:
+                final_message, final_fr = self._call_api_stream(final_params)
+                streamed_final = True
+            except Exception as e:
+                logger.warning(f"Chat Agent: 最终调用流式失败回退非流式: {e}")
+                print("  ⚠ 流式中断，回退完整响应...")
+        if final_message is None:
+            final_response = self._call_api(final_params)
+            final_message = final_response.choices[0].message
+            final_fr = final_response.choices[0].finish_reason
+        base, suffix = self._reply_parts(final_message, final_fr)
+        final_content = base + suffix
+        self._last_reply_printed = bool(
+            streamed_final and (final_message.content or "").strip())
+        if self._last_reply_printed and suffix.strip():
+            print(suffix.strip())
         self._messages.append({"role": "assistant", "content": final_content})
         return final_content
 
@@ -520,9 +638,13 @@ def run_chat_repl(config: dict):
             # 调用Chat Agent
             try:
                 reply = agent.chat(user_input)
-                print()
-                print(reply)
-                print()
+                # 流式输出时正文已实时打印，不重复；只打空行分隔
+                if getattr(agent, "_last_reply_printed", False):
+                    print()
+                else:
+                    print()
+                    print(reply)
+                    print()
                 if agent.persist:
                     agent._persist_turn(user_input, reply)
             except Exception as e:

@@ -59,6 +59,8 @@ def _build_agent(script, max_tool_rounds=1, max_failed_rounds=3):
     agent.max_failed_rounds = max_failed_rounds
     agent.max_result_length = 4000
     agent.max_tokens = 384000
+    agent.stream = False
+    agent._last_reply_printed = False
     agent._messages = [{"role": "system", "content": "s"}]
     return agent
 
