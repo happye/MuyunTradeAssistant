@@ -1369,15 +1369,22 @@ def run_cli(mode: str, args: dict):
                          name=args.get("name", ""))
 
     elif mode == "chat":
-        try:
-            from src.chat.agent import run_chat_repl
-        except ImportError as e:
-            print(f"\n  [!] Chat 依赖缺失: {e}")
-            print("  [!] 请先运行: uv sync")
-            print("  [!] 或: pip install openai jieba faiss-cpu sentence-transformers\n")
-            return
-        config = load_config()
-        run_chat_repl(config)
+        # 子进程化（ISS-060遗留）：chat退出即OS整体回收（含torch等导入开销~440MB，
+        # 进程内无法卸载模块），主进程零残留、永不import chat/RAG/torch。
+        # 仅交互终端走子进程：管道模式下父进程input()预读缓冲会导致子进程丢失stdin行
+        if sys.stdin.isatty():
+            completed = subprocess.run([find_python(), "-m", "src.chat"], cwd=os.getcwd())
+            if completed.returncode != 0:
+                print(f"\n  [!] chat 子进程异常退出（code={completed.returncode}）")
+        else:
+            try:
+                from src.chat.agent import run_chat_repl
+                from src.cli.main import load_config
+            except ImportError as e:
+                print(f"\n  [!] Chat 依赖缺失: {e}")
+                print("  [!] 请先运行: uv sync")
+                return
+            run_chat_repl(load_config())
 
     elif mode == "benzong":
         # v0.8.6.2: bz <code> 默认自动 AI 评分；--manual 走旧交互式
