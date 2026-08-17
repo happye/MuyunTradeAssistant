@@ -91,13 +91,30 @@ src/rag/            # RAG 向量检索（FAISS + sentence-transformers + jieba�
 src/chat/           # AI 对话模式（agent, tools, formatter, prompts）
 src/cli/main.py     # CLI 入口 + 所有命令实现
 start.py            # 交互式 REPL 入口
-configs/            # 配置文件（settings.yaml, position_tiers.yaml）
-tests/              # 测试（含 rag_eval/ 评估模块）
+configs/            # 配置文件（settings.yaml, industry_chains*.yaml 产业链图谱）
+tests/              # 测试（2026-08-17 按用途目录化，见下方 tests/ 目录说明）
 docs/               # 详细文档
 投资策略（持续更新）/ # 65+ 策略 txt/md → RAG 文档块（含笨总教学 .md）
 ```
 
 ---
+### tests/ 目录说明（2026-08-17 整理）
+
+| 目录 | 用途 | 典型脚本 |
+|------|------|---------|
+| `tests/chat/` | chat 模块单测（纯 mock，无网络） | test_chat_streaming / tool_failure / reply_finalize / shutdown / history_trim / formatter |
+| `tests/benzong/` | 笨总评分体系（mock 为主） | test_benzong_scorer / auto_scorer / batch_scorer / mode_from_grade / video_report_tier1-3 / issue_033 气宗回测验证 |
+| `tests/backtest/` | 回测与策略层 | test_jumpA_backtest_5year（5年回测载体）/ strategy_layer_sell_split / issue_041 规则版AI版相关性 |
+| `tests/core/` | 核心引擎单测（技能/决策/持仓/TradePlan/信号） | test_conditions / trade_plan / fundamental_alert / top_signal 等；test_tech_context_e2e 为脚本式E2E（pytest 默认 skip，直跑） |
+| `tests/data_sources/` | 打第三方接口的脚本（真实网络） | test_all_api（全数据源连通性体检）/ test_source_check / test_industry_data / probe_iss053（数据可得性探针） |
+| `tests/ui/` | Web/TUI 界面测试（flask test client，mock 引擎） | test_web / test_tui |
+| `tests/artifacts/` | 历史回测/issue 验证的输出产物（json/log，非脚本） | extended_backtest_2024* / issue_033_round* |
+| `tests/rag_eval/` | RAG 检索质量评估工具 | evaluator.py + relevance_labels |
+
+跑法：`pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval` 全量；单文件 `.\.venv\Scripts\python.exe tests\chat	est_xxx.py`（脚本自带 sys.path 修复）；网络类脚本先看文件头注释。
+
+---
+
 
 ## 四、技术栈与数据源
 

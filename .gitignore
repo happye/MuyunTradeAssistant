@@ -49,3 +49,6 @@ tests/issue_033_round3/
 tests/extended_backtest_2024/
 tests/extended_backtest_2024_round2/
 tests/extended_backtest_2024_round3/
+
+# 历史回测/issue验证的输出产物（本地保留，不入库）
+tests/artifacts/
