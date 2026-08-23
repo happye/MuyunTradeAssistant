@@ -140,7 +140,7 @@ docs/               # 详细文档
 - **RAGDocument 字段名是 `content`，不是 `text`**
 - **StrategyDecision.entry_exit 是 dict，不是 EntryExitResult 对象**：通过 `ee.get("key")` 访问
 - **StockData 的 MA 字段通过 `dr.stock` 访问**：`_weinstein_stage()` 需要 StockData，不是 StrategyDecision
-- **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` / `pyramid_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点/金字塔仓位**整体失效**（ISS-032 已修复，用 `load_pyramid_config()` helper 加载）
+- **回测路径必须显式从 `settings.yaml` 读取并传 `entry_exit_config` 给 `BacktestEngine`**：CLI 默认参数不会兜底，缺传会让买卖点**整体失效**（ISS-032）。金字塔仓位已按 2026-07-17 审查拍板移除（commit 9b89ecd）：`configs/position_tiers.yaml` 已删、`load_pyramid_config()` 为恒返 None 的 no-op，`pyramid_config` 参数仅为兼容保留——新代码别再引用 position_tiers
 - **调策略卖出参数前先打 `trade['sell_path']`**：回测中实际卖出走的是 `src/core/strategy_layer.py` 的 `_infer_sell_path`（`take_profit_trim` / `trend_exit` / `weak_sell` / `stop_loss_*`），不是 `src/core/entry_exit/exit_rules.py`。两者各管一半，不能互相替代（详见 `.learnings/LEARNINGS.md` LRN-20260618-003）
 - **execution_layer 只读 `position_action`（不读 decision/sell_path，无 STOP 概念）**（审查 P0/P1a 修复）：PlanGuard 不可压规则（4 致命止损/4.5 fundamental_alert/P1 top_signal/3 时间止损）+ EntryExit force_exit 救回**必须设 `position_action=CLOSE_ALL`**，否则 strategy_layer 输出 HOLD 时安全网静默失效。规则3/4 原只设 `decision=SELL` 致穿止损/到期不卖（已修，设 CLOSE_ALL+sell_path）；Chandelier force_exit 被 strategy_layer 5机制降级为 HOLD 也丢失（P1a：orchestrator 在 strategy_layer 后重新断言 SELL+CLOSE_ALL+trend_exit 覆盖降级）。**新增 PlanGuard 规则/force_exit 救回别忘设 position_action**
 - **`StockData.recent_announcements` 只在 live builder 填充，回测 builder 绝不可填**（ISS-052）：该字段供 top_signal 实控人减持子信号用，由 `calculate_indicators`（live，`get_stock_data` 别名）填充；回测走独立的 `DataFeeder._build_stock_data`（不调 calculate_indicators）保持 None -> 减持子信号回测跳过（公告是 akshare"最近N天"接口，非 point-in-time，回测取会拿未来公告前瞻）。**别为"完整性"给 DataFeeder 也填公告**--会注入未来信息污染回测。回测安全靠两套 builder 隔离，无 `is_backtest` 开关；若要回测验证减持信号须先备 point-in-time 历史公告数据源
@@ -228,7 +228,7 @@ docs/               # 详细文档
 - **气宗持有模式**（v0.8.6.3，ISS-033）：PlanGuard 压 trend_exit/take_profit_trim 拿住牛股（验证边际收益，指向"跳出现有思维"）
 - **数据源连通性体检**（ISS-043）：`bz --check` 一键测全源
 - **笨总当中长期决策主驾「跳法A」阶段1+2**（v0.8.6.4，ISS-046）：建仓笨总评分定气宗/剑宗 mode（笨总首次真正参与决策）+ 高位止盈3维度（`src/core/exit_signals/`，宏观成交额/个股换手缩量减持，PlanGuard P1 不可压）+ 气宗走固定长持参数（MarketState 降级为展示）
-- **阶段4 五年回测验证通过**（v0.8.6.5，ISS-046）：12 股 × 2020-2024，牛股组 8 只平均 Δ +8.13pp（7/8 正向），见顶/对照组不恶化。相比 ISS-033 的 +2.46pp 边际收益是质变级证据。反例寒武纪 -14.59pp 暴露高波动题材股该定剑宗（后续优化方向）
+- **阶段4 五年回测验证通过**（v0.8.6.5，ISS-046）：12 股 × 2020-2024。**2026-08-23 安全网修复后全量复跑：牛股组平均 Δ +12.32pp 正向 8/8**（寒武纪从 -14.59pp 翻正到 +13.62pp），见顶/对照组不恶化；批次3（2026热门板块含 8/19 暴跌）qizong 5/5 正向平均 +17.3pp。明细见 ISSUES ISS-046 更新记录
 - **景气度硬闸门 + 双通道选股 + 网络超时修复**（v0.8.6.4，ISS-047）：`effective_grade()` 让景气度成为真闸门；`bz scan` 双通道去龙头偏向；AI client 加 timeout
 - **网络根治+缓存版本+风险维降级+截断优化**（v0.8.6.5，ISS-047 续）：akshare/baostock 三层线程级硬超时根治冻结；缓存版本校验杜绝"改代码不生效"；风险维新闻缺失改中性50；业务纯度 prompt 限 reasoning≤60字
 - **笨总视频理念优化**（v0.8.6.8，来源 51 份视频总结）：宏观流动性状态 `assess_liquidity_state`(0.8/1.3/1.5万亿分档) + 市场宽度 `assess_market_breadth`(通杀/分化/普涨) advisory 展示；自主可控标的强制剑宗(`_mode_from_grade` is_self_reliance 闸门)；板块层 `sector.py`(渗透率30%魔咒+旗手滞涨baostock fetch)；个股层三倍定律(气宗跳过)+股东户数/融资余额激活(日缓存+live门控)；`pos overweight` 超配策略(三铁律)；永不满仓警告+弱势期+高位利好提示；AI标注旗手+渗透率。单股回测 sanity(宁德2020 Δ+68.64pp)未破坏气宗。详见 `docs/2026-08-10_笨总视频理念优化报告.md`+`docs/2026-08-12_未做事项评估.md`
@@ -254,17 +254,15 @@ docs/               # 详细文档
 | `docs/TradePlan_使用指南.md` | **v0.8.5 新增**：建仓 plan 草稿生成、PlanGuard 压制 weak_sell、动态调整建议——让股票"持得住" |
 | `docs/技术架构文档.md` | 七层架构详解、数据流、模块关系 |
 | `docs/AI系统说明.md` | AI 角色、影响范围、可控性、降级策略 |
-| `docs/v0.8.3_里程碑.md` | 里程碑进度（含 v0.8.4 / v0.8.5 收尾） |
-| `docs/v0.8.3_迭代规划.md` | v0.8.3 五个优化方向完整设计 |
-| `docs/v0.8.5_扩样本验证报告.md` | 30 股沪深 300 回测：9 股非不利样本，是策略哲学问题 |
-| `docs/v0.8.5_阶段3_final.md` | v0.8.5 阶段 3 收尾：5 轮调参累计 +1.4pp，核心瓶颈在选股能力 |
+| `docs/chat模块架构文档.md` | **v0.8.7 新增**：chat Agent 全景（核心循环/流式/降级/9工具数据来源/子进程化） |
+| `docs/回测到实盘对齐指南.md` | **v0.8.7 新增**：如何实盘复现回测验证过的纪律（mode 对齐/T+1 执行/live 独有信号） |
 | `docs/v0.8.6_调研报告.md` | 笨总超景气价值投机体系融合架构 + 4 阶段路线 + 4 决策点 |
 | `docs/笨总6维评分_说明文档.md` | **v0.8.6.3 新增**：笨总 6 维评分器工作原理/数据来源/降级策略/命令用法/输出解读 |
 | `docs/选股与持仓规划实战工作流.md` | **v0.8.6.5 新增**：端到端用法主线（选股→评分→建仓→持有→离场），含不同市况用法 |
 | `docs/2026-08-23_美债风险文档评估+量化拥挤监测思路.md` | **v0.8.7 新增**：美债监测面板评估（拍板不做 ISS-062）+ 监测信号先过历史迷你回测纪律 + 拥挤度代理候选清单 |
-| `docs/v0.8.6.3_交接.md` | **v0.8.6.3 交接文档**：笨总框架完工度/边际结论/跳法A方向决策（跳法A 阶段1+2 已落地，见 ISSUES ISS-046/047） |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-056） |
+| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-063）+ 顶部当前待办汇总 |
+| `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |
 | `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members/oversold_watch超跌错杀观察） |
 | `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |
