@@ -2,7 +2,7 @@
 
 > This is the Claude Code project config. **General rules — architecture, tech stack, data sources, pitfalls, current status, and the docs index — live in [AGENTS.md](AGENTS.md) as the single source of truth.** This file does not repeat them; it adds Claude Code-specific configuration plus the universal agent operating principles that govern how work is done here.
 >
-> Multi-tool coordination: Codex → `CODEX.md` (pending), VS Code Copilot → `.github/copilot-instructions.md`, shared standard → [AGENTS.md](AGENTS.md). Each tool file cites AGENTS.md as the single source and adds only tool-specific config.
+> Multi-tool coordination: Codex → `CODEX.md`, VS Code Copilot → `.github/copilot-instructions.md`, shared standard → [AGENTS.md](AGENTS.md). Each tool file cites AGENTS.md as the single source and adds only tool-specific config.
 >
 > Note: AGENTS.md and most project docs are written in Chinese. Read them as-is.
 

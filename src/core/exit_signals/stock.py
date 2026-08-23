@@ -116,7 +116,12 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
 
 
 def _check_shrink_acceleration(stock_data) -> Optional[str]:
-    """缩量加速上涨：成交量萎缩但价格大涨，典型赶顶背离。"""
+    """缩量加速上涨：成交量萎缩但价格大涨，典型赶顶背离。
+
+    报告§2.2 连续性增强（2026-08-23）：单日缩量+大涨易误判，要求昨日也缩量
+    才算"连续缩量加速"。昨日量比用近5日序列里的前几日均量近似。
+    volume_series 仅 live 路径填充；缺失/长度不足时退回单日判定（回测路径行为不变）。
+    """
     if stock_data is None:
         return None
     try:
@@ -126,8 +131,19 @@ def _check_shrink_acceleration(stock_data) -> Optional[str]:
         if not vol or not avg_vol or avg_vol <= 0 or change_pct is None:
             return None
         ratio = vol / avg_vol
-        if ratio < SHRINK_VOLUME_RATIO and change_pct > SHRINK_GAIN_PCT:
-            return f"个股:缩量加速(量比{ratio:.2f},涨{change_pct:.1f}%)"
+        if not (ratio < SHRINK_VOLUME_RATIO and change_pct > SHRINK_GAIN_PCT):
+            return None
+        # 连续性确认：昨日(vs[-2])相对其之前可得日的均量也要 <0.7。序列缺失或过短则跳过确认。
+        vs = getattr(stock_data, "volume_series", None)
+        if vs and len(vs) >= 5:
+            prev_vol = float(vs[-2])
+            base = [float(x) for x in list(vs[:-2]) if x]
+            if prev_vol > 0 and base and sum(base) > 0:
+                prev_ratio = prev_vol / (sum(base) / len(base))
+                if prev_ratio >= SHRINK_VOLUME_RATIO:
+                    return None  # 昨日未缩量，单日缩量不构成"连续缩量加速"
+                return f"个股:缩量加速(量比{ratio:.2f},涨{change_pct:.1f}%,连续2日缩量)"
+        return f"个股:缩量加速(量比{ratio:.2f},涨{change_pct:.1f}%)"
     except Exception as e:
         logger.debug(f"缩量加速判定异常: {e}")
     return None

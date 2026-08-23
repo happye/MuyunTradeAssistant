@@ -32,7 +32,8 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
         turnover_pct: 当日换手率(%)，live 路径可从 MarketCache 快照传入；
                       回测路径通常无（历史换手率需流通股本数据），传 None 跳过该子信号
         announcements: 近期公告列表 [{title,...}]，live 路径可传；回测历史公告获取受限，传 None 跳过
-        market_turnover_trillion: 全市场成交额(万亿)，传 None 时 macro 层自行拉取
+        market_turnover_trillion: 全市场成交额(万亿)，live 传 None 时 macro 层自行拉取；
+                    回测(live=False)传 None 则跳过宏观层（不实时拉取，防未来信息+网络拖慢）
         trade_plan: TradePlan（板块层取 flagbearer_code / penetration_stage，报告2.1）；
                     None 时板块层跳过（向后兼容）
         live: True 时启用股东户数/融资余额信号（akshare 网络+日缓存）。回测传 False。
@@ -40,7 +41,12 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
     Returns:
         Optional[str]: 触发的信号描述，如 "个股:换手率超40%(45.2%)"；无触发返回 None
     """
-    macro = check_macro_top_signal(market_turnover_trillion=market_turnover_trillion)
+    macro = None
+    # 宏观层门控（与个股层 live 门控同款纪律）：live=False（回测）且未显式传入成交额时
+    # 跳过，绝不在回测里实时拉取全市场成交额——拉取失败会拖垮回测速度，
+    # 拉取成功则是把"今天"的成交额注入历史bar（未来信息）。回测无该字段，恒为 None。
+    if live or market_turnover_trillion is not None:
+        macro = check_macro_top_signal(market_turnover_trillion=market_turnover_trillion)
     if macro:
         return macro
 
