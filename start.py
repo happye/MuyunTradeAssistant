@@ -1237,6 +1237,8 @@ def run_cli(mode: str, args: dict):
             print(f"{'='*60}")
             try:
                 analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+            except SystemExit:
+                print(f"  [!] {pos.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
             except Exception as e:
                 print(f"  [!] 分析失败: {e}")
 
@@ -1251,22 +1253,33 @@ def run_cli(mode: str, args: dict):
         items = last["items"]
         src_label = last.get("source", "?")
         when = (last.get("timestamp") or "")[:16].replace("T", " ")
+        try:
+            _age_min = max(0, round((_dt.now() - _dt.fromisoformat(last.get("timestamp") or "")).total_seconds() / 60))
+        except Exception:
+            _age_min = None
+        if _age_min is not None and _age_min > 30:
+            print(f"  [!] 注意：该扫描已是 {_age_min} 分钟前的结果，行情可能已变化")
         today = _dt.now().strftime("%Y-%m-%d")
         dims = ["industry_prosperity", "business_purity", "valuation_position",
                 "industry_leader", "market_recognition", "risk_deduction"]
         uncached = sum(
             1 for it in items
-            if it.get("code") and any(bz_cache.get(it["code"], today, d) is None for d in dims)
+            if isinstance(it, dict) and it.get("code")
+            and any(bz_cache.get(it["code"], today, d) is None for d in dims)
         )
         print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
         if uncached:
             est_min = max(1, round(uncached * 0.5))
-            ans = input(f"  其中 {uncached} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            try:
+                ans = input(f"  其中 {uncached} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            except (EOFError, KeyboardInterrupt):
+                print("  已取消")
+                return
             if ans.strip().lower() not in ("y", "yes"):
                 print("  已取消")
                 return
         else:
-            print("  全部命中今日缓存，直接出排名表（不花 AI 费用）\n")
+            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）\n")
         from src.cli.main import benzong_batch_analyze
         benzong_batch_analyze(items)
 

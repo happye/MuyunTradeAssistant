@@ -762,6 +762,9 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
     compact=True 时只输出顶部"人话摘要"面板，跳过详细报告与笨总摘要
     （la 批量模式用；单只分析默认 False 保持完整输出）。
     """
+    
+    stock_code = normalize_stock_code(stock_code)  # 统一缓存键口径（补前导零，不改其余格式）
+
     from src.data.akshare_client import get_stock_data, AKShareClient
 
     console.print(f"\n[bold cyan]实时行情模式[/bold cyan]")
@@ -1481,7 +1484,7 @@ _STAGE_PLAIN = {
     "S2-": "上升途中回调（趋势未坏）",
     "S1+": "底部盘整（方向未明）",
     "S1": "底部盘整（跌深企稳，方向未明）",
-    "S3": "高位滞涨（已涨较多，提高警惕）",
+    "S3": "趋势转弱（均线已转空：顶部回落或下跌中反弹，多看少动）",
     "S4↓": "下跌趋势中（别急着抄底）",
 }
 
@@ -1505,8 +1508,10 @@ def _cached_benzong_brief(stock_code: str):
         r = cache.get(stock_code, today, d)
         if r is not None:
             cached[d] = r
-    if len(cached) < 6:
+    if not cached:
         return None
+    if len(cached) < 6:
+        return ("partial", str(len(cached)) + "/6")
     try:
         from src.core.benzong import score_one
         mt = cached["industry_prosperity"].get("market_turnover") or 1.0
@@ -1520,7 +1525,7 @@ def _cached_benzong_brief(stock_code: str):
             market_turnover_trillion=mt,
             stock_code=stock_code,
         )
-        return bs.normalized_score(), bs.effective_grade(), bs.grade()
+        return ("full", bs.normalized_score(), bs.effective_grade(), bs.grade())
     except Exception:
         return None
 
@@ -1552,6 +1557,8 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
         pct = int(ee.get("entry_ratio", 0) * 100)
         if decision == "BUY":
             lines.append(("green", f"今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，系统建议先建 {pct}% 仓位。"))
+        elif decision == "SELL":
+            lines.append(("red", "虽然形态够到了买点，但综合判断当前是卖出环境——别接，观望。"))
         else:
             lines.append(("yellow", "形态上够到了买点，但综合评分还没到买入线——再等等，不着急。"))
         if ee.get("entry_reason"):
@@ -1566,6 +1573,8 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
         lines.append(("cyan", f"没有买卖信号：继续持有，今天什么都不用做。{mode_note}"))
     elif decision == "BUY":
         lines.append(("yellow", "综合倾向买入但买点条件未齐：再等等，别追高。"))
+    elif decision == "SELL":
+        lines.append(("yellow", "综合判断偏空：今天不碰，继续观察。"))
     else:
         lines.append(("dim", "今天不是买点：放进观察池，等信号出现再动手。"))
 
@@ -1579,8 +1588,10 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
 
     # 4) 笨总怎么看（当日缓存，不跑 AI）
     brief = _cached_benzong_brief(sd.stock_code.split(".")[0] if sd else "") if sd else None
-    if brief:
-        score, eff, orig = brief
+    if brief and brief[0] == "partial":
+        lines.append(("dim", "笨总评分：今日已完成 " + brief[1] + " 维（跑 bz <代码> 补全后这里显示总分）"))
+    elif brief:
+        _, score, eff, orig = brief
         dg = f"（原始{orig}级，被景气度闸门压级）" if eff != orig else ""
         hint = {"A": "A=好公司，可考虑长拿", "B": "B=尚可，适合短线快做",
                 "C": "C=一般，谨慎", "D": "D=差，回避", "F": "F=放弃"}.get(eff, "")
@@ -1604,7 +1615,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> Non
     """
     from src.core.benzong.batch_scorer import auto_score_batch
 
-    codes = [it.get("code") for it in items if it.get("code")]
+    codes = [it.get("code") for it in items if isinstance(it, dict) and it.get("code")]
     if not codes:
         console.print("[yellow]扫描结果里没有股票代码[/yellow]")
         return
@@ -1634,7 +1645,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> Non
         eff = row.get("effective_grade", "?")
         conf = row.get("confidence", 0)
         if row.get("invalidate"):
-            note = "[red]景气度不及格，一票否决，放弃[/red]"
+            note = "[red]风险红线触发（造假/违禁类），一票否决，放弃[/red]"
         else:
             ds = row.get("dim_scores", {})
             if ds:
