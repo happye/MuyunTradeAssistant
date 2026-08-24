@@ -63,9 +63,8 @@ def test_holder_reduction_empty_or_none():
 
 
 def test_check_stock_top_signal_with_holder_reduction():
-    """check_stock_top_signal 透传减持子信号（turnover_pct=None 不影响）。"""
-    sig = check_stock_top_signal(None, "600519", turnover_pct=None,
-                                 announcements=_ann("控股股东拟减持"))
+    """check_stock_top_signal 透传减持子信号。"""
+    sig = check_stock_top_signal(None, "600519", announcements=_ann("控股股东拟减持"))
     assert sig is not None and "实控人减持" in sig
 
 
@@ -77,7 +76,7 @@ def test_check_stock_top_signal_no_announcements():
         avg_volume_5 = 1000.0
         avg_volume_20 = 1000.0
         change_pct = 1.0
-    assert check_stock_top_signal(_SD(), "600519", turnover_pct=None,
+    assert check_stock_top_signal(_SD(), "600519",
                                   announcements=None) is None
 
 

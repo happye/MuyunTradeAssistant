@@ -2,6 +2,8 @@
 
 笨总教学：个股见顶三信号 = 换手率>40% + 缩量加速上涨 + 实控人减持。
 全部客观硬规则，不依赖 AI 判断。
+换手率子信号因无数据源未实现（历史换手率需流通股本数据，StockData 无此字段，
+2026-08-24 经用户拍板移除死代码；若未来接入换手率数据源再按教学恢复该分支）。
 """
 
 import json
@@ -43,8 +45,6 @@ def _daily_cache_set(code: str, signal: str, value) -> None:
 
 _MISS = object()  # 哨兵：缓存未命中（区别于缓存的 None 值）
 
-# 个股换手率见顶阈值(%)
-TURNOVER_TOP_PCT = 40.0
 # 缩量加速：近期量比阈值（当前量 / 均量 < 此值视为缩量）
 SHRINK_VOLUME_RATIO = 0.7
 # 缩量加速：涨幅阈值(%)，缩量+大涨=加速赶顶
@@ -61,7 +61,7 @@ _REDUCE_KEYWORDS = ("减持", "拟减持")
 _HOLDER_KEYWORDS = ("控股股东", "实际控制人", "实控人", "大股东")
 
 
-def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[float] = None,
+def check_stock_top_signal(stock_data, code: str, *,
                            announcements: Optional[list] = None,
                            live: bool = False,
                            mode: Optional[str] = None) -> Optional[str]:
@@ -70,30 +70,24 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
     Args:
         stock_data: StockData（缩量加速判定用 volume/avg_volume/change_pct）
         code: 股票代码
-        turnover_pct: 当日换手率(%)。live 路径可从 MarketCache 快照传入；
-            回测路径通常 None（历史换手率需流通股本，data_provider 未提供）→ 跳过该子信号
         announcements: 近期公告列表 [{title,...}]。None 时不检查实控人减持
             （回测历史公告获取受限，诚实声明）
 
     Returns:
-        Optional[str]: 信号描述，如 "个股:换手率超40%(45.2%)"
+        Optional[str]: 信号描述，如 "个股:缩量加速(量比0.65,涨16.2%)"
     """
-    # 信号1：换手率 > 40%
-    if turnover_pct is not None and turnover_pct > TURNOVER_TOP_PCT:  # 严格大于，40.0%整数值(主板涨停常见)不误触发
-        return f"个股:换手率超40%({turnover_pct:.1f}%)"
-
     # 信号2：缩量加速上涨（量比 < 0.7 且 涨幅 > 15%）
     accel = _check_shrink_acceleration(stock_data)
     if accel:
         return accel
 
-    # 信号3：实控人减持公告
+    # 信号：实控人减持公告
     if announcements:
         reduce_sig = _check_holder_reduction(announcements)
         if reduce_sig:
             return reduce_sig
 
-    # 信号4：三倍定律+5日线破位（教学六/八）--从近60日低点涨≥3倍且破5日线
+    # 信号：三倍定律+5日线破位（教学六/八）--从近60日低点涨≥3倍且破5日线
     # 报告①回测发现：气宗牛股被三倍定律 force-exit 致过早离场（与气宗"拿住整波主升浪"冲突）。
     # 设计修正：气宗(mode=qizong)跳过三倍定律（同 take_profit_trim 可压，气宗靠换手/减持/渗透率/旗手等真见顶信号逃顶）；
     # 剑宗/非气宗照常触发（一波流涨三倍该止盈就走）。
@@ -102,7 +96,7 @@ def check_stock_top_signal(stock_data, code: str, *, turnover_pct: Optional[floa
         if triple:
             return triple
 
-    # 信号5/6：股东户数激增 + 融资余额激增（教学八，akshare 网络+日缓存）
+    # 信号：股东户数激增 + 融资余额激增（教学八，akshare 网络+日缓存）
     # 仅 live 路径启用（回测 point-in-time 不可用+网络成本）；日缓存避免重复打 akshare
     if live and code:
         hc = _check_holder_count_surge(code)

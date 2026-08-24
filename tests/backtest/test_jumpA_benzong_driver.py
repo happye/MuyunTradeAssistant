@@ -146,12 +146,6 @@ def test_macro_turnover_top():
     assert check_macro_top_signal(market_turnover_trillion=8.0) is None
 
 
-def test_stock_turnover_top():
-    sd = _sd(volume=1000, avg_volume_5=1000, change_pct=2.0)
-    assert check_stock_top_signal(sd, "X", turnover_pct=45.0) is not None
-    assert check_stock_top_signal(sd, "X", turnover_pct=30.0) is None
-
-
 def test_stock_shrink_acceleration():
     """缩量(量比<0.7) + 加速(涨幅>15%) → 触发"""
     sd = _sd(volume=500, avg_volume_5=1000, change_pct=18.0)

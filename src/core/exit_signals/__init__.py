@@ -20,7 +20,7 @@ __all__ = [
 ]
 
 
-def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None,
+def check_top_signals(stock_data, code, *, announcements=None,
                       market_turnover_trillion=None, trade_plan=None, live: bool = False):
     """汇总宏观+板块+个股高位止盈信号，返回首个触发的信号描述（无则 None）。
 
@@ -29,8 +29,6 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
     Args:
         stock_data: StockData（个股缩量加速/近20日涨幅判定用）
         code: 股票代码
-        turnover_pct: 当日换手率(%)，live 路径可从 MarketCache 快照传入；
-                      回测路径通常无（历史换手率需流通股本数据），传 None 跳过该子信号
         announcements: 近期公告列表 [{title,...}]，live 路径可传；回测历史公告获取受限，传 None 跳过
         market_turnover_trillion: 全市场成交额(万亿)，live 传 None 时 macro 层自行拉取；
                     回测(live=False)传 None 则跳过宏观层（不实时拉取，防未来信息+网络拖慢）
@@ -39,7 +37,7 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
         live: True 时启用股东户数/融资余额信号（akshare 网络+日缓存）。回测传 False。
 
     Returns:
-        Optional[str]: 触发的信号描述，如 "个股:换手率超40%(45.2%)"；无触发返回 None
+        Optional[str]: 触发的信号描述，如 "个股:缩量加速(量比0.65,涨16.2%)"；无触发返回 None
     """
     macro = None
     # 宏观层门控（与个股层 live 门控同款纪律）：live=False（回测）且未显式传入成交额时
@@ -55,6 +53,6 @@ def check_top_signals(stock_data, code, *, turnover_pct=None, announcements=None
         return sector
 
     return check_stock_top_signal(
-        stock_data, code, turnover_pct=turnover_pct, announcements=announcements,
+        stock_data, code, announcements=announcements,
         live=live, mode=trade_plan.mode if trade_plan else None
     )

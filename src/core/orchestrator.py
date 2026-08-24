@@ -328,7 +328,6 @@ class Orchestrator:
                 from src.core.exit_signals import check_top_signals
                 top_signal = check_top_signals(
                     data, data.stock_code,
-                    turnover_pct=getattr(data, "turnover_pct", None),
                     announcements=getattr(data, "recent_announcements", None),
                     market_turnover_trillion=getattr(data, "market_turnover_trillion", None),
                     trade_plan=trade_plan,

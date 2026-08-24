@@ -17,7 +17,7 @@ def test_live_false_skips_akshare():
     """live=False（回测）不应触发 akshare 网络调用（快速返回）"""
     sd = _sd()
     t0 = time.time()
-    r = check_stock_top_signal(sd, "600519", turnover_pct=None, announcements=None, live=False)
+    r = check_stock_top_signal(sd, "600519", announcements=None, live=False)
     dt = time.time() - t0
     # 无三倍定律触发（low_60d缺）-> None；关键是不 hang（<30s 无 akshare）
     assert dt < 25, f"live=False 不应慢({dt:.1f}s)，可能误调 akshare"
