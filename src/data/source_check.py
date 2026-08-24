@@ -235,7 +235,7 @@ def check_all_sources(code: str = "600989") -> dict:
 
     def _bs_index():
         from src.data.akshare_client import AKShareClient
-        info = AKShareClient._get_index_trend()
+        info = AKShareClient._get_index_trend(use_cache=False)  # 体检测"此刻连通性"，不吃趋势缓存
         if info is None:
             raise RuntimeError("大盘趋势返回空")
         return f"沪深300 {info['trend']} close={info['close']}"

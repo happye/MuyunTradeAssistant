@@ -43,9 +43,10 @@ def _daily_cache_set(code: str, signal: str, value) -> None:
         pass
 
 
-_MISS = object()
-# 融资余额全市场表的进程级 memo：(exchange, date_str) -> DataFrame|None
-_MARGIN_TABLE_MEMO: dict = {}  # 哨兵：缓存未命中（区别于缓存的 None 值）
+_MISS = object()  # 哨兵：缓存未命中（区别于缓存的 None 值）
+
+# 融资余额全市场表的进程级 memo：(exchange, date_str) -> DataFrame|None（la 批量跨股共享一次下载）
+_MARGIN_TABLE_MEMO: dict = {}
 
 # 缩量加速：近期量比阈值（当前量 / 均量 < 此值视为缩量）
 SHRINK_VOLUME_RATIO = 0.7

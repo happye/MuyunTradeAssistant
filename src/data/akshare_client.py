@@ -1203,7 +1203,7 @@ class AKShareClient:
     _INDEX_TREND_TTL = 600  # 秒。指数趋势/MA是慢变量，10分钟内共享一份400日K线拉取
 
     @staticmethod
-    def _get_index_trend(index_code: str = "sh.000300") -> Optional[dict]:
+    def _get_index_trend(index_code: str = "sh.000300", use_cache: bool = True):
         """大盘指数趋势（带类级TTL缓存的包装器）。
 
         v0.8.7.2 审查修复：calculate_indicators 每股都调本函数，la 批量 N 只持仓
@@ -1211,9 +1211,10 @@ class AKShareClient:
         实现在 _get_index_trend_uncached。
         """
         now_ts = time.time()
-        cached = AKShareClient._index_trend_cache.get(index_code)
-        if cached is not None and (now_ts - cached[0]) < AKShareClient._INDEX_TREND_TTL:
-            return cached[1]
+        if use_cache:
+            cached = AKShareClient._index_trend_cache.get(index_code)
+            if cached is not None and (now_ts - cached[0]) < AKShareClient._INDEX_TREND_TTL:
+                return cached[1]
         result = AKShareClient._get_index_trend_uncached(index_code)
         if result is not None:
             AKShareClient._index_trend_cache[index_code] = (now_ts, result)
