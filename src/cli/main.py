@@ -2,6 +2,7 @@
 
 import sys
 import os
+import re
 import json
 import logging
 from pathlib import Path
@@ -755,8 +756,12 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
-def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False):
-    """实时行情分析模式（通过AKShare）"""
+def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False, compact: bool = False):
+    """实时行情分析模式（通过AKShare）
+
+    compact=True 时只输出顶部"人话摘要"面板，跳过详细报告与笨总摘要
+    （la 批量模式用；单只分析默认 False 保持完整输出）。
+    """
     from src.data.akshare_client import get_stock_data, AKShareClient
 
     console.print(f"\n[bold cyan]实时行情模式[/bold cyan]")
@@ -884,10 +889,16 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
                     high_since_entry=pos.high_since_entry if pos else None,
             trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
         )
-        display_result(result, strategy_decision, execution_eval, ai_result)
+        # v0.8.7.1: 人话摘要面板（白话结论在最前；渲染失败不影响主流程）
+        try:
+            _print_plain_summary(result, strategy_decision, stock_data, pos)
+        except Exception as e:
+            logger.debug(f"人话摘要渲染失败(不影响主流程): {e}")
 
-        # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
-        _print_benzong_summary(stock_code, stock_data.stock_name)
+        if not compact:
+            display_result(result, strategy_decision, execution_eval, ai_result)
+            # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
+            _print_benzong_summary(stock_code, stock_data.stock_name)
     else:
         # 无技术指标时，只显示基本信息
         console.print(f"\n[bold yellow]仅实时数据可用，无法进行技术分析[/bold yellow]")
@@ -1461,6 +1472,192 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
             console.print(f"[red]✗ 附加失败（持仓不存在？）[/red]")
     else:
         console.print(f"[dim]已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补[/dim]")
+
+
+# ── 人话摘要（v0.8.7.1）：把决策/买卖点/阶段翻译成非专业用户能懂的话 ──
+
+_STAGE_PLAIN = {
+    "S2↑": "上升趋势中（走势健康）",
+    "S2-": "上升途中回调（趋势未坏）",
+    "S1+": "底部盘整（方向未明）",
+    "S1": "底部盘整（跌深企稳，方向未明）",
+    "S3": "高位滞涨（已涨较多，提高警惕）",
+    "S4↓": "下跌趋势中（别急着抄底）",
+}
+
+_BZ_DIM_CN = {
+    "industry_prosperity": "行业景气", "business_purity": "主业纯度",
+    "valuation_position": "估值位置", "industry_leader": "龙头地位",
+    "market_recognition": "市场认可", "risk_deduction": "风险控制",
+}
+
+
+def _cached_benzong_brief(stock_code: str):
+    """读当日笨总缓存（与 _print_benzong_summary 同源），返回 (归一化分, 有效级别, 原始级别) 或 None。"""
+    from datetime import datetime
+    from src.core.benzong import cache
+
+    today = datetime.now().strftime("%Y-%m-%d")
+    dims = ["industry_prosperity", "business_purity", "valuation_position",
+            "industry_leader", "market_recognition", "risk_deduction"]
+    cached = {}
+    for d in dims:
+        r = cache.get(stock_code, today, d)
+        if r is not None:
+            cached[d] = r
+    if len(cached) < 6:
+        return None
+    try:
+        from src.core.benzong import score_one
+        mt = cached["industry_prosperity"].get("market_turnover") or 1.0
+        bs = score_one(
+            industry_prosperity=cached["industry_prosperity"]["score"],
+            business_purity=cached["business_purity"]["score"],
+            valuation_position=cached["valuation_position"]["score"],
+            industry_leader=cached["industry_leader"]["score"],
+            market_recognition=cached["market_recognition"]["score"],
+            risk_deduction=cached["risk_deduction"]["score"],
+            market_turnover_trillion=mt,
+            stock_code=stock_code,
+        )
+        return bs.normalized_score(), bs.effective_grade(), bs.grade()
+    except Exception:
+        return None
+
+
+def _plain_stage(sd) -> str:
+    """Weinstein 阶段标记 → 白话。"""
+    raw = _weinstein_stage(sd)
+    key = re.sub(r"\[/?[a-z]+\]", "", raw).strip()
+    return _STAGE_PLAIN.get(key, "数据不足，无法判断阶段")
+
+
+def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
+    """l 输出顶部的白话结论面板：该做什么/为什么/什么阶段/笨总怎么看。
+
+    纯展示层翻译，不改任何决策逻辑；渲染失败静默降级（调用方包 try）。
+    """
+    ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
+    has_pos = pos is not None and pos.current_ratio > 0
+    decision = result.decision.value if result is not None else "?"
+    lines: list[tuple] = []  # (color|None, text)
+
+    # 1) 今天该做什么
+    if ee.get("exit_triggered") and has_pos:
+        action_cn = _exit_action_cn(ee.get("exit_action", ""), ee.get("exit_ratio", 0), ee.get("exit_type", ""))
+        lines.append(("red", f"今天出现【卖出信号：{action_cn}】。按纪律次日开盘执行，别拖。"))
+        if ee.get("exit_reason"):
+            lines.append((None, f"原因：{ee['exit_reason']}"))
+    elif ee.get("entry_triggered"):
+        pct = int(ee.get("entry_ratio", 0) * 100)
+        if decision == "BUY":
+            lines.append(("green", f"今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，系统建议先建 {pct}% 仓位。"))
+        else:
+            lines.append(("yellow", "形态上够到了买点，但综合评分还没到买入线——再等等，不着急。"))
+        if ee.get("entry_reason"):
+            lines.append((None, f"原因：{ee['entry_reason']}"))
+    elif has_pos and decision == "SELL":
+        lines.append(("yellow", "综合判断偏卖出，但买卖点没触发硬信号——持仓纪律优先，细节看下方报告。"))
+    elif has_pos:
+        mode_note = ""
+        tp = getattr(pos, "trade_plan", None)
+        if tp is not None and getattr(tp, "mode", None) == "qizong":
+            mode_note = "（气宗模式：持有期内的日常波动不用管，有止损和见顶信号兜底）"
+        lines.append(("cyan", f"没有买卖信号：继续持有，今天什么都不用做。{mode_note}"))
+    elif decision == "BUY":
+        lines.append(("yellow", "综合倾向买入但买点条件未齐：再等等，别追高。"))
+    else:
+        lines.append(("dim", "今天不是买点：放进观察池，等信号出现再动手。"))
+
+    # 2) 股票现在处于什么阶段
+    lines.append((None, f"当前阶段：{_plain_stage(sd)}"))
+
+    # 3) 持仓盈亏
+    if has_pos and pos.entry_price and sd is not None and sd.price:
+        pnl = (sd.price - pos.entry_price) / pos.entry_price * 100
+        lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，仓位 {pos.current_ratio:.0%}"))
+
+    # 4) 笨总怎么看（当日缓存，不跑 AI）
+    brief = _cached_benzong_brief(sd.stock_code.split(".")[0] if sd else "") if sd else None
+    if brief:
+        score, eff, orig = brief
+        dg = f"（原始{orig}级，被景气度闸门压级）" if eff != orig else ""
+        hint = {"A": "A=好公司，可考虑长拿", "B": "B=尚可，适合短线快做",
+                "C": "C=一般，谨慎", "D": "D=差，回避", "F": "F=放弃"}.get(eff, "")
+        lines.append((None, f"笨总评分：{score:.0f}/100，{eff} 级{dg}。{hint}"))
+    else:
+        lines.append(("dim", "笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）"))
+
+    body = []
+    for color, text in lines:
+        body.append(f"[{color}]{text}[/{color}]" if color else text)
+    body.append("[dim]小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）[/dim]")
+    console.print(Panel("\n".join(body), title="📖 人话摘要", border_style="cyan"))
+
+
+def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> None:
+    """ba 命令：对最近一次扫描找到的股票批量笨总评分（缓存优先，排序输出白话点评）。
+
+    Args:
+        items: session_state.get_last_scan() 的 items（至少含 code/name）
+        force_refresh: True 时忽略缓存重算
+    """
+    from src.core.benzong.batch_scorer import auto_score_batch
+
+    codes = [it.get("code") for it in items if it.get("code")]
+    if not codes:
+        console.print("[yellow]扫描结果里没有股票代码[/yellow]")
+        return
+
+    def _progress(i, total, code, status):
+        console.print(f"  [{i}/{total}] {code} {status}")
+
+    console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
+    res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
+                           progress_cb=_progress)
+
+    ranked = res.get("ranked", [])
+    failures = res.get("failures", [])
+    if not ranked and not failures:
+        console.print("[yellow]没有产出评分结果[/yellow]")
+        return
+
+    table = Table(title=f"笨总批量评分排名（{len(ranked)} 只成功 / {len(failures)} 只失败）")
+    table.add_column("#", width=3, justify="right")
+    table.add_column("代码", width=8)
+    table.add_column("名称", overflow="fold")
+    table.add_column("分数", justify="right", width=5)
+    table.add_column("级别", justify="center", width=4)
+    table.add_column("行业景气", justify="right", width=6)
+    table.add_column("白话点评", overflow="fold")
+    for i, row in enumerate(ranked, 1):
+        eff = row.get("effective_grade", "?")
+        conf = row.get("confidence", 0)
+        if row.get("invalidate"):
+            note = "[red]景气度不及格，一票否决，放弃[/red]"
+        else:
+            ds = row.get("dim_scores", {})
+            if ds:
+                best = max(ds, key=lambda k: ds[k])
+                worst = min(ds, key=lambda k: ds[k])
+                note = f"{_BZ_DIM_CN.get(best, best)}最强({ds[best]:.0f})，{_BZ_DIM_CN.get(worst, worst)}最弱({ds[worst]:.0f})"
+            else:
+                note = "-"
+            if conf < 0.5:
+                note += " [yellow]⚠置信度低，建议复核[/yellow]"
+        gc = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}.get(eff, "white")
+        table.add_row(
+            str(i), row["code"], row.get("name") or "-",
+            f"{row.get('normalized_score', 0):.0f}",
+            f"[{gc}]{eff}[/{gc}]",
+            f"{row.get('dim_scores', {}).get('industry_prosperity', 0):.0f}",
+            note,
+        )
+    console.print(table)
+    for f in failures:
+        console.print(f"  [red]✗ {f['code']}: {f.get('error', '失败')}[/red]")
+    console.print("[dim]说明：分数是当天缓存，重复跑 ba 不再花 AI 费用；bz <代码> --refresh 可强刷单只[/dim]")
+
 
 
 def _print_benzong_summary(stock_code: str, stock_name: str = ""):

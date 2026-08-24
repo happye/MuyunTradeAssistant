@@ -67,7 +67,8 @@ def show_help():
     print("│                                                    │")
     print("│  ★ 扫描 (v0.8.4 趋势选股)                          │")
     print("│    scan                   一键扫描所有持仓          │")
-    print("│    la                     一键l分析所有持仓(详细)    │")
+    print("│    la                     一键分析所有持仓(简明卡)   │")
+    print("│    ba                     批量评分最近扫描的股票     │")
     print("│    scan market [规则]     全市场扫描                │")
     print("│    scan market deep       全市场深度分析            │")
     print("│    可用规则:                                        │")
@@ -186,6 +187,9 @@ def parse_input(user_input: str):
     # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
     if cmd in ("la", "lall"):
         return ("live_all", {})
+
+    if cmd in ("ba", "bzall"):
+        return ("benzong_all", {})
 
     if cmd in ("l", "live"):
         if len(parts) < 2:
@@ -1226,15 +1230,45 @@ def run_cli(mode: str, args: dict):
         if not positions:
             print("\n  当前无持仓记录")
             return
-        print(f"\n  一键分析所有持仓（{len(positions)}只），逐个跑 l 详细分析...\n")
+        print(f"\n  一键分析所有持仓（{len(positions)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
         for i, pos in enumerate(positions, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")
             print(f"{'='*60}")
             try:
-                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug)
+                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
             except Exception as e:
                 print(f"  [!] 分析失败: {e}")
+
+    elif mode == "benzong_all":
+        from src.cli import session_state
+        from src.core.benzong import cache as bz_cache
+        from datetime import datetime as _dt
+        last = session_state.get_last_scan()
+        if not last or not last.get("items"):
+            print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market")
+            return
+        items = last["items"]
+        src_label = last.get("source", "?")
+        when = (last.get("timestamp") or "")[:16].replace("T", " ")
+        today = _dt.now().strftime("%Y-%m-%d")
+        dims = ["industry_prosperity", "business_purity", "valuation_position",
+                "industry_leader", "market_recognition", "risk_deduction"]
+        uncached = sum(
+            1 for it in items
+            if it.get("code") and any(bz_cache.get(it["code"], today, d) is None for d in dims)
+        )
+        print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
+        if uncached:
+            est_min = max(1, round(uncached * 0.5))
+            ans = input(f"  其中 {uncached} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            if ans.strip().lower() not in ("y", "yes"):
+                print("  已取消")
+                return
+        else:
+            print("  全部命中今日缓存，直接出排名表（不花 AI 费用）\n")
+        from src.cli.main import benzong_batch_analyze
+        benzong_batch_analyze(items)
 
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
