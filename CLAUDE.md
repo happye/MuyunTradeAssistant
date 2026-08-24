@@ -68,7 +68,7 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 **Environment caveats:**
 
 - Windows + Chinese paths: prefix git operations with `cmd /c`; PowerShell executing git directly is error-prone.
-- Before pushing, check the proxy: `git -c http.proxy= push` (system proxy `127.0.0.1:7890` resets GitHub).
+- Before pushing, check the proxy: the global `.gitconfig` uses a URL-scoped proxy `http.https://github.com.proxy=127.0.0.1:7890`, so bypass it with `git -c http.https://github.com.proxy= push`. If the error says 'via 127.0.0.1 ... Could not connect', the proxy client is off (and direct access is usually blocked too) — start it first.
 
 ## Context Management & Memory
 

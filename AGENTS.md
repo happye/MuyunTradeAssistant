@@ -181,7 +181,7 @@ docs/               # 详细文档
 
 ### 网络
 
-- **系统代理 `127.0.0.1:7890` 会干扰东方财富 API 和 GitHub**：金融数据需 `_without_proxy()` 绕过；Git 推送失败时 `git -c http.proxy= push`
+- **系统代理 `127.0.0.1:7890` 会干扰东方财富 API 和 GitHub**：金融数据需 `_without_proxy()` 绕过。Git 推送注意：全局 .gitconfig 配的是 **URL 级代理** `http.https://github.com.proxy`，`-c http.proxy=` 覆盖不了它，要绕过须用 `git -c http.https://github.com.proxy= push`；若报 'via 127.0.0.1 ... Could not connect' 说明代理客户端没开，此时直连通常也被墙，先开代理再推
 - **THS 板块 API 可能超时**：`get_stocks_by_industry/concept` 有 15 秒超时保护
 
 ### Git
