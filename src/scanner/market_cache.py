@@ -117,6 +117,24 @@ class MarketCache:
     _shared_fail_ts: float = 0.0
     FAIL_COOLDOWN_SECONDS = 60
 
+    # ── L1(ETF) 与 L2 板块类缓存：同样类级共享（v0.8.7.2 补齐，与 L1 快照同款病灶修复）──
+    # 使用方（CLI 每条 scan/industries/concepts 命令新建 ScannerEngine→MarketCache）反复新建
+    # 实例会让实例级 TTL 永不命中；其中成分股接口是 THS HTML 翻页爬虫（全库最贵端点、反爬敏感），
+    # 同主题词连发两条命令本会整页重爬。类级化后跨命令跨实例共享。
+    _shared_etf_df: Optional[pd.DataFrame] = None
+    _shared_etf_ts: float = 0.0
+    _shared_etf_count: int = 0
+    _shared_industry_df: Optional[pd.DataFrame] = None
+    _shared_industry_ts: float = 0.0
+    _shared_concept_df: Optional[pd.DataFrame] = None
+    _shared_concept_ts: float = 0.0
+    _shared_industry_stocks: dict = {}
+    _shared_industry_stocks_ts: dict = {}
+    INDUSTRY_STOCKS_TTL = 1800  # 30分钟
+    _shared_concept_stocks: dict = {}
+    _shared_concept_stocks_ts: dict = {}
+    CONCEPT_STOCKS_TTL = 1800   # 30分钟
+
     def __init__(self, ttl_seconds: int = 0):
         """初始化缓存
 
@@ -130,28 +148,7 @@ class MarketCache:
         self._market_source_dead: bool = False
         self._market_source_dead_ts: float = 0.0
 
-        # L1 缓存: ETF行情
-        self._etf_df: Optional[pd.DataFrame] = None
-        self._etf_timestamp: float = 0.0
-        self._etf_count: int = 0
-
-        # L2 缓存: 行业板块列表
-        self._industry_df: Optional[pd.DataFrame] = None
-        self._industry_timestamp: float = 0.0
-
-        # L2 缓存: 概念板块列表
-        self._concept_df: Optional[pd.DataFrame] = None
-        self._concept_timestamp: float = 0.0
-
-        # L2 缓存: 行业成分股（按行业名缓存）
-        self._industry_stocks: dict[str, list[str]] = {}
-        self._industry_stocks_ts: dict[str, float] = {}
-        self._industry_stocks_ttl = 1800  # 30分钟
-
-        # L2 缓存: 概念成分股（按概念名缓存）
-        self._concept_stocks: dict[str, list[str]] = {}
-        self._concept_stocks_ts: dict[str, float] = {}
-        self._concept_stocks_ttl = 1800  # 30分钟
+        # L1(ETF) 与 L2(行业/概念板块及成分股) 缓存已全部提升为类属性 _shared_*（见类头部）
 
     @staticmethod
     def _without_proxy():
@@ -457,9 +454,9 @@ class MarketCache:
         Returns:
             ETF行情DataFrame
         """
-        if not force_refresh and self._etf_df is not None and not self._is_expired(self._etf_timestamp):
-            logger.info(f"MarketCache: ETF缓存命中({self._etf_count}只)")
-            return self._etf_df
+        if not force_refresh and MarketCache._shared_etf_df is not None and not self._is_expired(MarketCache._shared_etf_ts):
+            logger.info(f"MarketCache: ETF缓存命中({MarketCache._shared_etf_count}只)")
+            return MarketCache._shared_etf_df
 
         logger.info("MarketCache: 获取全市场ETF行情...")
         try:
@@ -467,16 +464,16 @@ class MarketCache:
             with self._without_proxy():
                 df = ak.fund_etf_spot_em()
             if df is not None and not df.empty:
-                self._etf_df = df
-                self._etf_timestamp = time.time()
-                self._etf_count = len(df)
-                logger.info(f"MarketCache: ETF行情获取成功({self._etf_count}只)")
+                MarketCache._shared_etf_df = df
+                MarketCache._shared_etf_ts = time.time()
+                MarketCache._shared_etf_count = len(df)
+                logger.info(f"MarketCache: ETF行情获取成功({MarketCache._shared_etf_count}只)")
                 return df
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: ETF行情获取失败: {e}")
-            if self._etf_df is not None:
-                return self._etf_df
+            if MarketCache._shared_etf_df is not None:
+                return MarketCache._shared_etf_df
             return pd.DataFrame()
 
     def _get_ths_board_stocks_by_name(self, board_name: str, board_type: str) -> list:
@@ -600,10 +597,10 @@ class MarketCache:
         """
         ttl = 600  # 行业板块10分钟TTL
         if (not force_refresh
-                and self._industry_df is not None
-                and (time.time() - self._industry_timestamp) < ttl):
+                and MarketCache._shared_industry_df is not None
+                and (time.time() - MarketCache._shared_industry_ts) < ttl):
             logger.info("MarketCache: 行业板块缓存命中")
-            return self._industry_df
+            return MarketCache._shared_industry_df
 
         logger.info("MarketCache: 获取行业板块列表(THS)...")
         try:
@@ -612,15 +609,15 @@ class MarketCache:
                 df = ak.stock_board_industry_name_ths()
             if df is not None and not df.empty:
                 df = df.rename(columns={"name": "板块名称"})
-                self._industry_df = df
-                self._industry_timestamp = time.time()
+                MarketCache._shared_industry_df = df
+                MarketCache._shared_industry_ts = time.time()
                 logger.info(f"MarketCache: 行业板块获取成功(THS, {len(df)}个)")
                 return df
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: 行业板块获取失败: {e}")
-            if self._industry_df is not None:
-                return self._industry_df
+            if MarketCache._shared_industry_df is not None:
+                return MarketCache._shared_industry_df
             return pd.DataFrame()
 
     def get_stocks_by_industry(self, industry_name: str) -> list[str]:
@@ -636,11 +633,11 @@ class MarketCache:
             股票代码列表（如["688981", "002049", ...]）
         """
         # 缓存命中检查
-        if industry_name in self._industry_stocks:
-            ts = self._industry_stocks_ts.get(industry_name, 0)
-            if (time.time() - ts) < self._industry_stocks_ttl:
+        if industry_name in MarketCache._shared_industry_stocks:
+            ts = MarketCache._shared_industry_stocks_ts.get(industry_name, 0)
+            if (time.time() - ts) < MarketCache.INDUSTRY_STOCKS_TTL:
                 logger.info(f"MarketCache: 行业成分股缓存命中({industry_name})")
-                return self._industry_stocks[industry_name]
+                return MarketCache._shared_industry_stocks[industry_name]
 
         logger.info(f"MarketCache: 获取行业成分股(THS, {industry_name}, timeout=15s)...")
         try:
@@ -653,19 +650,19 @@ class MarketCache:
             _t.start(); _t.join(timeout=15)
             if _t.is_alive():
                 logger.warning(f"MarketCache: 行业成分股获取超时({industry_name})")
-                return self._industry_stocks.get(industry_name, [])
+                return MarketCache._shared_industry_stocks.get(industry_name, [])
             if _err[0]:
                 raise _err[0]
             codes = _res[0]
             if codes:
-                self._industry_stocks[industry_name] = codes
-                self._industry_stocks_ts[industry_name] = time.time()
+                MarketCache._shared_industry_stocks[industry_name] = codes
+                MarketCache._shared_industry_stocks_ts[industry_name] = time.time()
                 logger.info(f"MarketCache: 行业成分股获取成功(THS, {industry_name}, {len(codes)}只)")
                 return codes
             return []
         except Exception as e:
             logger.error(f"MarketCache: 行业成分股获取失败({industry_name}): {e}")
-            return self._industry_stocks.get(industry_name, [])
+            return MarketCache._shared_industry_stocks.get(industry_name, [])
 
     def get_concept_boards(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取概念板块列表（带缓存）
@@ -675,10 +672,10 @@ class MarketCache:
         """
         ttl = 600  # 概念板块10分钟TTL
         if (not force_refresh
-                and self._concept_df is not None
-                and (time.time() - self._concept_timestamp) < ttl):
+                and MarketCache._shared_concept_df is not None
+                and (time.time() - MarketCache._shared_concept_ts) < ttl):
             logger.info("MarketCache: 概念板块缓存命中")
-            return self._concept_df
+            return MarketCache._shared_concept_df
 
         logger.info("MarketCache: 获取概念板块列表(THS)...")
         try:
@@ -687,15 +684,15 @@ class MarketCache:
                 df = ak.stock_board_concept_name_ths()
             if df is not None and not df.empty:
                 df = df.rename(columns={"name": "板块名称"})
-                self._concept_df = df
-                self._concept_timestamp = time.time()
+                MarketCache._shared_concept_df = df
+                MarketCache._shared_concept_ts = time.time()
                 logger.info(f"MarketCache: 概念板块获取成功(THS, {len(df)}个)")
                 return df
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: 概念板块获取失败: {e}")
-            if self._concept_df is not None:
-                return self._concept_df
+            if MarketCache._shared_concept_df is not None:
+                return MarketCache._shared_concept_df
             return pd.DataFrame()
 
     def get_stocks_by_concept(self, concept_name: str) -> list[str]:
@@ -703,11 +700,11 @@ class MarketCache:
 
         数据源: 同花顺HTML翻页爬取
         """
-        if concept_name in self._concept_stocks:
-            ts = self._concept_stocks_ts.get(concept_name, 0)
-            if (time.time() - ts) < self._concept_stocks_ttl:
+        if concept_name in MarketCache._shared_concept_stocks:
+            ts = MarketCache._shared_concept_stocks_ts.get(concept_name, 0)
+            if (time.time() - ts) < MarketCache.CONCEPT_STOCKS_TTL:
                 logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
-                return self._concept_stocks[concept_name]
+                return MarketCache._shared_concept_stocks[concept_name]
 
         logger.info(f"MarketCache: 获取概念成分股(THS, {concept_name}, timeout=15s)...")
         try:
@@ -720,19 +717,19 @@ class MarketCache:
             _t2.start(); _t2.join(timeout=15)
             if _t2.is_alive():
                 logger.warning(f"MarketCache: 概念成分股获取超时({concept_name})")
-                return self._concept_stocks.get(concept_name, [])
+                return MarketCache._shared_concept_stocks.get(concept_name, [])
             if _err2[0]:
                 raise _err2[0]
             codes = _res2[0]
             if codes:
-                self._concept_stocks[concept_name] = codes
-                self._concept_stocks_ts[concept_name] = time.time()
+                MarketCache._shared_concept_stocks[concept_name] = codes
+                MarketCache._shared_concept_stocks_ts[concept_name] = time.time()
                 logger.info(f"MarketCache: 概念成分股获取成功(THS, {concept_name}, {len(codes)}只)")
                 return codes
             return []
         except Exception as e:
             logger.error(f"MarketCache: 概念成分股(THS)获取失败({concept_name}): {e}")
-            return self._concept_stocks.get(concept_name, [])
+            return MarketCache._shared_concept_stocks.get(concept_name, [])
 
     def is_trading_hours(self) -> bool:
         """判断当前是否在A股交易时段
@@ -787,16 +784,16 @@ class MarketCache:
         MarketCache._shared_stock_ts = 0.0
         MarketCache._shared_stock_count = 0
         MarketCache._shared_fail_ts = 0.0
-        self._etf_df = None
-        self._etf_timestamp = 0.0
-        self._industry_df = None
-        self._industry_timestamp = 0.0
-        self._concept_df = None
-        self._concept_timestamp = 0.0
-        self._industry_stocks.clear()
-        self._industry_stocks_ts.clear()
-        self._concept_stocks.clear()
-        self._concept_stocks_ts.clear()
+        MarketCache._shared_etf_df = None
+        MarketCache._shared_etf_ts = 0.0
+        MarketCache._shared_industry_df = None
+        MarketCache._shared_industry_ts = 0.0
+        MarketCache._shared_concept_df = None
+        MarketCache._shared_concept_ts = 0.0
+        MarketCache._shared_industry_stocks.clear()
+        MarketCache._shared_industry_stocks_ts.clear()
+        MarketCache._shared_concept_stocks.clear()
+        MarketCache._shared_concept_stocks_ts.clear()
         logger.info("MarketCache: 所有缓存已清除")
 
     def get_cache_status(self) -> dict:
@@ -814,18 +811,18 @@ class MarketCache:
                 "expired": self._is_expired(MarketCache._shared_stock_ts) if MarketCache._shared_stock_ts else True,
             },
             "etfs": {
-                "cached": self._etf_df is not None,
-                "count": self._etf_count if self._etf_df is not None else 0,
-                "age_seconds": round(time.time() - self._etf_timestamp) if self._etf_timestamp else 0,
-                "expired": self._is_expired(self._etf_timestamp) if self._etf_timestamp else True,
+                "cached": MarketCache._shared_etf_df is not None,
+                "count": MarketCache._shared_etf_count if MarketCache._shared_etf_df is not None else 0,
+                "age_seconds": round(time.time() - MarketCache._shared_etf_ts) if MarketCache._shared_etf_ts else 0,
+                "expired": self._is_expired(MarketCache._shared_etf_ts) if MarketCache._shared_etf_ts else True,
             },
             "industries": {
-                "cached": self._industry_df is not None,
-                "count": len(self._industry_df) if self._industry_df is not None else 0,
+                "cached": MarketCache._shared_industry_df is not None,
+                "count": len(MarketCache._shared_industry_df) if MarketCache._shared_industry_df is not None else 0,
             },
             "concepts": {
-                "cached": self._concept_df is not None,
-                "count": len(self._concept_df) if self._concept_df is not None else 0,
+                "cached": MarketCache._shared_concept_df is not None,
+                "count": len(MarketCache._shared_concept_df) if MarketCache._shared_concept_df is not None else 0,
             },
         }
         return status

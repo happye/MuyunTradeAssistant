@@ -48,14 +48,16 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
     """
     _fix_curl_ssl_paths()  # 确保 akshare curl_cffi 接口 SSL 可用
     to = timeout if timeout is not None else DATA_CALL_TIMEOUT
+    ex = ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(fn, *args, **kwargs)
     try:
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            fut = ex.submit(fn, *args, **kwargs)
-            try:
-                return fut.result(timeout=to)
-            except FuturesTimeout:
-                logger.debug(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
-                return None
+        return fut.result(timeout=to)
+    except FuturesTimeout:
+        # v0.8.7.2 审查修复：不能用 with 块——__exit__ 的 shutdown(wait=True) 会 join
+        # 卡死的线程，"硬超时"退化成等底层 requests OS级放弃（分钟级）。改为立即
+        # 放弃等待（孤儿线程自行消亡，范本 source_check._probe_t）。
+        logger.warning(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
+        return None
     except Exception as e:
         err_str = str(e)
         hint = ""
@@ -69,6 +71,9 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
             hint = " | 提示：BaoStock 临时故障"
         logger.warning(f"data_provider.{func_name} 失败: {type(e).__name__}: {err_str[:80]}{hint}")
         return None
+    finally:
+        # 无论成败都立即释放执行器（不 join 孤儿线程）；成功路径同样需要
+        ex.shutdown(wait=False)
 
 
 def get_business_introduction(code: str) -> Optional[str]:

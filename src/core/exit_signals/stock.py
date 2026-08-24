@@ -43,7 +43,9 @@ def _daily_cache_set(code: str, signal: str, value) -> None:
         pass
 
 
-_MISS = object()  # 哨兵：缓存未命中（区别于缓存的 None 值）
+_MISS = object()
+# 融资余额全市场表的进程级 memo：(exchange, date_str) -> DataFrame|None
+_MARGIN_TABLE_MEMO: dict = {}  # 哨兵：缓存未命中（区别于缓存的 None 值）
 
 # 缩量加速：近期量比阈值（当前量 / 均量 < 此值视为缩量）
 SHRINK_VOLUME_RATIO = 0.7
@@ -227,22 +229,37 @@ def _check_margin_surge(code: str) -> Optional[str]:
         from datetime import datetime, timedelta
         from src.core.benzong.data_provider import _safe_call
         is_sse = code.startswith("6")
+        exchange = "sse" if is_sse else "szse"
+
+        # v0.8.7.2 审查修复：融资余额接口按"日期"返回全市场大表，而日缓存键是 code——
+        # la 批量 N 只同交易所持仓会把同一批表重复下载 ~N 遍。加进程级表级 memo：
+        # (exchange,date)->整张df，同批次跨股共享一次下载。
+        def _get_margin_table(date_str):
+            memo_key = (exchange, date_str)
+            if memo_key in _MARGIN_TABLE_MEMO:
+                return _MARGIN_TABLE_MEMO[memo_key]
+
+            def _fetch():
+                return (ak.stock_margin_detail_sse(date=date_str) if is_sse
+                        else ak.stock_margin_detail_szse(date=date_str))
+            df = _safe_call("margin_table_" + date_str, _fetch, timeout=20)
+            if len(_MARGIN_TABLE_MEMO) > 16:   # 防长会话无界增长（一天最多约9个日期键）
+                _MARGIN_TABLE_MEMO.clear()
+            _MARGIN_TABLE_MEMO[memo_key] = df
+            return df
 
         def _get_balance(date_str):
-            def _fetch():
-                df = (ak.stock_margin_detail_sse(date=date_str) if is_sse
-                      else ak.stock_margin_detail_szse(date=date_str))
-                if df is None or df.empty:
-                    return None
-                mcol = next((c for c in df.columns if "融资余额" in str(c)), None)
-                code_col = next((c for c in df.columns if "代码" in str(c) or "code" in str(c).lower()), None)
-                if not mcol or not code_col:
-                    return None
-                row = df[df[code_col].astype(str).str.contains(code, na=False)]
-                if row.empty:
-                    return None
-                return float(row.iloc[0][mcol])
-            return _safe_call("margin_detail_" + date_str, _fetch, timeout=15)
+            df = _get_margin_table(date_str)
+            if df is None or df.empty:
+                return None
+            mcol = next((c for c in df.columns if "融资余额" in str(c)), None)
+            code_col = next((c for c in df.columns if "代码" in str(c) or "code" in str(c).lower()), None)
+            if not mcol or not code_col:
+                return None
+            row = df[df[code_col].astype(str).str.contains(code, na=False)]
+            if row.empty:
+                return None
+            return float(row.iloc[0][mcol])
 
         # 取最近2个有数据的交易日，间隔≥4天（算"近5日增幅"，非1日波动，防误触发）
         dates = [(datetime.now() - timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 9)]

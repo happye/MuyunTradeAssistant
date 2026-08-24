@@ -90,6 +90,9 @@ def _baostock_logout():
 class AKShareClient:
     """AKShare金融数据客户端"""
 
+    # 大盘指数趋势缓存（v0.8.7.2 审查修复，见 _get_index_trend）
+    _index_trend_cache: dict = {}
+
     @staticmethod
     def _get_random_ua():
         """生成随机User-Agent降低被识别风险"""
@@ -1078,7 +1081,7 @@ class AKShareClient:
         return round(float(upper.iloc[-1]), 2), round(float(mid.iloc[-1]), 2), round(float(lower.iloc[-1]), 2)
 
     @staticmethod
-    def _get_index_trend(index_code: str = "sh.000300") -> Optional[dict]:
+    def _get_index_trend_uncached(index_code: str = "sh.000300") -> Optional[dict]:
         """获取大盘指数趋势（基于沪深300）
 
         通过Baostock获取沪深300历史K线，计算MA20/MA60/MA250(年线)，
@@ -1196,6 +1199,25 @@ class AKShareClient:
                 logger.warning("检测到socket异常，重置Baostock连接")
                 _baostock_logout()
             return None
+
+    _INDEX_TREND_TTL = 600  # 秒。指数趋势/MA是慢变量，10分钟内共享一份400日K线拉取
+
+    @staticmethod
+    def _get_index_trend(index_code: str = "sh.000300") -> Optional[dict]:
+        """大盘指数趋势（带类级TTL缓存的包装器）。
+
+        v0.8.7.2 审查修复：calculate_indicators 每股都调本函数，la 批量 N 只持仓
+        = N 次 baostock 400日K线全量拉取；指数趋势是慢变量，TTL 内共享即可。
+        实现在 _get_index_trend_uncached。
+        """
+        now_ts = time.time()
+        cached = AKShareClient._index_trend_cache.get(index_code)
+        if cached is not None and (now_ts - cached[0]) < AKShareClient._INDEX_TREND_TTL:
+            return cached[1]
+        result = AKShareClient._get_index_trend_uncached(index_code)
+        if result is not None:
+            AKShareClient._index_trend_cache[index_code] = (now_ts, result)
+        return result
 
     @staticmethod
     def _calculate_kdj(df: pd.DataFrame, n: int = 9, m1: int = 3, m2: int = 3):

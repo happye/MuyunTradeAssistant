@@ -1497,3 +1497,27 @@ P3（已取消）:
 - **若未来重试的前提**: 不做单纯口径统一，而是配套"气宗准入质量条件"重新校准
   （如 S2+缩量回调+S2确认天数），本质是新的策略层调参课题，需独立立项+独立回测预算
 - **关联**: docs/全局审查交接.md / docs/backtest_*_20260824.log / ISS-046 先例
+
+### ISS-066: 网络调用共享性全盘审计——复发根因确认+9项修复+遗留清单（2026-08-24）
+- **状态**: 🟢 首批结构性修复已落地（commit c2bf53e + 本条），遗留项转待办
+- **背景**: 用户实测 l 分析持仓次数过多后"全市场行情源均失败"，之后所有命令失效。这是同款问题第二次发作
+- **复发根因（git考古实锤）**: 2026-07-07 f0ac272「治自残式456封禁」诊断对了病根（"每次 MarketCache() 新建实例，实例级缓存失效，4380请求自残"）但修在了调用点层——批量评分入口注入成交额绕过那一个点，MarketCache 实例级缓存原封未动。此后 v0.8.6.8 市场宽度、流动性温度计、la 等每个新调用点都新建实例重新踩雷。"地雷位置"只写在 data_provider 注释里，无结构保护无测试锁死
+- **审计方式**: 三路并行 agent（l命令网络账单 / 全库缓存作用域普查 / bz-scan-chat资源生命周期），结论经人工逐条验证
+- **已修复（本条+前一条 commit）**:
+  1. MarketCache L1 快照类级共享+60s失败冷却（c2bf53e）
+  2. MarketCache L2 四组缓存(ETF/行业板块/概念板块/行业+概念成分股)类级化——成分股是THS HTML翻页爬虫(全库最贵端点反爬敏感)，原实例级导致每条主题扫描命令整页重爬
+  3. _get_index_trend 类级600s TTL缓存——calculate_indicators 每股调一次400日K线，la批量N只=N次重拉
+  4. 融资余额全市场表进程级 (exchange,date) memo——原按code做日缓存但接口返回的是整张市场表，la批量N只重复下载同一批表~N遍
+  5. data_provider._safe_call 与 akshare_client._call_with_timeout 的"线程级硬超时"修复：原 with 块退出 shutdown(wait=True) 会 join 卡死线程，超时退化成分钟级冻结；改 shutdown(wait=False)（范本 source_check._probe_t，AGENTS.md 早有此教训但只改过 exit_signals 一处）
+- **遗留待办（按优先级）**:
+  - [P1] 同一 run 内 stock_news_em 拉2次：data_provider.get_recent_announcements 与 NewsClient 是两套平行实现互不共享缓存；统一需设计（格式不同），勿草率合并
+  - [P1] 沪深300 同 run 拉2次：event_layer._get_market_index_data 未复用 StockData.index_change_pct/index_close；涉及决策路径接口签名，改动需谨慎评估
+  - [P1] auto_score 维度全缓存命中时仍无条件拉 data_summary(4-6请求/股)+板块标注AI(1次/股)；修法需考虑 pos add 依赖标注结果的场景
+  - [P1] _enrich_trend_data 三重浪费：跨命令无缓存+bz scan --allrules 跨规则重复+通道B先enrich80只再截断15只
+  - [P2] baostock 心跳 ping 每次 l 触发5-9次，可加60s节流
+  - [P2] get_historical_kline 降级链 baostock→AKShare→baostock 二次回头
+  - [P2] calculate_indicators 整体可加短TTL缓冲（chat 场景同码短窗多次调用）
+  - [P2] web app init_engines 无锁双初始化风险 + tasks dict 无界增长
+  - [P2] ba 白话点评对 conf=0 维度显示"50"形似真实评分，宜显示"未评出"
+- **方法论沉淀**: "注释提醒"不构成修复——病根必须结构化锁死（类属性化）并配回归测试（test_market_cache_shared.py）。新调用点引入时无法依赖开发者读旧注释
+- **关联**: f0ac272（上次发作）/ c2bf53e（首批修复）/ docs/数据接口台账.md §一总原则
