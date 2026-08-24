@@ -103,18 +103,29 @@ class MarketCache:
     # 默认盘中缓存TTL（秒）
     DEFAULT_TRADING_TTL = 300  # 5分钟
 
+    # ── L1 全市场快照：类级共享（v0.8.7.2 修复）──
+    # 历史上是实例属性，而 macro.assess_market_breadth / benzong.data_provider 等调用方
+    # 每次 `MarketCache()` 新建实例 → 实例级 TTL 永不命中 → 每次 l/la 都对新浪做
+    # 73 页全量分页拉取（高频使用触发反爬限流："新浪间歇失效+东财断连"，连带单股
+    # 行情一起挂）。改为类级后，所有实例共享同一份快照与 TTL，无论谁 new 实例。
+    # 线程安全：无锁，并发最坏情况是多拉一次快照，无害。
+    _shared_stock_df: Optional[pd.DataFrame] = None
+    _shared_stock_ts: float = 0.0
+    _shared_stock_count: int = 0
+    # 失败冷却：双源全失败且无旧缓存可兜底时，60 秒内不再重试
+    # （被限流后继续猛打会延长封禁；60 秒足够短，不影响真实恢复场景）
+    _shared_fail_ts: float = 0.0
+    FAIL_COOLDOWN_SECONDS = 60
+
     def __init__(self, ttl_seconds: int = 0):
         """初始化缓存
 
         Args:
             ttl_seconds: 盘中缓存TTL（秒），0使用默认值300
+
+        注意：L1 全市场快照缓存在类级共享（见类属性注释），本构造器只设置本实例的 TTL 判定。
         """
         self._ttl = ttl_seconds or self.DEFAULT_TRADING_TTL
-
-        # L1 缓存: 全市场行情
-        self._stock_df: Optional[pd.DataFrame] = None
-        self._stock_timestamp: float = 0.0
-        self._stock_count: int = 0
         # 源失效标记：第一条规则发现源失效后设True，后续规则不重试(避免--allrules刷4×3=12条warning)
         self._market_source_dead: bool = False
         self._market_source_dead_ts: float = 0.0
@@ -191,9 +202,15 @@ class MarketCache:
         import os
         os.environ["TQDM_DISABLE"] = "1"
 
-        if not force_refresh and self._stock_df is not None and not self._is_expired(self._stock_timestamp):
-            logger.info(f"MarketCache: A股缓存命中({self._stock_count}只)")
-            return self._stock_df
+        if not force_refresh and MarketCache._shared_stock_df is not None and not self._is_expired(MarketCache._shared_stock_ts):
+            logger.info(f"MarketCache: A股缓存命中({MarketCache._shared_stock_count}只)")
+            return MarketCache._shared_stock_df
+
+        # 失败冷却：刚经历过双源全失败（且当时无旧缓存兜底），短暂歇手再试，
+        # 防止被限流状态下继续高频全量拉取延长封禁
+        if not force_refresh and (time.time() - MarketCache._shared_fail_ts) < MarketCache.FAIL_COOLDOWN_SECONDS:
+            logger.warning("MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取")
+            return pd.DataFrame()
 
         # 主数据源：新浪财经API（偶发返回空，重试2次；连续3次空才判源失效）
         import time as _t
@@ -205,25 +222,29 @@ class MarketCache:
             if attempt < 2:
                 _t.sleep(1.5)  # 偶发空，等1.5秒重试
         if df is not None and not df.empty:
-            self._stock_df = df
-            self._stock_timestamp = time.time()
-            self._stock_count = len(df)
-            logger.info(f"MarketCache: A股行情获取成功({self._stock_count}只, 新浪源, 第{attempt+1}次)")
+            MarketCache._shared_stock_df = df
+            MarketCache._shared_stock_ts = time.time()
+            MarketCache._shared_stock_count = len(df)
+            MarketCache._shared_fail_ts = 0.0
+            logger.info(f"MarketCache: A股行情获取成功({len(df)}只, 新浪源, 第{attempt+1}次)")
             return df
 
         # 新浪3次都空 → 试 efinance 兜底（不锁死，每次都试，避免偶发失败放大）
         df = self._fetch_efinance_market()
         if df is not None and not df.empty:
-            self._stock_df = df
-            self._stock_timestamp = time.time()
-            self._stock_count = len(df)
-            logger.info(f"MarketCache: A股行情获取成功({self._stock_count}只, efinance备用)")
+            MarketCache._shared_stock_df = df
+            MarketCache._shared_stock_ts = time.time()
+            MarketCache._shared_stock_count = len(df)
+            MarketCache._shared_fail_ts = 0.0
+            logger.info(f"MarketCache: A股行情获取成功({len(df)}只, efinance备用)")
             return df
 
         # 全部失败：返回过期缓存兜底，不标记锁死（下次命令仍可重试，因新浪是间歇性失效）
-        if self._stock_df is not None:
+        if MarketCache._shared_stock_df is not None:
             logger.info("MarketCache: 新浪+东财均失败，用过期缓存兜底(新浪间歇性失效，下次可重试)")
-            return self._stock_df
+            return MarketCache._shared_stock_df
+        # 无旧缓存可兜底：记失败时间戳进入冷却，60 秒内的后续调用直接返回空不再打源
+        MarketCache._shared_fail_ts = time.time()
         logger.warning("MarketCache: 全市场行情源均失败(新浪间歇失效+东财断连)，改用主题词/单股模式")
         return pd.DataFrame()
 
@@ -762,8 +783,10 @@ class MarketCache:
 
     def refresh(self):
         """强制刷新所有缓存"""
-        self._stock_df = None
-        self._stock_timestamp = 0.0
+        MarketCache._shared_stock_df = None
+        MarketCache._shared_stock_ts = 0.0
+        MarketCache._shared_stock_count = 0
+        MarketCache._shared_fail_ts = 0.0
         self._etf_df = None
         self._etf_timestamp = 0.0
         self._industry_df = None
@@ -785,10 +808,10 @@ class MarketCache:
         status = {
             "trading_hours": self.is_trading_hours(),
             "stocks": {
-                "cached": self._stock_df is not None,
-                "count": self._stock_count if self._stock_df is not None else 0,
-                "age_seconds": round(time.time() - self._stock_timestamp) if self._stock_timestamp else 0,
-                "expired": self._is_expired(self._stock_timestamp) if self._stock_timestamp else True,
+                "cached": MarketCache._shared_stock_df is not None,
+                "count": MarketCache._shared_stock_count if MarketCache._shared_stock_df is not None else 0,
+                "age_seconds": round(time.time() - MarketCache._shared_stock_ts) if MarketCache._shared_stock_ts else 0,
+                "expired": self._is_expired(MarketCache._shared_stock_ts) if MarketCache._shared_stock_ts else True,
             },
             "etfs": {
                 "cached": self._etf_df is not None,

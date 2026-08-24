@@ -290,9 +290,10 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
     数据源（v0.8.6.3 修复 ISS-041/1a：em 接口被反爬，换新浪源）：
     复用 scanner.MarketCache 的新浪全市场快照（绕代理）。
 
-    注意：MarketCache._stock_df 是实例级缓存，本函数每次 `MarketCache()` 新建实例
-    → 缓存不跨调用共享。批量场景由 auto_score_batch 开头拉一次后经 market_turnover
-    参数注入 get_data_summary，避免每只股票重打 sina（20只×73页×3重试=4380请求自残）。
+    注意（v0.8.7.2 起）：MarketCache 的 L1 全市场快照已是类级共享缓存（所有实例共用
+    5 分钟 TTL），本函数每次 `MarketCache()` 新建实例也能命中缓存。批量场景仍由
+    auto_score_batch 开头拉一次后经 market_turnover 参数注入 get_data_summary，
+    保证整批用同一成交额口径。
     """
     try:
         from src.scanner.market_cache import MarketCache
