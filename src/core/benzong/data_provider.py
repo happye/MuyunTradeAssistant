@@ -147,7 +147,10 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
             lambda: _fetch_cninfo_disclosure(ak, code, days),
             timeout=25,
         )
-        if backup:
+        # 修复：backup 是 DataFrame，'if backup:' 在空 DataFrame 上抛
+        # 'truth value of a DataFrame is ambiguous'（v0.8.6.5 起存在，
+        # 主源有数据时走不到此分支，凌晨主源空+巨潮也空时暴露）
+        if backup is not None and not backup.empty:
             items = _parse_news_df(backup, cutoff)
 
     return items
