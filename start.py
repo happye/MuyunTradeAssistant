@@ -767,11 +767,10 @@ def run_benzong_scan(args: dict):
     scan 技术面初筛 → 笨总 6 维 AI 批量评分 → TopN 排名 → 可选批量回测。
 
     用法：
-      bz scan                  默认 healthy_pullback 规则初筛 → 笨总评分 Top10
-      bz scan AI,半导体        指定主题词缩小候选范围
-      bz scan --top 5          Top5
-      bz scan --allrules       四规则全跑(各Top5合并去重)→笨总评分，不挑市况全覆盖
-      bz scan --limit 15       限制初筛候选数（控制 AI 耗时，默认15）
+            bz scan                  默认 healthy_pullback 规则初筛 → 笨总评分 Top10
+            bz scan AI,半导体        指定主题词缩小候选范围
+            bz scan --top 5          Top5
+            bz scan --limit 15       限制初筛候选数（控制 AI 耗时，默认15）
       bz scan --backtest --start 2024-01-01 --end 2024-12-31  对 TopN 批量回测
     """
     from src.scanner.scanner_engine import ScannerEngine
@@ -783,13 +782,13 @@ def run_benzong_scan(args: dict):
     limit = args.get("limit", 15)
     rule_name = args.get("rule", "healthy_pullback")
     force_refresh = args.get("refresh", False)
-    allrules = args.get("allrules", False)  # 方案C: 四规则全跑合并
+    allrules = args.get("allrules", False)  # 方案C: 五规则全跑合并
 
     print()
     print("=" * 64)
     print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
     print("=" * 64)
-    rule_display = "四规则全跑(各Top5合并)" if allrules else rule_name
+    rule_display = "五规则全跑(各Top5合并)" if allrules else rule_name
     print(f"  规则: {rule_display} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
     print(f"  TopN: {top_n} | 回测: {'是' if do_backtest else '否'}")
     print()
@@ -912,16 +911,16 @@ def run_benzong_scan(args: dict):
                     elif c.stock_code in rule_hits:
                         rule_hits[c.stock_code].append(r)  # 已被其他规则选，记共振
                 print(f"  ✓ {r}: 取 {added} 只")
-            # 四规则平等，全部合并去重后送笨总评分统一排序，不按规则顺序截断
+            # 五规则平等，全部合并去重后送笨总评分统一排序，不按规则顺序截断
             # （否则排在后的 value_pick 会被机械砍掉，没机会评分）
             codes = merged_codes
             if not codes:
-                print(f"  [red]✗ 四规则均无候选(全市场行情源可能失效)[/red]")
+                print(f"  [red]✗ 五规则均无候选(全市场行情源可能失效)[/red]")
                 print(f"  [yellow]→ 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)[/yellow]")
                 print(f"  [yellow]→ 或单股分析: l <代码> / bz <代码>(走Baostock)[/yellow]")
                 return
             resonate = {c: rs for c, rs in rule_hits.items() if len(rs) > 1}
-            print(f"  ✓ 四规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
+            print(f"  ✓ 五规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
             print()
         else:
             print("  [Step 1/3] 技术面初筛中...")
@@ -1468,13 +1467,6 @@ def run_cli(mode: str, args: dict):
 # ── 主循环 ────────────────────────────────────────────────
 def main():
     global _ai_debug
-
-    # 启动时第一时间加载系统证书并合并（解决 Windows 物理中文路径 curl 77 及 360/内网 SSL 解密审计错误）
-    try:
-        from src.data.source_check import fix_curl_ssl_paths
-        fix_curl_ssl_paths()
-    except Exception:
-        pass
 
     # 带命令行参数时直接代理给 src.cli.main（支持全部 argparse 参数）
     cli_args = sys.argv[1:]

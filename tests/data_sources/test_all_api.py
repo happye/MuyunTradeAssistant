@@ -11,7 +11,9 @@
 
 跑法：PYTHONUTF8=1 PYTHONPATH=. uv run python tests/test_all_api.py
 """
+import json
 import os
+import subprocess
 import sys
 import time
 
@@ -24,24 +26,54 @@ os.environ["NO_PROXY"] = "*"      # 关键：和实跑一致，强制直连
 os.environ["no_proxy"] = "*"
 os.environ["TQDM_DISABLE"] = "1"
 os.environ["PYTHONUTF8"] = "1"
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+if hasattr(sys.stderr, "reconfigure"):
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+from src.data.source_check import fix_curl_ssl_paths
+
+fix_curl_ssl_paths()
+
+_RESULT_PREFIX = "__MUYUN_TEST_RESULT__="
 
 
-def _timed(fn, timeout=30):
-    """带超时跑 fn。fn 返回 (ok, detail)。返回 (ok, detail, elapsed)。
-    严格按返回值判定，不把"没抛异常"当通过。"""
+def _format_exception(exc: Exception) -> str:
+    causes = []
+    current = exc
+    while current is not None and len(causes) < 4:
+        causes.append(f"{type(current).__name__}: {str(current)}")
+        current = current.__cause__ or current.__context__
+    return " <- ".join(causes)[:240]
+
+
+def _timed(test_index: int, timeout=30):
+    """在独立进程运行单项测试，超时可真正终止第三方库中的卡死线程。"""
     t0 = time.time()
     try:
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            r = ex.submit(fn).result(timeout=timeout)
-        if isinstance(r, tuple) and len(r) == 2 and isinstance(r[0], bool):
-            return r[0], r[1], time.time() - t0
-        return True, str(r)[:60], time.time() - t0
-    except FuturesTimeout:
+        completed = subprocess.run(
+            [sys.executable, __file__, "--single", str(test_index)],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=timeout,
+            env=os.environ.copy(),
+        )
+        result_line = next(
+            (line for line in reversed(completed.stdout.splitlines())
+             if line.startswith(_RESULT_PREFIX)),
+            None,
+        )
+        if result_line is None:
+            detail = (completed.stderr or completed.stdout or "子进程无结果")[-240:]
+            return False, detail.strip(), time.time() - t0
+        result = json.loads(result_line[len(_RESULT_PREFIX):])
+        return bool(result["ok"]), str(result["detail"]), time.time() - t0
+    except subprocess.TimeoutExpired:
         return False, f"超时(>{timeout}s)", time.time() - t0
     except Exception as e:
-        return False, f"{type(e).__name__}: {str(e)[:80]}", time.time() - t0
+        return False, _format_exception(e), time.time() - t0
 
 
 # ========== 代理绕过验证（治本核心）==========
@@ -67,12 +99,25 @@ def test_proxy_bypass():
 
 # ========== AI 调用 ==========
 def test_deepseek():
-    from src.core.benzong.auto_scorer import _build_ai_client
     from src.cli.main import load_config
-    client, model = _build_ai_client(load_config())
-    if client is None:
-        return False, "AI client 构建失败(key未配?)"
-    resp = client.chat.completions.create(model=model, messages=[{"role": "user", "content": "回复OK"}], max_tokens=5, timeout=30)
+    from openai import OpenAI
+    deepseek = load_config().get("ai", {}).get("deepseek", {})
+    if not deepseek.get("api_key"):
+        return False, "DeepSeek key 未配，跳过"
+    model = deepseek.get("model", "deepseek-v4-flash")
+    client = OpenAI(
+        api_key=deepseek["api_key"],
+        base_url=deepseek.get("base_url"),
+        timeout=30,
+        max_retries=1,
+    )
+    resp = client.chat.completions.create(
+        model=model,
+        messages=[{"role": "user", "content": "回复OK"}],
+        max_tokens=5,
+        **({"extra_body": {"thinking": {"type": "disabled"}}}
+           if str(model).startswith("deepseek-v4") else {}),
+    )
     return True, f"model={model} 回复={resp.choices[0].message.content[:20]}"
 
 
@@ -230,15 +275,29 @@ TESTS = [
 ]
 
 
+def _run_single(test_index: int) -> int:
+    _, fn, _ = TESTS[test_index]
+    try:
+        result = fn()
+        if isinstance(result, tuple) and len(result) == 2 and isinstance(result[0], bool):
+            ok, detail = result
+        else:
+            ok, detail = True, str(result)[:60]
+    except Exception as exc:
+        ok, detail = False, _format_exception(exc)
+    print(_RESULT_PREFIX + json.dumps({"ok": ok, "detail": detail}, ensure_ascii=False))
+    return 0
+
+
 def main():
     print("=" * 70)
     print("  全数据源一键连通性测试（ISS-049 彻底版）")
     print("=" * 70)
     print(f"  共 {len(TESTS)} 个出网点，模拟实跑环境(NO_PROXY=*)，严格判定\n")
     results = []
-    for name, fn, to in TESTS:
+    for test_index, (name, _, to) in enumerate(TESTS):
         print(f"▶ 测试 {name}...", end=" ", flush=True)
-        ok, detail, elapsed = _timed(fn, timeout=to)
+        ok, detail, elapsed = _timed(test_index, timeout=to)
         mark = "✅" if ok else "❌"
         print(f"{mark} {detail} ({elapsed:.1f}s)", flush=True)
         results.append((name, ok))
@@ -257,4 +316,6 @@ def main():
 
 
 if __name__ == "__main__":
+    if len(sys.argv) == 3 and sys.argv[1] == "--single":
+        sys.exit(_run_single(int(sys.argv[2])))
     sys.exit(main())

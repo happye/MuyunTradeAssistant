@@ -1,0 +1,5 @@
+# 本机网络兼容配置模板。复制为 network.local.yaml 后生效；该文件已 gitignore。
+# 共享默认使用 HTTPS。仅在本机 Python 无法验证新浪证书、且明确接受 HTTP 风险时覆盖。
+
+network:
+  sina_market_url: "http://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"

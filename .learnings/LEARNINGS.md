@@ -6,6 +6,31 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ---
 
+## [LRN-20260825-001] correction
+
+**Logged**: 2026-08-25T00:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: tooling
+
+### Summary
+工作区外的 Downloads 文件用 grep/search 读不到。若目标不在 workspace，必须立刻说明限制并改用终端解析，不能空等。
+
+### Details
+用户把 LanguageService 日志放在 `C:\Users\HanPeiyi\Downloads\...` 时，工作区搜索返回 empty，会话看起来卡住。用户随后把目录挪到 `C:\Project\Muyun\LanguageServiceUnitTestResult_60d` 后才能正常扫。
+
+### Suggested Action
+日志/下载产物若在 workspace 外：先明确说搜不到，立刻用终端读；需要反复分析时请用户先拷进工作区。
+
+### Metadata
+- Source: user_feedback
+- Related Files: LanguageServiceUnitTestResult_60d/
+- Tags: workspace-scope, downloads, search-limit
+
+**See Also**: 无
+
+---
+
 ## [LRN-20260511-001] correction
 
 **Logged**: 2026-05-11T00:00:00+08:00
@@ -528,5 +553,101 @@ Validate the sentence embedder during RAG initialization, fall back to TF-IDF wh
 - Tags: rag, sentence-transformers, lazy-loading, offline-fallback, tfidf
 - See Also: LRN-20260701-001
 
+
+---
+
+## [LRN-20260824-001] best_practice
+
+**Logged**: 2026-08-24T10:05:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: network/data-source
+
+### Summary
+全市场行情源失败时必须分别探测协议、证书链和响应正文；`fix_curl_ssl_paths()` 成功不代表目标站 HTTPS 证书一定可验证。
+
+### Details
+`bz scan --allrules` 获取不到全市场快照。用项目 `.venv` 并完整复现 `start.py` 的代理和 CA 初始化后确认：新浪 HTTPS 与东财 HTTPS 均报 `CERTIFICATE_VERIFY_FAILED: unable to get local issuer certificate`，东财 HTTP 返回 502，而新浪同一公开 JSON 的 HTTP 端点一度返回 200。代码还残留在线程内调用 `_without_proxy()` 的全局环境竞态，与既有代理故障记录相符。协议切换后首次全量抓取成功，但稍后连续 5 次新浪 HTTP 单页请求均返回 456 HTML，证明协议修复只消除了确定性的 TLS 故障，不能消除新浪 WAF/反爬的间歇性封禁。
+
+### Resolution
+共享代码保留 HTTPS 默认值；当前机器通过 gitignored 的 `configs/network.local.yaml` 覆盖为当时可用的 HTTP 端点。`requests.Session` 显式设置 `trust_env=False` 与空代理，并移除并发线程内对全局代理环境的改写。新增离线回归测试锁定默认协议、本机覆盖和 session 配置。真实 `get_all_stocks(force_refresh=True)` 曾返回 5470 行、5467 行有效价格，但该结果只能证明协议路径可用，不能宣称外部源已稳定；交付前必须重复探测并明确 WAF 剩余风险。
+
+### Metadata
+- Source: error
+- Related Files: src/scanner/market_cache.py, tests/data_sources/test_market_cache_sources.py, start.py
+- Tags: scanner, sina, ssl, certificate-chain, proxy, protocol-fallback
+- See Also: LRN-20260701-001, LRN-20260515-001
+
+---
+
+## [LRN-20260824-002] best_practice
+
+**Logged**: 2026-08-24T11:30:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: tests/network
+
+### Summary
+真实第三方接口体检必须匹配产品启动顺序，并用独立子进程实施硬超时；否则会产生 AI 证书假阴性或被第三方线程永久拖住。
+
+### Details
+`test_all_api.py` 原先在 SSL 初始化前调用 AI，导致实际可用的 Kimi 被误报为证书失败；“DeepSeek”用例又通过当前 provider 构造客户端，当前 provider 为 Kimi，标签与调用对象不一致。线程池 future 超时后即使 `shutdown(wait=False)`，Python 退出阶段仍会等待非 daemon 网络线程，整份体检无法完成。
+
+### Resolution
+测试启动时先执行与 `start.py` 相同的 `fix_curl_ssl_paths()`；DeepSeek/Kimi 分别读取自己的配置节点；每项真实接口测试放入独立子进程，由父进程按项强制超时。最终标准体检可稳定输出完整 15 项报告。
+
+### Metadata
+- Source: error
+- Related Files: tests/data_sources/test_all_api.py, tests/data_sources/test_source_check.py
+- Tags: integration-test, subprocess-timeout, startup-parity, ai-provider, false-negative
+- See Also: LRN-20260824-001
+
+---
+
+## [LRN-20260824-003] best_practice
+
+**Logged**: 2026-08-24T12:00:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: config/network
+
+### Summary
+跨机器 TLS/网络差异不能硬编码进共享数据源实现，应保留安全的 HTTPS 默认值，并通过 gitignored 本机配置覆盖协议。
+
+### Details
+新浪 HTTPS 在初始开发机器可用、当前机器证书链校验失败，说明差异属于本机信任库、网络出口或 TLS 检查环境，而不是接口对所有机器失效。把 HTTP 直接写进 `market_cache.py` 会让其他机器也失去传输认证与完整性保护；使用 `git update-index --skip-worktree` 隐藏源码修改又会漏掉远端安全修复并制造隐形分叉。
+
+### Resolution
+共享默认恢复 HTTPS；新增 `configs/network.local.yaml` 本机覆盖入口和 `MUYUN_SINA_MARKET_URL` 环境变量入口。本机文件由 `.gitignore` 排除，`git pull` 不覆盖；仓库只跟踪不含本机值的示例文件和解析能力。
+
+### Metadata
+- Source: user_feedback
+- Related Files: src/scanner/market_cache.py, configs/network.local.yaml.example, .gitignore
+- Tags: local-config, https, machine-specific, git-pull, trust-store
+- See Also: LRN-20260824-001
+
+---
+
+## [LRN-20260825-001] best_practice
+
+**Logged**: 2026-08-25T00:00:00+08:00
+**Priority**: medium
+**Status**: completed
+**Area**: tests/data-source
+
+### Summary
+行情质量校验必须兼容只含最小字段的测试替身，不能对 `DataFrame.get()` 的标量缺省值直接调用 Series API。
+
+### Details
+rebase 合并“共享缓存”和“全零行情拒绝入缓存”时，聚焦测试使用不含“最新价”列的最小 DataFrame。`pd.to_numeric(df.get("最新价"))` 在字段缺失时返回标量 NaN，继续调用 `.fillna()` 会抛出 `AttributeError`。
+
+### Resolution
+仅在“最新价”列存在时执行全零质量校验；字段缺失时保持既有最小测试替身兼容。真实行情含该列时仍拒绝全零快照，成功数据继续写入类级共享缓存并清除失败冷却。
+
+### Metadata
+- Source: error
+- Related Files: src/scanner/market_cache.py, tests/core/test_market_cache_shared.py
+- Tags: pandas, dataframe, test-double, market-cache, validation
+- See Also: LRN-20260515-001, LRN-20260824-001
 
 ---

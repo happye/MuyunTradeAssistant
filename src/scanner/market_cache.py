@@ -16,14 +16,44 @@
 - 盘后数据不变，长缓存至次日开盘
 """
 
-import time
 import logging
+import os
+import time
 from datetime import datetime, timedelta, time as dtime
+from pathlib import Path
 from typing import Optional
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
+
+_DEFAULT_SINA_MARKET_URL = (
+    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/"
+    "Market_Center.getHQNodeData"
+)
+_LOCAL_NETWORK_CONFIG = Path(__file__).resolve().parents[2] / "configs" / "network.local.yaml"
+
+
+def _get_sina_market_url() -> str:
+    """解析新浪行情地址：共享默认 HTTPS，本机可用 gitignored 配置覆盖。"""
+    env_url = os.environ.get("MUYUN_SINA_MARKET_URL", "").strip()
+    if env_url:
+        return env_url.rstrip("/")
+
+    try:
+        import yaml
+
+        if _LOCAL_NETWORK_CONFIG.exists():
+            local = yaml.safe_load(_LOCAL_NETWORK_CONFIG.read_text(encoding="utf-8")) or {}
+            local_url = str(local.get("network", {}).get("sina_market_url", "")).strip()
+            if local_url.startswith(("http://", "https://")):
+                return local_url.rstrip("/")
+            if local_url:
+                logger.warning("MarketCache: 忽略无效的本机 sina_market_url（仅支持 HTTP/HTTPS）")
+    except Exception as exc:
+        logger.warning("MarketCache: 读取本机网络配置失败，使用共享 HTTPS 默认值: %s", exc)
+
+    return _DEFAULT_SINA_MARKET_URL
 
 
 def _retry_akshare(func, max_retries=3, base_delay=1.0):
@@ -257,7 +287,7 @@ class MarketCache:
             import requests as _requests
             with self._without_proxy():
                 r = _requests.get(
-                    "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData",
+                    _get_sina_market_url(),
                     params={"page": 1, "num": 5, "sort": "changepercent", "asc": 0, "node": "hs_a", "symbol": "", "_s_r_a": "init"},
                     timeout=8, headers={"User-Agent": "Mozilla/5.0"},
                 )
@@ -281,7 +311,7 @@ class MarketCache:
         import requests as _requests
         from concurrent.futures import ThreadPoolExecutor, as_completed
 
-        BASE_URL = "https://vip.stock.finance.sina.com.cn/quotes_service/api/json_v2.php/Market_Center.getHQNodeData"
+        base_url = _get_sina_market_url()
         COMMON_PARAMS = "&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=init"
         HEADERS = {"Referer": "https://finance.sina.com.cn", "User-Agent": "Mozilla/5.0"}
         PAGE_SIZE = 80
@@ -289,16 +319,16 @@ class MarketCache:
         # 新浪API不走代理（直连更稳定）
         session = _requests.Session()
         session.trust_env = False
+        session.proxies = {"http": None, "https": None}
 
         def _fetch_page(page: int) -> list:
             try:
-                with self._without_proxy():
-                    resp = session.get(
-                        f"{BASE_URL}?page={page}&num={PAGE_SIZE}{COMMON_PARAMS}",
-                        timeout=30, headers=HEADERS,
-                    )
-                    if resp.status_code == 200:
-                        return resp.json() or []
+                resp = session.get(
+                    f"{base_url}?page={page}&num={PAGE_SIZE}{COMMON_PARAMS}",
+                    timeout=30, headers=HEADERS,
+                )
+                if resp.status_code == 200:
+                    return resp.json() or []
             except Exception:
                 pass
             return []

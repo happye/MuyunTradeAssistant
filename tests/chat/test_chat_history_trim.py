@@ -5,6 +5,12 @@ assistant(tool_calls) 与其 tool 结果之间，recent 开头出现孤立 tool 
 （assistant tool_calls 被裁掉）-> DeepSeek API 400:
 "Messages with role 'tool' must be a response to a preceding message with 'tool_calls'"
 """
+import os
+import sys
+
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+
 from src.chat.agent import ChatAgent
 
 
@@ -71,3 +77,11 @@ def test_trim_no_change_when_short():
     """消息数不超过阈值时原样返回。"""
     msgs = [{"role": "system", "content": "s"}, {"role": "user", "content": "u"}]
     assert ChatAgent._trim_messages(msgs, 20) is msgs
+
+
+if __name__ == "__main__":
+    test_trim_drops_orphan_tool_at_start()
+    test_trim_keeps_paired_tool_calls()
+    test_trim_drops_multiple_orphan_tools()
+    test_trim_no_change_when_short()
+    print("4/4 passed")
