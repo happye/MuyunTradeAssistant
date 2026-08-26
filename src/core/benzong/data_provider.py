@@ -306,7 +306,7 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
     try:
         from src.scanner.market_cache import MarketCache
         mc = MarketCache()
-        df = _safe_call("market_cache.get_all_stocks", mc.get_all_stocks, timeout=20)
+        df = _safe_call("market_cache.get_all_stocks", mc.get_all_stocks, timeout=45) # 45s: 内部含3次重试+备用源，20s会误杀慢网下的合法拉取
         if df is None or df.empty:
             return None
         if "成交额" not in df.columns:
