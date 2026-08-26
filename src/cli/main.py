@@ -37,6 +37,11 @@ logging.basicConfig(
     level=logging.WARNING,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+# v0.8.7.3 人话告警翻译层（方案A）：命中映射表的 WARNING 改写为「⚠ 人话｜原始：…」
+# 未命中原样透传。维护纪律：改告警必须同一 commit 同步 plain_errors.WARNING_PATTERNS
+# 与 docs/报错速查手册.md（AGENTS.md §五）。
+from src.cli.plain_errors import install as _install_plain_errors
+_install_plain_errors()
 logger = logging.getLogger(__name__)
 
 # Windows PowerShell 环境下禁用 legacy_windows 模式避免编码问题

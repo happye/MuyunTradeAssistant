@@ -1512,6 +1512,15 @@ def main():
             print(f"\n  [错误] {e}")
             print("  输入 h 查看用法")
 
+        # v0.8.7.3 方案C：命令结束后输出人话汇总（收集的是本条命令期间产生的降级告警）
+        try:
+            from src.cli.plain_errors import drain_new, render_summary
+            _summary = render_summary(drain_new())
+            if _summary:
+                print(_summary)
+        except Exception:
+            pass  # 汇总渲染失败不影响主流程
+
         # 底栏提示
         tags = []
         if _no_ai:
