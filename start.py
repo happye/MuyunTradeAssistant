@@ -101,9 +101,10 @@ def show_help():
     print("│    bz --manual           旧交互式手动打分（兜底）    │")
     print("│    bz --check            数据源连通性体检(ISS-043)  │")
     print("│    bz scan [主题] --top N  笨总选股初筛+批量评分    │")
+    print("│    bz scan <规则> [主题]  规则+主题一起用(v0.8.7.4)  │")
     print("│    bz scan --rule <规则> 指定规则初筛+评分(如超跌)  │")
     print("│    bz scan --allrules    五规则全跑合并(各Top5)⭐     │")
-    print("│    bz scan 规则简述(无主题词时按规则初筛):          │")
+    print("│    bz scan 规则名(可模糊) 单独=按规则全市场初筛:    │")
     print("│      healthy_pullback 健康回调 缩量小跌(-3%~-0.1%)   │")
     print("│      steady_advance  温和上涨 放量上涨(0.1%~5%)     │")
     print("│      shrink_pullback  缩量回调 深跌缩量(-5%~-0.1%)   │")
@@ -431,7 +432,9 @@ def parse_input(user_input: str):
                     except ValueError: pass
                     i += 2; continue
                 if low in ("--rule",) and i + 1 < len(rest):
-                    scan_args["rule"] = rest[i + 1]; i += 2; continue
+                    scan_args["rule"] = rest[i + 1]
+                    scan_args["rule_explicit"] = True  # 显式指定（主题模式下也生效）
+                    i += 2; continue
                 if low in ("--allrules", "--all-rules"):
                     scan_args["allrules"] = True; i += 1; continue
                 if low in ("--limit",) and i + 1 < len(rest):
@@ -439,7 +442,14 @@ def parse_input(user_input: str):
                     except ValueError: pass
                     i += 2; continue
                 theme_parts.append(p); i += 1
-            scan_args["theme"] = " ".join(theme_parts).strip()
+            theme_str = " ".join(theme_parts).strip()
+            # v0.8.7.4: 对齐 scan market 语义 -- 未用 --rule 时，第一个裸参数先当规则候选
+            # （run_benzong_scan 里 resolve_rule_name 模糊匹配，未命中则该词归位主题词）
+            if theme_parts and not scan_args.get("rule_explicit"):
+                scan_args["rule"] = theme_parts[0]
+                scan_args["rule_from_positional"] = True
+                theme_str = " ".join(theme_parts[1:]).strip()
+            scan_args["theme"] = theme_str
             return ("benzong_scan", scan_args)
 
         meta = ""
@@ -781,14 +791,40 @@ def run_benzong_scan(args: dict):
     do_backtest = args.get("backtest", False)
     limit = args.get("limit", 15)
     rule_name = args.get("rule", "healthy_pullback")
+    rule_explicit = bool(args.get("rule_explicit"))
+    rule_from_positional = bool(args.get("rule_from_positional"))
     force_refresh = args.get("refresh", False)
     allrules = args.get("allrules", False)  # 方案C: 五规则全跑合并
+
+    # v0.8.7.4: 规则名模糊解析。位置参数候选未命中规则 -> 该词归位主题词；
+    # 显式 --rule 拼错 -> 提示后按宽口径继续（不中断）。rule_effective 决定主题模式下
+    # 通道B 是否用该规则做技术面过滤（默认 theme_members 宽口径，ISS-047 防漏股）。
+    rule_effective = False
+    try:
+        _r_eng = ScannerEngine()  # 默认 rules_path（scanner_cfg 此时未定义）
+        _resolved = _r_eng.resolve_rule_name(rule_name)
+    except Exception:
+        _resolved = None
+    if _resolved:
+        rule_name = _resolved
+        rule_effective = rule_explicit or rule_from_positional
+    elif rule_from_positional:
+        theme = f"{rule_name} {theme}".strip()
+        rule_name = "healthy_pullback"
+    elif rule_explicit:
+        print(f"  [!] 未识别规则 '{rule_name}'，按宽口径继续（可用规则跑 rules 查看）")
+        rule_name = "healthy_pullback"
 
     print()
     print("=" * 64)
     print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
     print("=" * 64)
-    rule_display = "五规则全跑(各Top5合并)" if allrules else rule_name
+    if allrules:
+        rule_display = "五规则全跑(各Top5合并)"
+    elif theme and not rule_effective:
+        rule_display = "theme_members(宽口径)"
+    else:
+        rule_display = rule_name
     print(f"  规则: {rule_display} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
     print(f"  TopN: {top_n} | 回测: {'是' if do_backtest else '否'}")
     print()
@@ -845,8 +881,11 @@ def run_benzong_scan(args: dict):
                 cache_ttl=scanner_cfg.get("cache_ttl", 300),
                 entry_exit_config=entry_exit_config,
             )
+            b_rule = rule_name if rule_effective else "theme_members"
+            # 宽口径规则主要靠主题词过滤而非技术形态（ISS-047 防漏股默认）；
+            # 用户显式指定规则时改用该规则做技术面过滤（规则+主题组合，v0.8.7.4）
             b_candidates, b_info = b_engine.quick_scan(
-                rule_name="theme_members",  # 宽口径规则，主要靠主题词过滤而非技术形态
+                rule_name=b_rule,
                 market_query=theme,
                 exclude_codes=exclude_codes,
             )

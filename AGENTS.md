@@ -17,6 +17,7 @@ python -m src.cli.main -l 600519  # CLI 模式：分析单只股票
 bz 600519            # 6 维 AI 自动评分（每维 1 次 AI，约 30-60s）
 bz 600519 --refresh  # 强制刷新跳过缓存
 bz scan 氮化镓,钽电容 # 法C 主题精准定位+笨总评分排名（细分赛道也能精准）
+bz scan shrink_pullback 科技 # 规则+主题一起用：科技板块内按缩量回调形态初筛（首词可模糊匹配规则名）
 bz --check           # 数据源连通性体检
 bz --manual          # 旧交互式手动打分（兜底）
 ```
