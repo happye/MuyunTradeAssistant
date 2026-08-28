@@ -164,7 +164,8 @@ class BacktestEngine:
     # A股交易成本常量
     DEFAULT_COMMISSION_RATE = 0.00025
     MIN_COMMISSION = 5.0
-    STAMP_TAX_RATE = 0.0005
+    STAMP_TAX_RATE = 0.0005  # 当前卖出印花税率（2023-08-28 减半后）
+    STAMP_TAX_CUT_DATE = "2023-08-28"  # A14：印花税减半生效日，之前的日期按 2 倍收
     TRANSFER_FEE_RATE = 0.00001
 
     # 回测执行模式
@@ -225,6 +226,17 @@ class BacktestEngine:
         self.execution_mode = execution_mode
         self.layer_mode = layer_mode
 
+        # v0.8.7.5 审计修复 A18：min_hold_days/cooldown_days 只在 legacy_compatible 生效
+        # （framework_strict 交由策略层状态机统一约束，设计如此）。调用方显式传非默认值时
+        # 告警，避免"传了但静默无效"的实验误读（分层对照中"最小持有"维度实际为零）。
+        if execution_mode == self.MODE_FRAMEWORK_STRICT and (
+            min_hold_days != 5 or cooldown_days != 5
+        ):
+            logger.warning(
+                f"framework_strict 模式下 min_hold_days={min_hold_days}/cooldown_days={cooldown_days} "
+                f"不生效（仅 legacy_compatible 生效，严格模式由策略层状态机统一约束）"
+            )
+
         # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
             entry_exit_config=entry_exit_config,
@@ -250,12 +262,18 @@ class BacktestEngine:
             "jianzong_plans": 0,
         }
 
-    def _resolve_benzong_mode(self, code: str) -> Optional[str]:
+    def _resolve_benzong_mode(self, code: str, feeder=None, date: Optional[str] = None) -> Optional[str]:
         """建仓时定笨总 mode（跳法A阶段1.3）。
 
         优先级：显式 qizong_codes/jianzong_codes 覆盖 > rule_scorer 自动评分 > None。
         rule_scorer 用技术面+财务快照近似 grade（A→气宗/B→剑宗），准确率低于 AI 版，
         回测结论是方向性的（建仓时刻一次定档，非逐日，可行性高于逐日近似）。
+
+        v0.8.7.5 审计修复 A03：此前直接调 rule_score → 内部拉"今天"的公告/K线/成交额/
+        全市场快照（2020 年建仓决策用到 2026 年数据 = 前瞻偏差 + 回测触发网络，违反
+        AGENTS.md「回测路径不可触发网络调用」）。现改为 bar 时点驱动：K线切片截至建仓日；
+        公告/主营/快照无 point-in-time 数据源 → 显式置空走中性降级。
+        三批 jumpA 五年回测此前传 benzong_auto_mode=False（人工标注 mode）故未暴露此问题。
         """
         if code in self._qizong_codes:
             return "qizong"
@@ -269,7 +287,15 @@ class BacktestEngine:
         try:
             from src.core.benzong.rule_scorer import rule_score
             from src.core.trade_plan.generator import _mode_from_grade
-            dims = rule_score(code, name=code)
+            data_summary = {
+                "business_intro": None,   # 主营介绍是静态数据但走网络 → 回测禁网，中性50
+                "announcements": [],      # 公告无 point-in-time 数据源（同 ISS-052 回测跳过逻辑）→ 空表
+                "industry": None,
+                "kline": feeder.get_kline_until(date) if feeder and date else None,
+                "market_turnover": None,  # 无历史大盘成交额数据源 → rule_score 内部按 1.0 万亿常数
+                "fetch_status": {"kline": feeder is not None and date is not None},
+            }
+            dims = rule_score(code, name=code, data_summary=data_summary, spot=None)
             grade = dims.get("grade")
             ind_pros = dims.get("industry_prosperity", {}).get("score")
             mode = _mode_from_grade(grade, ind_pros)
@@ -413,7 +439,9 @@ class BacktestEngine:
                                 account.buy_date = date
 
                     elif effective_action == PositionAction.ADD:
-                        if account.has_position and self._can_sell(date, account.buy_date):
+                        # A17 修复：买入不受 T+1 约束（T+1 只限制当日买入份额的卖出），
+                        # 原误用 _can_sell 把"建仓当日加仓"静默挡掉
+                        if account.has_position:
                             buy_price = exec_price * (1 + actual_slippage)
                             trade = account.buy(buy_price, target_position_ratio=pos_ratio)
                         elif not account.has_position and self._not_in_cooldown(date, last_sell_date):
@@ -490,13 +518,15 @@ class BacktestEngine:
                             else infer_action_semantic(actual_pos_action, pending_signal, [trade.reason], trade.action)
                         )
                         trade.sell_path = pending_decision.sell_path if pending_decision else None
-                        trade.position_ratio_after = round(account.position_ratio(current_price), 2)
+                        # A19 修复：before/after 统一用成交价口径（原 before 用开盘价、after 用收盘价，
+                        # 三个口径混用致仓位归因不可比）
+                        trade.position_ratio_after = round(account.position_ratio(exec_price), 2)
 
                         # 扣除交易成本
                         if trade.action == "BUY":
                             account.cash = self._deduct_buy_costs(account.cash, trade.amount)
                         else:
-                            account.cash = self._deduct_sell_costs(account.cash, trade.amount)
+                            account.cash = self._deduct_sell_costs(account.cash, trade.amount, trade.date)
 
                         trades.append(trade)
 
@@ -510,7 +540,8 @@ class BacktestEngine:
                                 try:
                                     from src.core.trade_plan import TradePlanGenerator
                                     # 跳法A阶段1.3: 建仓时笨总评分定 mode（A→气宗/B→剑宗）
-                                    mode = self._resolve_benzong_mode(self.stock_code)
+                                    # A03 修复：传 bar 时点 feeder/date，评分全用建仓日之前的数据
+                                    mode = self._resolve_benzong_mode(self.stock_code, feeder=feeder, date=date)
                                     grade_for_gen = {"qizong": "A", "jianzong": "B"}.get(mode)
                                     # 跳法A阶段4: 大盘状态作mode判定牛市闸门（非牛市气宗降级剑宗）
                                     ms = None
@@ -552,7 +583,8 @@ class BacktestEngine:
                         execution_eval=exec_eval,
                         trade=trade,
                         position_ratio_before=position_ratio_before,
-                        position_ratio_after=round(account.position_ratio(current_price), 4),
+                        # A19 修复：与 before 统一用成交价口径
+                        position_ratio_after=round(account.position_ratio(exec_price), 4),
                     ))
 
                     # 清除挂单
@@ -645,15 +677,24 @@ class BacktestEngine:
                 logger.info(f"回测进度: {pct:.0f}% ({i+1}/{total_days})")
 
         # 4. 最终清仓
+        # v0.8.7.5 审计修复 A09：补滑点（此前无滑点成交，末日收益虚高）；
+        # 开盘价缺失退化用收盘价时记 warning（留痕，该笔不受 T+1/执行层校验属回测收尾惯例）
         if account.has_position and daily_snapshots:
             last_snapshot = daily_snapshots[-1]
             last_date = last_snapshot.date
-            clear_price = feeder.get_open_price(last_date) or last_snapshot.price
+            open_price = feeder.get_open_price(last_date)
+            if open_price:
+                clear_price = open_price * (1 - self.slippage_pct)
+            else:
+                clear_price = last_snapshot.price
+                logger.warning(
+                    f"回测末日({last_date})开盘价缺失，强制清仓退化按收盘价成交（无T+1/滑点保护）"
+                )
             forced_sell = account.sell(clear_price)
             if forced_sell:
                 forced_sell.date = last_date
                 forced_sell.reason = "[回测结束强制清仓]"
-                account.cash = self._deduct_sell_costs(account.cash, forced_sell.amount)
+                account.cash = self._deduct_sell_costs(account.cash, forced_sell.amount, last_date)
                 trades.append(forced_sell)
                 total_val = account.total_value(last_snapshot.price)
                 last_snapshot.cash = round(account.cash, 2)
@@ -692,11 +733,13 @@ class BacktestEngine:
         """Monte Carlo 多路径回测
 
         通过在执行层添加随机扰动来模拟不同的执行条件：
-        - 滑点扰动：在基础滑点上添加随机波动
-        - 执行延迟：偶尔延迟1天执行
-        - 成交价格扰动：在开盘价基础上添加随机偏移
+        - 滑点扰动：基础滑点 × [0.5, 2.0] 随机倍率
 
         输出结果为"分布"，而非单值。
+
+        v0.8.7.5 审计修复 A11：docstring 曾声称还有"执行延迟1天""成交价随机偏移"，
+        实际对应变量生成后从未使用（死变量）→ MC 分布严重偏窄、worst_case 系统性乐观。
+        现如实只声明已实现的滑点扰动；延迟/价格噪声需要动执行层主循环，属独立课题（见 ISSUES）。
 
         Args:
             n_simulations: 模拟次数
@@ -710,10 +753,8 @@ class BacktestEngine:
 
         results = []
         for sim_idx in range(n_simulations):
-            # 为每次模拟生成随机扰动参数
+            # 为每次模拟生成随机扰动参数（A11 修复：删除从未使用的 delay_probability/price_noise_pct 死变量）
             slippage_multiplier = random.uniform(0.5, 2.0)  # 滑点倍率
-            delay_probability = random.uniform(0.0, 0.1)    # 延迟执行概率
-            price_noise_pct = random.uniform(0.0, 0.003)    # 成交价格噪声
 
             # 创建带扰动的执行约束
             perturbed_constraint = ExecutionConstraint(
@@ -797,9 +838,15 @@ class BacktestEngine:
         transfer_fee = amount * self.TRANSFER_FEE_RATE
         return cash - commission - transfer_fee
 
-    def _deduct_sell_costs(self, cash: float, amount: float) -> float:
+    def _deduct_sell_costs(self, cash: float, amount: float, trade_date: Optional[str] = None) -> float:
+        """卖出成本。A14 修复：印花税率按交易日切换——2023-08-28 起减半至 0.05%，
+        之前 0.1%。跨减半时点的回测（如 ISS-046 的 2020-2024）此前全程按 0.05% 收，
+        前半段少收一半印花税 → 收益虚高。trade_date 缺省按现行率（兼容旧调用）。"""
         commission = max(amount * self.commission_rate, self.MIN_COMMISSION)
-        stamp_tax = amount * self.STAMP_TAX_RATE
+        stamp_rate = self.STAMP_TAX_RATE
+        if trade_date and trade_date < self.STAMP_TAX_CUT_DATE:
+            stamp_rate *= 2
+        stamp_tax = amount * stamp_rate
         transfer_fee = amount * self.TRANSFER_FEE_RATE
         return cash - commission - stamp_tax - transfer_fee
 
@@ -894,27 +941,38 @@ class BacktestEngine:
                 max_drawdown = drawdown
 
         # 胜率和盈亏比
+        # v0.8.7.5 审计修复 A10：原 zip(buy_trades, sell_trades) 顺序配对在 ADD/分档减仓
+        # 时错位（B,B,S 配成 (B1,S1)(B2,无)），amount 差值混入仓位大小且未扣成本，
+        # 零亏损时 avg_loss=1.0 使盈亏比退化为"平均盈利金额(元)"量纲错误。
+        # 改为按持仓序配对（每笔 SELL 对当前持仓的建仓 BUY，ADD 不改建仓基准），
+        # 用成交价算收益率——滑点已含在成交价里，win_rate/盈亏比与仓位大小解耦、量纲统一为 %。
         win_count = 0
         loss_count = 0
-        total_profit = 0.0
-        total_loss = 0.0
-        buy_trades = [t for t in trades if t.action == "BUY"]
-        sell_trades = [t for t in trades if t.action == "SELL"]
-
-        for buy_t, sell_t in zip(buy_trades, sell_trades):
-            profit = sell_t.amount - buy_t.amount
-            if profit > 0:
-                win_count += 1
-                total_profit += profit
+        total_profit_pct = 0.0
+        total_loss_pct = 0.0
+        entry_buy = None  # 当前持仓的建仓 BUY
+        for t in trades:
+            if t.action == "BUY":
+                if entry_buy is None:
+                    entry_buy = t  # 空仓首买=建仓基准；持仓中 ADD 不重置基准
             else:
-                loss_count += 1
-                total_loss += abs(profit)
+                if entry_buy is None:
+                    continue
+                ret_pct = (t.price / entry_buy.price - 1) * 100 if entry_buy.price > 0 else 0.0
+                if ret_pct > 0:
+                    win_count += 1
+                    total_profit_pct += ret_pct
+                else:
+                    loss_count += 1
+                    total_loss_pct += abs(ret_pct)
+                if t.position_action == "CLOSE_ALL" or t.position_ratio_after <= 0:
+                    entry_buy = None  # 清仓后，下一笔 BUY 视为新建仓
 
         total_rounds = win_count + loss_count
         win_rate = (win_count / total_rounds * 100) if total_rounds > 0 else 0.0
-        avg_profit = total_profit / win_count if win_count > 0 else 0.0
-        avg_loss = total_loss / loss_count if loss_count > 0 else 1.0
-        profit_loss_ratio = avg_profit / avg_loss if avg_loss > 0 else 0.0
+        avg_profit = total_profit_pct / win_count if win_count > 0 else 0.0   # 平均盈利(%)
+        avg_loss = total_loss_pct / loss_count if loss_count > 0 else 0.0    # 平均亏损(%)
+        profit_loss_ratio = (avg_profit / avg_loss) if avg_loss > 0 else 0.0
 
         # 夏普比率
         import numpy as np
@@ -929,9 +987,10 @@ class BacktestEngine:
         if len(daily_returns) > 10:
             arr = np.array(daily_returns)
             mean_ret = arr.mean()
-            std_ret = arr.std()
+            # A15 修复：样本标准差(ddof=1) + A股年交易日≈242（原 ddof=0 且 √252 高估约2%）
+            std_ret = arr.std(ddof=1)
             if std_ret > 0:
-                sharpe = mean_ret / std_ret * math.sqrt(252)
+                sharpe = mean_ret / std_ret * math.sqrt(242)
 
         # 基准收益率
         benchmark_return = 0.0
@@ -939,8 +998,8 @@ class BacktestEngine:
             benchmark_return = (final_snapshot.price / first_price - 1) * 100
 
         # 投入资金收益率
-        total_buy_amount = sum(t.amount for t in buy_trades)
-        total_sell_amount = sum(t.amount for t in sell_trades)
+        total_buy_amount = sum(t.amount for t in trades if t.action == "BUY")
+        total_sell_amount = sum(t.amount for t in trades if t.action == "SELL")
         invested_profit = total_sell_amount - total_buy_amount
         invested_return_pct = (invested_profit / total_buy_amount * 100) if total_buy_amount > 0 else 0.0
 
@@ -979,8 +1038,8 @@ class BacktestEngine:
             profit_loss_ratio=round(profit_loss_ratio, 2),
             sharpe_ratio=round(sharpe, 2),
             total_trades=len(trades),
-            buy_count=len(buy_trades),
-            sell_count=len(sell_trades),
+            buy_count=sum(1 for t in trades if t.action == "BUY"),
+            sell_count=sum(1 for t in trades if t.action == "SELL"),
             trades=trades,
             daily_snapshots=daily_snapshots,
             benchmark_return_pct=round(benchmark_return, 2),

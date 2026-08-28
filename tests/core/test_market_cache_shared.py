@@ -129,3 +129,26 @@ if __name__ == "__main__":
     test_failure_cooldown()
     test_stale_fallback_prefers_old_cache()
     print("\n4/4 全部通过")
+
+
+def test_degraded_snapshot_without_price_column_rejected():
+    """ISS-067 A08 回归：大表缺"最新价"列=残缺快照，必须拒绝入缓存（原判定条件反向放行）。
+
+    兼容性约束（LRN-20260825-001）：小表(<=100行)测试替身缺价格列仍放行；
+    大表(>100行)缺价格列一律拒绝——真实全市场快照必有"最新价"列。
+    """
+    _reset_shared()
+    # 大表缺价格列（模拟降级快照）：必须拒绝
+    big = pd.DataFrame({"代码": [f"{600000 + i:06d}" for i in range(500)], "成交额": [1e8] * 500})
+    assert not MarketCache._snapshot_quality_ok(big), "大表缺价格列应拒绝"
+
+    # 小表缺价格列（既有最小测试替身）：保持放行
+    small = _fake_df(rows=5)
+    assert MarketCache._snapshot_quality_ok(small), "小表替身应放行(LRN-20260825-001)"
+
+    # 有价格列：全零拒绝、有效放行（原有语义）
+    zero = pd.DataFrame({"代码": ["600000"] * 20, "最新价": [0.0] * 20})
+    assert not MarketCache._snapshot_quality_ok(zero), "全零行情应拒绝"
+    ok = pd.DataFrame({"代码": ["600000"] * 20, "最新价": [10.0 + i for i in range(20)]})
+    assert MarketCache._snapshot_quality_ok(ok), "有效行情应放行"
+    print("PASS 残缺快照拒绝入缓存(A08)")

@@ -110,8 +110,10 @@ def auto_score_batch(
     ranked.sort(
         key=lambda x: (
             not x.get("invalidate", False),
-            _grade_rank.get(x.get("effective_grade", x["grade"]), 0),
-            x.get("normalized_score", x["total_score"]),
+            # A37 修复：`x.get("effective_grade", x["grade"])` 只防键缺失不防值为 None
+            # （键存在但值为 None 时返回 None → .get(None,0) 恒 0 当 F 级沉底），用 or 兜底
+            _grade_rank.get(x.get("effective_grade") or x.get("grade") or "F", 0),
+            x.get("normalized_score") or x.get("total_score") or 0,
         ),
         reverse=True,
     )

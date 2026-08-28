@@ -183,9 +183,17 @@ class ScannerEngine:
                     theme_info["industries"],
                     theme_info["concepts"],
                 )
-                after_theme = len(df)
-                after_industry = after_theme
-                after_concept = after_theme
+                if getattr(self, "last_theme_filter_failed", False):
+                    # v0.8.7.5 审计修复 A13：成分股拉取失败→主题过滤失效，归入 fallback_unfiltered
+                    # 让 UI 显示"主题匹配失败，已回退为全市场规则扫描"，不再假装主题匹配成功
+                    theme_info["fallback_unfiltered"] = True
+                    after_theme = after_exclude
+                    after_industry = after_exclude
+                    after_concept = after_exclude
+                else:
+                    after_theme = len(df)
+                    after_industry = after_theme
+                    after_concept = after_theme
         else:
             after_industry = after_exclude
             after_theme = after_exclude
@@ -319,7 +327,8 @@ class ScannerEngine:
             result["candidate"] = candidate_map.get(code)
 
             # 防御性校验：跳过北交所代码（初筛应已排除，此处为兜底）
-            if code.startswith("920") or code.startswith("8"):
+            # A26 修复：补 430xxx 老代码段
+            if code.startswith("920") or code.startswith("8") or code.startswith("4"):
                 result["error"] = "北交所股票不支持深度分析"
                 result["stock_name"] = code
                 logger.info(f"ScannerEngine: 跳过北交所股票 {code}")
@@ -442,6 +451,13 @@ class ScannerEngine:
         for key, rule in rules_cfg.items():
             if rule.get("name", "") == user_input:
                 return key
+
+        # v0.8.7.5 审计修复 A36：单字母/单字符 ASCII 子串匹配过宽（'e'/'a' 都会命中
+        # healthy_pullback）。包含匹配要求 ASCII 至少 2 个字符；单个中文字（如"缩"）
+        # 仍允许（中文单字信息量足够）。
+        _is_cjk = any(ord(c) > 127 for c in user_input)
+        if not _is_cjk and len(user_input) < 2:
+            return None
 
         # 3. 包含匹配key
         for key in rules_cfg:
@@ -772,7 +788,14 @@ class ScannerEngine:
         industries: list[str],
         concepts: list[str],
     ) -> pd.DataFrame:
-        """统一主题过滤：行业和概念按并集筛选。"""
+        """统一主题过滤：行业和概念按并集筛选。
+
+        v0.8.7.5 审计修复 A13：板块成分股拉取失败(all_codes空)时原样放行全市场且无
+        任何标记，下游把它当正常"主题匹配后N只"展示，用户不知道主题过滤已失效。
+        fail-open 设计保留（回退全市场），但置 self.last_theme_filter_failed=True，
+        由 quick_scan 归入 fallback_unfiltered 让 UI 诚实提示。
+        """
+        self.last_theme_filter_failed = False
         if not industries and not concepts:
             return df
 
@@ -787,8 +810,10 @@ class ScannerEngine:
 
         if not all_codes:
             logger.warning(
-                f"ScannerEngine: 统一主题过滤无结果，行业={industries}，概念={concepts}"
+                f"ScannerEngine: 统一主题过滤无结果(板块接口可能超时/失效)，行业={industries}，概念={concepts}，"
+                f"fail-open 放行全市场并置失败标记供 UI 诚实提示"
             )
+            self.last_theme_filter_failed = True
             return df
 
         if "代码" in df.columns:
@@ -908,12 +933,14 @@ class ScannerEngine:
                     df["close"] = pd.to_numeric(df["close"], errors="coerce")
                     df = df.dropna(subset=["close"])
 
-                    if len(df) < 45:
+                    # v0.8.7.5 审计修复 A28：不足 60 个交易日（次新股）跳过——
+                    # 原 ago_idx=max(0, len-60) 会把"上市至今涨幅"当 60 日涨幅，
+                    # 次新股显示 +100%+ 伪涨幅污染 bz scan 排名
+                    if len(df) < 60:
                         continue
 
                     latest = df["close"].iloc[-1]
-                    ago_idx = max(0, len(df) - 60)
-                    ago = df["close"].iloc[ago_idx]
+                    ago = df["close"].iloc[-60]
 
                     if ago > 0:
                         cand.change_60d = round((latest - ago) / ago * 100, 2)

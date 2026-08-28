@@ -1363,7 +1363,7 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     设计（E1-B1 强化）：
     - 优先尝试拉实时 StockData（akshare），让 generator 用真实 ATR/MA 算
     - **拉数据失败 → 默认跳过 plan 生成**（兜底数据不能用作真实交易依据）
-      用户可强制用 --force-plan-fallback 走规则版兜底（仅用于流程测试）
+      （v0.8.7.5 审计删除 --force-plan-fallback 说明：该 flag 从未实现，勿照抄）
     - 用户 n 跳过 → 不附加 plan，提示 pos plan 命令后续手动补
     """
     from src.core.trade_plan import TradePlanGenerator
@@ -2000,6 +2000,10 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         # 入场价存在时自动生成 TradePlan 草稿，缺失则跳过（用户可后续手动补）
         if price > 0:
             _try_attach_trade_plan(pm, stock_code, name or stock_code, price, ratio)
+        else:
+            # v0.8.7.5 审计修复 A34：不带价格时静默跳过草稿生成，用户不知道为什么没出计划
+            console.print("[yellow]⚠ 未带价格参数，本次跳过 TradePlan 草稿生成[/yellow]")
+            console.print("  [dim]草稿需要入场价算止损位；可补价格重跑 pos add，或事后 pos plan <代码> 生成[/dim]")
 
     elif action == "remove":
         if not stock_code:
@@ -3210,7 +3214,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        version="%(prog)s v0.8.6.6 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发)"
+        # v0.8.7.5 审计修复 A31：版本号与 start.py/AGENTS.md 统一（原停在 v0.8.6.6）
+        version="%(prog)s v0.8.7.5 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
     )
     parser.add_argument(
         "--verbose",
@@ -3283,7 +3288,9 @@ AI配置:
     scan_group.add_argument(
         "--scan",
         nargs="?",
-        const="default",
+        # v0.8.7.5 审计修复 A30：const 原为 "default"，--scan 裸用会把它当规则名去模糊匹配，
+        # 必打一条"主题词 'default' 未匹配"告警。直接落默认规则名。
+        const="healthy_pullback",
         metavar="RULE_OR_QUERY",
         help="全市场扫描。可传规则名/规则关键词，也可直接传单个或多个主题词；多个主题请用英文逗号分隔，如 AI,半导体,机器人"
     )

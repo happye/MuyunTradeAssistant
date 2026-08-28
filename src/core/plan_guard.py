@@ -125,6 +125,9 @@ class PlanGuard:
                 reasons.insert(0, f"PlanGuard 致命止损: 价格 ¥{data.price:.2f} ≤ current_stop ¥{trade_plan.current_stop:.2f}")
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
+            # v0.8.7.5 审计修复 A06：CLOSE_ALL 必须同步清零 position_ratio，
+            # 否则 portfolio 取 decision.position_ratio(>0) 记成幽灵残留仓位
+            adjusted.position_ratio = 0.0
             adjusted.sell_path = "stop_loss_exit"
             logger.warning(f"PlanGuard force STOP(CLOSE_ALL): price={data.price} <= stop={trade_plan.current_stop}")
             adjusted.strategy_reasons = reasons
@@ -138,6 +141,7 @@ class PlanGuard:
                 reasons.insert(0, f"PlanGuard 重大利空(不可压): {adjusted.fundamental_alert}")
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
+            adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "fundamental_alert"
             logger.warning(f"PlanGuard force EXIT by fundamental_alert: {adjusted.fundamental_alert}")
             adjusted.strategy_reasons = reasons
@@ -149,6 +153,7 @@ class PlanGuard:
             if adjusted.decision != SignalType.SELL:
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
+            adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "top_signal"
             reasons.insert(0, f"PlanGuard 高位止盈(不可压): {adjusted.top_signal}")
             logger.info(f"PlanGuard force EXIT by top_signal: {adjusted.top_signal}")
@@ -162,6 +167,7 @@ class PlanGuard:
                 reasons.insert(0, f"PlanGuard 时间止损: 已持有 {days} 天 ≥ max_hold_days {trade_plan.max_hold_days}")
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
+            adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "time_stop"
             logger.info(f"PlanGuard force EXIT(CLOSE_ALL): held {days} days >= max {trade_plan.max_hold_days}")
             adjusted.strategy_reasons = reasons

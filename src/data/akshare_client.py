@@ -30,10 +30,16 @@ DEFAULT_TIMEOUT = 30.0
 def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
     """线程级硬超时包装：fn 卡住超过 timeout 秒则放弃，抛 TimeoutError。
     akshare/baostock 底层无 timeout，靠这个防 WinError 10060 冻结。
+
+    v0.8.7.5 审计修复（ISS-066 回归）：不能用 with 块——__exit__ 的 shutdown(wait=True)
+    会 join 超时后的孤儿线程，分钟级冻结使超时保护失效（范本：benzong/data_provider）。
     """
-    with ThreadPoolExecutor(max_workers=1) as ex:
+    ex = ThreadPoolExecutor(max_workers=1)
+    try:
         fut = ex.submit(fn, *args, **kwargs)
         return fut.result(timeout=timeout)
+    finally:
+        ex.shutdown(wait=False)
 
 
 def _ensure_baostock_login():
@@ -174,8 +180,9 @@ class AKShareClient:
         - 830001 -> (bj, 830001)  北交所
         """
         code = code.strip().zfill(6)
-        if code.startswith('920') or code.startswith('8'):
-            # 北交所：920xxx（新代码段）或 8xxxxx（老代码段）
+        if code.startswith(('920', '8', '4')):
+            # 北交所/股转：920xxx（新代码段）、8xxxxx/4xxxxx（老代码段，含430xxx）
+            # v0.8.7.5 审计修复 A26：原漏 430xxx → 被判 sh 查询失败
             return "bj", code
         elif code.startswith('6'):
             return "sh", code
@@ -184,8 +191,8 @@ class AKShareClient:
             return "sh", code
         elif code.startswith(('0', '3')):
             return "sz", code
-        elif code.startswith('15'):
-            # 159xxx / 150xxx 深圳ETF/LOF
+        elif code.startswith(('15', '16')):
+            # 159xxx/150xxx 深圳ETF/LOF；16xxxx 深市LOF（A27 修复：161725 此前落入兜底被判 sh）
             return "sz", code
         elif code.startswith(('51', '52', '56', '58')):
             # 510xxx/511xxx/512xxx/513xxx/515xxx/516xxx/518xxx 上海ETF
@@ -404,27 +411,39 @@ class AKShareClient:
             return df
 
         # 如果Baostock失败，尝试AKShare
-        # ETF用专用基金ETF接口，A股用stock_zh_a_hist
-        is_etf_or_index = code.startswith(('15', '51', '56'))
+        # ETF/LOF用专用基金接口，A股用stock_zh_a_hist
+        # v0.8.7.5 审计修复 A27：补 16(深市LOF)/52/58(沪市ETF/LOF)——原 ('15','51','56')
+        # 漏 588xxx 科创ETF（不走基金接口必失败）且与 _normalize_stock_code 前缀表不一致
+        is_etf_or_index = code.startswith(('15', '16', '51', '52', '56', '58'))
 
         if is_etf_or_index:
-            # ETF专用历史K线接口
-            logger.info(f"{stock_code} 是ETF代码，尝试AKShare ETF历史K线接口")
+            # 基金专用历史K线接口（深市LOF 16xxxx 走 fund_lof_hist_em，其余走 fund_etf_hist_em）
+            logger.info(f"{stock_code} 是基金代码，尝试AKShare 基金历史K线接口")
             try:
-                def _fetch_etf_hist():
-                    return ak.fund_etf_hist_em(
-                        symbol=code,
-                        period=period_value,
-                        start_date=start_date,
-                        end_date=end_date,
-                        adjust=adjust
-                    )
+                if code.startswith('16'):
+                    def _fetch_etf_hist():
+                        return ak.fund_lof_hist_em(
+                            symbol=code,
+                            period=period_value,
+                            start_date=start_date,
+                            end_date=end_date,
+                            adjust=adjust
+                        )
+                else:
+                    def _fetch_etf_hist():
+                        return ak.fund_etf_hist_em(
+                            symbol=code,
+                            period=period_value,
+                            start_date=start_date,
+                            end_date=end_date,
+                            adjust=adjust
+                        )
                 etf_df = cls._retry_with_backoff(_fetch_etf_hist, max_retries=1, base_delay=3)
                 if etf_df is not None and not etf_df.empty:
-                    logger.info(f"AKShare ETF历史K线成功 {stock_code}，获取 {len(etf_df)} 行")
+                    logger.info(f"AKShare 基金历史K线成功 {stock_code}，获取 {len(etf_df)} 行")
                     return etf_df
             except Exception as e:
-                logger.warning(f"ETF历史K线接口失败 {stock_code}: {e}")
+                logger.warning(f"基金历史K线接口失败 {stock_code}: {e}")
             return df  # 返回Baostock的结果（可能为None）
 
         # A股股票：用stock_zh_a_hist
@@ -806,6 +825,7 @@ class AKShareClient:
             df['MA10'] = close.rolling(window=10).mean()
             df['MA20'] = close.rolling(window=20).mean()
             df['MA60'] = close.rolling(window=60).mean()
+            df['MA120'] = close.rolling(window=120).mean()
 
             # 取最近60天的数据
             recent = df.tail(60).copy()
@@ -850,6 +870,8 @@ class AKShareClient:
                 ma10=round(float(latest['MA10']), 2) if pd.notna(latest['MA10']) else None,
                 ma20=round(float(latest['MA20']), 2) if pd.notna(latest['MA20']) else None,
                 ma60=round(float(latest['MA60']), 2) if pd.notna(latest['MA60']) else None,
+                # v0.8.7.5 审计修复 A42：live 路径此前不填 ma120（回测有/live 无），补齐对齐
+                ma120=round(float(latest['MA120']), 2) if pd.notna(latest['MA120']) else None,
                 # 成交量
                 avg_volume_20=int(recent['成交量'].tail(20).mean()) if len(recent) >= 20 else None,
                 # 位置信息
@@ -872,6 +894,11 @@ class AKShareClient:
             # KDJ计算
             if len(df) >= 9:
                 stock_data.kdj_k, stock_data.kdj_d, stock_data.kdj_j = cls._calculate_kdj(df)
+
+            # ATR(14)（v0.8.7.5 审计修复 A02：live 路径此前恒 None → Chandelier Exit 止损、
+            # 2×ATR 移动止损、建仓 ATR 止损在实盘全部静默失效，只有回测生效）
+            if len(df) >= 15:
+                stock_data.atr_14 = cls._calculate_atr(df)
 
             # 大盘环境数据（沪深300趋势）
             try:
@@ -1023,6 +1050,24 @@ class AKShareClient:
         hist = (dif - dea) * 2
 
         return round(float(dif.iloc[-1]), 3), round(float(dea.iloc[-1]), 3), round(float(hist.iloc[-1]), 3)
+
+    @staticmethod
+    def _calculate_atr(df: pd.DataFrame, period: int = 14) -> Optional[float]:
+        """计算ATR(14)平均真实波幅（与回测 data_feeder._calc_atr 同公式，保证口径一致）"""
+        try:
+            high = df['最高'].astype(float)
+            low = df['最低'].astype(float)
+            close = df['收盘'].astype(float)
+            prev_close = close.shift(1)
+            tr = pd.concat(
+                [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+                axis=1,
+            ).max(axis=1)
+            atr = tr.rolling(window=period).mean().iloc[-1]
+            return round(float(atr), 2) if pd.notna(atr) else None
+        except Exception as e:
+            logger.warning(f"ATR计算失败: {e}")
+            return None
 
     @staticmethod
     def _calculate_rsi(df: pd.DataFrame, n: list = [6, 12, 24]):

@@ -118,6 +118,20 @@ class DataFeeder:
         """获取回测交易日数量"""
         return len(self._dates)
 
+    def get_kline_until(self, date: str) -> Optional[pd.DataFrame]:
+        """返回截至 date（含）的个股K线切片（bar 时点）。
+
+        v0.8.7.5 审计修复 A03：回测建仓笨总评分改用 bar 时点 K线，
+        替代此前 rule_scorer 内部实时拉取（前瞻偏差+回测触发网络）。
+        列为 baostock 原始小写列（date/close/low...），评分器兼容多种列名。
+        """
+        if self._stock_df is None or self._stock_df.empty:
+            return None
+        try:
+            return self._stock_df[self._stock_df['date'] <= date].copy()
+        except Exception:
+            return None
+
     def get_next_trading_day(self, date: str) -> Optional[str]:
         """获取指定日期的下一个交易日
 
@@ -365,7 +379,9 @@ class DataFeeder:
                 "date,code,open,high,low,close,volume,amount",
                 start_date=start_date,
                 end_date=end_date,
-                frequency="d"
+                frequency="d",
+                adjustflag="2",  # v0.8.7.5 审计修复 A05：前复权，与实盘 akshare adjust="qfq" 对齐。
+                # 此前缺省="3"不复权：除权日假暴跌触发虚假止损；分红丢失致回测/基准收益系统性偏差
             )
 
             if rs.error_code != '0':

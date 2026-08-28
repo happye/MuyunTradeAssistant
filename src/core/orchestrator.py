@@ -300,6 +300,9 @@ class Orchestrator:
                     if current_decision == SignalType.SELL or (has_position and force_exit):
                         decision_result.decision = SignalType.SELL
                         decision_result.position_action = PositionAction.CLOSE_ALL if action in ("EXIT", "STOP") else PositionAction.REDUCE
+                        # A06 修复：CLOSE_ALL 同步清零仓位，防 portfolio 记成幽灵残留仓位
+                        if decision_result.position_action == PositionAction.CLOSE_ALL:
+                            decision_result.position_ratio = 0.0
                         decision_result.reason.append(f"[EntryExit] {decision_result.overridden_reason}")
                         logger.info(f"[EntryExit] Force exit: {decision_result.overridden_reason}")
                     else:
@@ -316,6 +319,7 @@ class Orchestrator:
         if falert:
             decision_result.decision = SignalType.SELL
             decision_result.position_action = PositionAction.CLOSE_ALL
+            decision_result.position_ratio = 0.0  # A06 修复：同步清零，防幽灵仓位
             decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
             logger.info(f"[FundamentalAlert] 强制离场: {falert}")
 
@@ -338,6 +342,7 @@ class Orchestrator:
             if top_signal:
                 decision_result.decision = SignalType.SELL
                 decision_result.position_action = PositionAction.CLOSE_ALL
+                decision_result.position_ratio = 0.0  # A06 修复：同步清零，防幽灵仓位
                 decision_result.reason.append(f"[TopSignal] 高位止盈: {top_signal}")
                 logger.info(f"[TopSignal] 大顶信号强制离场: {top_signal}")
 
@@ -365,7 +370,7 @@ class Orchestrator:
         # 跳法A（MarketState 降级）：把笨总 mode 透传给策略层，气宗走固定长持参数
         self.strategy_layer._active_mode = trade_plan.mode if trade_plan is not None else None
         strategy_decision = self.strategy_layer.process(
-            decision_result, strategy_state, data
+            decision_result, strategy_state, data, current_date=today
         )
 
         # v0.8.3 Phase C: 将买卖点结果附加到策略决策

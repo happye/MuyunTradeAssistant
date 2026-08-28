@@ -212,6 +212,32 @@ class MarketCache:
 
         return _proxy_disabled()
 
+    @staticmethod
+    def _snapshot_quality_ok(df) -> bool:
+        """快照质量校验（v0.8.7.5 审计修复 A08：原判定条件反向——无"最新价"列时
+        prices=None 反而放行写入缓存，残缺全市场快照被当成功缓存）。
+
+        - 有"最新价"列：有效价格行数必须 >10，全零/近全零视为降级快照拒绝入缓存
+        - 无"最新价"列：小表(<=100行)放行，兼容只含最小字段的测试替身
+          （LRN-20260825-001）；大表缺价格列=残缺快照，一律拒绝（真实全市场快照必有该列）
+        """
+        if "最新价" in df.columns:
+            prices = pd.to_numeric(df["最新价"], errors="coerce").fillna(0)
+            return (prices > 0).sum() > 10
+        return len(df) <= 100
+
+    def _accept_snapshot(self, df, source_label: str) -> bool:
+        """质量校验通过则写入类级共享缓存并返回 True，否则 False。"""
+        if not self._snapshot_quality_ok(df):
+            logger.warning(f"MarketCache: {source_label}返回无效行情(全零或缺价格列)，拒绝写入缓存")
+            return False
+        MarketCache._shared_stock_df = df
+        MarketCache._shared_stock_ts = time.time()
+        MarketCache._shared_stock_count = len(df)
+        MarketCache._shared_fail_ts = 0.0
+        logger.info(f"MarketCache: A股行情获取成功({len(df)}只, {source_label})")
+        return True
+
     def get_all_stocks(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取全市场A股行情（带缓存+重试）
 
@@ -249,28 +275,14 @@ class MarketCache:
             if attempt < 2:
                 _t.sleep(1.5)  # 偶发空，等1.5秒重试
         if df is not None and not df.empty:
-            prices = pd.to_numeric(df["最新价"], errors="coerce").fillna(0) if "最新价" in df else None
-            if prices is None or (prices > 0).sum() > 10:
-                MarketCache._shared_stock_df = df
-                MarketCache._shared_stock_ts = time.time()
-                MarketCache._shared_stock_count = len(df)
-                MarketCache._shared_fail_ts = 0.0
-                logger.info(f"MarketCache: A股行情获取成功({len(df)}只, 新浪源, 第{attempt+1}次)")
+            if self._accept_snapshot(df, f"新浪源, 第{attempt+1}次"):
                 return df
-            logger.warning("MarketCache: 新浪API返回无效全零行情，拒绝写入缓存并尝试备用")
 
         # 新浪3次都空 → 试 efinance 兜底（不锁死，每次都试，避免偶发失败放大）
         df = self._fetch_efinance_market()
         if df is not None and not df.empty:
-            prices = pd.to_numeric(df["最新价"], errors="coerce").fillna(0) if "最新价" in df else None
-            if prices is None or (prices > 0).sum() > 10:
-                MarketCache._shared_stock_df = df
-                MarketCache._shared_stock_ts = time.time()
-                MarketCache._shared_stock_count = len(df)
-                MarketCache._shared_fail_ts = 0.0
-                logger.info(f"MarketCache: A股行情获取成功({len(df)}只, efinance备用)")
+            if self._accept_snapshot(df, "efinance备用"):
                 return df
-            logger.warning("MarketCache: efinance返回无效全零行情，拒绝写入缓存")
 
         # 全部失败：返回过期缓存兜底，不标记锁死（下次命令仍可重试，因新浪是间歇性失效）
         if MarketCache._shared_stock_df is not None:
@@ -309,7 +321,7 @@ class MarketCache:
             标准化后的DataFrame，失败返回None
         """
         import requests as _requests
-        from concurrent.futures import ThreadPoolExecutor, as_completed
+        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
 
         base_url = _get_sina_market_url()
         COMMON_PARAMS = "&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=init"
@@ -338,11 +350,23 @@ class MarketCache:
         all_stocks = []
 
         try:
-            with ThreadPoolExecutor(max_workers=10) as executor:
+            # v0.8.7.5 审计修复 A41：不能用 with 块（shutdown(wait=True) 会 join 卡死线程），
+            # 且 as_completed 必须带总超时——73页×30s÷10并发最坏240s冻结，
+            # 与 data_provider.py 全市场拉取 45s 预算对齐。
+            executor = ThreadPoolExecutor(max_workers=10)
+            try:
                 futures = {executor.submit(_fetch_page, p): p for p in range(1, total_pages + 1)}
-                for future in as_completed(futures):
+                for future in as_completed(futures, timeout=45):
                     result = future.result()
                     all_stocks.extend(result)
+            except FuturesTimeoutError:
+                logger.error("MarketCache: 新浪API并行获取超时(45s)，放弃剩余页")
+                return None
+            except Exception as e:
+                logger.error(f"MarketCache: 新浪API并行获取异常: {e}")
+                return None
+            finally:
+                executor.shutdown(wait=False)
         except Exception as e:
             logger.error(f"MarketCache: 新浪API并行获取异常: {e}")
             return None
@@ -803,17 +827,30 @@ class MarketCache:
             # 非交易时段
             cache_time = datetime.fromtimestamp(timestamp)
             now = datetime.now()
+            t = now.time()
 
-            # 如果缓存是今天盘后创建的，不过期
-            if cache_time.date() == now.date() and cache_time.hour >= 15:
-                return False
+            # v0.8.7.5 审计修复 A25：原第二分支"缓存日期>=昨天即不过期"没有校验缓存
+            # 是否在最近收盘之后——盘中(如上午10点)生成的快照，在午休/收盘后被当
+            # "最近收盘数据"一直复用（实测 expired=False）。
+            # 正确口径（对齐 LRN-20260515-001 建议）：
+            # - 盘后(>=15:00)：只认今天 15:00 之后生成的缓存
+            # - 盘前/周末节假日：只认最近一个工作日 15:00 之后生成的缓存
+            # - 午休等盘中间歇：不走特例，按正常 TTL 判过期
+            is_after_close = t >= dtime(15, 0)
+            is_before_open = t < dtime(9, 30)
+            is_weekend = now.weekday() >= 5
+            if is_after_close or is_before_open or is_weekend:
+                # 最近一次收盘时刻：周末/盘前=上一个工作日15:00；工作日盘后=今天15:00
+                if is_weekend or is_before_open:
+                    d = now.date() - timedelta(days=1)
+                    while d.weekday() >= 5:
+                        d -= timedelta(days=1)
+                    last_close = datetime.combine(d, dtime(15, 0))
+                else:
+                    last_close = datetime.combine(now.date(), dtime(15, 0))
+                return cache_time < last_close
 
-            # 如果缓存是昨天或更早的盘后创建的，且现在是盘前，不过期
-            # （交易日开盘前用昨天的收盘数据也是合理的）
-            if cache_time.date() >= (now.date() - timedelta(days=1)):
-                return False
-
-        # 盘中：TTL过期
+        # 盘中/午休：TTL过期
         return (time.time() - timestamp) > self._ttl
 
     def refresh(self):

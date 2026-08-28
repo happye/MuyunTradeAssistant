@@ -201,6 +201,7 @@ class StrategyLayer:
         decision_result: DecisionResult,
         strategy_state: StrategyState,
         data: StockData,
+        current_date: Optional[str] = None,  # v0.8.7.5 审计修复 A21: 真实日期，写 entry_date/last_reduce_date
     ) -> StrategyDecision:
         """处理信号聚合结果，输出经过策略层过滤的稳定决策
 
@@ -218,6 +219,7 @@ class StrategyLayer:
             decision_result: Decision Layer输出的信号聚合结果
             strategy_state: 上一交易日的策略层状态
             data: 当前股票数据
+            current_date: 当前日期 YYYY-MM-DD（写 entry_date/last_reduce_date 用；None 时不写）
 
         Returns:
             StrategyDecision: 策略层最终决策
@@ -328,7 +330,8 @@ class StrategyLayer:
         # Step 8: 更新交易生命周期
         lifecycle_before = new_state.lifecycle
         new_state = self._update_lifecycle(
-            new_state, adjusted_decision, position_action, data, position_ratio, sell_path
+            new_state, adjusted_decision, position_action, data, position_ratio, sell_path,
+            current_date=current_date,
         )
         lifecycle_after = new_state.lifecycle
 
@@ -469,7 +472,10 @@ class StrategyLayer:
             return True
 
         # 新出现的方向信号（前一天不是同方向）
-        if state.recent_signals and state.recent_signals[-1] != decision.value:
+        # v0.8.7.5 审计修复 A07：process() 先 push_signal(本日) 再进本函数，[-1] 是本日信号自身
+        # → 恒相等 → "新方向需确认"机制整体失效。改为比对前一日 [-2]；
+        # 历史不足 2 条（首日信号）视为新信号，同样需要确认。
+        if len(state.recent_signals) < 2 or state.recent_signals[-2] != decision.value:
             return True
 
         return False
@@ -597,6 +603,13 @@ class StrategyLayer:
             if trace.step == "市场状态影响" and "final_scores" in trace.data:
                 weighted_scores = trace.data["final_scores"]
                 break
+        if not weighted_scores:
+            # v0.8.7.5 审计修复 A38：靠中文 step 名抓 trace，决策引擎改名即 buy/sell_score
+            # 双双归零且无告警——至少要留一条告警让问题可被发现
+            logger.warning(
+                "策略层未从决策 trace 命中 '市场状态影响' 步骤，buy/sell_score 将按 0 处理"
+                "（决策引擎 step 命名可能已变更，仓位管理会退化）"
+            )
 
         buy_score = weighted_scores.get("BUY", 0.0)
         sell_score = weighted_scores.get("SELL", 0.0)
@@ -873,6 +886,7 @@ class StrategyLayer:
         data: StockData,
         position_ratio: float = 0.0,
         sell_path: Optional[str] = None,
+        current_date: Optional[str] = None,  # A21: 真实日期（YYYY-MM-DD），写 entry_date/last_reduce_date
     ) -> StrategyState:
         """更新交易生命周期状态
 
@@ -893,7 +907,7 @@ class StrategyLayer:
         if lifecycle == TradeLifecycle.FLAT:
             if decision == SignalType.BUY and position_action == PositionAction.OPEN:
                 new_state.lifecycle = TradeLifecycle.OPEN
-                new_state.entry_date = data.stock_code  # 简化，实际应是日期
+                new_state.entry_date = current_date  # A21 修复：写真实日期（此前误写股票代码）
                 new_state.entry_price = data.price
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
@@ -902,7 +916,7 @@ class StrategyLayer:
             elif position_action == PositionAction.OPEN:
                 # 防御：HOLD等信号但仓位动作为OPEN时，也应建仓
                 new_state.lifecycle = TradeLifecycle.OPEN
-                new_state.entry_date = data.stock_code
+                new_state.entry_date = current_date  # A21 修复：写真实日期
                 new_state.entry_price = data.price
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
@@ -911,7 +925,7 @@ class StrategyLayer:
             elif position_action == PositionAction.ADD:
                 # 防御：FLAT状态下不应出现ADD，修正为OPEN
                 new_state.lifecycle = TradeLifecycle.OPEN
-                new_state.entry_date = data.stock_code
+                new_state.entry_date = current_date  # A21 修复：写真实日期
                 new_state.entry_price = data.price
                 new_state.reverse_count = 0
                 new_state.total_commission_paid = 0.0
@@ -948,7 +962,7 @@ class StrategyLayer:
                 new_state.add_protection_remaining = 0
             elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
                 new_state.lifecycle = TradeLifecycle.HOLD
-                new_state.last_reduce_date = data.stock_code  # 简化
+                new_state.last_reduce_date = current_date  # A21 修复：写真实日期
                 new_state.last_reduce_reason = sell_path
                 new_state.reduce_protection_remaining = self._get_reduce_protection_days(sell_path)
                 new_state.current_position_ratio = position_ratio

@@ -39,14 +39,15 @@ def calc_breakout_price(data: StockData, high_window: int = 20) -> Optional[floa
 
     突破买入触发价 = 近N日最高点
 
+    v0.8.7.5 审计修复 A39（注释纠正）：StockData 只有 high_60d/high_120d 两个字段，
+    20/60 日窗口统一用 high_60d（真 60 日高点）。旧注释"high_60d 实际存储的是20日高点"
+    是 M-D 修复前的过时描述——现 high_60d 就是 60 日高点，20 日窗口借用 60 日高点是
+    M-D 拍板的刻意收紧（见 entry_rules.py 同款注释：市场动荡避免假突破）。
+
     Args:
         data: 股票数据
         high_window: N日窗口
     """
-    if high_window == 20:
-        return data.high_60d  # high_60d 实际存储的是20日高点
-    if high_window == 60:
-        return data.high_60d
     if high_window == 120:
         return data.high_120d
     return data.high_60d

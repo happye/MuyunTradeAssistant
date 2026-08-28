@@ -19,6 +19,9 @@ from src.core.benzong.dimensions.valuation_position import score as vp_score
 
 logger = logging.getLogger(__name__)
 
+# rule_score(spot=) 的"未传"哨兵：区分"实时拉取"（live 默认）与"显式禁用"（回测传 None）
+_SPOT_UNSET = object()
+
 
 # 利空关键词（个股风险维度用，不调 AI）
 RISK_KEYWORDS = [
@@ -212,13 +215,17 @@ def _risk_deduction_rule(code: str, data_summary: dict) -> dict:
             "sources": [f"公告 {len(announcements)} 条"]}
 
 
-def rule_score(code: str, name: str = "", data_summary: Optional[dict] = None) -> dict:
+def rule_score(code: str, name: str = "", data_summary: Optional[dict] = None,
+               spot=_SPOT_UNSET) -> dict:
     """规则版 6 维评分（不调 AI）。
 
     Args:
         code: 股票代码
         name: 股票名称
         data_summary: data_provider.get_data_summary 的结果；None 时自动拉
+        spot: 全市场快照单股行情。缺省哨兵=内部实时拉取（live 默认）；
+              显式传 None=禁用快照（回测禁网，龙头/辨识度两维走中性降级）；
+              传 dict=直接使用（bar 时点注入）。
 
     Returns:
         {dim_name: {score, confidence, reasoning, sources, ...}, ..., "total_score", "grade"}
@@ -228,7 +235,8 @@ def rule_score(code: str, name: str = "", data_summary: Optional[dict] = None) -
     if data_summary is None:
         data_summary = data_provider.get_data_summary(code)
 
-    spot = _get_spot(code)
+    if spot is _SPOT_UNSET:
+        spot = _get_spot(code)
 
     dims = {
         "industry_prosperity": _industry_prosperity_rule(code, data_summary),

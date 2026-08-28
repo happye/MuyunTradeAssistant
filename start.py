@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.7.2"
+VERSION = "v0.8.7.5"  # A31 修复：与 cli/main.py --version、AGENTS.md 统一（原与最新 commit 脱节）
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）
@@ -87,11 +87,11 @@ def show_help():
     print("│  ★ 持仓                                            │")
     print("│    pos                    查看持仓列表              │")
     print("│    pos add <代码> [名称] [价格] [仓位]              │")
-    print("│      ↑ 自动 AI 辅助生成 TradePlan 草稿（v0.8.5）    │")
+    print("│      ↑ 需带价格才自动生成 TradePlan 草稿(v0.8.7.5)  │")
     print("│    pos plan <代码>        查看/生成单只交易计划      │")
-    print("│    pos plan <代码> --u    按当前行情更新计划         │")
+    print("│    pos plan <代码> --update 按当前行情更新计划        │")
     print("│    pos plan all           批量生成（无计划的持仓）   │")
-    print("│    pos plan all --u       批量更新所有持仓计划       │")
+    print("│    pos plan all --update  批量更新所有持仓计划       │")
     print("│    pos rm  <代码>         删除持仓记录              │")
     print("│    pos overweight <代码> [依据]  超配策略(教学十)    │")
     print("│                                                    │")
@@ -295,7 +295,8 @@ def parse_input(user_input: str):
             try:
                 days = int(parts[1])
             except ValueError:
-                pass
+                # v0.8.7.5 审计修复 A33：非法参数此前静默吞掉回落 30 天，用户不知道
+                print(f"  [!] '{parts[1]}' 不是有效天数，已按默认 30 天处理（用法: expect 60）")
         return ("expect", {"days": days})
 
     # ── 持仓管理 ──
@@ -359,7 +360,8 @@ def parse_input(user_input: str):
                 print("      pos plan all --update    批量更新所有持仓计划")
                 return None
             target = parts[2]
-            update = "--update" in parts[3:] or "-u" in parts[3:]
+            # v0.8.7.5 审计修复：帮助文本曾宣传 --u（实际只认 --update/-u），补齐防用户照旧写法静默失效
+            update = "--update" in parts[3:] or "-u" in parts[3:] or "--u" in parts[3:]
             return ("pos_plan", {"stock_code": target, "update": update})
         elif sub in ("overweight", "ow"):
             # 报告3.1 笨总教学十超配策略：pos overweight <代码> [依据...]
@@ -815,6 +817,16 @@ def run_benzong_scan(args: dict):
         print(f"  [!] 未识别规则 '{rule_name}'，按宽口径继续（可用规则跑 rules 查看）")
         rule_name = "healthy_pullback"
 
+    # v0.8.7.4补：allrules 权威化 -- 五规则全跑按全市场跑，主题词/规则参数忽略并明示
+    # （否则 bz scan --allrules 科技 会显示'五规则全跑'实际走主题双通道，显示与行为打架）
+    # v0.8.7.5 审计修复 A29：条件补 rule_from_positional——
+    # `bz scan --allrules shrink_pullback` 此前裸参数规则被静默丢弃无任何提示
+    if allrules:
+        if theme or rule_explicit or rule_from_positional:
+            print("  [!] 五规则全跑模式按全市场跑，主题词/规则参数已忽略")
+        theme = ""
+        rule_effective = False
+
     print()
     print("=" * 64)
     print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
@@ -897,7 +909,7 @@ def run_benzong_scan(args: dict):
                                          "name": getattr(c, "stock_name", c.stock_code),
                                          "term": theme, "why": "全市场行业筛选"})
         except Exception as e:
-            print(f"  [dim]通道B 全市场筛选跳过: {type(e).__name__}: {str(e)[:60]}[/dim]")
+            print(f"  通道B 全市场筛选跳过: {type(e).__name__}: {str(e)[:60]}")
 
         # 合并：法C 优先（细分纯正），全市场补充非龙头
         merged = a_stocks + b_stocks
@@ -935,10 +947,10 @@ def run_benzong_scan(args: dict):
                 try:
                     cands, info = engine.quick_scan(rule_name=r, market_query=None, exclude_codes=exclude_codes)
                 except Exception as e:
-                    print(f"  [dim]{r} 规则失败: {type(e).__name__}: {str(e)[:50]}[/dim]")
+                    print(f"  {r} 规则失败: {type(e).__name__}: {str(e)[:50]}")
                     continue
                 if not cands:
-                    print(f"  [dim]{r}: 无候选[/dim]")
+                    print(f"  {r}: 无候选")
                     continue
                 added = 0
                 for c in cands:
@@ -954,9 +966,9 @@ def run_benzong_scan(args: dict):
             # （否则排在后的 value_pick 会被机械砍掉，没机会评分）
             codes = merged_codes
             if not codes:
-                print(f"  [red]✗ 五规则均无候选(全市场行情源可能失效)[/red]")
-                print(f"  [yellow]→ 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)[/yellow]")
-                print(f"  [yellow]→ 或单股分析: l <代码> / bz <代码>(走Baostock)[/yellow]")
+                print(f"  ✗ 五规则均无候选(全市场行情源可能失效)")
+                print(f"  → 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)")
+                print(f"  → 或单股分析: l <代码> / bz <代码>(走Baostock)")
                 return
             resonate = {c: rs for c, rs in rule_hits.items() if len(rs) > 1}
             print(f"  ✓ 五规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
@@ -970,21 +982,21 @@ def run_benzong_scan(args: dict):
                     exclude_codes=exclude_codes,
                 )
             except Exception as e:
-                print(f"  [red]✗ 初筛失败: {type(e).__name__}: {e}[/red]")
+                print(f"  ✗ 初筛失败: {type(e).__name__}: {e}")
                 return
 
             if "error" in scan_info:
                 err = scan_info['error']
                 if "全市场" in err or "行情数据" in err:
-                    print(f"  [red]✗ 全市场行情源失效(新浪/东财当前不可用)[/red]")
-                    print(f"  [yellow]→ 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)[/yellow]")
-                    print(f"  [yellow]→ 或单股分析: l <代码> / bz <代码>(走Baostock,不依赖全市场快照)[/yellow]")
-                    print(f"  [dim]全市场源失效是外部数据源问题,非代码bug,恢复后自动可用[/dim]")
+                    print(f"  ✗ 全市场行情源失效(新浪/东财当前不可用)")
+                    print(f"  → 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)")
+                    print(f"  → 或单股分析: l <代码> / bz <代码>(走Baostock,不依赖全市场快照)")
+                    print(f"  全市场源失效是外部数据源问题,非代码bug,恢复后自动可用")
                 else:
-                    print(f"  [red]✗ 扫描失败: {err}[/red]")
+                    print(f"  ✗ 扫描失败: {err}")
                 return
             if not candidates:
-                print(f"  [yellow]⚠ 初筛无候选股（可能非交易时段或条件过严）[/yellow]")
+                print(f"  ⚠ 初筛无候选股（可能非交易时段或条件过严）")
                 return
 
             codes = [c.stock_code for c in candidates[:limit]]
@@ -1043,7 +1055,7 @@ def run_benzong_scan(args: dict):
                         grade_disp + veto,
                         f"{item['confidence']:.2f}", dims_str)
         rc.print(tbl)
-        print(f"  [dim]评分=归一化(0-100) | 等级含行业景气度闸门(景气≤30最高C/=0判F) | 景气分标红=笨总大前提存疑[/dim]")
+        print(f"  评分=归一化(0-100) | 等级含行业景气度闸门(景气≤30最高C/=0判F) | 景气分标红=笨总大前提存疑")
     except Exception:
         # rich 不可用时降级纯文本
         for idx, item in enumerate(batch["top_n"], 1):
@@ -1054,7 +1066,7 @@ def run_benzong_scan(args: dict):
     print()
 
     if batch["failures"]:
-        print(f"  [dim]失败: {', '.join(f['code'] for f in batch['failures'])}[/dim]")
+        print(f"  失败: {', '.join(f['code'] for f in batch['failures'])}")
         print()
 
     # v0.8.7 体验重构 Step1：scan 结果落盘 + 存状态供 #N 快捷接住
@@ -1078,7 +1090,7 @@ def run_benzong_scan(args: dict):
             print(f"  💡 输序号快捷：bz #1 评分 / l #1 分析 / pos add #1 加仓")
             print()
     except Exception as _e:
-        print(f"  [dim]scan 落盘失败（不影响主流程）: {_e}[/dim]")
+        print(f"  scan 落盘失败（不影响主流程）: {_e}")
 
     # ── Step 4 (可选): 批量回测 TopN ──
     if not do_backtest:
@@ -1120,7 +1132,7 @@ def run_benzong_scan(args: dict):
                 "trades": getattr(res, "total_trades", 0) or 0,
             })
         except Exception as e:
-            print(f"    [red]✗ 回测失败: {type(e).__name__}: {e}[/red]")
+            print(f"    ✗ 回测失败: {type(e).__name__}: {e}")
             bt_rows.append({"code": code, "name": item["name"][:8],
                             "bz_score": item["total_score"], "bz_grade": item["grade"],
                             "return": None, "bench": None, "trades": 0})
@@ -1547,6 +1559,11 @@ def main():
             run_cli(mode, args)
         except KeyboardInterrupt:
             print("\n  [已中断]")
+        except SystemExit:
+            # v0.8.7.5 审计修复 A12：CLI 内部（如 l <代码> 数据获取失败 sys.exit(1)）会抛
+            # SystemExit，继承 BaseException，except Exception 抓不住 → 一次网络抖动把用户
+            # 踢出 REPL。REPL 内吞掉退出码回到提示符；独立 CLI 进程的退出码行为不受影响。
+            print("\n  [命令异常退出] 数据源可能暂时不可用，可稍后重试（不影响 REPL，输入 h 查看用法）")
         except Exception as e:
             print(f"\n  [错误] {e}")
             print("  输入 h 查看用法")

@@ -1521,3 +1521,15 @@ P3（已取消）:
   - [P2] ba 白话点评对 conf=0 维度显示"50"形似真实评分，宜显示"未评出"
 - **方法论沉淀**: "注释提醒"不构成修复——病根必须结构化锁死（类属性化）并配回归测试（test_market_cache_shared.py）。新调用点引入时无法依赖开发者读旧注释
 - **关联**: f0ac272（上次发作）/ c2bf53e（首批修复）/ docs/数据接口台账.md §一总原则
+
+### ISS-067: 2026-08-29 对抗性代码审查 42 项——逐条裁决+39 项修复（v0.8.7.5）
+- **状态**: ✅ 41 项属实已修 40 项 + 1 项（A24）待拍板（见下）；审查清单见 `对抗审查_20260829_待裁决清单.md`
+- **裁决方式**: 全部 42 条逐条打开 file:line 复核，41 条属实（A18 属实但属 docstring 明示的设计，A39 属实但映射本身是 M-D 拍板的刻意收紧）；无一条误报
+- **已修复（v0.8.7.5，按审查编号）**:
+  - P0: A01 start.py 缩进断裂（`_patch_audit.py` 锚点缩进错误所致，脚本已删）/ A02 live 路径 atr_14 恒 None → akshare_client 补算 ATR(14)（Chandelier/2×ATR 止损实盘恢复生效）/ A03 回测建仓 rule_scorer 拉实时数据（前瞻+网络）→ 改 bar 时点驱动（DataFeeder.get_kline_until 切片，公告/快照显式置空中性降级）/ A04 `_call_with_timeout` with 块回归（ISS-066 实际只修了 data_provider 一处）
+  - P1: A05 DataFeeder 补 adjustflag="2" 前复权对齐实盘 / A06 PlanGuard+orchestrator 共 7 处 CLOSE_ALL 同步清零 position_ratio（幽灵仓位）/ A07 信号确认机制下标错位 [-1]→[-2]（恢复"新方向需确认"）/ A08 market_cache 快照校验反向 → `_snapshot_quality_ok`（保留 LRN-20260825-001 测试替身兼容：小表放行、大表缺价格列拒绝）/ A09 回测末日强平补滑点+收盘价退化记 warning / A10 胜率配对改持仓序+价格收益率（zip 错位/量纲错误根治）/ A11 MC 死变量删除+docstring 如实 / A12 REPL 补 SystemExit 捕获（l 失败不再踢出）/ A13 主题过滤失效置 fallback_unfiltered 诚实提示
+  - P2: A14 印花税按 2023-08-28 减半时点切换 / A15 夏普 √242+ddof=1 / A16 回测收尾清仓独立 forced_eod 路径 / A17 ADD 分支去掉误用的 T+1 门槛 / A18 strict 模式传 min_hold/cooldown 加告警 / A19 仓位 before/after 统一成交价口径 / A20 融资余额信号改工作日取数（周一/长假后不再恒失效）/ A21 entry_date/last_reduce_date 写真实日期（原写股票代码）/ A22 Chandelier MA 缺失分支对齐注释（缺失即跳过）/ A23 Chandelier 删当日 high 兜底（无持仓锚点不检查）/ A25 缓存过期判定按"最近收盘"口径重写（午休走 TTL）/ A26 北交所 430xxx 三处补齐 / A27 ETF/LOF 前缀对齐（16 深市 LOF 走 fund_lof_hist_em）/ A28 次新股 <60 日不再出伪 60 日涨幅 / A29 allrules 忽略裸参数规则时提示 / A30 `--scan` 裸参数不再把 "default" 当主题词 / A31 版本号统一 v0.8.7.5
+  - P3: A32 start.py 纯 print 路径 rich 标记清除（17 行）/ A33 expect 非法参数提示 / A34 pos add 无价格提示+帮助文本 / A35 临时补丁脚本删除 / A36 规则名子串匹配要求 ASCII≥2 字符 / A37 batch_scorer None 等级兜底 / A38 策略层 trace 未命中加权分告警 / A39 price_level 注释纠正 / A40 check_trend_break 除零防
+- **待拍板（A24）**: PlanGuard `_days_since` 用自然日、StrategyState.tick_* 用交易日——气宗 max_hold_days=180 实为 180 自然日 ≈122 交易日。**不改**：ISS-046 五年回测(+12.32pp)验证的就是 180 自然日行为，改成交易日口径会作废已验证结论且需重跑全部基线。改不改、往哪改，等笨总拍板
+- **影响声明**: A02/A03/A07/A10/A14-A16 修复会改变回测与实盘行为——ISS-046 五年回测数值需重跑基线对比后方可引用；重跑前旧结论标注"修复前口径"
+- **关联**: 对抗审查_20260829_待裁决清单.md / ISS-066（A04 属其回归）/ LRN-20260825-001（A08 兼容性约束）

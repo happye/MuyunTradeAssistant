@@ -629,7 +629,9 @@ def _infer_sell_path_from_payload(payload: dict[str, Any]) -> str | None:
         return "weak_sell"
     if action_semantic == "EXIT":
         if "回测结束强制清仓" in reason or "forced" in reason_text:
-            return "trend_exit"
+            # A16 修复：回测收尾清仓此前与真实 trend_exit 返回相同值，
+            # 致 sell_path_breakdown["trend_exit"] 恒 +1，污染卖出路径统计与归因
+            return "forced_eod"
         return "trend_exit"
     return None
 

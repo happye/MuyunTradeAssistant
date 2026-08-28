@@ -55,11 +55,13 @@ def check_chandelier(
     # v0.8.3: MA确认条件
     require_ma_confirm = chandelier_cfg.get("require_ma_confirm", True)
     if require_ma_confirm:
-        if data.ma5 is not None and data.ma20 is not None:
-            if data.ma5 >= data.ma20:
-                # MA5还>=MA20，短期趋势未破坏，跳过Chandelier检查
-                return None
-        # 无MA数据时不检查（与旧行为一致）
+        if data.ma5 is None or data.ma20 is None:
+            # v0.8.7.5 审计修复 A22：原代码 MA 缺失时会落到下面的 ATR 检查直接清仓，
+            # 与本注释"无MA数据时不检查"相反——绕过 require_ma_confirm，正常回调被误判破位
+            return None
+        if data.ma5 >= data.ma20:
+            # MA5还>=MA20，短期趋势未破坏，跳过Chandelier检查
+            return None
 
     atr = data.atr_14
     if atr is None:
@@ -72,7 +74,10 @@ def check_chandelier(
         n_mult = min(n_mult * (1 + atr_ratio * 5), chandelier_cfg.get("adaptive_n_cap", 2.0) * n_map.get(position_tier, 3))
 
     # 持仓期间最高价
-    highest = high_since_entry or entry_price or data.high or data.price
+    # v0.8.7.5 审计修复 A23：删除"当日最高/现价"兜底——没有持仓锚点(high_since_entry/
+    # entry_price)时 Chandelier 无从算起，退化为当日 high 会让 stop 偏低失真，
+    # 且 portfolio 会把这个失真值写回 high_since_entry 污染后续
+    highest = high_since_entry or entry_price
     if highest is None:
         return None
 
@@ -127,7 +132,9 @@ def check_trend_break(data: StockData, config: dict) -> Optional[ExitSignal]:
     max_gap_pct = trend_cfg.get("max_gap_pct", 3.0)
 
     # 中期趋势破坏: EXIT
-    if (data.ma10 is not None and data.ma60 is not None
+    # A40 修复：补 ma60>0 除零防（脏数据 ma60=0 时 ZeroDivisionError 会被上层
+    # except: logger.debug 吞掉，卖出检查静默失效）
+    if (data.ma10 is not None and data.ma60 is not None and data.ma60 > 0
             and data.ma10 < data.ma60):
         # 中期趋势破坏：以 MA60 为基准，确认这不是一个早已形成的长期死叉。
         gap_pct = (data.ma60 - data.ma10) / data.ma60 * 100
@@ -142,7 +149,7 @@ def check_trend_break(data: StockData, config: dict) -> Optional[ExitSignal]:
             )
 
     # 短期趋势破坏: TRIM
-    if (data.ma5 is not None and data.ma20 is not None
+    if (data.ma5 is not None and data.ma20 is not None and data.ma20 > 0
             and data.ma5 < data.ma20):
         # 短期趋势破坏：同样以 MA20 为基准，避免短期死叉长期刷屏。
         gap_pct = (data.ma20 - data.ma5) / data.ma20 * 100

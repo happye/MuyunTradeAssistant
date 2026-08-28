@@ -27,6 +27,9 @@ global_exclude:
   - field: "code"
     op: "starts_with"
     value: "920"
+  - field: "code"
+    op: "starts_with"
+    value: "4"   # v0.8.7.5 审计修复 A26：430xxx 北交所老代码段，此前漏网
   - field: "name"
     op: "contains"
     value: "退"

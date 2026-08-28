@@ -263,15 +263,20 @@ def _check_margin_surge(code: str) -> Optional[str]:
             return float(row.iloc[0][mcol])
 
         # 取最近2个有数据的交易日，间隔≥4天（算"近5日增幅"，非1日波动，防误触发）
-        dates = [(datetime.now() - timedelta(days=i)).strftime("%Y%m%d") for i in range(0, 9)]
+        # v0.8.7.5 审计修复 A20：原取最近9个自然日，周一/长假后首日的前3个日期常是
+        # 周末或节假日（融资数据为空）→ 连续3次 None 即 break → 信号每周约1/5交易日
+        # 静默失效。改为只取工作日并扩到 12 个（覆盖长假），熔断放宽到 8 次连续空
+        # （节假日空返回是秒级的，放宽只影响网络挂死的最坏情形，且有日缓存兜底）。
+        _cal = [datetime.now() - timedelta(days=i) for i in range(0, 18)]
+        dates = [d.strftime("%Y%m%d") for d in _cal if d.weekday() < 5][:12]
         latest = prev = None
         _none_streak = 0
         for d in dates:
             v = _get_balance(d)
             if v is None or v <= 0:
                 _none_streak += 1
-                if _none_streak >= 3:
-                    break  # 连续3次无数据，放弃（防最坏9×15s=135s阻塞）
+                if _none_streak >= 8:
+                    break  # 连续8次无数据，放弃（防网络挂死阻塞；节假日空返回秒级，代价可忽略）
                 continue
             _none_streak = 0
             if latest is None:
