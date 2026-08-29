@@ -54,9 +54,18 @@ OUTLOOK_HOLD_MULTIPLIER = {
 # A 级且行业景气>0 → 气宗(长期格局,持有期长,宽止损,无技术失效条件)
 # B 级 → 剑宗(一波流,持有期短,紧止损,保留技术失效条件)
 # C/D/F/None → 不设模式(向后兼容,PlanGuard 仅压 weak_sell)
-QIZONG_MIN_HOLD_DAYS = 180
-JIANZONG_MAX_HOLD_DAYS = 30
-JIANZONG_ATR_MULTIPLIER = 1.0
+# 2026-08-29 小盘对照实验：允许环境变量覆盖（默认与原值一致=零行为变化），
+# 供 tests/backtest/test_smallcap_stop_compare.py 网格对照使用，实盘不受影响
+import os as _os
+def _env_float(name, default):
+    try:
+        v = _os.environ.get(name)
+        return float(v) if v else default
+    except (TypeError, ValueError):
+        return default
+QIZONG_MIN_HOLD_DAYS = int(_env_float('MUYUN_QIZONG_HOLD_DAYS', 180))
+JIANZONG_MAX_HOLD_DAYS = int(_env_float('MUYUN_JIANZONG_HOLD_DAYS', 30))
+JIANZONG_ATR_MULTIPLIER = _env_float('MUYUN_JIANZONG_ATR_MULT', 1.0)
 
 
 def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
