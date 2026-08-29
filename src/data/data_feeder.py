@@ -15,6 +15,13 @@ from typing import Optional
 
 from src.data.models import StockData
 
+
+def _use_legacy_sma_indicators() -> bool:
+    """C01/C02 A/B 开关（第三轮审查）：MUYUN_INDICATOR_LEGACY=1 时退回 v0.8.7.6 前的
+    SMA 口径做对照。默认 Wilder/通达信口径（ewm alpha=1/N）。只读 env 不写，无污染。"""
+    import os
+    return os.environ.get("MUYUN_INDICATOR_LEGACY", "") == "1"
+
 logger = logging.getLogger(__name__)
 
 
@@ -206,15 +213,17 @@ class DataFeeder:
         vol = cutoff['volume'].astype(float)
         avg_volume_20 = self._safe_rolling(vol, 20)
 
-        # 60日高低
+        # 60日高低（v0.8.7.7 C07 修复：守卫 >=20 → >=60 与字段名一致，
+        # 原 20-59 根K线时给的是伪"60日高点"，污染价格位置/突破判定）
         recent_60 = cutoff.tail(60)
-        high_60d = float(recent_60['high'].astype(float).max()) if len(recent_60) >= 20 else None
-        low_60d = float(recent_60['low'].astype(float).min()) if len(recent_60) >= 20 else None
+        high_60d = float(recent_60['high'].astype(float).max()) if len(recent_60) >= 60 else None
+        low_60d = float(recent_60['low'].astype(float).min()) if len(recent_60) >= 60 else None
 
-        # 120日高低
+        # 120日高低（v0.8.7.7 C04 修复：守卫 >=60 → >=120 对齐 live 路径，
+        # 原 60-119 根K线时回测有值/live 为 None，回测突破信号无法迁移实盘）
         recent_120 = cutoff.tail(120)
-        high_120d = float(recent_120['high'].astype(float).max()) if len(recent_120) >= 60 else None
-        low_120d = float(recent_120['low'].astype(float).min()) if len(recent_120) >= 60 else None
+        high_120d = float(recent_120['high'].astype(float).max()) if len(recent_120) >= 120 else None
+        low_120d = float(recent_120['low'].astype(float).min()) if len(recent_120) >= 120 else None
 
         # MACD
         macd_dif, macd_dea, macd_hist = None, None, None
@@ -481,8 +490,14 @@ class DataFeeder:
             delta = close.diff()
             gain = delta.where(delta > 0, 0.0)
             loss = -delta.where(delta < 0, 0.0)
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
+            if _use_legacy_sma_indicators():
+                avg_gain = gain.rolling(window=period).mean()
+                avg_loss = loss.rolling(window=period).mean()
+            else:
+                # v0.8.7.7 C01 修复：Wilder RMA（通达信 SMA(X,N,1) = ewm alpha=1/N），
+                # 与通达信/同花顺/TradingView 对齐；原 rolling().mean() 判反率最高 14%
+                avg_gain = gain.ewm(alpha=1.0 / period, adjust=False).mean()
+                avg_loss = loss.ewm(alpha=1.0 / period, adjust=False).mean()
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
             val = float(rsi.iloc[-1])
@@ -494,7 +509,9 @@ class DataFeeder:
         """计算布林带"""
         close = df['close'].astype(float)
         mid = close.rolling(window=period).mean()
-        std = close.rolling(window=period).std()
+        # v0.8.7.7 C05 修复：显式 ddof=1 对齐通达信 STD（估算标准差）——
+        # 原依赖 pandas 默认值，换 numpy.std()/显式 ddof=0 会静默变口径
+        std = close.rolling(window=period).std(ddof=1)
         upper = mid + std_dev * std
         lower = mid - std_dev * std
         u = float(upper.iloc[-1])
@@ -511,6 +528,10 @@ class DataFeeder:
         high_list = df['high'].astype(float).rolling(window=n, min_periods=1).max()
         close = df['close'].astype(float)
         rsv = (close - low_list) / (high_list - low_list) * 100
+        # 第三轮审查 C06 复核结论（2026-08-29 实测）：单日一字涨停/跌停时窗口含前日
+        # 价格区间，分母>0，RSV 自然=100/0（实测连板 K=94.85/4.73，极值正确）；
+        # NaN 只在"整个窗口全平"时出现，而那正是无波动的平盘——50=中性语义正确。
+        # fillna(50) 保留不动。若未来想区分"连续同价一字板"方向，需另行设计。
         rsv = rsv.fillna(50)
         k = rsv.ewm(com=m1 - 1, adjust=False).mean()
         d = k.ewm(com=m2 - 1, adjust=False).mean()
@@ -536,7 +557,11 @@ class DataFeeder:
 
         if len(true_range) < period:
             return None
-        atr = true_range.rolling(window=period).mean().iloc[-1]
+        if _use_legacy_sma_indicators():
+            atr = true_range.rolling(window=period).mean().iloc[-1]
+        else:
+            # v0.8.7.7 C02 修复：通达信 EXPMEMA（Wilder）口径，原 SMA(TR) 偏差 10.1%
+            atr = true_range.ewm(alpha=1.0 / period, adjust=False).mean().iloc[-1]
         return round(float(atr), 2) if pd.notna(atr) else None
 
     @staticmethod

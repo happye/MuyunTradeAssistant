@@ -3214,8 +3214,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.7.6：第二轮对抗审查（B01-B27）；A31 修复：版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.7.6 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
+        # v0.8.7.7：第三轮审查指标公式修复（C01-C07）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.7.7 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
     )
     parser.add_argument(
         "--verbose",

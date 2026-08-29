@@ -61,7 +61,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-当前版本：**v0.8.7.6**（ISS-069 第二轮对抗审查 27 项裁决+24 项修复：技能引擎 majority 阈值 off-by-one、9 个 YAML 条件未注册、一票否决强制 F、坏缓存容错+原子写、事件层 B 系列门控/合并/死功能修复等；上一版 v0.8.7.5 为 ISS-067 第一轮 42 项裁决）。**注意：B01/B02/B03/B16 改变决策与评分行为，历史回测数值引用前需重跑基线**（详见 ISSUES.md ISS-069）。
+当前版本：**v0.8.7.7**（ISS-071 第三轮审查 C 区块：RSI/ATR 切 Wilder·通达信口径（MUYUN_INDICATOR_LEGACY=1 可回旧口径）、live 指标 notna 防护、高低点窗口守卫对齐、BOLL 显式 ddof=1；C06 一字板经实测复核为假阳性不改。上一版 v0.8.7.6 为 ISS-069 第二轮 27 项裁决）。**注意：C01/C02 改变全部 RSI/ATR 数值与信号，历史回测数值引用前需重跑基线**（详见 ISSUES.md ISS-071）。
 
 ---
 
@@ -198,19 +198,23 @@ docs/               # 详细文档
 
 > 背景：两轮对抗性审查累计 69 条发现 + 259 条 git 提交考古，论证见 `开发问题根因复盘_20260829.md`。
 > **本项目 `fix : feat` = 75 : 71。根因不是代码质量，是教训从未闭环。**
-> 可执行清单见 **`.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（WorkBuddy 可加载路径）。
+> **开工前必读：`skills/muyun-dev-discipline/SKILL.md`**（工具中立主副本）。
+> 各 Agent 工具的 skill 目录互不兼容，该 skill 已同步部署到 `.claude/skills/`、`.github/skills/`、`.cursor/rules/`、`.codex/skills/`、`.workbuddy/skills/`；改动主副本后跑 `bash scripts/sync-agent-skills.sh`。
 
-### 铁律 0：教训双写（不做 = 没做）
+### 铁律 0：教训必须落进仓库内（不做 = 没做）
 
-任何有长期价值的教训**必须同时写两处**：
+会话级记忆目录**因 Agent 工具而异，且大多不进版本控制**（有的工具根本没有持久记忆）。
+**唯一跨工具、跨机器、跨会话可靠的沉淀点 = 仓库内的 `.learnings/`。**
 
-| 位置 | 用途 | 版本控制 |
-|---|---|---|
-| `.workbuddy/memory/YYYY-MM-DD.md` | 本次会话可见 | ❌ 在 `.gitignore:23` |
-| `.learnings/LEARNINGS.md` | 跨会话/跨机器迁移 | ✅ |
+| 位置 | 跨工具 | 版本控制 | 用途 |
+|---|---|---|---|
+| `.learnings/LEARNINGS.md` | ✅ | ✅ | **必写**，唯一可靠沉淀点 |
+| `.learnings/ERRORS.md` | ✅ | ✅ | 失败与复现条件 |
+| 工具自带的会话记忆目录 | ❌ | ❌ | 可选，只服务当前会话 |
 
-只写 `.workbuddy/memory/` = 换机器归零 = 没写。
+只写工具自带的会话记忆 = 换工具/换机器/清缓存即归零 = 没写。
 > 2026-08-29 实测：本周 69 条发现**零条**进入 `.learnings/`；`LEARNINGS.md` 停在 08-25，`ERRORS.md` 停在 07-29；23 条 LRN 中 13 条 Status 永远 pending。
+> 同一个坑：自我提升 skill 只放在 `.github/skills/`（Copilot 路径），而实际干活的 Agent 不扫那个目录 → 那条「失败后必须先走 self-improvement skill」的强制规则**从未执行过一次**。
 
 ### 铁律 1：修 bug 四步，缺一步不许提交
 
@@ -265,8 +269,17 @@ docs/               # 详细文档
 详细规范（六步法、知识管理、业界最佳实践、反模式）见 `$dev-flow` skill。
 
 > 脚注：`$dev-flow` 是用户级全局 skill，不在本仓库内。
-> **注意**：仓库内另有 `.github/skills/self-improvement/SKILL.md`，但那是 **VS Code Copilot 路径，WorkBuddy 不加载**（WorkBuddy 项目级 skill 只认 `{workspace}/.workbuddy/skills/`）。因此 copilot-instructions.md 里那条「失败后必须先走 self-improvement skill」的规则从未生效过。
-> **仓库内真正会被加载的是 `.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（2026-08-29 建立），新纪律一律写那里。
+>
+> **⚠ skill 目录互不兼容（本项目踩过的真坑）**：各 Agent 工具扫描 skill 的目录各不相同——
+> Claude Code 用 `.claude/skills/`、VS Code Copilot 用 `.github/skills/`、Cursor 用 `.cursor/rules/`、
+> Codex 用 `.codex/skills/`、WorkBuddy/CodeBuddy 用 `.workbuddy/skills/`。
+> 仓库内的 `self-improvement` skill 只放在 `.github/skills/`，而实际干活的 Agent 不扫那个目录，
+> 导致 `copilot-instructions.md` 里那条「失败后必须先走 self-improvement skill」的规则**从未生效过**。
+>
+> **因此纪律**：新纪律一律写进**主副本 `skills/muyun-dev-discipline/SKILL.md`**（项目根，工具中立），
+> 写完跑 `bash scripts/sync-agent-skills.sh` 把副本推到上述 5 个目录。
+> 不要依赖"某个目录一定会被加载"——真正的兜底是各工具入口文件（`AGENTS.md` / `CLAUDE.md` /
+> `.github/copilot-instructions.md` / `.cursorrules`）里那句显式的「开工前先读 skills/…」。
 
 ### 本项目特有的补充
 

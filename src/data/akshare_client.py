@@ -874,9 +874,10 @@ class AKShareClient:
                 ma120=round(float(latest['MA120']), 2) if pd.notna(latest['MA120']) else None,
                 # 成交量
                 avg_volume_20=int(recent['成交量'].tail(20).mean()) if len(recent) >= 20 else None,
-                # 位置信息
-                high_60d=float(recent['最高'].max()) if len(recent) >= 20 else None,
-                low_60d=float(recent['最低'].min()) if len(recent) >= 20 else None,
+                # 位置信息（v0.8.7.7 C07 修复：守卫 >=20 → >=60 与字段名一致，与回测同步；
+                # 原 20-59 根K线时给的是伪"60日高点"）
+                high_60d=float(recent['最高'].max()) if len(recent) >= 60 else None,
+                low_60d=float(recent['最低'].min()) if len(recent) >= 60 else None,
             )
 
             # MACD计算 (如果数据足够)
@@ -940,8 +941,14 @@ class AKShareClient:
             # 近20日RSI-6序列（底背离用，单独算避免改_calculate_rsi签名）
             if len(df) >= 24:
                 _delta = close.diff()
-                _gain = _delta.clip(lower=0).rolling(window=6, min_periods=6).mean()
-                _loss = (-_delta.clip(upper=0)).rolling(window=6, min_periods=6).mean()
+                import os as _os
+                if _os.environ.get("MUYUN_INDICATOR_LEGACY", "") == "1":
+                    _gain = _delta.clip(lower=0).rolling(window=6, min_periods=6).mean()
+                    _loss = (-_delta.clip(upper=0)).rolling(window=6, min_periods=6).mean()
+                else:
+                    # v0.8.7.7 C01 同类点：与 _calculate_rsi 同步切 Wilder（第三处 RSI 实现）
+                    _gain = _delta.clip(lower=0).ewm(alpha=1.0 / 6, adjust=False).mean()
+                    _loss = (-_delta.clip(upper=0)).ewm(alpha=1.0 / 6, adjust=False).mean()
                 _rs = _gain / _loss.replace(0, float('nan'))
                 _rsi_series = (100 - (100 / (1 + _rs))).astype(float).round(2)
                 stock_data.rsi_6_series = [float(x) for x in _rsi_series.tail(20).dropna().tolist()]
@@ -1049,7 +1056,13 @@ class AKShareClient:
         dea = dif.ewm(span=signal, adjust=False).mean()
         hist = (dif - dea) * 2
 
-        return round(float(dif.iloc[-1]), 3), round(float(dea.iloc[-1]), 3), round(float(hist.iloc[-1]), 3)
+        # v0.8.7.7 C03 同步补 notna 防护（脏数据时不裸返回 nan）
+        dv = float(dif.iloc[-1])
+        ev = float(dea.iloc[-1])
+        hv = float(hist.iloc[-1])
+        return (round(dv, 3) if pd.notna(dv) else None,
+                round(ev, 3) if pd.notna(ev) else None,
+                round(hv, 3) if pd.notna(hv) else None)
 
     @staticmethod
     def _calculate_atr(df: pd.DataFrame, period: int = 14) -> Optional[float]:
@@ -1063,7 +1076,12 @@ class AKShareClient:
                 [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
                 axis=1,
             ).max(axis=1)
-            atr = tr.rolling(window=period).mean().iloc[-1]
+            import os as _os
+            if _os.environ.get("MUYUN_INDICATOR_LEGACY", "") == "1":
+                atr = tr.rolling(window=period).mean().iloc[-1]
+            else:
+                # v0.8.7.7 C02 修复：通达信 EXPMEMA（Wilder）口径，原 SMA(TR) 偏差 10.1%
+                atr = tr.ewm(alpha=1.0 / period, adjust=False).mean().iloc[-1]
             return round(float(atr), 2) if pd.notna(atr) else None
         except Exception as e:
             logger.warning(f"ATR计算失败: {e}")
@@ -1094,12 +1112,23 @@ class AKShareClient:
             gain = delta.where(delta > 0, 0.0)
             loss = -delta.where(delta < 0, 0.0)
 
-            avg_gain = gain.rolling(window=period).mean()
-            avg_loss = loss.rolling(window=period).mean()
+            import os as _os
+            if _os.environ.get("MUYUN_INDICATOR_LEGACY", "") == "1":
+                avg_gain = gain.rolling(window=period).mean()
+                avg_loss = loss.rolling(window=period).mean()
+            else:
+                # v0.8.7.7 C01 修复：Wilder RMA（通达信 SMA(X,N,1) = ewm alpha=1/N），
+                # 与通达信/同花顺/TradingView 对齐；原 rolling().mean() 判反率最高 14%
+                avg_gain = gain.ewm(alpha=1.0 / period, adjust=False).mean()
+                avg_loss = loss.ewm(alpha=1.0 / period, adjust=False).mean()
 
             rs = avg_gain / avg_loss
             rsi = 100 - (100 / (1 + rs))
-            results.append(round(float(rsi.iloc[-1]), 2))
+            # v0.8.7.7 C03 修复：补 notna 防护（连续停牌/全天横盘 gain=loss=0 → 0/0 → nan，
+            # 原裸返回 nan 被 skill_engine 的 `is not None` 守卫放行 → 信号静默蒸发，
+            # live 独有、测试抓不到；回测路径本就有此防护）
+            val = float(rsi.iloc[-1])
+            results.append(round(val, 2) if pd.notna(val) else None)
 
         return tuple(results) if len(results) == 3 else (None, None, None)
 
@@ -1118,12 +1147,19 @@ class AKShareClient:
         close = df['收盘'].astype(float)
 
         mid = close.rolling(window=period).mean()
-        std = close.rolling(window=period).std()
+        # v0.8.7.7 C05 修复：显式 ddof=1 对齐通达信 STD（估算标准差）——原依赖 pandas 默认值
+        std = close.rolling(window=period).std(ddof=1)
 
         upper = mid + std_dev * std
         lower = mid - std_dev * std
 
-        return round(float(upper.iloc[-1]), 2), round(float(mid.iloc[-1]), 2), round(float(lower.iloc[-1]), 2)
+        # v0.8.7.7 C03 同步补 notna 防护（数据不足/脏数据时不裸返回 nan）
+        u = float(upper.iloc[-1])
+        m = float(mid.iloc[-1])
+        l = float(lower.iloc[-1])
+        return (round(u, 2) if pd.notna(u) else None,
+                round(m, 2) if pd.notna(m) else None,
+                round(l, 2) if pd.notna(l) else None)
 
     @staticmethod
     def _get_index_trend_uncached(index_code: str = "sh.000300") -> Optional[dict]:
@@ -1284,13 +1320,22 @@ class AKShareClient:
         close = df['收盘'].astype(float)
 
         rsv = (close - low_list) / (high_list - low_list) * 100
+        # 第三轮审查 C06 复核结论（与回测 _calc_kdj 同步，2026-08-29 实测）：
+        # 单日一字板 RSV 自然=100/0（实测 K=94.85/4.73），NaN->50 只在窗口全平时
+        # 出现，50=中性正确。fillna(50) 保留不动。
         rsv = rsv.fillna(50)
 
         k = rsv.ewm(com=m1 - 1, adjust=False).mean()
         d = k.ewm(com=m2 - 1, adjust=False).mean()
         j = 3 * k - 2 * d
 
-        return round(float(k.iloc[-1]), 2), round(float(d.iloc[-1]), 2), round(float(j.iloc[-1]), 2)
+        # v0.8.7.7 C03 同步补 notna 防护
+        kv = float(k.iloc[-1])
+        dv = float(d.iloc[-1])
+        jv = float(j.iloc[-1])
+        return (round(kv, 2) if pd.notna(kv) else None,
+                round(dv, 2) if pd.notna(dv) else None,
+                round(jv, 2) if pd.notna(jv) else None)
 
 
 # 导出便捷函数

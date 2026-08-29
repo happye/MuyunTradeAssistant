@@ -14,22 +14,26 @@ Corrections, insights, and knowledge gaps captured during development.
 **Area**: workflow
 
 ### Summary
-教训写进了不会被读取的位置，等于没写。本项目设计了三层 AI 协作资产（`.github/copilot-instructions.md` / `.github/skills/self-improvement/` / `.learnings/`），但这三层全是 **VS Code Copilot 路径**；实际干活的 Agent 是 WorkBuddy，只加载 `{workspace}/.workbuddy/skills/` 和 `~/.workbuddy/skills/`，且 `.workbuddy/skills/` **目录不存在**。而我们的教训全写进 `.workbuddy/memory/`，后者在 `.gitignore:23` → 换机器归零。
+**教训写进了不会被读取的位置，等于没写。** 各 Agent 工具的 skill 目录互不兼容且没有交集，只部署到其中一个 = 对其他工具完全不可见。本项目把自我提升 skill 只放在 `.github/skills/`（Copilot 路径），而实际干活的 Agent 不扫那个目录 → 那条「失败后必须先走 self-improvement skill」的强制规则**从未执行过一次**。同理，教训写进工具自带的会话记忆目录（本项目是 `.workbuddy/memory/`，`.gitignore:23` 忽略）→ 换工具/换机器/清缓存即归零。
 
 ### Details
 2026-08-29 两轮对抗性审查累计 69 条发现后回溯 git 历史，实测：
 
 1. `.github/copilot-instructions.md` 自 `c8cbcaa`（2026-05-26）冻结至今（57 行），而 `AGENTS.md` 已 280 行（08-29）。两份「项目规则」严重漂移：copilot-instructions 仍写着 `src/skills/` contains YAML、"tests 主要用脚本式不用 pytest" —— 均已过时。
-2. 该文件里最关键的规则「Before continuing after a meaningful failure, first consult the `self-improvement` skill」**指向一个 WorkBuddy 永远加载不到的路径 → 从未被执行过一次**。
+2. 该文件里最关键的规则「Before continuing after a meaningful failure, first consult the `self-improvement` skill」**指向一个实际干活的 Agent 永远加载不到的路径 → 从未被执行过一次**。
 3. `.learnings/LEARNINGS.md` 停在 2026-08-25、`ERRORS.md` 停在 07-29 → 本周 69 条发现**零条进入**。
 4. 23 条 LRN 中 **13 条 Status 永远 pending**（57%），其中 `LRN-20260511-002` 自己就写着「发生纠偏必须立即落 learning」，却躺了 3 个多月没闭环。
 5. 量化佐证：`fix : feat = 75 : 71`；网络/超时/线程主题提交 23+ 次横跨 5 个月；文档类改动（ISSUES 63 + AGENTS 32 + README 30 = 125 次）超过任何核心模块。
 
-### Suggested Action
-1. **教训双写铁律**：任何有长期价值的教训**必须同时**写 `.workbuddy/memory/YYYY-MM-DD.md`（本次会话用）和 `.learnings/LEARNINGS.md`（跨会话/跨机器用）。只写前者 = 没写。
-2. 新纪律一律写进 **`.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（2026-08-29 建立），不要写进 `.github/skills/` —— 那是 Copilot 路径，WorkBuddy 不加载。
-3. 每次会话收尾：把当天 `.workbuddy/memory/` 里有长期价值的部分蒸馏进 `.learnings/`。
+### Suggested Action（已落地，2026-08-29）
+1. **教训必须落进仓库内 `.learnings/`** —— 这是唯一跨工具、跨机器、跨会话可靠的沉淀点。工具自带的会话记忆目录因工具而异且大多不进版本控制，只写那里 = 没写。
+2. **跨工具资产多入口部署（不要依赖任何单一目录的自动发现）**：
+   - 主副本放**项目根 `skills/muyun-dev-discipline/SKILL.md`**（工具中立，任何工具都能按路径读到）
+   - 用 `scripts/sync-agent-skills.sh` 同步副本到 `.claude/skills/`、`.github/skills/`、`.cursor/rules/`、`.codex/skills/`、`.workbuddy/skills/`
+   - **并在各工具的入口指令文件里写死显式指针**：`AGENTS.md`（§五·五）、`CLAUDE.md`、`.github/copilot-instructions.md`、`.cursorrules` —— 入口文件的覆盖面远大于 skill 目录的自动发现，这是最可靠的兜底
+3. 每次会话收尾：把会话记忆里有长期价值的部分蒸馏进 `.learnings/`。
 4. 每条硬约束要么配一个能自动跑的检查，要么删掉 —— 没有自动化检查的规则 = 建议 = 不存在。
+5. **新增任何跨工具资产时，先问一句：这个路径在所有我可能会用的 Agent 工具里都能被发现吗？** 不能就补入口，不要假设。
 
 ### Metadata
 - Source: self_discovery
@@ -728,3 +732,53 @@ rebase 合并“共享缓存”和“全零行情拒绝入缓存”时，聚焦�
 - See Also: LRN-20260515-001, LRN-20260824-001
 
 ---
+
+---
+
+## [LRN-20260829-002] best_practice
+
+**Logged**: 2026-08-29T23:50:00+08:00
+**Priority**: critical
+**Status**: completed
+**Area**: data/indicators
+
+### Summary
+数学公式类修复必须"已知输入→已知输出"对照权威参考实现，且结论要回读代码做机理确认——两轮实证：B16 归一化首修差 100 倍因子被冒烟抓出；C06"一字板被判中性"经实测是假阳性。
+
+### Details
+第三轮审查（C 区块）验指标公式：RSI/ATR 用 SMA 而非 Wilder（通达信 SMA(X,N,1)=ewm(alpha=1/N)），判反率最高 14%。修复本身不难，两个教训更值钱：
+1. **修 B16 归一化时第一版分母写错（差 100 倍因子）**——"读代码像对的"和"算出来是对的"是两回事。total_score 已含 liquidity_coeff 乘法，归一化分母必须是 正权和×coeff 而非 100×正权和×coeff。靠已知输入（满分三档流动性→都应=100）的冒烟当场抓出。
+2. **C06 假阳性**：审查脚本证明"全平 K 线 KDJ=50"，据此推断"一字板被判中性丢信号"。回读机理+构造连板数据实测：单日一字涨停时 9 日窗口含前日区间，分母>0，RSV 自然=100（K=94.85 进超买区），根本不会走 fillna(50)；NaN 只在窗口全平时出现，而那正是无波动平盘，50=中性**正确**。若照审查建议改成方向 mask，是给不可能分支写死代码。
+
+### Suggested Action
+涉及公式：①先用已知输入算已知输出（全档位边界值），不信"代码看起来对"；②审查的"实测发现"也要复核机理——脚本构造的边界（全平序列）可能不代表它声称的现实场景（一字板）；③修复引入新公式时先推一遍量纲/因子（total 已含什么系数？分母该含几次？）。
+
+### Metadata
+- Source: self_discovery
+- Related Files: tests/core/verify_indicator_math.py, tests/core/test_indicator_math_regression.py, src/data/data_feeder.py, src/data/akshare_client.py
+- Tags: formula-verification, known-input-known-output, false-positive, wilder-rma
+- See Also: LRN-20260829-001
+
+---
+
+## [LRN-20260829-003] best_practice
+
+**Logged**: 2026-08-29T23:50:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: workflow
+
+### Summary
+live/回测两套指标 builder 手工维护是结构性漂移源——C04（守卫 60 vs 120）是 A02（live 缺 ATR）同款 bug 第三次复发；回归测试只锁单侧抓不住不对称。
+
+### Details
+C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`（live）与 `DataFeeder._build_stock_data`（回测）两套 builder 各写各的守卫/公式/字段，任何一边改动另一边不知道。测试全绿也抓不到——因为测试各自 mock 单侧。同类点：high_60d 守卫 live=20/回测=20（都错但一致）；high_120d 守卫 live=120/回测=60（不一致）。
+
+### Suggested Action
+改任何指标公式/守卫/字段：①两边必须同一 commit 同步改；②回归测试必须**同一份数据喂两个 builder 断言同值**（见 test_rsi_live_backtest_consistent），单侧测试无效；③新增指标字段时优先抽共享常量（窗口长度+最小样本数）而非复制字面量；④verify_indicator_math.py 已接入回归，跑它就是跑"live↔权威参考↔回测"三角。
+
+### Metadata
+- Source: self_discovery
+- Related Files: src/data/akshare_client.py, src/data/data_feeder.py, tests/core/test_indicator_math_regression.py
+- Tags: dual-builder-drift, live-backtest-asymmetry, regression-test-design
+- See Also: LRN-20260829-002
