@@ -515,7 +515,12 @@ class StrategyLayer:
         冷却期规则：
         - 清仓后COOLDOWN_AFTER_CLOSE_DAYS天内不允许买入
         - 减仓后COOLDOWN_AFTER_REDUCE_DAYS天内不允许加仓
-        - 极端情况下冷却期缩短（更快重评）
+        - 极端情况下冷却期缩短（更快重评）——但止损类清仓除外（2026-08-29 小盘诊断）
+
+        小盘诊断修复（ISS-068 方案1）：柯力传感2024交易明细实锤——止损清仓后极端模式
+        把5天冷却砍到2天，止损次日即回头买回再被打脸，6轮循环亏约40%份额。止损类
+        清仓（stop_loss_*）的冷却不再吃极端缩短：止损本身已证明该股波动超出模型容忍，
+        短冷却重入=重复接刀。
 
         Args:
             state: 策略状态
@@ -524,6 +529,12 @@ class StrategyLayer:
         """
         if state.cooldown_remaining <= 0:
             return False
+
+        # 止损类清仓：冷却不吃极端缩短（防止损后2天回头接刀）
+        _is_stop_close = (state.cooldown_reason == "close_all"
+                          and (state.last_close_sell_path or "").startswith("stop_loss"))
+        if _is_stop_close:
+            return decision == SignalType.BUY and state.cooldown_reason == "close_all"
 
         # 极端情况下冷却期缩短
         cooldown_threshold = self.EXTREME_PANIC_SHORTEN_COOLDOWN if is_extreme else 0
@@ -938,6 +949,7 @@ class StrategyLayer:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"
+                new_state.last_close_sell_path = sell_path if isinstance(sell_path, str) else None
                 new_state.current_position_ratio = 0.0
                 new_state.min_hold_remaining = 0
                 new_state.add_protection_remaining = 0
@@ -953,6 +965,7 @@ class StrategyLayer:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"
+                new_state.last_close_sell_path = sell_path if isinstance(sell_path, str) else None
                 new_state.current_position_ratio = 0.0
                 new_state.entry_date = None
                 new_state.entry_price = None
@@ -975,6 +988,7 @@ class StrategyLayer:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"
+                new_state.last_close_sell_path = sell_path if isinstance(sell_path, str) else None
                 new_state.current_position_ratio = 0.0
                 new_state.entry_date = None
                 new_state.entry_price = None
@@ -997,6 +1011,7 @@ class StrategyLayer:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"
+                new_state.last_close_sell_path = sell_path if isinstance(sell_path, str) else None
 
         elif lifecycle == TradeLifecycle.COOLDOWN:
             if new_state.cooldown_remaining <= 0:

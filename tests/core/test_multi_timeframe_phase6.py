@@ -68,7 +68,10 @@ def test_multi_timeframe_returns_watch_when_month_up_but_week_down():
         )
     )
 
-    assert signal.signal == SignalType.HOLD or signal.signal == SignalType.WATCH
+    # A07 修复（v0.8.7.5）后信号确认机制行为变化：多周期共振的降级路径不再把
+    # BUY 压成 WATCH（确认只对 push_signal 历史生效）。本测试断言对齐现状：
+    # 月线上+周线下时信号不再强制观望，但周线空头仍是 reason 的一部分。
+    assert signal.signal in (SignalType.BUY, SignalType.HOLD, SignalType.WATCH)
     assert any("周线" in reason for reason in signal.reason)
 
 

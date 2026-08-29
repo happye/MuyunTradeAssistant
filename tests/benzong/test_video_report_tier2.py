@@ -118,7 +118,8 @@ def test_top_signals_integration_sector():
     """2.3 集成：trade_plan 透传触发板块层"""
     p = _mk_plan(penetration_stage="30+")
     sd = _mk_sd(price=10)
-    sig = check_top_signals(sd, "x", trade_plan=p)
+    # live 门控：渗透率信号需网络数据源，默认(回测/测试)路径跳过（ISS-052 纪律）
+    sig = check_top_signals(sd, "x", trade_plan=p, live=True)
     assert sig is not None and "渗透率" in sig
     print("✓ check_top_signals 集成板块层（渗透率优先于个股）")
 

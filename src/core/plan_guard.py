@@ -129,6 +129,34 @@ class PlanGuard:
             # 否则 portfolio 取 decision.position_ratio(>0) 记成幽灵残留仓位
             adjusted.position_ratio = 0.0
             adjusted.sell_path = "stop_loss_exit"
+            # ISS-068 小盘诊断修复：PlanGuard 致命止损的强制清仓此前不碰 strategy_state
+            # 生命周期 -> 冷却从未启动 -> 4-6天后信号恢复直接重新买入 -> 高波动小盘股
+            # '止损-回头-再被打' 循环6轮（柯力2024实测亏约40%份额，小盘组Δ-16.71pp
+            # 的主病根）。strategy_layer 自发的 CLOSE_ALL 会走 _update_lifecycle 进
+            # COOLDOWN(5天禁买)，PlanGuard 强制路径必须对齐同款防护。
+            # 冷却长度用 strategy_layer 同款 COOLDOWN_AFTER_CLOSE_DAYS(=5)，且
+            # sell_path=stop_loss_exit 已由本函数写入 state，_is_in_cooldown 的
+            # 止损守卫（不吃极端缩短）自然生效。
+            try:
+                # ISS-068 A/B 口子：MUYUN_GUARD_STOP_COOLDOWN=0 时跳过冷却写入（对照实验用），
+                # 默认（未设/任意其他值）写入。实盘与默认回测行为=修复后。
+                import os as _os
+                if _os.environ.get("MUYUN_GUARD_STOP_COOLDOWN") == "0":
+                    raise RuntimeError("ab-off")
+                ns = getattr(adjusted, "new_state", None)
+                if ns is not None:
+                    from src.core.strategy_layer import StrategyLayer
+                    from src.data.models import TradeLifecycle
+                    ns.lifecycle = TradeLifecycle.COOLDOWN
+                    ns.cooldown_remaining = StrategyLayer.COOLDOWN_AFTER_CLOSE_DAYS
+                    ns.cooldown_reason = "close_all"
+                    ns.last_close_sell_path = "stop_loss_exit"
+                    ns.current_position_ratio = 0.0
+                    ns.min_hold_remaining = 0
+                    ns.add_protection_remaining = 0
+                    ns.reduce_protection_remaining = 0
+            except Exception as e:
+                logger.debug(f"PlanGuard 止损冷却写入失败(不阻断清仓): {e}")
             logger.warning(f"PlanGuard force STOP(CLOSE_ALL): price={data.price} <= stop={trade_plan.current_stop}")
             adjusted.strategy_reasons = reasons
             return adjusted

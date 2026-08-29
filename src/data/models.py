@@ -279,6 +279,7 @@ class StrategyState(BaseModel):
     # 冷却期
     cooldown_remaining: int = Field(default=0, description="冷却期剩余交易日数")
     cooldown_reason: Optional[str] = Field(default=None, description="冷却原因")
+    last_close_sell_path: Optional[str] = Field(default=None, description="最近一次清仓的卖出路径（stop_loss_*时冷却不吃极端缩短，ISS-068）")
 
     # 反转成本累计
     reverse_count: int = Field(default=0, description="本轮交易中的方向反转次数")
