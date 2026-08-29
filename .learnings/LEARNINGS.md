@@ -6,6 +6,83 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ---
 
+## [LRN-20260829-001] correction
+
+**Logged**: 2026-08-29T00:00:00+08:00
+**Priority**: critical
+**Status**: pending
+**Area**: workflow
+
+### Summary
+教训写进了不会被读取的位置，等于没写。本项目设计了三层 AI 协作资产（`.github/copilot-instructions.md` / `.github/skills/self-improvement/` / `.learnings/`），但这三层全是 **VS Code Copilot 路径**；实际干活的 Agent 是 WorkBuddy，只加载 `{workspace}/.workbuddy/skills/` 和 `~/.workbuddy/skills/`，且 `.workbuddy/skills/` **目录不存在**。而我们的教训全写进 `.workbuddy/memory/`，后者在 `.gitignore:23` → 换机器归零。
+
+### Details
+2026-08-29 两轮对抗性审查累计 69 条发现后回溯 git 历史，实测：
+
+1. `.github/copilot-instructions.md` 自 `c8cbcaa`（2026-05-26）冻结至今（57 行），而 `AGENTS.md` 已 280 行（08-29）。两份「项目规则」严重漂移：copilot-instructions 仍写着 `src/skills/` contains YAML、"tests 主要用脚本式不用 pytest" —— 均已过时。
+2. 该文件里最关键的规则「Before continuing after a meaningful failure, first consult the `self-improvement` skill」**指向一个 WorkBuddy 永远加载不到的路径 → 从未被执行过一次**。
+3. `.learnings/LEARNINGS.md` 停在 2026-08-25、`ERRORS.md` 停在 07-29 → 本周 69 条发现**零条进入**。
+4. 23 条 LRN 中 **13 条 Status 永远 pending**（57%），其中 `LRN-20260511-002` 自己就写着「发生纠偏必须立即落 learning」，却躺了 3 个多月没闭环。
+5. 量化佐证：`fix : feat = 75 : 71`；网络/超时/线程主题提交 23+ 次横跨 5 个月；文档类改动（ISSUES 63 + AGENTS 32 + README 30 = 125 次）超过任何核心模块。
+
+### Suggested Action
+1. **教训双写铁律**：任何有长期价值的教训**必须同时**写 `.workbuddy/memory/YYYY-MM-DD.md`（本次会话用）和 `.learnings/LEARNINGS.md`（跨会话/跨机器用）。只写前者 = 没写。
+2. 新纪律一律写进 **`.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（2026-08-29 建立），不要写进 `.github/skills/` —— 那是 Copilot 路径，WorkBuddy 不加载。
+3. 每次会话收尾：把当天 `.workbuddy/memory/` 里有长期价值的部分蒸馏进 `.learnings/`。
+4. 每条硬约束要么配一个能自动跑的检查，要么删掉 —— 没有自动化检查的规则 = 建议 = 不存在。
+
+### Metadata
+- Source: self_discovery
+- Related Files: `.github/copilot-instructions.md`, `.github/skills/self-improvement/SKILL.md`, `.learnings/LEARNINGS.md`, `.workbuddy/skills/muyun-dev-discipline/SKILL.md`, `AGENTS.md`, `.gitignore`, `开发问题根因复盘_20260829.md`
+- Tags: knowledge-pipeline, skill-loading-path, cross-session-memory, agents-md, process-debt
+
+**See Also**: LRN-20260511-002, LRN-20260618-004
+
+---
+
+## [LRN-20260829-002] correction
+
+**Logged**: 2026-08-29T00:00:00+08:00
+**Priority**: critical
+**Status**: pending
+**Area**: workflow
+
+### Summary
+修 bug 有三类「不彻底」，是本项目 bug 持续复发的直接原因：①只修被点名的那一处不扫同类 ②文档/注释动作冒充行为修复 ③修完不落回归测试导致下一轮审查重新付费。
+
+### Details
+
+**① 只修被点名的那一处（同类点不扫）**
+- `with ThreadPoolExecutor` 陷阱：ISS-066 / `a47783b` 只改了 `data_provider.py:51/76`，漏了 `akshare_client.py:34` → 08-29 审查 A04 又抓到。
+- HF 镜像源：修了 3 次（`8f5eb34` → `afe2406` → `87047f8`），08-29 B12 又发现同文件 `HF_ENDPOINTS` 元组顺序官方在前 + `os.environ` 写入不还原 → 第 4 次。
+- 版本号统一：A31 只统一了 start.py / main.py / AGENTS.md，README 停在 v0.8.7.2、笨总文档已写 v0.8.7.6 → 继续漂。
+
+**② 文档/注释动作冒充行为修复**
+- `87047f8` message 写「HF_ENDPOINT默认改国内镜像」，`git show --stat` 显示**只加了 1 个 76 行 .md，零行代码**。真正的修复两天前 `afe2406` 已做过 → 内容为空的重复提交。
+- `c993c6d fix(全局审查M-B): plan_guard stale docstring 对齐` 只改 docstring；08-29 复查 `plan_guard.py:177` **依然压制** `take_profit_trim`，与 `:14` docstring 自相矛盾 → M-B 至今未修。
+- `814963c` 把 with 块陷阱写进 AGENTS.md 算修完 → `akshare_client.py` 那个 with 块活到 08-29。
+- 讽刺点：ISS-066 自己的记录里就写着「「注释提醒」不构成修复」，下一条提交又这么干。
+
+**③ 修完不落回归测试**
+- 四个月至少 4 轮大审查（07-16 全局审查 / 07-21 对抗审查 / 08-24 网络共享性审计 / 08-29 两轮对抗审查），累计 150+ 条发现，**转成的回归测试 = 0**。
+- 反证：08-29 最有效的手段恰恰都不是读代码 —— 跑全量测试抓到 B12（全局 `os.environ` 污染 → 测试顺序依赖，两轮静态审查都漏）；跑脚本交叉比对一次跑出 9 个缺失条件 + 25 个死条件（人工读 14 个 YAML × 82 个注册表项必然漏）。
+
+### Suggested Action
+1. **修 bug 四步法**：①写回归测试（先红灯）→ ②修（转绿灯）→ ③扫同类点 → ④落 `.learnings/`。缺一步不许提交。
+2. **同类点扫描清单**（修完必跑）：`with ThreadPoolExecutor` / `os.environ[...] = ` / `except`+`logger.debug`+`continue`（静默 fail-open，条件不计入分母导致规则**降档触发**，比不触发更危险）/ `if <DataFrame>:` / 中文全角 `（）` / `0\.8\.7\.[0-9]`。扫出剩余 → 要么一起修，要么在 ISSUES.md 记「已知剩余 N 处」，不许默默留着。
+3. **非空校验**：提交前跑 `git show --stat HEAD | tail -5`，确认有代码改动。message 声称改了但 diff 零代码 → 不许用 `fix` 前缀。
+4. **验证靠跑不靠读**：动全局状态 → 必须跑全量测试（不能只跑单文件）；动 YAML↔代码映射 → 必须脚本交叉比对（但结论要回读代码确认，`price_position` 会假阳性）。
+5. **审查产物处置顺序改掉**：找到问题 → **先写测试** → 再修 → 扫同类 → 落 `.learnings/`。修完不落测试 = 下次重付一次审查费。
+
+### Metadata
+- Source: self_discovery
+- Related Files: `src/data/akshare_client.py`, `src/rag/embedding.py`, `src/core/skill_engine.py`, `src/core/plan_guard.py`, `src/cli/main.py`, `start.py`, `AGENTS.md`, `README.md`, `开发问题根因复盘_20260829.md`, `对抗审查_20260829_待裁决清单.md`, `对抗审查_20260829_第二轮_待裁决清单.md`
+- Tags: regression, incomplete-fix, docs-as-fix, no-test-coverage, same-class-scan, verification-by-running
+
+**See Also**: LRN-20260829-001, LRN-20260619-001, LRN-20260618-002
+
+---
+
 ## [LRN-20260825-001] correction
 
 **Logged**: 2026-08-25T00:00:00+08:00

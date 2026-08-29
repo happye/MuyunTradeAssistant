@@ -181,8 +181,11 @@ class Orchestrator:
         logger.info(f"Decision aggregate: {decision_result.decision} (score: {decision_result.score})")
 
         # Layer 3.25: 事件驱动层（Event Layer, v0.8.0 Phase 3新增）
+        # v0.8.7.6 审计修复 B05：补 is_backtest 门控（原仅靠回测构造时不传 config 侥幸隔离，
+        # 新复用 CLI orchestrator 的回测调用点会把"今天"的新闻/事件注入历史 bar）
         event_ai_result = None
-        if self.event_layer and self.event_layer.enabled and self.event_layer.auto_scan:
+        if (not is_backtest and self.event_layer
+                and self.event_layer.enabled and self.event_layer.auto_scan):
             active_events = self.event_layer.check_events()
             if active_events:
                 # 取impact_level最高的事件
@@ -206,8 +209,9 @@ class Orchestrator:
                     )
 
         # Layer 3.5: AI调节层（v0.8.0新增）
+        # B05 修复：同事件层，回测硬门控（AI 看到的新闻是"今天"的，注入历史 bar = 前瞻）
         ai_result = None
-        if ai_enabled and self.ai_modifier and self.ai_modifier.is_available():
+        if ai_enabled and not is_backtest and self.ai_modifier and self.ai_modifier.is_available():
             ai_result = self.ai_modifier.analyze(data)
             if ai_result.adjusted:
                 # 应用信号调节
@@ -244,6 +248,25 @@ class Orchestrator:
         if event_ai_result:
             # 如果AI调节也存在，叠加事件效果
             if ai_result and ai_result.adjusted:
+                # v0.8.7.6 审计修复 B07：AI 分支此前已把 AI 自己的调节应用到 decision_result，
+                # 本合并块原先只改 ai_result 字段不重新应用 → 事件层的分数压制/仓位上限/
+                # 强制状态在 AI 开启时被静默丢弃。此处只补应用"事件层增量"（AI 部分已应用过，勿二次叠加）。
+                _orig = decision_result.score
+                decision_result.score = max(0.0, min(1.0, decision_result.score + event_ai_result.score_adjustment))
+                logger.info(
+                    f"Event Layer merged adjustment: {_orig:.3f} → {decision_result.score:.3f} "
+                    f"(event adjustment={event_ai_result.score_adjustment:.3f})"
+                )
+                if event_ai_result.position_cap < 1.0:
+                    decision_result.position_ratio = min(
+                        decision_result.position_ratio, event_ai_result.position_cap
+                    )
+                    logger.info(f"Event Layer capped position: max {event_ai_result.position_cap:.0%}")
+                if event_ai_result.force_state:
+                    from src.data.models import MarketState
+                    decision_result.state = MarketState[event_ai_result.force_state.upper()]
+                    logger.warning(f"Event Layer forced state: {decision_result.state.value}")
+                # 同步合并后的 ai_result 字段（下游展示/日志用）
                 ai_result.score_adjustment += event_ai_result.score_adjustment
                 ai_result.position_cap = min(ai_result.position_cap, event_ai_result.position_cap)
                 if event_ai_result.force_state:

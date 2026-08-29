@@ -29,9 +29,10 @@ import json
 import time
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import yaml
+import pandas as pd
 from openai import OpenAI
 
 from src.data.models import MarketEvent, AIModifierResult, MarketState
@@ -209,12 +210,48 @@ class EventLayer:
             text = f"{title} {summary}"
 
             for rule in keyword_rules:
-                matched = self._match_keywords(text, rule)
+                matched, matched_sentiments = self._match_keywords(text, rule)
                 if matched:
                     event = self._create_event_from_rule(rule, source=title)
                     if event:
-                        # AI二次分类确认
-                        if self.ai_classify_enabled and self._ai_available and event.impact_level >= 3:
+                        # v0.8.7.6 审计修复 B09：earnings_surprise 这类"利好+利空关键词同规则"
+                        # 但 rule 无 sentiment 字段 → 恒 neutral，暴雷新闻被判中性并只给
+                        # position_cap。修法：规则显式声明 sentiment 优先；否则按实际命中的
+                        # 关键词方向判定（双向同时命中=方向不明，维持 neutral）。
+                        if not rule.get("event", {}).get("sentiment") and matched_sentiments:
+                            if len(matched_sentiments) == 1:
+                                event.sentiment = next(iter(matched_sentiments))
+                            # 双向命中：保持 neutral（风险侧利空词已单独命中黑天鹅规则线）
+                        # v0.8.7.6 审计修复 B10：关键词来源是**全球**快讯（stock_info_global_em），
+                        # 单个"暴跌"就能命中 black_swan → impact 5 强制 PANIC+仓位30%，AI 确认
+                        # 失败/未启用也拦不住（"美股暴跌"误伤 A 股个股）。修法：关键词触发的
+                        # impact5 事件必须 AI 确认同级别才保留；AI 失败/未启用一律降级为 3。
+                        if (event.detection_method == "keyword"
+                                and event.impact_level >= 5):
+                            if not (self.ai_classify_enabled and self._ai_available):
+                                event.impact_level = 3
+                                logger.warning(
+                                    f"关键词命中 impact5 事件但 AI 确认不可用，降级 impact 5→3: {event.summary}"
+                                )
+                            else:
+                                ai_event = self._ai_classify_event(title, summary)
+                                if ai_event:
+                                    # AI确认是重大事件，使用AI的分类结果
+                                    if ai_event.impact_level >= event.impact_level:
+                                        event = ai_event
+                                        event.source = title
+                                    # AI认为不重大，降级
+                                    elif not ai_event.sentiment or ai_event.impact_level < 2:
+                                        continue
+                                    elif ai_event.impact_level < 5:
+                                        event.impact_level = ai_event.impact_level
+                                else:
+                                    event.impact_level = 3
+                                    logger.warning(
+                                        f"关键词命中 impact5 事件但 AI 确认失败，降级 impact 5→3: {event.summary}"
+                                    )
+                        elif self.ai_classify_enabled and self._ai_available and event.impact_level >= 3:
+                            # 非 impact5 事件：维持原 AI 二次分类行为
                             ai_event = self._ai_classify_event(title, summary)
                             if ai_event:
                                 # AI确认是重大事件，使用AI的分类结果
@@ -254,6 +291,10 @@ class EventLayer:
                     event = self._create_event_from_rule(rule, source="沪深300行情")
                     if event:
                         events.append(event)
+                        # v0.8.7.6 审计修复 B25：指数规则按 YAML 顺序取第一个命中即停——
+                        # 原 market_crash(-3%) 与 market_slump(-1.5%) 无互斥，跌3%时同帧产出
+                        # 两条同源事件叠加上调影响力。YAML 中 crash（更重）排在 slump 之前。
+                        break
 
         return events
 
@@ -289,7 +330,10 @@ class EventLayer:
             code = pos.stock_code
 
             # 检查价格规则
-            stock_info = market_data.get(code)
+            # v0.8.7.6 审计修复 B08：market_data 是全市场 DataFrame，原 market_data.get(code)
+            # 是按"列名"查找恒 None → 持仓暴跌/跌停两条价格规则从未触发过（死功能）。
+            # 改为按"代码"列取行并转成规则所需字段 dict。
+            stock_info = self._lookup_stock_row(market_data, code)
             if stock_info and stock_rules:
                 for rule in stock_rules:
                     conditions = rule.get("trigger", {}).get("conditions", [])
@@ -320,6 +364,37 @@ class EventLayer:
                     logger.warning(f"持仓股 {code} 新闻扫描失败: {e}")
 
         return events
+
+    @staticmethod
+    def _lookup_stock_row(market_data, code: str) -> Optional[dict]:
+        """从全市场行情中取单只持仓股的规则字段 dict（B08 修复的取数辅助）。
+
+        market_data 是 MarketCache.get_all_stocks() 的 DataFrame（列：代码/涨跌幅/最新价...），
+        事件规则（stock_plunge/stock_limit_down）的 conditions 用字段名 change_pct。
+        返回 None = 该股不在快照中/行情不可用。
+        """
+        try:
+            if market_data is None or isinstance(market_data, dict):
+                return None
+            if "代码" not in market_data.columns:
+                return None
+            code_norm = str(code).split(".")[-1].zfill(6)
+            mask = market_data["代码"].astype(str).str.zfill(6) == code_norm
+            rows = market_data[mask]
+            if rows.empty:
+                return None
+            r = rows.iloc[0]
+
+            def _f(colname):
+                try:
+                    v = r.get(colname)
+                    return float(v) if v is not None and pd.notna(v) else None
+                except (TypeError, ValueError):
+                    return None
+
+            return {"change_pct": _f("涨跌幅"), "price": _f("最新价")}
+        except Exception:
+            return None
 
     def detect_all(self, positions: list = None) -> list[MarketEvent]:
         """完整事件扫描
@@ -458,7 +533,10 @@ class EventLayer:
 
     # ===== 内部方法 =====
 
-    def _match_keywords(self, text: str, rule: dict) -> bool:
+    # 关键词命中前的否定前缀（B25 修复："不降息"/"未兑现利好" 不应命中利好词）
+    _NEGATION_PREFIXES = ("不", "未", "无", "非", "难", "没")
+
+    def _match_keywords(self, text: str, rule: dict) -> tuple:
         """检查文本是否匹配关键词规则
 
         Args:
@@ -466,23 +544,29 @@ class EventLayer:
             rule: 规则dict，trigger.keywords 含 bullish/bearish 列表
 
         Returns:
-            是否匹配
+            (是否匹配, 命中的方向集合) —— B09 修复需要方向信息判定 sentiment
         """
         keywords_cfg = rule.get("trigger", {}).get("keywords", {})
         min_matches = self.global_config.get("min_keyword_matches", 1)
 
-        all_keywords = []
-        for sentiment, kw_list in keywords_cfg.items():
-            all_keywords.extend(kw_list)
-
+        matched_sentiments = set()
         match_count = 0
-        for kw in all_keywords:
-            if kw in text:
+        for sentiment, kw_list in keywords_cfg.items():
+            for kw in kw_list:
+                idx = text.find(kw)
+                if idx < 0:
+                    continue
+                # B25 修复：否定前缀守卫——命中位置前 2 字符内出现否定词则不算命中
+                #（如"不降息"/"降息预期落空"不判利好）。中文否定常紧邻或隔1字。
+                prefix = text[max(0, idx - 2):idx]
+                if any(neg in prefix for neg in self._NEGATION_PREFIXES):
+                    continue
+                matched_sentiments.add(sentiment)
                 match_count += 1
                 if match_count >= min_matches:
-                    return True
+                    return True, matched_sentiments
 
-        return False
+        return False, matched_sentiments
 
     def _check_conditions(self, data: dict, conditions: list[dict]) -> bool:
         """检查数据是否满足条件
@@ -551,12 +635,23 @@ class EventLayer:
             detection_method="keyword" if rule.get("trigger", {}).get("type") == "keyword" else "rule",
         )
 
+    # B20 修复：进程级短缓存（300s）——批量分析时每只股打一次 baostock 没必要
+    _index_data_cache: tuple = (None, 0.0)
+    _INDEX_CACHE_TTL = 300.0
+
     def _get_market_index_data(self) -> Optional[dict]:
         """获取沪深300指数数据
+
+        v0.8.7.6 审计修复 B20：原 start_date==end_date==今天——非交易日/盘前必然查不到
+        返回 None → market_crash/market_slump 两条指数规则静默全失效；且无缓存，
+        批量分析每只股打一次 baostock。现取最近10天取最后一行 + 进程级 300s 缓存。
 
         Returns:
             dict 含 index_change_pct 等字段，或 None
         """
+        cached, cached_ts = EventLayer._index_data_cache
+        if cached is not None and (time.time() - cached_ts) < EventLayer._INDEX_CACHE_TTL:
+            return cached
         try:
             from src.data.akshare_client import AKShareClient
             AKShareClient._ensure_baostock_login()
@@ -564,15 +659,20 @@ class EventLayer:
             rs = bs.query_history_k_data_plus(
                 "sh.000300",
                 "date,close,pctChg",
-                start_date=(datetime.now().strftime("%Y-%m-%d")),
+                start_date=((datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")),
                 end_date=(datetime.now().strftime("%Y-%m-%d")),
             )
-            if rs.error_code == '0' and rs.next():
-                row = rs.get_row_data()
-                return {
-                    "index_change_pct": float(row[2]) if len(row) > 2 else 0.0,
-                    "index_close": float(row[1]) if len(row) > 1 else 0.0,
+            last_row = None
+            if rs.error_code == '0':
+                while rs.next():
+                    last_row = rs.get_row_data()  # 取最后一行（最近交易日）
+            if last_row:
+                result = {
+                    "index_change_pct": float(last_row[2]) if len(last_row) > 2 else 0.0,
+                    "index_close": float(last_row[1]) if len(last_row) > 1 else 0.0,
                 }
+                EventLayer._index_data_cache = (result, time.time())
+                return result
         except Exception as e:
             logger.debug(f"获取沪深300数据失败: {e}")
 

@@ -112,6 +112,10 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
         _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
         if len(rows) < 2:
             return None
+        # v0.8.7.6 审计修复 B21：窗口口径统一——标的侧用 change_20d（20个交易日），
+        # 旗手侧原取40个自然日(≈28交易日)却同样称"近20日涨幅"直接对比。截取最后21行
+        # （20个交易日间隔）对齐标的口径；40自然日窗口保留作停牌缓冲。
+        rows = rows[-21:]
         try:
             first = float(rows[0][1])
             last = float(rows[-1][1])

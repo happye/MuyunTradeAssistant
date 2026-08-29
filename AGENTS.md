@@ -61,7 +61,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-当前版本：**v0.8.7.5**（ISS-067 对抗审查 42 项裁决+39 项修复：live ATR 补齐、回测建仓 bar 时点化防前瞻、信号确认机制修复、快照校验/缓存过期/胜率配对等口径纠正；上一版 v0.8.7.4 为 bz scan 规则+主题组合支持）。**注意：A02/A03/A07/A10/A14-A16 改变回测与实盘行为，ISS-046 五年回测数值需重跑基线后方可引用**（详见 ISSUES.md ISS-067）。
+当前版本：**v0.8.7.6**（ISS-069 第二轮对抗审查 27 项裁决+24 项修复：技能引擎 majority 阈值 off-by-one、9 个 YAML 条件未注册、一票否决强制 F、坏缓存容错+原子写、事件层 B 系列门控/合并/死功能修复等；上一版 v0.8.7.5 为 ISS-067 第一轮 42 项裁决）。**注意：B01/B02/B03/B16 改变决策与评分行为，历史回测数值引用前需重跑基线**（详见 ISSUES.md ISS-069）。
 
 ---
 
@@ -159,7 +159,7 @@ docs/               # 详细文档
 - **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py`）：新增策略文档放子目录也会被扫到
 - **AI 评分 JSON 截断容错**（v0.8.6.5）：`_call_ai_for_score(max_tokens=)` 按维度可调（业务纯度 2000，其余 1500）+ finish_reason==length 自动重试 + `_parse_score_json` 容错截断。截断退化 confidence=0.3（不再假装 0.5）。维度 prompt 须显式限 reasoning 长度防超 max_tokens
 - **网络超时三层硬保护**（ISS-047，根治 WinError 10060/10054）：akshare/baostock 底层 requests 无 timeout 会挂起。`data_provider._safe_call`(30s) + `akshare_client._retry_with_backoff`(30s) + baostock `bs.next()` 读取(30s) 全用 `ThreadPoolExecutor` 线程级硬超时，超时即放弃走降级不冻结。新增网络调用必须包超时；且**不能用 with 块包 ThreadPoolExecutor**——__exit__ 的 shutdown(wait=True) 会 join 卡死线程使超时失效，须显式 shutdown(wait=False)（2026-08-24 ISS-066 审查发现 _safe_call/_call_with_timeout 两处中招已修，范本 source_check._probe_t）
-- **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷1.44 归一化到100）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
+- **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（一票否决判F/景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷(正权和×当期流动性系数) 归一化到100，B16 修复后满分恒=100 不随成交额漂移）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
 - **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
 - **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout
 - **bz scan 双通道选股**（ISS-047）：法C（theme_locator AI 报股，细分材料）+ 全市场客观筛选（`quick_scan(market_query=)` 走 THS 成分股，含中小盘）。提示词已去龙头偏向，别再加"宁可少报"类措辞
@@ -194,6 +194,68 @@ docs/               # 详细文档
 
 ---
 
+## 五·五、防复发硬门禁（2026-08-29 立项）
+
+> 背景：两轮对抗性审查累计 69 条发现 + 259 条 git 提交考古，论证见 `开发问题根因复盘_20260829.md`。
+> **本项目 `fix : feat` = 75 : 71。根因不是代码质量，是教训从未闭环。**
+> 可执行清单见 **`.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（WorkBuddy 可加载路径）。
+
+### 铁律 0：教训双写（不做 = 没做）
+
+任何有长期价值的教训**必须同时写两处**：
+
+| 位置 | 用途 | 版本控制 |
+|---|---|---|
+| `.workbuddy/memory/YYYY-MM-DD.md` | 本次会话可见 | ❌ 在 `.gitignore:23` |
+| `.learnings/LEARNINGS.md` | 跨会话/跨机器迁移 | ✅ |
+
+只写 `.workbuddy/memory/` = 换机器归零 = 没写。
+> 2026-08-29 实测：本周 69 条发现**零条**进入 `.learnings/`；`LEARNINGS.md` 停在 08-25，`ERRORS.md` 停在 07-29；23 条 LRN 中 13 条 Status 永远 pending。
+
+### 铁律 1：修 bug 四步，缺一步不许提交
+
+```
+① 写回归测试（先红灯）→ ② 修（转绿灯）→ ③ 扫同类点 → ④ 落 .learnings/
+```
+
+**③ 扫同类点**（本项目最常漏）：修完先 grep 全库同类模式，报告剩余数量。
+已确认的同类点模式：`with ThreadPoolExecutor` / `os.environ[...] = ` / `except`+`debug`+`continue`（静默 fail-open）/ `if <DataFrame>:` / 中文全角 `（）` / `0\.8\.7\.[0-9]`。
+**扫出来还有同类点 → 要么一起修，要么在 ISSUES.md 记「已知剩余 N 处」，不许默默留着。**
+
+### 铁律 2：文档/注释动作 ≠ 修复
+
+以下一律判「未修复」，不许标 ✅：
+1. commit message 声称改代码，但 `git show --stat` 零行代码改动（实证：`87047f8`）
+2. 只改 docstring 让它「与行为一致」，行为没改（实证：`c993c6d` → `plan_guard.py:177` 至今仍压 `take_profit_trim`）
+3. 把教训写进 AGENTS.md 就算修完（实证：`814963c` → `akshare_client.py` 的 with 块活到 08-29）
+
+**自检查句：我的 diff 里有改变运行时的代码行吗？没有就是没修。**
+
+### 铁律 3：验证靠「跑」，不靠「读」
+
+- 动全局状态（env / 类级缓存 / 单例）→ **必须跑全量测试**，不能只跑单文件
+- 动 YAML ↔ 代码映射 → **必须写脚本交叉比对**，不能人工读
+- 脚本结论 → **必须回读代码确认再报**（`price_position` 是特例分支，会假阳性）
+- 调卖出参数前 → **先打 `trade['sell_path']` 分布**
+
+### 铁律 4：调参红线（LRN-20260619-001，写了但从未被执行）
+
+30 分钟前提验证 / 第三轮失败原则 / 改善门槛（单股<2pp、整体<1pp 视为噪声）/ 基准 A/B 对照。
+**单股样本无发言权**（ISS-068：柯力单股 -10.9pp 在全量 19 只视角下是 +0.63 噪声）。
+
+### 铁律 5：提交前自检
+
+- [ ] `git show --stat` 有代码改动吗（非空校验）
+- [ ] 同类点扫过了吗，剩余几处记下来了吗
+- [ ] 能给出可复现的验证命令 + 期望输出吗
+- [ ] 用户跑 `start.py` 看得到吗（§二·五 五选一）
+- [ ] 改版本号了吗？改了就 5 处全改（start.py / main.py / AGENTS.md / README.md / docs）
+- [ ] ISSUES 状态带 `file:line` + 日期 + commit 短哈希了吗
+- [ ] 告警人话化三处同步了吗
+- [ ] 教训双写了吗
+
+---
+
 ## 六、开发习惯与维护流程
 
 遵循全局开发工作流 skill：`$dev-flow`
@@ -202,7 +264,9 @@ docs/               # 详细文档
 
 详细规范（六步法、知识管理、业界最佳实践、反模式）见 `$dev-flow` skill。
 
-> 脚注：`$dev-flow` 是用户级全局 skill，不在本仓库内；仓库内最相近的是 `.github/skills/self-improvement/SKILL.md`。
+> 脚注：`$dev-flow` 是用户级全局 skill，不在本仓库内。
+> **注意**：仓库内另有 `.github/skills/self-improvement/SKILL.md`，但那是 **VS Code Copilot 路径，WorkBuddy 不加载**（WorkBuddy 项目级 skill 只认 `{workspace}/.workbuddy/skills/`）。因此 copilot-instructions.md 里那条「失败后必须先走 self-improvement skill」的规则从未生效过。
+> **仓库内真正会被加载的是 `.workbuddy/skills/muyun-dev-discipline/SKILL.md`**（2026-08-29 建立），新纪律一律写那里。
 
 ### 本项目特有的补充
 

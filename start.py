@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.7.5"  # A31 修复：与 cli/main.py --version、AGENTS.md 统一（原与最新 commit 脱节）
+VERSION = "v0.8.7.6"  # v0.8.7.6=第二轮对抗审查27项裁决（B01-B27）；与 cli/main.py --version、AGENTS.md 统一
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）

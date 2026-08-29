@@ -462,6 +462,14 @@ class YAMLBasedSkill(Skill):
         reg["rsi_6_below_30"] = lambda d, p: rsi_below(d, {**p, "period": 6, "threshold": 30})
         reg["rsi_6_above_50"] = lambda d, p: rsi_above(d, {**p, "period": 6, "threshold": 50})
         reg["rsi_6_below_50"] = lambda d, p: rsi_below(d, {**p, "period": 6, "threshold": 50})
+        # v0.8.7.6 审计修复 B02：补注册 9 个 YAML 在用但注册表缺失的条件（此前静默跳过+不计分母，
+        # 使 RSI 多头排列"6且12且24中2个>50"降档成"6>50即触发"）
+        reg["rsi_6_above_30"] = lambda d, p: rsi_above(d, {**p, "period": 6, "threshold": 30})
+        reg["rsi_6_below_70"] = lambda d, p: rsi_below(d, {**p, "period": 6, "threshold": 70})
+        reg["rsi_12_above_50"] = lambda d, p: rsi_above(d, {**p, "period": 12, "threshold": 50})
+        reg["rsi_12_below_50"] = lambda d, p: rsi_below(d, {**p, "period": 12, "threshold": 50})
+        reg["rsi_24_above_50"] = lambda d, p: rsi_above(d, {**p, "period": 24, "threshold": 50})
+        reg["rsi_24_below_50"] = lambda d, p: rsi_below(d, {**p, "period": 24, "threshold": 50})
         reg["rsi_12_above_70"] = lambda d, p: rsi_above(d, {**p, "period": 12, "threshold": 70})
         reg["rsi_12_below_30"] = lambda d, p: rsi_below(d, {**p, "period": 12, "threshold": 30})
         reg["rsi_24_above_70"] = lambda d, p: rsi_above(d, {**p, "period": 24, "threshold": 70})
@@ -482,6 +490,10 @@ class YAMLBasedSkill(Skill):
         reg["kdj_k_below_d"] = kdj_k_below_d
         reg["kdj_k_above_80"] = lambda d, p: kdj_k_above(d, {**p, "threshold": 80})
         reg["kdj_k_below_20"] = lambda d, p: kdj_k_below(d, {**p, "threshold": 20})
+        # B02 补注册（kdj.yaml 在用）
+        reg["kdj_k_above_20"] = lambda d, p: kdj_k_above(d, {**p, "threshold": 20})
+        reg["kdj_k_above_50"] = lambda d, p: kdj_k_above(d, {**p, "threshold": 50})
+        reg["kdj_k_below_80"] = lambda d, p: kdj_k_below(d, {**p, "threshold": 80})
         reg["kdj_j_above_80"] = lambda d, p: kdj_j_above(d, {**p, "threshold": 80})
         reg["kdj_j_below_20"] = lambda d, p: kdj_j_below(d, {**p, "threshold": 20})
         reg["kdj_k_above"] = kdj_k_above
@@ -678,7 +690,10 @@ class YAMLBasedSkill(Skill):
             # 在注册表中查找条件评估函数
             evaluator = self.CONDITION_REGISTRY.get(cond_name)
             if evaluator is None:
-                logger.debug(f"未知条件: {cond_name}，跳过")
+                # v0.8.7.6 审计修复 B02：未知条件升为 warning（原 debug 静默）。
+                # 注意 continue 在 total_conditions += 1 之前——未知条件不计入分母，
+                # 若不修复会让 majority 规则"降档触发"（3选2变1即过）
+                logger.warning(f"未知条件: {cond_name}，跳过（该条件不计入 majority 分母，规则可能降档触发；请检查技能 YAML 拼写或注册表）")
                 continue
 
             total_conditions += 1
@@ -712,6 +727,9 @@ class YAMLBasedSkill(Skill):
         elif require == "any":
             result["met"] = conditions_met >= 1
         else:
-            result["met"] = conditions_met >= max(1, total_conditions // 2)
+            # v0.8.7.6 审计修复 B01：多数决应为严格过半 floor(n/2)+1——
+            # 原 //2 使 2 条件规则满足1条即触发、3 条件规则也只需1条（等同 any），
+            # 全库 100+ 条 majority 规则的"多条件确认"形同虚设
+            result["met"] = total_conditions > 0 and conditions_met >= total_conditions // 2 + 1
 
         return result

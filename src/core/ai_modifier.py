@@ -295,6 +295,16 @@ class AIModifier:
 
             response = self._client.chat.completions.create(**api_params)
 
+            # v0.8.7.6 审计修复 B17：截断检测——max_completion_tokens=800 偏紧，
+            # 输出被截断时 _parse_response 缺字段全取默认（conf 0/neutral/low）→
+            # 三分支都不满足 → adjusted=False 静默"不调节"。检测到 length 先放大重试一次。
+            if getattr(response.choices[0], "finish_reason", None) == "length":
+                logger.warning("AI Modifier: 响应被截断(finish_reason=length)，加倍 max_completion_tokens 重试一次")
+                api_params["max_completion_tokens"] = 1600
+                response = self._client.chat.completions.create(**api_params)
+                if getattr(response.choices[0], "finish_reason", None) == "length":
+                    logger.warning("AI Modifier: 重试仍截断，结果按解析降级处理（可能静默不调节）")
+
             # Step 5: 解析响应
             message = response.choices[0].message
             content = (message.content or "").strip()

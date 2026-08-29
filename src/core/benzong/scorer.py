@@ -53,6 +53,12 @@ LIQUIDITY_LOW_COEFF = 0.8
 LIQUIDITY_HIGH_COEFF = 1.2
 LIQUIDITY_NORMAL_COEFF = 1.0
 
+# 5 个正向维权重和（risk_deduction 为负权重扣分项不计入满分）
+# v0.8.7.6 审计修复 B16：归一化分母 = 100×正权和×流动性系数（满分恒=100）
+POSITIVE_WEIGHT_SUM = (WEIGHT_INDUSTRY_PROSPERITY + WEIGHT_BUSINESS_PURITY
+                       + WEIGHT_VALUATION_POSITION + WEIGHT_INDUSTRY_LEADER
+                       + WEIGHT_MARKET_RECOGNITION)
+
 
 def liquidity_coefficient(market_turnover_trillion: float) -> float:
     """根据全市场单日成交额（万亿）返回流动性系数。
@@ -96,6 +102,10 @@ class BenzhongScore:
     stock_code: Optional[str] = None
     stock_name: Optional[str] = None
     note: str = ""
+
+    # 一票否决标志（v0.8.7.6 审计修复 B03）：风险维发现红线（叛国/违禁/造假）。
+    # 不影响 total_score/grade()（Excel 保真值不动），但 effective_grade() 强制 F。
+    invalidate: bool = False
 
     # 计算字段（自动填充）
     contributions: dict = field(default_factory=dict)
@@ -143,11 +153,16 @@ class BenzhongScore:
     def normalized_score(self) -> float:
         """归一化总分到 0-100（直觉刻度，展示用）。
 
-        原始总分理论上限 = (100×1.2 正权和) × 1.2 流动性 = 144，
-        会出现"125分"这种超100、无直觉的数字。归一化 = 原始 / 1.44，
-        让 A 级≈对应高分段，便于横向比较。仅展示用，不参与公式。
+        v0.8.7.6 审计修复 B16/B22：分母 = 100×正权和×当期流动性系数 = 满分总分。
+        原固定 1.44 只在系数=1.2 时成立（满分 96/120/144 → 旧刻度 66.7/83.3/100），
+        同一股票展示分随当日成交额漂移、跨日不可比。修复后满分恒=100。
+        B22：加 0 下界（全维0+风险100+高流动性原会出负分）。
+        仅展示用，不参与 grade() 公式。
         """
-        return round(min(self.total_score / 1.44, 100.0), 1)
+        denom = POSITIVE_WEIGHT_SUM * self.liquidity_coeff  # 满分 total = 100×PWS×coeff → 归一化除以 PWS×coeff
+        if denom <= 0:
+            return 0.0
+        return round(max(0.0, min(self.total_score / denom, 100.0)), 1)
 
     def effective_grade(self) -> Literal["A", "B", "C", "D", "F"]:
         """实际等级 = 原始等级 + 行业景气度大前提闸门（展示/决策用）。
@@ -162,6 +177,10 @@ class BenzhongScore:
         """
         raw = self.grade()
         order = ["F", "D", "C", "B", "A"]
+        # v0.8.7.6 审计修复 B03：一票否决（红线）是笨总体系最高优先级规则，
+        # 此前只出提示不改等级——红线股照样评 A 并按 A 进气宗 180 天长持。强制 F。
+        if self.invalidate:
+            return "F"
         ip = self.industry_prosperity
         if ip <= 0:
             return "F"
@@ -209,6 +228,7 @@ def score_one(
     stock_code: Optional[str] = None,
     stock_name: Optional[str] = None,
     note: str = "",
+    invalidate: bool = False,
 ) -> BenzhongScore:
     """顶层便利函数：一次性打 6 维分 + 流动性 → 输出 BenzhongScore"""
     return BenzhongScore(
@@ -219,6 +239,7 @@ def score_one(
         market_recognition=market_recognition,
         risk_deduction=risk_deduction,
         market_turnover_trillion=market_turnover_trillion,
+        invalidate=invalidate,
         stock_code=stock_code,
         stock_name=stock_name,
         note=note,

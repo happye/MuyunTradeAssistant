@@ -29,7 +29,9 @@ logger = logging.getLogger(__name__)
 # v0.8.6.4：risk_deduction 新闻缺失降级从 score=0 改为 score=50
 # v0.8.6.5：business_purity prompt 限 reasoning≤60字 + max_tokens 1500→2000，
 #           截断退化 confidence 0.5→0.3
-CACHE_VERSION = "v0.8.6.5"
+# v0.8.7.6：B23 修复——v0.8.6.5 后 8 个 commit 改过 benzong（含 deepseek-chat→
+#           deepseek-v4-flash 换模型=换评分分布）未 bump，旧缓存命中"改代码不生效"
+CACHE_VERSION = "v0.8.7.6"
 
 
 # 缓存根目录（用户级，跨项目共享）
@@ -103,12 +105,18 @@ def get(code: str, date: str, dim: str) -> Optional[dict]:
     try:
         with p.open(encoding="utf-8") as f:
             data = json.load(f)
+        # v0.8.7.6 审计修复 B04：顶层非 dict（如 [1,2,3]）原抛 AttributeError 直接炸 bz；
+        # UnicodeDecodeError（截断/坏编码，实测56%截断偏移中招）不是 JSONDecodeError 逃逸
+        if not isinstance(data, dict):
+            logger.warning(f"缓存内容格式异常(非dict)，当未命中: {p.name}")
+            return None
         # 版本校验：旧版本缓存当未命中（改了维度逻辑必须 bump CACHE_VERSION）
         if data.get("_cache_version") != CACHE_VERSION:
             return None
         return data
-    except (json.JSONDecodeError, OSError) as e:
-        logger.warning(f"缓存读取失败 {p.name}: {e}")
+    except Exception as e:
+        # B04：坏缓存文件（掉电/磁盘满/并发写交错）只当未命中，绝不让 bz 整条命令崩
+        logger.warning(f"缓存读取失败，当未命中 {p.name}: {type(e).__name__}: {e}")
         return None
 
 
@@ -120,8 +128,13 @@ def set(code: str, date: str, dim: str, result: dict) -> bool:
         record = dict(result)
         record["_cached_at"] = datetime.now().isoformat()
         record["_cache_version"] = CACHE_VERSION
-        with p.open("w", encoding="utf-8") as f:
+        # v0.8.7.6 审计修复 B24：原子写（tmp + os.replace）——原直接 open("w") truncate，
+        # 多线程同 key 并发写会交错出混合内容（实测 8线程×20次写后文件 1341 字节≠单条 570），
+        # 也是 B04 坏缓存崩溃的成因。os.replace 同目录原子替换。
+        tmp = p.with_suffix(".json.tmp")
+        with tmp.open("w", encoding="utf-8") as f:
             json.dump(record, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, p)
         return True
     except (OSError, TypeError) as e:
         logger.warning(f"缓存写入失败 {p.name}: {e}")

@@ -1561,3 +1561,19 @@ P3（已取消）:
   渗透率集成测试没传live=True而信号有live门控）
 - **教训沉淀**: 修诊断必须插桩实证到"最后一环"（本例首诊极端模式冷却缩短就差点止步，
   插桩才发现冷却压根没启动）；网格参数实验全部无差异=假设域错了，不是"参数恰好都对"
+
+### ISS-069: 2026-08-29 第二轮对抗性审查 27 项——逐条裁决+24 项修复（v0.8.7.6）
+- **状态**: ✅ 25 条属实已修 24 项 + B19 属实待拍板 + B18 复核不成立；清单见 `对抗审查_20260829_第二轮_待裁决清单.md`
+- **裁决方式**: 27 条逐条读码/脚本验算复核（B18 另跑了两次全量测试套件）
+- **已修复（v0.8.7.6，按审查编号）**:
+  - P0: B01 技能引擎 majority 阈值 off-by-one（`//2`→`//2+1`，2/3 条件规则原等同 any；配套把 `multi_timeframe.yaml` 四条"状态描述"规则显式 `require: all` 对齐自身注释）/ B02 9 个 YAML 条件未注册（kdj×3 + rsi×6 补注册表 + 未知条件 debug→warning；修复前 RSI 多头排列实为"RSI6>50 即触发"）/ B03 一票否决强制 F（BenzhongScore 加 invalidate 字段，effective_grade 红线判 F，pos add `_mode_from_grade` 经 effective_grade 传导不会再进气宗；grade()/total_score 保真值不动）/ B04 坏缓存崩溃（get 改 `except Exception` + isinstance dict 校验 + set 改 tmp+os.replace 原子写=B24）
+  - P1: B05 orchestrator 事件层+AI层补 is_backtest 硬门控 / B06 板块层补 live 门控（三层纪律补齐；tier2 集成测试同步传 live=True）/ B07 事件层×AI调节层合并块补应用事件增量（原只算不用，AI 开启时事件压制/强制 PANIC 全被丢弃）/ B08 scan_portfolio_events 死功能修复（DataFrame.get(code) 按列名查找恒 None → `_lookup_stock_row` 按"代码"列取行转字段 dict，持仓暴跌/跌停规则复活）/ B09 earnings_surprise 情绪判定（_match_keywords 返回命中方向，规则无 sentiment 字段时按实际命中方向定，双向命中保持 neutral）/ B10 全球快讯"暴跌"关键词 impact5 需 AI 确认（不可用/失败一律降级 impact 3，不再误强制 PANIC）/ B11 个股新闻缓存键改日期（跨天失效，REPL 常开不再拿昨天新闻）/ B12 HF 端点顺序镜像优先 + 重试全败恢复原端点（防 HF_ENDPOINT 进程级污染）/ B13 theme_locator 截断双修（finish_reason==length 重试 + 截断修复解析）/ B14 一票否决判定结构化（_validate_score_dict 透传 invalidate 键，子串匹配降为兜底，双向误判根治）/ B15 兜底维度透明度警告（列出 conf=0 维度，对齐 ISS-055 拍板不动 effective_grade 公式）/ B16+B22 normalized_score 分母改 100×当期流动性系数+0 下界（满分恒 100 不随成交额漂移，负分根治；AGENTS.md/说明文档口径同步）/ B17 ai_modifier 截断检测+加倍重试
+  - P2: B20 _get_market_index_data 取最近10天最后一行+300s 进程缓存（原 start==end==今天，非交易日指数规则全失效）/ B21 旗手滞涨窗口统一（旗手 40 自然日截取最后 21 行=20 交易日，对齐标的口径）/ B23 CACHE_VERSION v0.8.6.5→v0.8.7.6（8 个 commit 未 bump，含换模型）/ B25 关键词否定前缀守卫（"不降息"不再命中利好）+ 指数规则首个命中即 break / B27 成交额 1.0 哨兵改显式 missing 标志
+- **属实待拍板（B19）**: 排名层 AI 失败股(50分) 反超 AI 判空股(~5分)——属"无信息=中性"的排名哲学取舍，改动会影响 bz scan 排名语义，留笨总拍板
+- **复核不成立（B18）**: "测试套件 8 failed"在本机两次全量跑均不复现（324 passed 2 skipped / 278+网络类 passed）——审查员自认 6 个是其沙箱删除拦截，另 2 个（HF_ENDPOINT 污染/env 超长）未复现，但 B12 的 env 污染机制本身属实已修
+- **属实不修（B26）**: 25 个注册条件无 YAML 引用属死代码——删除收益低风险高（条件注册表兼作文档），登记不动
+- **行为改变声明**: B01/B02（技能信号触发面收紧）、B03（否决股不再进气宗）、B07（事件层 AI 同开时生效）、B16（展示分变化）、B23（缓存全量失效重算）——历史回测/评分结论引用前需重跑基线
+- **关联**: 对抗审查_20260829_第二轮_待裁决清单.md / ISS-067（第一轮）/ e123371+未提交改动（另一 Agent 的 ISS-068 小盘诊断工作，本轮未触碰）
+  - **B26 落实清单（2026-08-29 二次复核实测：注册表 91 / YAML 使用 66 / 死条件 25）**——下一轮清理照此单执行，勿再重扫：
+    死条件 25 个：`change_20d_below` `index_neutral` `kdj_j_above` `kdj_j_above_80` `kdj_j_below` `kdj_k_above` `kdj_k_below` `long_lower_shadow` `ma_cross` `ma_distance` `monthly_price_above_ma20` `monthly_price_below_ma20` `price_above_ma` `price_back_above_ma5` `price_below_ma` `rsi_24_above_70` `rsi_24_below_30` `rsi_above` `rsi_below` `rsi_bottom_divergence` `timeframe_price_above_ma` `timeframe_price_below_ma` `timeframe_trend` `volume_shrink_stop` `weekly_price_below_ma20`
+    注意分两类：①真死代码（如 `rsi_bottom_divergence` `volume_shrink_stop` `long_lower_shadow` `index_neutral` `change_20d_below` `price_back_above_ma5` 及参数化快捷名 kdj_j_above_80/rsi_24_* 等）→ 可删；②**通用参数化条件名**（`price_above_ma` `price_below_ma` `ma_cross` `ma_distance` `rsi_above` `rsi_below` `timeframe_trend` `timeframe_price_above_ma` `timeframe_price_below_ma` `kdj_k_above` `kdj_k_below` `kdj_j_above` `kdj_j_below` `monthly_price_*` `weekly_price_below_ma20`）是注册表注释明示的"新通用条件名"自定义 YAML 扩展 API → **保留**。清理前先跑本条同款比对脚本确认清单未漂移，删后跑全套测试。

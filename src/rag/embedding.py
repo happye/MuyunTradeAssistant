@@ -23,9 +23,11 @@ logger = logging.getLogger(__name__)
 # 必须在模块级设置，确保sentence_transformers import时就生效
 HF_OFFICIAL = "https://huggingface.co"
 HF_MIRROR = "https://hf-mirror.com"
+# v0.8.7.6 审计修复 B12：镜像在前，与下方"国内优先镜像"注释一致
+#（原官方源在前，与注释矛盾——国内环境下重试会先撞被墙的官方源）
 HF_ENDPOINTS = (
-    HF_OFFICIAL,
     HF_MIRROR,
+    HF_OFFICIAL,
 )
 if not os.environ.get("HF_ENDPOINT"):
     os.environ["HF_ENDPOINT"] = HF_MIRROR  # 国内优先镜像(huggingface.co被墙)
@@ -113,8 +115,8 @@ class SentenceEmbedder(Embedder):
 
             # 设置HuggingFace镜像（如果未配置）
             if not os.environ.get("HF_ENDPOINT"):
-                self._set_hf_endpoint(HF_OFFICIAL)
-                logger.info(f"使用HuggingFace官方源: {HF_OFFICIAL}")
+                self._set_hf_endpoint(HF_MIRROR)
+                logger.info(f"使用HuggingFace镜像源: {HF_MIRROR}")
 
             # 直接交给 Hugging Face Hub 处理缓存命中或在线下载。
             # 不设置全局 HF_HUB_OFFLINE，避免库导入时锁死联网状态。
@@ -139,6 +141,13 @@ class SentenceEmbedder(Embedder):
                     for item in configured_endpoints.split(",")
                     if item.strip()
                 ) or HF_ENDPOINTS
+                # v0.8.7.6 审计修复 B12：初次加载已用当前 HF_ENDPOINT 失败，
+                # 重试顺序把当前端点挪到最后（原顺序官方源在前，国内环境先撞被墙的
+                # huggingface.co 白等 3×45s 才轮到镜像）
+                current_ep = os.environ.get("HF_ENDPOINT", "")
+                endpoints = tuple(e for e in endpoints if e != current_ep) + \
+                    tuple(e for e in endpoints if e == current_ep)
+                original_endpoint = current_ep  # 全部失败时恢复（防进程余生留在最后尝试的被墙源）
                 last_error = offline_err
                 loaded = False
                 for endpoint in endpoints:
@@ -178,6 +187,8 @@ class SentenceEmbedder(Embedder):
                         break
                     logger.warning("下载源不可用，切换下一个源: %s", endpoint)
                 if not loaded:
+                    # B12 修复：全部失败时恢复原端点，防 HF_ENDPOINT 永久污染
+                    self._set_hf_endpoint(original_endpoint)
                     raise RuntimeError(
                         f"嵌入模型下载失败，已尝试{len(endpoints)}个源、每源{retry_count}次: {last_error}"
                     ) from last_error

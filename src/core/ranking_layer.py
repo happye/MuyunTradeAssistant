@@ -104,6 +104,15 @@ class RankingLayer:
             liq_score, liq_detail = self._calc_liquidity_score(candidate)
             vol_score, vol_detail = self._calc_volatility_score(candidate)
 
+            # v0.8.7.6 审查裁决 B19：AI 失败的个股"信息缺失不参与 AI 分项"——
+            # 该股 sentiment 权重归零并按比例重分配到其余维度（复用 AI 禁用口径），
+            # 不再伪造中性 50 分（原实现里 AI 失败股 50×0.2=10 分反超 AI 判空股 ~1 分）。
+            ai_ok = ai_r is not None and getattr(ai_r, "adjusted", False)
+            stock_weights = (
+                effective_weights if ai_ok
+                else self._normalize_weights(self.weights, ai_enabled=False)
+            )
+
             dimensions = []
             for dim_name, score, detail in [
                 ("technical", tech_score, tech_detail),
@@ -111,7 +120,7 @@ class RankingLayer:
                 ("liquidity", liq_score, liq_detail),
                 ("volatility", vol_score, vol_detail),
             ]:
-                weight = effective_weights.get(dim_name, 0)
+                weight = stock_weights.get(dim_name, 0)
                 contribution = score * weight
                 dimensions.append(DimensionScore(
                     name=dim_name,
@@ -201,13 +210,14 @@ class RankingLayer:
         - neutral:  direction =  0, score = 50 附近
         - bearish:  direction = -1, score ∈ [0, 50]（加上风险惩罚后最高75）
 
-        无AI数据时返回50分（中性）。
+        无AI数据时返回50分（中性）——v0.8.7.6 B19：该分项权重同时归零重分配，
+        50 分仅作展示占位，不再计入加权总分。
 
         Returns:
             (score, detail)
         """
         if ai_r is None or not ai_r.adjusted:
-            return 50.0, "无AI数据"
+            return 50.0, "无AI数据(分项不计入,权重已重分配)"
 
         # 情绪方向映射
         direction = {

@@ -157,6 +157,21 @@ def locate_theme_stocks(
             **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
         )
         text = resp.choices[0].message.content or ""
+        # v0.8.7.6 审计修复 B13：截断时重试一次要求精简（对齐 dimensions 的截断纪律）——
+        # 原 finish_reason==length 无检测，45家候选2781字符截断到2500 → 解析0只 → 法C静默失效
+        if getattr(resp.choices[0], "finish_reason", None) == "length":
+            logger.warning("theme_locator: AI 输出被截断(finish_reason=length)，重试要求精简 why 字段")
+            resp = ai_client.chat.completions.create(
+                model=ai_model or "deepseek-v4-flash",
+                messages=[
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": user_prompt + "\n（注意：上次输出超长被截断。why 每条不超过20字，先保证 JSON 完整闭合）"},
+                ],
+                temperature=0.2,
+                max_tokens=2400,
+                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
+            )
+            text = resp.choices[0].message.content or ""
     except Exception as e:
         logger.warning(f"theme_locator AI 调用失败: {e}")
         return {"stocks": [], "invalid": [], "terms": theme_terms, "error": f"AI调用失败: {e}"}
@@ -191,21 +206,39 @@ def locate_theme_stocks(
 
 
 def _parse_stock_list(text: str) -> list[dict]:
-    """从 AI 返回文本解析股票列表 JSON。容错 markdown 代码块。"""
+    """从 AI 返回文本解析股票列表 JSON。容错 markdown 代码块与截断。
+
+    v0.8.7.6 审计修复 B13：原贪婪 `\\[.*\\]` 匹配到最后一个 `]`，截断文本解析必败；
+    现改为"首个 [ 起到文末 + 截断修复"——先按最后一个完整对象闭合重试。
+    """
     text = text.strip()
     # 去 markdown 代码块
     if "```" in text:
         m = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if m:
             text = m.group(1).strip()
-    # 找 JSON 数组
-    m = re.search(r"\[.*\]", text, re.DOTALL)
-    if not m:
+    # 找 JSON 数组起点（贪婪语义：到文本末尾，等价原 r"\[.*\]" 的起点行为）
+    start = text.find("[")
+    if start < 0:
         return []
+    raw = text[start:]
+    end = raw.rfind("]")
+    if end >= 0:
+        raw = raw[:end + 1]
     try:
-        data = json.loads(m.group(0))
+        data = json.loads(raw)
         if isinstance(data, list):
             return data
     except json.JSONDecodeError:
         pass
+    # 截断容错：丢掉最后一个不完整对象，按最后一个 } 闭合数组重试
+    last_brace = raw.rfind("}")
+    if last_brace > 0:
+        try:
+            data = json.loads(raw[:last_brace + 1] + "]")
+            if isinstance(data, list):
+                logger.warning(f"theme_locator: AI 输出疑似截断，修复解析出 {len(data)} 个完整候选")
+                return data
+        except json.JSONDecodeError:
+            pass
     return []

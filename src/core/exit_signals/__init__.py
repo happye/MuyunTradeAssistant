@@ -48,9 +48,13 @@ def check_top_signals(stock_data, code, *, announcements=None,
     if macro:
         return macro
 
-    sector = check_sector_top_signal(trade_plan=trade_plan, stock_data=stock_data, code=code)
-    if sector:
-        return sector
+    # v0.8.7.6 审计修复 B06：板块层补 live 门控——三层唯独这里漏了，sector.py 内部
+    # 用 datetime.now() 拉 baostock 旗手K线（回测=未来信息+网络）。回测下 TradePlan
+    # 的 flagbearer_code 本就无 point-in-time 数据源，直接跳过。
+    if live:
+        sector = check_sector_top_signal(trade_plan=trade_plan, stock_data=stock_data, code=code)
+        if sector:
+            return sector
 
     return check_stock_top_signal(
         stock_data, code, announcements=announcements,

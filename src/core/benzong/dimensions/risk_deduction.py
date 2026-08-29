@@ -89,9 +89,15 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "...", "invalid
         return _ai_failed_result("AI 调用失败", dim_name="个股风险值")
 
     # 检查是否触发一票否决
+    # v0.8.7.6 审计修复 B14：优先用 AI 返回的结构化 invalidate 字段
+    #（_validate_score_dict 现已透传该键）；子串匹配只作无结构化字段时的兜底
+    #（原纯子串双向出错：reasoning 含"is true"误判 True，500字截断切掉键误判 False）
     invalidate = False
     raw = ai_result.get("raw_ai_response", "")
-    if "invalidate" in raw.lower() and "true" in raw.lower():
+    structured_invalidate = ai_result.get("invalidate")
+    if isinstance(structured_invalidate, bool):
+        invalidate = structured_invalidate
+    elif "invalidate" in raw.lower() and "true" in raw.lower():
         invalidate = True
 
     warnings = []

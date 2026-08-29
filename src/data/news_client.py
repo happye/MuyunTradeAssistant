@@ -12,7 +12,7 @@
 import time
 import logging
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, date
 
 import akshare as ak
 
@@ -56,9 +56,13 @@ class NewsClient:
         # 检查缓存
         if stock_code in cls._stock_news_cache:
             cached_time, cached_news = cls._stock_news_cache[stock_code]
-            # 个股新闻：同会话内不重复抓取
-            logger.info(f"个股新闻命中缓存: {stock_code} ({len(cached_news)}条)")
-            return cached_news[:max_count]
+            # 个股新闻：同会话内不重复抓取；但跨天必须重抓——
+            # v0.8.7.6 审计修复 B11：REPL 常开跨天后第2天还拿第1天新闻做情绪调节，
+            # source_count 显示正常用户无从察觉。缓存键含日期（昨天缓存今天当未命中）。
+            if cached_time == date.today().isoformat():
+                logger.info(f"个股新闻命中缓存: {stock_code} ({len(cached_news)}条)")
+                return cached_news[:max_count]
+            logger.info(f"个股新闻缓存已跨天({cached_time})，重抓: {stock_code}")
 
         try:
             # AKShare stock_news_em 接受6位代码
@@ -85,7 +89,7 @@ class NewsClient:
                     news_list.append(news_item)
 
             # 写入缓存
-            cls._stock_news_cache[stock_code] = (time.time(), news_list)
+            cls._stock_news_cache[stock_code] = (date.today().isoformat(), news_list)  # B11: 存日期字符串供跨天失效
             logger.info(f"个股新闻获取成功: {stock_code} ({len(news_list)}条)")
 
             if cls._debug:

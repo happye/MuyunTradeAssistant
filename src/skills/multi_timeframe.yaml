@@ -13,7 +13,9 @@ description: 真实多时间框架过滤：月线定方向，周线定位置，�
 
 rules:
   # 规则1：月线向上 + 周线同步向上 + 日线触发，才给BUY
-  - condition:
+  # v0.8.7.6 B01 对齐：三条件缺一不可（原默认 majority 在"月上+日上+周下"时仍 2/3 出 BUY）
+  - require: all
+    condition:
       monthly_trend_bullish:
         reason: "月线方向向上，大方向仍在上行"
         weight: 1.0
@@ -31,7 +33,8 @@ rules:
     weight: 1.5
 
   # 规则2：月线上、周线下，典型打架，只能等
-  - condition:
+  - require: all
+    condition:
       monthly_trend_bullish:
         reason: "月线仍向上，大方向没有坏"
         weight: 1.0
@@ -45,7 +48,8 @@ rules:
     weight: 1.2
 
   # 规则3：月线向上、周线守住中枢，日线回踩，只当回调观察
-  - condition:
+  - require: all
+    condition:
       monthly_trend_bullish:
         reason: "月线方向仍向上"
         weight: 1.0
@@ -63,7 +67,9 @@ rules:
     weight: 1.0
 
   # 规则4：月线和周线同时转弱，日线再给弱触发，才是SELL
-  - condition:
+  # v0.8.7.6 B01 对齐：三条件缺一不可
+  - require: all
+    condition:
       monthly_trend_bearish:
         reason: "月线方向向下，大级别进入防守"
         weight: 1.0

@@ -177,6 +177,9 @@ def _validate_score_dict(data: dict) -> Optional[dict]:
         "confidence": float(data.get("confidence", 0.7)),
         "reasoning": str(data.get("reasoning", ""))[:300],
         "raw_ai_response": str(data)[:500],
+        # v0.8.7.6 审计修复 B14：透传结构化一票否决标志（原被丢弃，risk_deduction
+        # 只能靠 500 字 raw 截断里的子串匹配判定，双向出错）
+        "invalidate": data.get("invalidate") if isinstance(data.get("invalidate"), bool) else None,
     }
 
 

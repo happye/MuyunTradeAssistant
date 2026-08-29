@@ -236,7 +236,8 @@ def auto_score(
 
     # Step 4: 流动性系数
     market_turnover = data_summary.get("market_turnover")
-    if market_turnover is None:
+    turnover_missing = market_turnover is None
+    if turnover_missing:
         market_turnover = 1.0  # 中性默认
         logger.debug("市场成交额未获取，流动性系数用 1.0")
 
@@ -259,6 +260,7 @@ def auto_score(
         market_recognition=dim_results["market_recognition"]["score"],
         risk_deduction=dim_results["risk_deduction"]["score"],
         market_turnover_trillion=market_turnover,
+        invalidate=invalidate_flag,  # B03 修复：红线透传，effective_grade 强制 F
         stock_code=code,
         stock_name=name,
     )
@@ -303,6 +305,19 @@ def auto_score(
                 f"但景气度判定置信度仅{pros_conf:.0%}--降级依据最不可靠维度（AI难判真/撞数据天花板），建议人工复核景气判断"
             )
 
+    # v0.8.7.6 审计修复 B15：纯度/龙头/辨识度等 AI 维 conf=0 兜底 50 时评级仍可能到 A
+    # （H1 只堵了景气维）。对齐 ISS-055 拍板（透明度警告、不动 effective_grade 公式），
+    # 列出具体兜底维度；是否给"兜底维度超过N个压级"留笨总拍板（见 ISS-069）。
+    fallback_dims = [
+        dn for dn, r in dim_results.items()
+        if r.get("confidence", 0) == 0 and dn != "industry_prosperity"
+    ]
+    if fallback_dims:
+        all_warnings.append(
+            f"⚠ {len(fallback_dims)} 维为兜底值50（数据缺失，非真实判断）：{', '.join(fallback_dims)}"
+            f"——评级可靠性存疑，建议人工复核或等数据恢复"
+        )
+
     # 数据获取整体不全 → 警告
     fetch_status = data_summary.get("fetch_status", {})
     failed_sources = [k for k, v in fetch_status.items() if not v]
@@ -318,7 +333,7 @@ def auto_score(
         fetch_status=fetch_status,
         invalidate=invalidate_flag,
         is_self_reliance=is_self_reliance,
-        market_turnover=market_turnover if market_turnover != 1.0 else None,
+        market_turnover=None if turnover_missing else market_turnover,  # B27 修复：不再用 !=1.0 判空（真实1.0万亿被误吞）
         flagbearer_code=flagbearer_code,
         penetration_stage=penetration_stage,
     )
