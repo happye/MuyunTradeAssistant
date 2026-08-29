@@ -13,8 +13,8 @@
 | # | 事项 | 状态/阻塞 | 前置条件 | 关联 |
 |---|------|----------|---------|------|
 | 1 | **bz 景气度接线**：行业数据层喂给 industry_prosperity（AI从猜->看价格分位/库存/需求） | 待笨总拍板+阻塞 | 5年回测跑完作对比载体；四项验收门槛（回测对比/bump CACHE_VERSION/不动effective_grade/兜底变严） | docs/2026-08-16_行业数据层跨模块适用性评估.md §三 / .learnings FEAT-20260816-001 |
-| 2 | **5年回测收尾** | 待办（周末提醒已设） | - | docs/全局审查交接.md |
-| 3 | **阶段分歧 M-A** | 待笨总拍板 | - | docs/全局审查交接.md |
+| 2 | ~~5年回测收尾~~ | ✅ 已完成（2026-08-29 三批基线重跑落账，修复后口径见第二轮报告§八） | - | ISS-069 / docs/2026-08-29_第二轮对抗审查27项裁决与修复报告.md |
+| 3 | ~~阶段分歧 M-A~~ | ✅ 已拍板关闭（2026-08-24，ISS-065 维持现状勿再提） | - | ISS-065 |
 | 4 | 笨总视频理念 3.2（撞数据墙部分） | 待办 | 数据源条件 | docs/2026-08-10_笨总视频理念优化报告.md |
 | 5 | 笨总视频未做事项：超配自动执行 / 新赛道虹吸 / 缩量加速连续性 | 低优先级，需设计评审 | - | docs/2026-08-12_未做事项评估.md |
 | 6 | CODEX.md 补齐（多工具 harness） | 待办 | - | 记忆 project_harness_architecture |
@@ -1578,3 +1578,7 @@ P3（已取消）:
     死条件 25 个：`change_20d_below` `index_neutral` `kdj_j_above` `kdj_j_above_80` `kdj_j_below` `kdj_k_above` `kdj_k_below` `long_lower_shadow` `ma_cross` `ma_distance` `monthly_price_above_ma20` `monthly_price_below_ma20` `price_above_ma` `price_back_above_ma5` `price_below_ma` `rsi_24_above_70` `rsi_24_below_30` `rsi_above` `rsi_below` `rsi_bottom_divergence` `timeframe_price_above_ma` `timeframe_price_below_ma` `timeframe_trend` `volume_shrink_stop` `weekly_price_below_ma20`
     注意分两类：①真死代码（如 `rsi_bottom_divergence` `volume_shrink_stop` `long_lower_shadow` `index_neutral` `change_20d_below` `price_back_above_ma5` 及参数化快捷名 kdj_j_above_80/rsi_24_* 等）→ 可删；②**通用参数化条件名**（`price_above_ma` `price_below_ma` `ma_cross` `ma_distance` `rsi_above` `rsi_below` `timeframe_trend` `timeframe_price_above_ma` `timeframe_price_below_ma` `kdj_k_above` `kdj_k_below` `kdj_j_above` `kdj_j_below` `monthly_price_*` `weekly_price_below_ma20`）是注册表注释明示的"新通用条件名"自定义 YAML 扩展 API → **保留**。清理前先跑本条同款比对脚本确认清单未漂移，删后跑全套测试。
   - **基线重跑落账（2026-08-29 22:20，v0.8.7.6 代码）**：批次1/2 五年——牛股大盘组 11只 +8.27pp **11/11 正向**、中盘组 3只 +5.39pp 3/3、小盘组 3只 -1.25pp 1/3（柯力 -41.18pp 与 720 趟矩阵小盘结论一致）、见顶/对照 0.00 不恶化；批次3——qizong 5只 2/5 平均 +5.78pp、jianzong +12.25pp。归因：A05 前复权（旧口径不复权，除权假暴跌被抹平）+ B01/B02 信号收紧 + A07/A14 等。**方向性结论（大盘/中盘牛股全正向+见顶对照不恶化）成立；旧数值 +12.32pp/+17.3pp 作废，引用以 docs/2026-08-29_第二轮对抗审查27项裁决与修复报告.md §八 为准**。
+
+### ISS-070: 遗留决策点拍板记录（2026-08-29 晚）
+- **A24（第一轮遗留）**: 气宗 `max_hold_days=180` 口径 → **用户拍板保持自然日**（ISS-046 已验证行为不动，plan_guard `_days_since` 不改）。关闭。
+- **B15 延伸（兜底维度硬压级）**: ⏳ 挂起待 720 趟矩阵重跑（`_matrix_rerun_final.py`，v0.8.7.6 最终代码）完成后，结合"兜底维度数 × 评级偏移"分布再评估是否做 effective_grade 封顶。**此项勿忘——重跑结果落账时必须连带评估并给用户结论。**
