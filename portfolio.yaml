@@ -1,4 +1,4 @@
-﻿# ============================================================
+# ============================================================
 # 暮云思辨投资助手 - 持仓记录本
 # ============================================================
 #
@@ -12,167 +12,417 @@
 #   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期
 #   - strategy_state由系统自动维护，一般不需要手动修改
 #
-# 更新日期：2026-06-12
 # ============================================================
 
 positions:
-  "000821":
-    stock_name: ST京机
-    entry_date: "2026-06-12"
-    entry_price: 9.7026
-    current_ratio: 0.0463
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-
-  "002538":
-    stock_name: ST司特
-    entry_date: "2026-06-12"
-    entry_price: 6.0501
-    current_ratio: 0.0393
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-
-  "159201":
-    stock_name: 自由现金流ETF华夏
-    entry_date: "2026-06-12"
-    entry_price: 1.1447
-    current_ratio: 0.0423
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-
-  "159611":
-    stock_name: 电力ETF广发
-    entry_date: "2026-06-12"
-    entry_price: 1.0337
-    current_ratio: 0.0438
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-
-  "002129":
-    stock_name: TCL中环
-    entry_date: "2026-06-12"
-    entry_price: 4.7912
-    current_ratio: 0.0128
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 0
-      add_protection_remaining: 0
-
-  "002192":
+  002192:
     stock_name: 融捷股份
-    entry_date: "2026-06-12"
-    entry_price: 82.0758
-    current_ratio: 0.2303
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
+    entry_date: '2026-07-25'
+    entry_price: 61.41
+    current_ratio: 0.2679
+    last_action: STAY_OUT
+    last_action_semantic: null
     last_sell_path: null
-    last_action_date: "2026-06-12"
-    high_since_entry: null
-    lifecycle: HOLD
+    last_action_date: '2026-08-21'
+    high_since_entry: 74.03
+    lifecycle: OPEN
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
+      inertia_counter: 8
+      last_decision: WATCH
+      recent_signals:
+      - WATCH
+      - WATCH
+      - WATCH
+      - WATCH
+      - WATCH
+      signal_stability_score: 1.0
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
-
-  "603063":
-    stock_name: 禾望电气
-    entry_date: "2026-06-12"
-    entry_price: 17.8915
-    current_ratio: 0.0601
-    last_action: HOLD_POSITION
+    trade_plan:
+      plan_id: 002192_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S1 筑底阶段（MA20<MA60 但价在 MA20 上方）；MA20(67.67)<MA60(75.86) 空头排列；MACD
+        多头；基本面前景判定：neutral（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥61.41，S1 阶段，价格在 MA20(67.67)上方
+      how_much: 0.2679
+      when_sell_targets:
+      - 67.55
+      - 73.69
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 跌破 MA60(¥75.86) + 成交量异常放大
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 58.34
+      current_stop: 58.34
+      max_hold_days: 30
+      fundamental_outlook: neutral
+      mode: jianzong
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S1 阶段判定（MA20/MA60 关系 + 价格位置）
+      - "RAG: 以下是关于当前分析的策略知识参考：  【第10章】\uFEFF第十章：融资盘——助涨助跌的放大器 融资余额，很多人把它理解为“市场情绪高涨，资金踊跃入场”的标志。这是天大..."
+      adjustments: []
+  002738:
+    stock_name: 中矿资源
+    entry_date: null
+    entry_price: null
+    current_ratio: 0.3
+    last_action: CLOSE_ALL
     last_action_semantic: HOLD
-    last_sell_path: null
-    last_action_date: "2026-06-12"
+    last_sell_path: trend_exit
+    last_action_date: '2026-08-21'
     high_since_entry: null
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 0
-      last_decision: HOLD
-      recent_signals: []
-      signal_stability_score: 0.0
+      inertia_counter: 1
+      last_decision: SELL
+      recent_signals:
+      - BUY
+      - BUY
+      - BUY
+      - WATCH
+      - SELL
+      signal_stability_score: 0.5
       reduce_protection_remaining: 0
       min_hold_remaining: 0
+      add_protection_remaining: 3
+    trade_plan:
+      plan_id: 002738_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S1 筑底阶段（MA20<MA60 但价在 MA20 上方）；MA20(51.36)<MA60(54.88) 空头排列；MACD
+        多头；基本面前景判定：neutral（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥54.30，S1 阶段，价格在 MA20(51.36)上方
+      how_much: 0.3
+      when_sell_targets:
+      - 59.73
+      - 65.16
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 跌破 MA60(¥54.88) + 成交量异常放大
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 49.96
+      current_stop: 49.96
+      max_hold_days: 60
+      fundamental_outlook: neutral
+      mode: null
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S1 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【第48章】如果我用固定比例止损，比如跌5%就割，那14.5早就被洗出去了。但ATR止损给了我空间，让我扛住了波动，吃到了...'
+      adjustments: []
+  '603125':
+    stock_name: 常青科技
+    entry_date: '2026-07-25'
+    entry_price: 20.66
+    current_ratio: 0.3
+    last_action: ADD
+    last_action_semantic: ADD
+    last_sell_path: null
+    last_action_date: '2026-08-13'
+    high_since_entry: 23.76
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - SELL
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 4
+      add_protection_remaining: 0
+    trade_plan:
+      plan_id: 603125_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S1 筑底阶段（MA20<MA60 但价在 MA20 上方）；MA20(22.37)<MA60(24.82) 空头排列；MACD
+        多头；基本面前景判定：neutral（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥20.66，S1 阶段，价格在 MA20(22.37)上方
+      how_much: 0.3
+      when_sell_targets:
+      - 22.73
+      - 24.79
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 跌破 MA60(¥24.82) + 成交量异常放大
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 19.01
+      current_stop: 19.01
+      max_hold_days: 60
+      fundamental_outlook: neutral
+      mode: null
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S1 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【第17章】"如果它跌破这个位置，我该怎么办？"  设完这个提醒，我至少有一半的加仓冲动会消失。因为冷静下来想想，那个我会...'
+      adjustments: []
+  '600916':
+    stock_name: 中国黄金
+    entry_date: '2026-07-25'
+    entry_price: 7.2
+    current_ratio: 0.0418
+    last_action: STAY_OUT
+    last_action_semantic: null
+    last_sell_path: null
+    last_action_date: '2026-08-13'
+    high_since_entry: 7.67
+    lifecycle: OPEN
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: WATCH
+      recent_signals:
+      - BUY
+      - WATCH
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 4
+      add_protection_remaining: 0
+    trade_plan:
+      plan_id: 600916_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S2 上升阶段（MA20>MA60 且价在 MA20 上方）；MA20(7.73)>MA60(7.49) 多头排列；MACD
+        多头；基本面前景判定：bullish（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥7.20，S2 阶段，价格在 MA20(7.73)上方
+      how_much: 0.0418
+      when_sell_targets:
+      - 7.92
+      - 8.64
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 高位止盈3维度触发（宏观/板块/个股大顶信号）
+      locked_initial_stop: 6.62
+      current_stop: 6.62
+      max_hold_days: 180
+      fundamental_outlook: bullish
+      mode: qizong
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S2 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【第63章】之前金价一天暴跌快9%。连续跌穿4500、4400、4300、4200、4100五大关口。沪金从1188元/克...'
+      adjustments: []
+  '159201':
+    stock_name: 自由现金流ETF华夏
+    entry_date: '2026-07-25'
+    entry_price: 1.146
+    current_ratio: 0.0466
+    last_action: STAY_OUT
+    last_action_semantic: null
+    last_sell_path: null
+    last_action_date: '2026-08-13'
+    high_since_entry: 1.172
+    lifecycle: OPEN
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: WATCH
+      recent_signals:
+      - BUY
+      - WATCH
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 4
+      add_protection_remaining: 0
+    trade_plan:
+      plan_id: 159201_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S3 顶部阶段（MA20>MA60 但价在 MA20 下方）；MA20(1.18)>MA60(1.15) 多头排列；MACD
+        空头；基本面前景判定：neutral（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥1.15，S3 阶段，价格在 MA20(1.18)下方
+      how_much: 0.0466
+      when_sell_targets:
+      - 1.26
+      - 1.38
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 从近期高点回撤 >15%（顶部确认）
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 1.05
+      current_stop: 1.05
+      max_hold_days: 30
+      fundamental_outlook: neutral
+      mode: null
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S3 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【望周知—系统化交易大纲】45. 认知重构：改变对亏损的看法  46. 接受不确定性：市场本来就是不确定的  47.
+        专注...'
+      adjustments: []
+  '159611':
+    stock_name: 电力ETF广发
+    entry_date: null
+    entry_price: null
+    current_ratio: 0.3
+    last_action: CLOSE_ALL
+    last_action_semantic: ADD
+    last_sell_path: trend_exit
+    last_action_date: '2026-08-13'
+    high_since_entry: null
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - SELL
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 4
+      add_protection_remaining: 0
+    trade_plan:
+      plan_id: 159611_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S4 下跌阶段（MA20<MA60 且价在 MA20 下方）；MA20(1.06)<MA60(1.08) 空头排列；MACD
+        空头；基本面前景判定：bearish（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥1.02，S4 阶段，价格在 MA20(1.06)下方
+      how_much: 0.3
+      when_sell_targets:
+      - 1.13
+      - 1.23
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 0.94
+      current_stop: 0.94
+      max_hold_days: 8
+      fundamental_outlook: bearish
+      mode: null
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S4 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【第60章】今年4月16日，三家公司同时爆雷。 实达集团，原本预计2025年营收3亿多，修正后只剩不到1个亿，缩水近70%...'
+      adjustments: []
+  '600989':
+    stock_name: 宝丰能源
+    entry_date: '2026-07-25'
+    entry_price: 23.38
+    current_ratio: 0.068
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: null
+    last_action_date: '2026-08-13'
+    high_since_entry: 22.81
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: HOLD
+      recent_signals:
+      - BUY
+      - SELL
+      signal_stability_score: 0.0
+      reduce_protection_remaining: 0
+      min_hold_remaining: 4
+      add_protection_remaining: 0
+    trade_plan:
+      plan_id: 600989_2026-08-24
+      opened_at: '2026-08-24'
+      why_buy: Weinstein S2 上升阶段（MA20>MA60 且价在 MA20 上方）；MA20(23.35)>MA60(22.55) 多头排列；MACD
+        多头；基本面前景判定：bullish（规则版从技术阶段推断，AI 增强可改）
+      when_buy: 建仓价 ¥23.38，S2 阶段，价格在 MA20(23.35)上方
+      how_much: 0.068
+      when_sell_targets:
+      - 25.72
+      - 28.06
+      when_sell_invalidate:
+      - 跌破初始止损价（致命）
+      - 跌破 MA60(¥22.55) + 成交量异常放大
+      - MA20 死叉 MA60（上升趋势结构破坏）
+      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
+      locked_initial_stop: 21.51
+      current_stop: 21.51
+      max_hold_days: 135
+      fundamental_outlook: bullish
+      mode: null
+      flagbearer_code: null
+      penetration_stage: null
+      overweight_executed: false
+      overweight_expiry: null
+      overweight_basis: null
+      thesis_sources:
+      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
+      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
+      - Weinstein S2 阶段判定（MA20/MA60 关系 + 价格位置）
+      - 'RAG: 以下是关于当前分析的策略知识参考：  【第54章】说明坑在变浅，你很快就能自己出来了。” 你等了三天，坑没变浅，反而下雨了，水涨上来了。他再说：“雨总会停的，你...'
+      adjustments: []
+  002594:
+    stock_name: 比亚迪
+    entry_date: '2026-07-25'
+    entry_price: 91.89
+    current_ratio: 0.1336
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
+    last_sell_path: trend_exit
+    last_action_date: '2026-08-17'
+    high_since_entry: 89.71
+    lifecycle: HOLD
+    strategy_state:
+      cooldown_remaining: 0
+      cooldown_reason: null
+      reverse_count: 0
+      inertia_counter: 1
+      last_decision: SELL
+      recent_signals:
+      - BUY
+      - SELL
+      - SELL
+      - SELL
+      - SELL
+      signal_stability_score: 0.75
+      reduce_protection_remaining: 0
+      min_hold_remaining: 1
       add_protection_remaining: 0

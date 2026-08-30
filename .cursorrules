@@ -1,0 +1,26 @@
+# Muyun — Cursor Rules (暮云思辨投资助手)
+
+Single source of truth: [AGENTS.md](AGENTS.md) (Chinese). Read it before non-trivial work.
+
+## Before any non-trivial work
+
+**Read `skills/muyun-dev-discipline/SKILL.md` first.** Tool-neutral master copy of this project's
+engineering discipline gates: fix-in-four-steps, same-class scanning, docs≠fix,
+verification-by-running, tuning red lines, pre-commit checklist.
+A synced copy also lives in `.cursor/rules/muyun-dev-discipline/`.
+
+Why explicit: skill auto-discovery directories are **not** compatible across agent tools
+(`.claude/skills/`, `.github/skills/`, `.cursor/rules/`, `.codex/skills/`, `.workbuddy/skills/`).
+This project already lost a mandatory rule that way — the `self-improvement` skill sat only in
+`.github/skills/`, so "consult self-improvement after a failure" was never executed.
+If you edit the master copy, run `bash scripts/sync-agent-skills.sh`.
+
+## Hard rules
+
+- Lessons must be recorded in `.learnings/LEARNINGS.md` (version controlled). Tool-specific
+  session memory does not survive a tool switch or a new machine.
+- Docs/comment changes are not fixes. Verify with `git show --stat` that runtime code changed.
+- After fixing a bug, scan the whole repo for the same pattern before committing.
+- Validate by running, not by reading: full test suite for global-state changes, scripted
+  cross-comparison for YAML↔code mappings, known-input→known-output for formulas.
+- Virtualenv only: `.\.venv\Scripts\python.exe`. Never install into a global Python.

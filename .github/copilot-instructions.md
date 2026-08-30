@@ -5,6 +5,7 @@ This repository is a Windows-first Python CLI project for an AI-assisted A-share
 ## Core working mode
 
 - Treat non-obvious failures as a workflow event, not just a bug to patch. This is mandatory, not optional.
+- Before non-trivial work, read `skills/muyun-dev-discipline/SKILL.md` (tool-neutral master copy of this project's engineering discipline gates). A synced copy also lives in `.github/skills/muyun-dev-discipline/`. Do not rely on skill directory auto-discovery alone — directories differ per agent tool (`.claude/skills/`, `.github/skills/`, `.cursor/rules/`, `.codex/skills/`), and this project already lost a mandatory rule that way. If you edit the master copy, run `bash scripts/sync-agent-skills.sh`.
 - Before continuing after a meaningful failure, first consult the `self-improvement` skill and follow that workflow.
 - Before major tasks, repeated bug classes, or after user workflow corrections, review the relevant entries in `.learnings/LEARNINGS.md` and `.learnings/ERRORS.md` if they exist.
 - After resolving a non-obvious issue, record a structured learning in `.learnings/` using the self-improvement skill format, link related entries with `See Also`, and surface the prompt `Should I log this as a learning?` in chat.
@@ -18,7 +19,9 @@ This repository is a Windows-first Python CLI project for an AI-assisted A-share
 - `src/data/` contains external data clients, models, portfolio persistence, and replay feeders.
 - `src/chat/` contains the chat agent, tool wiring, prompt schemas, and text formatting.
 - `src/skills/` contains YAML strategy skill definitions. Prefer existing skills and layer boundaries over adding new top-level abstractions.
-- `tests/` mainly uses direct script-style test files run with Python, not a heavy pytest workflow.
+- `src/core/benzong/` contains the Benzong 6-dimension AI scoring system; `src/core/exit_signals/` holds exit signal rules.
+- `tests/` uses **pytest** (`pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval`), plus some standalone script-style files. 42 files contain `def test_`. Run the **full** suite for any change touching global state (env vars, class-level caches, singletons) — running a single file hides order-dependent failures.
+- `skills/` (repo root) holds the tool-neutral discipline skill `muyun-dev-discipline`; `.learnings/` holds the cross-tool lesson ledger.
 
 ## Development rules for this repo
 

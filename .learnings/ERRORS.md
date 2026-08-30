@@ -215,3 +215,37 @@ Use separate short commands or a temporary script when validating Python express
 - Tags: powershell, quoting, validation
 
 ---
+## [ERR-20260830-001] git stash 中断导致 .git 引用层损坏
+
+**Logged**: 2026-08-30T17:05:00+08:00
+**Severity**: critical
+**Status**: resolved
+
+### Symptom
+`git stash push` 执行中被中断（SIGTERM）后：`git status` → `fatal: bad object HEAD`；
+`git fsck` → 全部 ref `invalid sha1 pointer`；`git cat-file -t <近期commit>` → `could not get object info`。
+
+### Root Cause
+- stash 的对象写入/引用更新非原子，进程中断留下半写状态；
+- 2026-05 之后的 loose commit 对象损坏丢失（实测 650 对象仅 7 个 commit 可解析：
+  2026-05-12 前历史 + 1 个 2026-07-16 WIP stash 快照 f27577f）。
+
+### Rescue（无损修复，零文件删除）
+1. 工作区文件核实完好（grep/测试逐项验证）
+2. 旧 .git 整体归档 `.git.corrupted_20260830/`（另留 /tmp/d04_rescue/git_backup_dotgit）
+3. `git init -b main` + 配回 origin + 全工作区快照 commit `0e9471c`（461 文件）
+4. `git fsck --full` 零错误
+5. 远端历史嫁接待用户凭据：`git fetch origin && git reset --soft origin/main && git commit && git push`
+
+### Prevention
+- agent 长任务链内禁裸跑 stash/checkout/reset/rebase；A/B 对照用文件级原地切换
+  （备份→改→跑→还原→md5 校验，见 LRN-20260830-001）
+- 仓库损坏先跑 `git cat-file --batch-all-objects --batch-check` 评估对象库存活——refs 坏 ≠ 对象丢，
+  49 个 commit 对象在但仅 7 个可解析，说明逐个 parse 验证才能给出真实损失面
+
+### Metadata
+- Reproducible: yes（中断 stash 即可复现）
+- Related Files: .git
+- Tags: git, stash, corruption, rescue
+
+---

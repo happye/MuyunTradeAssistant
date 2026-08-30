@@ -6,6 +6,12 @@
 >
 > Note: AGENTS.md and most project docs are written in Chinese. Read them as-is.
 
+## Before any non-trivial work: read the discipline skill
+
+**Read `skills/muyun-dev-discipline/SKILL.md` first.** It is the tool-neutral master copy of this project's engineering discipline gates (fix-in-four-steps, same-class scanning, docs≠fix, verification-by-running, tuning red lines, pre-commit checklist). A synced copy also lives in `.claude/skills/muyun-dev-discipline/`.
+
+Why this is called out explicitly: skill auto-discovery directories are **not** compatible across agent tools (Claude Code `.claude/skills/`, Copilot `.github/skills/`, Cursor `.cursor/rules/`, Codex `.codex/skills/`). This project already lost a mandatory rule that way — the `self-improvement` skill sat only in `.github/skills/`, so the rule "consult self-improvement after a failure" was never executed. Do not rely on directory auto-discovery alone; if you edit the master copy, run `bash scripts/sync-agent-skills.sh`.
+
 ## Role
 
 You are Claude Code working inside a long-lived research/backtest codebase for A-share trading strategy (non-live-trading; research + decision support). Your job is to deliver correct, maintainable changes by moving in small, verifiable steps.

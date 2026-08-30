@@ -840,3 +840,70 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 - Pattern-Key: env.heredoc_escaping | py.threadpool_join
 
 ---
+
+## [LRN-20260830-001] best_practice
+
+**Logged**: 2026-08-30T17:05:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: backend
+
+### Summary
+安全网修复的判据是"谁触发的"而非"动作多重"；残留复跑是验收的必选项；git 写操作禁止在 agent 长任务链内裸跑
+
+### Details
+1. **修"安全网被降级"类问题，判据是触发源，不是动作量级**。R4 的 D03 首版修复只兜 CLOSE_ALL 分支，
+   注释里写"TRIM 减仓影响小不兜底"——但 trend_break 的 MA5<MA20 短期信号产出 exit_action="TRIM"，
+   decision 已被强设 SELL 而 score 仍 0，照样被策略层两道闸门降级 HOLD 后反手 ADD。兜底条件应挂
+   `force_exit`（安全网是否触发），减仓量级由 position_action 控制、与 score 正交。"影响小所以不修"
+   的直觉被 60 秒探针复跑推翻。
+2. **修复后必须残留复跑**：601318/2024 首轮修复后仍有 2 例 score=0 SELL，靠埋 trace 抓现场定位到 TRIM
+   通道。没有这步，错误结论（"TRIM 不用兜底"）就会写进注释固化下来。
+3. **git stash/checkout/reset 等有副作用的写操作不在 agent 长任务链里裸跑**（中断即损坏，本次
+   .git 引用层损坏、2026-05 后历史对象丢失）。A/B 对照改用文件级原地切换：备份→改→跑→还原→md5 校验。
+   仓库损坏后的抢救顺序：先 `git cat-file --batch-all-objects --batch-check` 查对象库存活（refs 坏
+   ≠对象丢），再决定重建 or 嫁接；修复用"归档旧 .git + init + 全量快照 commit"，零删除可回滚。
+4. **可选配置覆盖默认值禁用 `or`（R4 修 D05 时的发现）**：`weights or DEFAULT` 的 or 语义会把调用方
+   传入的空 dict 静默换成默认值——凡"可选配置覆盖默认值"的参数，用 `x if x is not None else default`，
+   禁用 `or`（0/""/[] 都是合法配置值时会被吞）。
+
+### Metadata
+- Source: conversation
+- Related Files: src/core/orchestrator.py, src/core/decision_engine.py, src/data/data_feeder.py
+- See Also: ERR-20260830-001, LRN-20260829-002
+- Pattern-Key: fix.safety_net_criterion | verify.residual_rerun | git.no_sideeffect_in_agent_chain
+
+---
+
+## [LRN-20260830-002] best_practice
+
+**Logged**: 2026-08-30T18:30:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: backend
+
+### Summary
+消费面定影响面（先 grep 消费者再定修复流程）；"技术性丢弃"要先读调用链再判对错
+
+### Details
+1. **影响面 = 消费者，不是发现本身的字面严重度**。E01（MA 排列 3 条即判）听起来像信号级 bug，
+   grep 全库后确认 TechContextBuilder 只喂 AI Modifier prompt（live 专属，回测 AI 禁用）——
+   于是修复流程从"C01 式 A/B 回测对照"降级为"单测锁契约"，省掉无意义的回测矩阵
+   （回测路径暴露恒为 0，跑了全是噪声）。反过来，若消费者是 decision_engine 就必须上 A/B。
+   修复前先 grep「谁读这个函数/字段」，再选流程。
+2. **"丢弃部分结果"类代码，先读调用链再裁决**。D-RG-2（market_cache 超时 return None 丢弃
+   已抓到的页）字面像资源浪费，但实测 `_snapshot_quality_ok` 只查 >10 行有效价——部分快照
+   （约 3200/5800 只）会通过校验被缓存成"全市场快照"，静默偏置量比/涨幅排名。丢弃+换源重拉
+   才是正确设计。审查员报"缺陷"时若只看函数局部，容易把容错设计误报成 bug（对照 R3 C06 假阳性：
+   机理 + 消费链都要看）。
+3. **结构性断言测试适合 glue 代码**：web/chat/tui 的字段映射没有纯函数可测，用「读源码找
+   StockData( 构造块 → 断言必须包含 N 个字段=」的结构断言，先红后绿一样成立；改文案会挂测试
+   是有意的（提醒同步）。
+
+### Metadata
+- Source: conversation
+- Related Files: src/core/tech_context.py, src/scanner/market_cache.py, src/web/app.py
+- See Also: LRN-20260830-001, LRN-20260829-002
+- Pattern-Key: fix.consumer_defines_blast_radius | review.discard_is_design | test.structural_for_glue
+
+---

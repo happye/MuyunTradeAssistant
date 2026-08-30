@@ -53,3 +53,9 @@ tests/extended_backtest_2024_round3/
 
 # 历史回测/issue验证的输出产物（本地保留，不入库）
 tests/artifacts/
+
+# 用户自留备忘（文件名明确标注"无需commit"）
+勿删！自留备忘，无需commit.txt
+
+# git 抢救归档（.git 损坏后的原始备份，永不入库）
+.git.corrupted_20260830/

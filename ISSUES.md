@@ -1599,3 +1599,32 @@ P3（已取消）:
 - **回归**: `tests/core/test_indicator_math_regression.py` 17 项（live↔回测同数据同值锁）；`verify_indicator_math.py` 更新至修复后预期 0 FAIL
 - **720 趟矩阵终审（2026-08-30 凌晨）**：v3（Wilder）vs v2（SMA）同批 60 只样本，8 格 Δ 差全部 ±0.92pp 内=噪声级；v0.8.7.7 随机基线 qizong -0.27~+2.72pp / jianzong -2.04~+0.90pp。数据 `tests/backtest/_matrix_results_v3_wilder.json`（可复现）。三批 A/B 对照（报告 §四）+ 大样本矩阵双确认：公式修复改变信号时点但不改组级期望。
 - **关联**: LRN-20260829-002（公式验证方法论+假阳性案例）/ LRN-20260829-003（双 builder 漂移根因）/ 审查覆盖台账（已回写）
+
+---
+
+### ISS-072: 第四轮对抗审查 D 区块——决策链 score 断裂与守卫失配 6 组修复（v0.8.7.8）
+- **状态**: ↩️ **2026-08-30 用户裁决：代码修复已整体回滚至 v0.8.7.7，本条转【待修复方执行】**——审查发现与证据有效，报告即清单（`docs/2026-08-30_第四轮对抗审查D区块裁决与修复报告.md`，已加回退声明）；"已修复"表述为回退前历史记录
+- **清单/报告**: `docs/2026-08-30_第四轮对抗审查D区块裁决与修复报告.md`；审查方法：3 路子 agent + 主审脚本复现（monkey-patch 埋点实测 449 SELL→164 降级→28 反手 ADD→7 浮亏 ADD）
+- **已修复**:
+  - D01 `_safe_rolling` 窗口不足降级输出半窗口均值（ma250@125根=63.0）→ 返回 None；暴露面仅 index_ma250 前 34 根 K（预热 320 天掩护其余窗口）
+  - D02 `high_250d` 守卫 60→250 双端对称（C04/C07 同款第三犯）
+  - D03 🔴 止损一票否决/三条强制离场通道的 SELL 带 score=0 → 策略层两道闸门（确认/反转成本）降级 HOLD → 反手 ADD（实测 RISK_ON 止损当日 ADD 0.40）。修：decision_engine `score=max(score, veto_conf)` + orchestrator `FORCE_EXIT_SCORE=0.85` 三通道兜底；**实测修正**：trend_break 的 MA5<MA20 走 TRIM/REDUCE，兜底必须挂 `force_exit` 不能挂 CLOSE_ALL
+  - D04 WATCH 上报 HOLD 桶 0 分 → 上报自身桶分
+  - D05 `DEFAULT_WEIGHTS` 类级共享 dict 被实例共享污染 → 实例级 `dict()` 拷贝；空 dict 不再经 `or` 静默回落
+  - D06 `_judge_vol_trend` 除零 + RSI nan 进区间判定 → 补防护
+- **A/B 对照（10 股 2024，可还原原地切换法）**: 组级收益 Δ=-0.11pp（噪声级，与 C01/C02 结论同型：改信号质量不改组级期望）；结构性指标 score=0 SELL 5→0（机制消灭）、SELL 降级 313→272（-13%）
+- **回归**: `tests/core/test_d04_regression.py` 15 项全绿；全量 360 passed / 2 skipped
+- **事故记录**: 主审 `git stash` 被中断致 .git 引用层损坏（2026-05 后历史对象丢失）→ 无损修复：旧 .git 归档 `.git.corrupted_20260830/`，重建后全工作区快照 commit `0e9471c`；远端历史嫁接待用户凭据（步骤见报告 §六）。教训 ERR-20260830-001：agent 长任务链内禁裸跑 stash/checkout 等写操作，A/B 用文件级原地切换替代
+- **关联**: LRN-20260830-001（安全网修复判据：谁触发而非动作多重）/ ERR-20260830-001 / 审查覆盖台账 R4（已回写）
+
+---
+
+### ISS-073: 第五轮对抗审查 E 区块——R4 延后项执行（v0.8.7.9）
+- **状态**: ↩️ **2026-08-30 用户裁决：代码修复已随第四轮整体回滚至 v0.8.7.7，本条转【待修复方执行】**——E01/E02/D-RG-2 的发现、证据与裁决依据有效（报告已加回退声明）；"已修复"表述为回退前历史记录
+- **报告**: `docs/2026-08-30_第五轮对抗审查E区块延后项执行报告.md`
+- **已修复**:
+  - E01（原 D-TC-01）`tech_context._judge_ma_arrangement` 契约是 4 条 MA 排列，守卫却放行 3 条——缺 MA60（次新股/数据缺口）给 AI prompt 喂假排列（14.6% K 线判定翻转）。修：任一声明 MA 缺失→数据不足；影响面核实=仅 AI Modifier prompt（live 专属），不进决策信号路径，故不适用回测 A/B，以单测锁契约
+  - E02（原 D-TC-02）quote→StockData 兜底丢 open/high/low/volume：web/app.py + **同类点扫描追加 chat/tools.py、tui/app.py 共 3 处**全补齐（0 值落 None 防脏数据）
+  - D-RG-2 `market_cache.py` 超时丢部分页：**裁决维持现状**——实测 `_snapshot_quality_ok` 只查 >10 行有效价，部分快照会通过校验入缓存静默偏置全市场排名，丢弃+换源重拉才是对的；超时日志补诊断信息（N/73 页）
+- **回归**: `tests/core/test_e_block_regression.py` 7 项（修复前 3 项红灯）；全量 367 passed / 2 skipped
+- **关联**: ISS-072（延后项出处）/ LRN-20260830-002（消费面定影响面：先 grep 消费者再定修复流程）
