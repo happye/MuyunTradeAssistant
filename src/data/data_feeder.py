@@ -353,7 +353,11 @@ class DataFeeder:
         high_250d = None
         if 'high' in idx.columns:
             recent_250 = idx.tail(250)
-            if len(recent_250) >= 60:
+            # v0.8.7.8 审计修复 D02（第四轮审查 ISS-072）：守卫 60 → 250，与字段名一致。
+            # 与 C04/C07（high_120d 守卫 60→120 / high_60d 守卫 20→60）同类，
+            # 第三轮修那两处时漏了这一处。用 60 日高点冒充 250 日高点会系统性
+            # 低估回撤 → decision_engine.py:55-56 少判 PANIC。live 侧同改（akshare_client）。
+            if len(recent_250) >= 250:
                 high_250d = float(recent_250['high'].astype(float).max())
 
         # 涨跌幅
@@ -455,12 +459,19 @@ class DataFeeder:
 
     @staticmethod
     def _safe_rolling(series: pd.Series, window: int) -> Optional[float]:
-        """安全计算滚动均值"""
+        """安全计算滚动均值
+
+        v0.8.7.8 审计修复 D01（第四轮审查 ISS-072）：
+        原实现在 `len(series) >= max(3, window // 2)` 时用"现有数据的均值"兜底，
+        于是字段名叫 ma60 却装着 30 根均线的伪值。而 live 路径
+        （akshare_client 用 `rolling(w).mean()`，min_periods 默认 = w）不足 w 根
+        直接为 None —— 同一个字段回测有值、实盘无值，回测信号无法迁移实盘。
+        这是本项目第 5 次复发同类不对称（ma120 / ATR / high_120d / high_60d / 本处）。
+
+        实测暴露面（600519 2024，预热 320 自然日 ≈ 216 根）：
+        ma60/ma120 靠预热躲过，仅 index_ma250 前 34 根 bar（占 14%）受影响。
+        """
         if len(series) < window:
-            # 数据不足window，用可用数据计算
-            if len(series) >= max(3, window // 2):
-                val = float(series.tail(min(len(series), window)).mean())
-                return round(val, 2) if pd.notna(val) else None
             return None
         val = float(series.rolling(window=window).mean().iloc[-1])
         return round(val, 2) if pd.notna(val) else None

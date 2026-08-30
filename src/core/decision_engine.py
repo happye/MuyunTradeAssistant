@@ -23,9 +23,13 @@ class StateMachine:
     - RISK_ON: 沪深300 > 年线 且 回撤 < 15%（牛市环境）
     - RISK_OFF: 沪深300 < 年线 且 回撤 > 20%（熊市环境）
     - TRANSITION: 介于两者之间（震荡/过渡）
-    - PANIC: 极端暴跌（当日跌>5% 或 跌破MA60+放量暴跌）
+    - PANIC: 个股当日暴跌>5%（或破MA60+放量暴跌>3%）——个股视角的极端保护
 
-    注意：此判断基于沪深300指数（大盘），不是个股。变化频率：数周到数月。
+    ⚠️ G02 裁决（2026-08-30，方向A）：**第一优先 PANIC 判定使用的是个股自身的
+    量价数据**——这是有意设计并维持现状：个股单日崩盘时，对该持仓股按恐慌市
+    处理（SELL 门槛降到 0.20、策略层进入极端模式），属持仓保护性行为。
+    原 docstring「不是个股」的表述与此矛盾，本次改为如实描述；
+    大盘级牛熊（RISK_ON/OFF/TRANSITION）仍基于沪深300年线，数周到数月一变。
     """
 
     @staticmethod
@@ -130,7 +134,11 @@ class DecisionEngine:
     }
 
     def __init__(self, weights: Optional[dict[str, float]] = None):
-        self.weights = weights or self.DEFAULT_WEIGHTS
+        # v0.8.7.8 审计修复 D05（第四轮审查 ISS-072）：
+        # 原写法 `weights or self.DEFAULT_WEIGHTS` 让所有实例**共享同一个类级 dict**，
+        # 任一实例改权重会污染其它实例（实测 e1.weights[k]+=99 后 e2 也被改）；
+        # 且传空 dict（falsy）会静默回落默认权重而非"空权重"。
+        self.weights = dict(weights) if weights is not None else dict(self.DEFAULT_WEIGHTS)
 
     def make_decision(
         self,
@@ -261,12 +269,25 @@ class DecisionEngine:
         ))
 
         # 计算综合评分
-        if final_signal == SignalType.BUY:
-            score = weighted_scores[SignalType.BUY]
-        elif final_signal == SignalType.SELL:
-            score = weighted_scores[SignalType.SELL]
-        else:
-            score = weighted_scores[SignalType.HOLD]
+        # v0.8.7.8 审计修复 D04（第四轮审查 ISS-072）：
+        # 原写法把 WATCH 决策的 score 取成 HOLD 桶（通常恒为 0），
+        # 导致"观望"上报成 0 分，下游无法区分"弱信号"与"无数据"。
+        score = weighted_scores.get(final_signal, 0.0)
+
+        # v0.8.7.8 审计修复 D03（第四轮审查 ISS-072，🔴）：
+        # final_signal 可能是动作信号（止损/止盈）一票否决的产物，它**不经过 base 投票**，
+        # 因此 weighted_scores[SELL] 恒为 0.0。下游策略层有两道闸门挂在 score 上：
+        #   - _apply_reverse_cost: score < 0.003 → SELL 降级为 HOLD
+        #   - _needs_confirmation: score < 弱信号阈值 → 需确认 → SELL 降级为 HOLD
+        # 结果是止损"一票否决"形同虚设；更糟的是降级后 HOLD 分支会走
+        # `buy_score > sell_score * 1.5` 反手给出 ADD —— 在止损触发当日加仓。
+        # 修法：用触发本次覆盖的动作信号置信度给 score 兜底（取较大者，不覆盖 base 票高分）。
+        if final_signal == SignalType.SELL:
+            veto_conf = max(
+                (s.confidence for s in action_signals if s.signal == SignalType.SELL),
+                default=0.0,
+            )
+            score = max(score, veto_conf)
 
         # 生成决策理由
         reasons = self._generate_reasons(data, base_signals, regulator_signals, action_signals, final_signal)
@@ -675,12 +696,11 @@ class DecisionEngine:
                 # 止盈：减仓留50%底仓（分批止盈，第49章）
                 target = current_position_ratio * self.TAKE_PROFIT_KEEP
                 return PositionAction.REDUCE, target
-            elif sell_score >= 0.4:
-                # 强卖出信号：减仓留50%（趋势明显走坏）
-                target = current_position_ratio * self.NORMAL_REDUCE_KEEP
-                return PositionAction.REDUCE, target
             else:
-                # 弱卖出信号：减仓留50%
+                # v0.8.7.8 裁决修复 G05（G区块）：原"强卖出(≥0.4)/弱卖出"两分支行为
+                # 完全相同（都用 NORMAL_REDUCE_KEEP=0.65，0.4 是死分档）且注释「留50%」
+                # 与常量矛盾。合并为单分支：减仓留 65%（趋势走坏温和减仓）。
+                # 若未来想让强卖出真留 50%（TAKE_PROFIT_KEEP），属策略改动需 A/B 立项。
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                 return PositionAction.REDUCE, target
 

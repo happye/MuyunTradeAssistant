@@ -334,6 +334,8 @@ def generate_plan_draft(
         locked_initial_stop=round(initial_stop, 2),
         current_stop=round(initial_stop, 2),
         max_hold_days=max_hold,
+        # v0.8.7.8 裁决修复 H02：真入场价直存（此前 adjuster 只能反推）
+        entry_price=entry_price,
         fundamental_outlook=outlook,
         mode=mode,
         thesis_sources=sources,

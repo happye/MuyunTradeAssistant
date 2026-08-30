@@ -122,24 +122,38 @@ class YAMLBasedSkill(Skill):
                 })
                 all_reasons.extend(condition_result.get("reasons", []))
 
-        # 根据命中的规则数量计算信号
+        # 根据命中的规则计算信号
+        # v0.8.7.8 裁决修复 G03/G06（G区块）：
+        # 原实现用"命中条数"表决方向（1条强SELL(0.95,w1.5) 与 2条弱BUY(0.3,w0.3)
+        # 打平 → HOLD conf=0.84，强SELL证据被折叠进中性票），且 WATCH/HOLD 规则的
+        # 置信度被平均进 BUY/SELL 票（1BUY(0.3)+2WATCH(0.5) → BUY conf 0.4）。
+        # 改为：按方向 Σ(weight×confidence) 取最大者；置信度取**胜出方向自身桶**
+        # 的加权均值（中性规则不再抬高方向票）；打平或仅中性命中 → HOLD（总体加权）。
         if matched_rules:
-            # 计算加权置信度
-            total_weight = sum(r["weight"] for r in matched_rules)
-            weighted_conf = sum(r["confidence"] * r["weight"] for r in matched_rules) / total_weight
-            all_confidence = min(1.0, weighted_conf)
+            dir_score = {SignalType.BUY: 0.0, SignalType.SELL: 0.0}
+            bucket = {SignalType.BUY: [], SignalType.SELL: []}
+            for r in matched_rules:
+                if r["signal"] in dir_score:
+                    dir_score[r["signal"]] += r["confidence"] * r["weight"]
+                    bucket[r["signal"]].append(r)
 
-            # 确定信号：买入条件多且强则BUY
-            buy_count = sum(1 for r in matched_rules if r["signal"] == "BUY")
-            sell_count = sum(1 for r in matched_rules if r["signal"] == "SELL")
+            buy_score, sell_score = dir_score[SignalType.BUY], dir_score[SignalType.SELL]
 
-            if buy_count > sell_count and buy_count >= 1:
+            if buy_score > sell_score and buy_score > 0:
                 all_signal = SignalType.BUY
-            elif sell_count > buy_count and sell_count >= 1:
+                w = sum(r["weight"] for r in bucket[SignalType.BUY])
+                all_confidence = min(1.0, sum(r["confidence"] * r["weight"] for r in bucket[SignalType.BUY]) / w)
+            elif sell_score > buy_score and sell_score > 0:
                 all_signal = SignalType.SELL
-            elif buy_count == sell_count and buy_count > 0:
-                all_signal = SignalType.HOLD  # 冲突时保守
+                w = sum(r["weight"] for r in bucket[SignalType.SELL])
+                all_confidence = min(1.0, sum(r["confidence"] * r["weight"] for r in bucket[SignalType.SELL]) / w)
             else:
+                # 打平（含仅 WATCH/HOLD 命中）→ 保守 HOLD，置信度取全部命中规则加权均值
+                total_weight = sum(r["weight"] for r in matched_rules)
+                all_confidence = min(
+                    1.0,
+                    sum(r["confidence"] * r["weight"] for r in matched_rules) / total_weight
+                ) if total_weight > 0 else 0.3
                 all_signal = SignalType.HOLD
         else:
             all_signal = SignalType.WATCH

@@ -127,12 +127,20 @@ class PortfolioManager:
     def __init__(self, portfolio_path: Optional[str] = None):
         self.portfolio_path = portfolio_path or DEFAULT_PORTFOLIO_PATH
         self._data: dict = {}
+        self._corrupted = False  # G01：加载失败置位，禁止 _save 覆盖真实持仓
         self._load()
 
     DEFAULT_MIN_HOLD_DAYS = 5
 
     def _load(self):
-        """加载portfolio.yaml"""
+        """加载portfolio.yaml
+
+        v0.8.7.8 裁决修复 G01：解析失败不再 fail-open 清空（原实现把损坏文件当
+        "空仓"继续跑，下一次 _save 就把真实持仓静默抹掉——实测 1 只 → 0）。
+        现置 _corrupted=True，_save 拒绝覆盖，损坏文件原样保留供人工修复。
+        G04：键规范化——无引号数字键被 YAML 解析为 int，has_position("600519")
+        查不到但总仓位照算（隐形持仓），统一转 str。
+        """
         if not os.path.exists(self.portfolio_path):
             logger.info(f"持仓文件不存在，将创建: {self.portfolio_path}")
             self._data = {"positions": {}}
@@ -141,18 +149,65 @@ class PortfolioManager:
         try:
             with open(self.portfolio_path, 'r', encoding='utf-8') as f:
                 self._data = yaml.safe_load(f) or {"positions": {}}
+            positions = self._data.get("positions") or {}
+            self._data["positions"] = {
+                (str(k).strip().zfill(6) if str(k).strip().isdigit() else str(k).strip()): v
+                for k, v in positions.items()
+            }
+            self._corrupted = False
             logger.info(f"持仓文件已加载: {self.portfolio_path}")
         except Exception as e:
-            logger.error(f"持仓文件加载失败: {e}")
+            logger.error(
+                f"持仓文件加载失败（已置损坏保护：后续保存将被拒绝，"
+                f"请修复或删除 {self.portfolio_path} 后重试）: {e}")
             self._data = {"positions": {}}
+            self._corrupted = True
 
     def _save(self):
-        """保存到portfolio.yaml"""
-        # 确保目录存在
+        """保存到portfolio.yaml
+
+        v0.8.7.8 裁决修复 G01：
+        - _corrupted 置位时拒绝写入（宁可不保存也不静默清掉真实持仓）
+        - 原子写：先写 tmp 再 os.replace，进程被杀/磁盘满不再产生半截文件
+        - 每次保存前保留 .bak 单份滚动备份；批量删仓（≥4→减半）额外留
+          portfolio.yaml.before_<时间戳> 快照（合法操作放行，但数据可追溯）
+        """
+        if getattr(self, "_corrupted", False):
+            logger.error("G01 损坏保护生效：portfolio.yaml 此前加载失败，本次保存被拒绝。"
+                         "请人工修复该文件（或删除后重试），期间持仓改动仅保留在内存")
+            return False
+
         os.makedirs(os.path.dirname(self.portfolio_path) or ".", exist_ok=True)
 
+        # 快照保护：已有 4 只以上持仓、本次要写掉一半以上时，先留快照（不阻断合法删仓）
         try:
-            with open(self.portfolio_path, 'w', encoding='utf-8') as f:
+            with open(self.portfolio_path, 'r', encoding='utf-8') as f:
+                old_data = yaml.safe_load(f) or {}
+            old_count = len(old_data.get("positions", {}) or {})
+            new_count = len(self._data.get("positions", {}) or {})
+            if old_count >= 4 and new_count < old_count / 2:
+                snap = f"{self.portfolio_path}.before_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+                import shutil
+                shutil.copy2(self.portfolio_path, snap)
+                logger.warning(
+                    f"G01 快照保护：本次保存持仓数 {old_count}→{new_count} 减半以上，"
+                    f"保存前快照已留 {snap}（合法批量删仓请忽略此告警）")
+        except FileNotFoundError:
+            pass
+        except Exception as e:
+            logger.warning(f"G01 快照保护读取旧文件失败（不影响保存）: {e}")
+
+        # 备份上一版（滚动单份）
+        try:
+            if os.path.exists(self.portfolio_path):
+                import shutil
+                shutil.copy2(self.portfolio_path, self.portfolio_path + ".bak")
+        except OSError as e:
+            logger.warning(f"G01 .bak 备份失败（继续保存）: {e}")
+
+        tmp_path = self.portfolio_path + ".tmp"
+        try:
+            with open(tmp_path, 'w', encoding='utf-8') as f:
                 # 先写入文件头注释
                 f.write("# ============================================================\n")
                 f.write("# 暮云思辨投资助手 - 持仓记录本\n")
@@ -178,9 +233,14 @@ class PortfolioManager:
                     allow_unicode=True,
                     sort_keys=False,
                 )
+            # G01 原子替换：tmp 完整写完后一次性替换，杜绝半截文件
+            os.replace(tmp_path, self.portfolio_path)
+            self._corrupted = False
             logger.info(f"持仓文件已保存: {self.portfolio_path}")
+            return True
         except Exception as e:
             logger.error(f"持仓文件保存失败: {e}")
+            return False
 
     # ===== 读取操作 =====
 

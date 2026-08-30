@@ -165,11 +165,16 @@ class MuyunTUI(App):
         if not stock_data:
             quote = AKShareClient.get_realtime_quote(code)
             if quote:
+                # v0.8.7.9 E02 同类点：此前只映射 4 个字段，open/high/low/volume 全丢
                 stock_data = StockData(
                     stock_code=quote.get("stock_code", code),
                     stock_name=quote.get("stock_name", code),
                     price=quote.get("price", 0),
+                    open=quote.get("open") or None,
+                    high=quote.get("high") or None,
+                    low=quote.get("low") or None,
                     change_pct=quote.get("change_pct"),
+                    volume=quote.get("volume") or None,
                 )
         if not stock_data:
             return None

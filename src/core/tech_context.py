@@ -42,12 +42,18 @@ class TechContextBuilder:
             ("ma20", data.ma20),
             ("ma60", data.ma60),
         ]
-        valid_mas = [(n, v) for n, v in mas if v is not None]
-
-        if len(valid_mas) < 3:
+        # v0.8.7.9 审查修复 E01（第五轮，原 R4 延后项 D-TC-01）：
+        # 本函数的契约（docstring 与下方注释）是「价格 > MA5 > MA10 > MA20 > MA60」
+        # 四条 MA 的排列。旧写法 `len(valid_mas) < 3` 允许缺 MA60 用 3 条 MA 宣布
+        # 多头/空头排列——次新股 / 数据缺口下给 AI Modifier 的 prompt 喂假排列
+        # （实测：14.6% 的 K 线判定在"有无 MA60"两种口径间翻转）。
+        # 修法：声明的 4 条 MA 任一缺失 → 数据不足。消费面仅 AI prompt（live 专属，
+        # 回测 AI 禁用），不影响决策信号路径；缺 MA60 时 _judge_trend_direction
+        # 会走既有的 MA20/MA60 → 涨跌幅降级链，行为不变。
+        if any(v is None for _, v in mas):
             return "数据不足"
 
-        values = [v for _, v in valid_mas]
+        values = [v for _, v in mas]
         # 多头排列：价格 > MA5 > MA10 > MA20 > MA60
         is_bullish = all(
             values[i] > values[i + 1] for i in range(len(values) - 1)
@@ -104,7 +110,12 @@ class TechContextBuilder:
         Returns:
             "放量" / "缩量" / "正常" / "数据不足"
         """
-        if data.avg_volume_20 is None or data.volume <= 0:
+        # v0.8.7.8 审计修复 D06（第四轮审查 ISS-072）：补 avg_volume_20 <= 0 守卫。
+        # live 路径 avg_volume_20 = int(近20日成交量均值)（akshare_client.py:876，单位手），
+        # 长期停牌/退市整理期 20 日均量 <1 手时会被 int() 截为 0 → ZeroDivisionError。
+        # 同文件 _build_volume（:242）对该字段已写 `> 0`，此处守卫不自洽。
+        if (data.avg_volume_20 is None or data.avg_volume_20 <= 0
+                or data.volume <= 0):
             return "数据不足"
 
         ratio = data.volume / data.avg_volume_20

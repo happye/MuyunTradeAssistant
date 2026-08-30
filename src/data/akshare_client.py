@@ -1227,7 +1227,9 @@ class AKShareClient:
 
             # 近250日最高价（用于计算回撤幅度）
             high_250d = None
-            if 'high' in df.columns and len(df) >= 60:
+            # v0.8.7.8 审计修复 D02（第四轮审查 ISS-072）：守卫 60 → 250，与字段名一致。
+            # 与 data_feeder.py:356 同步（两侧原本都是 60，属"两侧共同错"而非不对称）。
+            if 'high' in df.columns and len(df) >= 250:
                 high_250d = float(df['high'].tail(250).max())
 
             # 计算涨跌幅

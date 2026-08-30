@@ -123,6 +123,12 @@ class TradePlan(BaseModel):
     locked_initial_stop: float = Field(description="建仓时定的初始止损价（绝对价，单向上移基线）")
     current_stop: float = Field(description="当前止损价（≥ initial_stop，trailing 后单调上移）")
     max_hold_days: int = Field(default=90, description="最长持有天数（中线 90 / 短线 30 / 趋势 180）")
+    # v0.8.7.8 裁决修复 H02：真入场价。此前 adjuster trailing 只能从
+    # when_sell_targets[0]/1.10 反推（用户改过分档即失真）；旧文件缺省 None 走原兜底
+    entry_price: Optional[float] = Field(
+        default=None,
+        description="真入场价（H02；旧计划文件无此字段时 adjuster 走反推兜底）"
+    )
 
     # 基本面/前景（AI 生成，用户可改）
     fundamental_outlook: Literal["bullish", "neutral", "bearish"] = Field(

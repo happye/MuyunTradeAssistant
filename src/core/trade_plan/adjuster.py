@@ -75,10 +75,15 @@ def _check_trailing(
         return None  # 无 ATR 不做建议
 
     # 浮盈门槛
-    entry = plan.locked_initial_stop / 0.92  # 反推（因为 stop = entry * 0.92 兜底）
-    # 更精确：从 plan_id 恢复不可靠，用 when_sell_targets[0] / 1.10 反推
-    if plan.when_sell_targets:
+    # v0.8.7.8 裁决修复 H02：优先用 plan.entry_price（真入场价）。
+    # 原反推链（locked_initial_stop/0.92 或 when_sell_targets[0]/1.10）在
+    # ATR 止损 / 用户改过止盈分档时严重失真 → 5% 浮盈门槛错位。
+    if plan.entry_price and plan.entry_price > 0:
+        entry = plan.entry_price
+    elif plan.when_sell_targets:
         entry = plan.when_sell_targets[0] / 1.10
+    else:
+        entry = plan.locked_initial_stop / 0.92
     gain_pct = (high_since_entry - entry) / entry if entry > 0 else 0
     if gain_pct < TRAILING_TRIGGER_MIN_GAIN_PCT:
         return None

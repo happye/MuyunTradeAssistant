@@ -18,6 +18,14 @@ logger = logging.getLogger(__name__)
 # agent 据此识别失败的工具调用——失败轮不占工具轮次上限，允许AI重试。
 TOOL_ERROR_MARK = "[工具失败] "
 
+
+def _normalize_code(code) -> str:
+    """股票代码规范化（v0.8.7.8 裁决修复 H05）：
+    去交易所前缀（sh./SZ.）+ 去空白 + 补零到 6 位。持仓匹配与
+    portfolio._load 的键规范化（G04）配套，带前缀/空格输入不再被当非持仓。"""
+    c = str(code or "").strip()
+    return c.split(".")[-1].zfill(6) if c else ""
+
 # 模块级引擎实例（由ChatAgent启动时通过init_engines()初始化）
 _orchestrator = None
 _scanner_engine = None
@@ -192,6 +200,10 @@ def analyze_stock(stock_code: str) -> str:
                     stock_code=quote.get("stock_code", stock_code),
                     stock_name=quote.get("stock_name", stock_code),
                     price=quote.get("price", 0),
+                    # v0.8.7.9 E02 同类点：open/high/low 此前被丢弃（quote 已返回）
+                    open=quote.get("open") or None,
+                    high=quote.get("high") or None,
+                    low=quote.get("low") or None,
                     change_pct=quote.get("change_pct"),
                     volume=quote.get("volume"),
                 )
@@ -199,15 +211,16 @@ def analyze_stock(stock_code: str) -> str:
 
             return TOOL_ERROR_MARK + f"无法获取 {stock_code} 的数据，请检查股票代码是否正确"
 
-        # 获取持仓状态
+        # 获取持仓状态（v0.8.7.8 H05：双侧代码规范化，带前缀/空格输入也能匹配持仓）
         pm = _portfolio_manager
         current_ratio = 0.0
         strategy_state = None
         pos = None
+        norm_code = _normalize_code(stock_code)
         if pm:
             positions = pm.list_positions()
             for p in positions:
-                if p.stock_code == stock_code:
+                if _normalize_code(p.stock_code) == norm_code:
                     pos = p
                     current_ratio = p.current_ratio
                     strategy_state = pm.to_strategy_state(stock_code)

@@ -130,23 +130,38 @@ class ExecutionLayer:
         return data.volume / data.avg_volume_20
 
     @staticmethod
-    def _is_limit_up(data: StockData) -> bool:
-        """判断是否涨停（A股：涨幅≥9.9%考虑ST股≈4.9%，主板≈9.9%，创业板/科创板≈19.9%）
+    def _limit_threshold(stock_code: str) -> float:
+        """按板块取涨跌停判定阈值（v0.8.7.8 裁决修复 H01，H区块）。
 
-        简化判断：涨幅>9.5%视为涨停区域
+        原实现 9.5% 一刀切：创业板/科创板 ±20% 空间内 +12%/-12% 的正常单日波动
+        被误判封板（实测 300502 BUY 被封"涨停无法买入"、止损 SELL 被吞成 HOLD）。
+        主板 10%、创业板/科创板 20%、北交所 30%，各留 0.5% 缓冲；
+        ST ±5% 因无 ST 数据源判不到——维持原简化，在此声明。
+        """
+        code = str(stock_code or "").split(".")[-1]
+        if code.startswith(("30", "68")):
+            return 19.5   # 创业板/科创板 20cm
+        if code.startswith(("43", "83", "87", "88", "92")):
+            return 29.5   # 北交所 30cm
+        return 9.5        # 主板（及未识别板块，保守）
+
+    @classmethod
+    def _is_limit_up(cls, data: StockData) -> bool:
+        """判断是否涨停（H01：按板块分阈值）
+
+        Args:
+            data: 当前股票数据（含板块可判定的 stock_code）
         """
         if data.change_pct is None:
             return False
-        # 保守判断：涨幅>9.5%视为涨停
-        # 更精确的判断需要知道是否ST/板块，这里简化处理
-        return data.change_pct >= 9.5
+        return data.change_pct >= cls._limit_threshold(data.stock_code)
 
-    @staticmethod
-    def _is_limit_down(data: StockData) -> bool:
-        """判断是否跌停"""
+    @classmethod
+    def _is_limit_down(cls, data: StockData) -> bool:
+        """判断是否跌停（H01：按板块分阈值）"""
         if data.change_pct is None:
             return False
-        return data.change_pct <= -9.5
+        return data.change_pct <= -cls._limit_threshold(data.stock_code)
 
     def _calc_volatility_slippage(self, data: StockData) -> float:
         """计算波动率相关滑点

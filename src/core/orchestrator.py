@@ -34,6 +34,22 @@ from src.core.execution_layer import ExecutionLayer, ExecutionEvaluation
 
 logger = logging.getLogger(__name__)
 
+# v0.8.7.8 审计修复 D03 同类点（第四轮审查 ISS-072）：
+# 本文件有**三条**「强制离场」通道，全部是确定性触发（技术破位 / 基本面地雷 / 大顶信号），
+# 与止损一票否决同级（stop_loss 技能规则 conf 0.85~0.9）。但三条通道历史上都只改
+# decision/position_action，**从不改 score** —— 而策略层的「信号确认」「反转成本」两道闸门
+# 都挂在 score 上，于是安全网被当成「零置信度信号」静默降级为 HOLD，HOLD 分支再走
+# `buy_score > sell_score*1.5` 反手 ADD（在破位 / 大顶 / 被ST 当日加仓）。
+# 三处统一用本常量给 score 兜底：
+#   ① EntryExit Chandelier / 趋势破坏（条件是 `force_exit`，EXIT/STOP/TRIM 三种 action 全兜底；
+#      不能写成 `position_action == CLOSE_ALL`——趋势破坏的 MA5<MA20 走 TRIM/REDUCE，
+#      实测 601318/2024 有 2 例因此漏兜底，安全网被降级后反手 ADD）
+#   ② Layer 3.84  FundamentalAlert（被ST / 业绩预亏，回测禁用但 live 生效）
+#   ③ Layer 3.85  TopSignal（高位止盈 3 维大顶，P1 硬信号）
+# 取值依据：需同时跨过 _apply_reverse_cost（成本 0.003 + 0.002/次反转，10 次也才 0.023）
+# 与 _needs_confirmation 的弱信号阈值；与 StrategyLayer.STOP_LOSS_EXIT_THRESHOLD=0.85 同档。
+FORCE_EXIT_SCORE = 0.85
+
 
 class Orchestrator:
     """编排器 - 协调七层分析流程（v0.8.0 含事件层+AI调节层）"""
@@ -326,6 +342,23 @@ class Orchestrator:
                         # A06 修复：CLOSE_ALL 同步清零仓位，防 portfolio 记成幽灵残留仓位
                         if decision_result.position_action == PositionAction.CLOSE_ALL:
                             decision_result.position_ratio = 0.0
+                        # v0.8.7.8 审计修复 D03 同类点（第四轮审查 ISS-072，🔴）：
+                        # 本分支（Chandelier Exit / 趋势破坏）是**安全网**，与止损一票否决同级，
+                        # 但此处只改 decision/position_action，从未改 score —— 而策略层
+                        # 的「信号确认」「反转成本」两道闸门都挂在 score 上，score 仍是
+                        # make_decision 算出的原桶（WATCH/HOLD 通常 0.0）→ 安全网被静默降级为
+                        # HOLD，HOLD 分支再走 buy_score > sell_score*1.5 反手 ADD（在破位当日加仓）。
+                        # 与 decision_engine 的 veto_conf 兜底同一思路：确定性技术触发
+                        # 给予与止损技能同档的置信度（stop_loss 规则 conf 0.85~0.9）。
+                        #
+                        # ⚠️ 兜底条件是 `force_exit`（安全网是否触发），**不是** position_action。
+                        # 2026-08-30 实测修正：趋势破坏的短期信号（MA5<MA20）产出 exit_action="TRIM"
+                        # → position_action=REDUCE，走不到 CLOSE_ALL 分支；但 decision 已被强设为
+                        # SELL，score 仍是 0 → 同样被降级成 HOLD 并反手 ADD。601318/2024 全部
+                        # 2 例残留 score=0 SELL 均来自此。安全网一触发就兜底，减仓量级由
+                        # position_action 控制，与 score 无关，两者不该耦合。
+                        if force_exit and decision_result.score < FORCE_EXIT_SCORE:
+                            decision_result.score = FORCE_EXIT_SCORE
                         decision_result.reason.append(f"[EntryExit] {decision_result.overridden_reason}")
                         logger.info(f"[EntryExit] Force exit: {decision_result.overridden_reason}")
                     else:
@@ -343,6 +376,11 @@ class Orchestrator:
             decision_result.decision = SignalType.SELL
             decision_result.position_action = PositionAction.CLOSE_ALL
             decision_result.position_ratio = 0.0  # A06 修复：同步清零，防幽灵仓位
+            # v0.8.7.8 ISS-072 D03 同类点②：与 Chandelier 通道同理，确定性强制离场必须
+            # 给 score 兜底，否则策略层两道闸门（_needs_confirmation / _apply_reverse_cost）
+            # 会把「被 ST / 业绩预亏」这种硬退出当成零置信度信号降级成 HOLD 甚至反手 ADD。
+            if decision_result.score < FORCE_EXIT_SCORE:
+                decision_result.score = FORCE_EXIT_SCORE
             decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
             logger.info(f"[FundamentalAlert] 强制离场: {falert}")
 
@@ -366,6 +404,10 @@ class Orchestrator:
                 decision_result.decision = SignalType.SELL
                 decision_result.position_action = PositionAction.CLOSE_ALL
                 decision_result.position_ratio = 0.0  # A06 修复：同步清零，防幽灵仓位
+                # v0.8.7.8 ISS-072 D03 同类点③：TopSignal 是 P1 硬信号（PlanGuard 不可压制，
+                # 仅次于致命止损），同样必须给 score 兜底，否则大顶当日被降级成 HOLD/ADD。
+                if decision_result.score < FORCE_EXIT_SCORE:
+                    decision_result.score = FORCE_EXIT_SCORE
                 decision_result.reason.append(f"[TopSignal] 高位止盈: {top_signal}")
                 logger.info(f"[TopSignal] 大顶信号强制离场: {top_signal}")
 

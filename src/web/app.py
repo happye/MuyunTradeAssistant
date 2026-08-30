@@ -68,11 +68,19 @@ def _analyze_work(code):
     if not stock_data:
         quote = AKShareClient.get_realtime_quote(code)
         if quote:
+            # v0.8.7.9 审查修复 E02（第五轮，原 R4 延后项 D-TC-02）：
+            # get_realtime_quote 三条策略全部返回 open/high/low/volume，
+            # 兜底构造此前只映射 price/change_pct，指标与量能分析全拿 None。
+            # quote 缺字段/为 0 时落 None（0 元价格是脏数据不是真值）。
             stock_data = StockData(
                 stock_code=quote.get("stock_code", code),
                 stock_name=quote.get("stock_name", code),
                 price=quote.get("price", 0),
+                open=quote.get("open") or None,
+                high=quote.get("high") or None,
+                low=quote.get("low") or None,
                 change_pct=quote.get("change_pct"),
+                volume=quote.get("volume") or None,
             )
     if not stock_data:
         return {"error": f"无法获取 {code} 数据"}

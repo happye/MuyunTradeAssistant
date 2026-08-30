@@ -907,3 +907,27 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 - Pattern-Key: fix.consumer_defines_blast_radius | review.discard_is_design | test.structural_for_glue
 
 ---
+
+---
+
+## [LRN-20260830-003] best_practice
+
+**Logged**: 2026-08-30T23:30:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: workflow
+
+### Summary
+被回滚的修复不必重写——从备份链 checkout 原实现重放，比重新发明更忠实于已验收方案；红灯优先的回归测试让"裁决→执行"有了验收契约。
+
+### Details
+R4/R5 修复被用户整体回滚（ca01d27）但转"待裁决"，裁决通过后执行：D/E 批直接 `git checkout <reverted-commit> -- <files>` 重放（当时该 9 文件与基线无其他分叉，重放即精确）；G/H 批为新裁决项，测试先行（test_g/h_block_fixes 先红灯 7+6，实现后全绿）。全程未越权：只做清单内的事。
+
+### Suggested Action
+修复被回滚转待裁决的批次：先 `git diff <基线> <回滚前commit> --stat` 确认可重放范围与文件交叠，无交叠直接 checkout 文件级重放，有交叠（如 H05 与 E02 同文件）则先重放再叠加。回归测试红灯优先——红灯清单本身就是"修了什么"的契约。
+
+### Metadata
+- Source: self_discovery
+- Related Files: backup/local-r4r5-chain(git branch), tests/core/test_g_block_fixes.py, tests/core/test_h_block_fixes.py
+- Tags: revert-replay, red-first, adjudication-workflow
+- See Also: ERR-20260830-001

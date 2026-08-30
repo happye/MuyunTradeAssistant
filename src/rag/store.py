@@ -8,6 +8,7 @@ L2归一化后的内积等价于余弦相似度，因此使用IndexFlatIP。
 
 import json
 import logging
+import os
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Optional
@@ -137,7 +138,12 @@ class FAISSVectorStore(VectorStore):
         return results
 
     def save(self, path: str) -> None:
-        """持久化到磁盘"""
+        """持久化到磁盘
+
+        v0.8.7.8 裁决修复 H03：三文件改 tmp+os.replace 原子替换（原直接写，
+        中断会产生 index 与 docs 数量错配 → load 静默截断/张冠李戴）。
+        跨文件事务不可行，配套 load() 侧 ntotal==len(docs) 一致性校验兜底。
+        """
         if self._index is None:
             logger.warning("无索引数据可保存")
             return
@@ -148,21 +154,22 @@ class FAISSVectorStore(VectorStore):
         try:
             import faiss
 
-            # 保存FAISS索引
-            faiss.write_index(self._index, str(dir_path / "index.faiss"))
+            # 先全部写 tmp，再依次原子替换（把不一致窗口压到最小）
+            tmp_index = dir_path / "index.faiss.tmp"
+            tmp_docs = dir_path / "docs.json.tmp"
+            tmp_cfg = dir_path / "config.json.tmp"
 
-            # 保存文档元数据
+            faiss.write_index(self._index, str(tmp_index))
             docs_data = [doc.model_dump() for doc in self._docs]
-            with open(dir_path / "docs.json", 'w', encoding='utf-8') as f:
+            with open(tmp_docs, 'w', encoding='utf-8') as f:
                 json.dump(docs_data, f, ensure_ascii=False, indent=2)
-
-            # 保存配置
-            config = {
-                "dimension": self._dimension,
-                "size": len(self._docs),
-            }
-            with open(dir_path / "config.json", 'w', encoding='utf-8') as f:
+            config = {"dimension": self._dimension, "size": len(self._docs)}
+            with open(tmp_cfg, 'w', encoding='utf-8') as f:
                 json.dump(config, f)
+
+            os.replace(tmp_index, dir_path / "index.faiss")
+            os.replace(tmp_docs, dir_path / "docs.json")
+            os.replace(tmp_cfg, dir_path / "config.json")
 
             logger.info(f"FAISS索引已保存: {dir_path} ({len(self._docs)}个文档)")
         except Exception as e:
@@ -188,6 +195,19 @@ class FAISSVectorStore(VectorStore):
 
             self._docs = [RAGDocument(**d) for d in docs_data]
             self._id_to_idx = {doc.id: i for i, doc in enumerate(self._docs)}
+
+            # v0.8.7.8 裁决修复 H03：一致性校验——save 中断会产生 index 与 docs
+            # 数量错配，原实现静默加载（实测 docs=2/ntotal=3 时 top3 只回 2 且
+            # 无告警；反向错配更会张冠李戴）。拒绝加载 → 触发下次全量重建。
+            if self._index.ntotal != len(self._docs):
+                logger.error(
+                    f"RAG索引与文档数量不一致(index={self._index.ntotal}, "
+                    f"docs={len(self._docs)})，拒绝加载（将触发重建）——"
+                    f"疑似上次保存中断（H03）")
+                self._index = None
+                self._docs = []
+                self._id_to_idx = {}
+                return False
 
             logger.info(f"FAISS索引已加载: {len(self._docs)}个文档, dim={self._dimension}")
             return True
