@@ -5,6 +5,7 @@
 2. Baostock - 历史K线备用
 """
 
+import contextlib
 import pandas as pd
 import akshare as ak
 import baostock as bs
@@ -25,6 +26,20 @@ _bs_login_status = None
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
 DEFAULT_TIMEOUT = 30.0
+
+
+@contextlib.contextmanager
+def _quiet_baostock_print():
+    """抑制 baostock 库直接 print 到 stdout 的 login/logout 噪声（用户指令 2026-08-30）。
+
+    baostock 库内部用 print() 输出 "login success!/logout failed!"，logging 静音不了；
+    在调用窗口内重定向 stdout 即可。窗口极短（登录 <1s），代价是并行线程恰在此窗口
+    的打印也会被吞（实测重登仅发生于每股 AI 评分间隔后，风险可忽略）。
+    """
+    import io
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        yield
 
 
 def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
@@ -60,7 +75,10 @@ def _ensure_baostock_login():
             return True
 
     try:
-        lg = bs.login()
+        # 用户指令（2026-08-30）：抑制 baostock 库直接 print 的 "login success!"
+        # 噪声（B23 缓存全量失效后每股 AI 评分间隔超服务端闲置阈值，逐股重登可见）。
+        with _quiet_baostock_print():
+            lg = bs.login()
         _bs_login_status = lg.error_code == '0'
         if _bs_login_status:
             logger.info("Baostock登录成功")
@@ -87,7 +105,8 @@ def _baostock_logout():
     """登出baostock并重置全局登录状态"""
     global _bs_login_status
     try:
-        bs.logout()
+        with _quiet_baostock_print():
+            bs.logout()
     except Exception:
         pass
     _bs_login_status = False

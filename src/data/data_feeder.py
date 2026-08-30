@@ -76,7 +76,10 @@ class DataFeeder:
             bool: 是否加载成功
         """
         try:
-            lg = bs.login()
+            # 抑制 baostock "login success!/logout failed!" 直接打印噪声（同 akshare_client）
+            from src.data.akshare_client import _quiet_baostock_print
+            with _quiet_baostock_print():
+                lg = bs.login()
             if lg.error_code != '0':
                 logger.error(f"Baostock登录失败: {lg.error_msg}")
                 return False
@@ -87,13 +90,15 @@ class DataFeeder:
             self._stock_df = self._fetch_stock_kline(calc_start, self.end_date)
             if self._stock_df is None or self._stock_df.empty:
                 logger.error(f"个股K线数据获取失败: {self.stock_code}")
-                bs.logout()
+                with _quiet_baostock_print():
+                    bs.logout()
                 return False
 
             # 加载大盘指数
             self._index_df = self._fetch_index_kline(calc_start, self.end_date)
 
-            bs.logout()
+            with _quiet_baostock_print():
+                bs.logout()
 
             # 筛选回测区间内的交易日期
             mask = (self._stock_df['date'] >= self.start_date) & (self._stock_df['date'] <= self.end_date)
