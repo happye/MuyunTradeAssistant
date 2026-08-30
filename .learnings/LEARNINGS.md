@@ -782,3 +782,61 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 - Related Files: src/data/akshare_client.py, src/data/data_feeder.py, tests/core/test_indicator_math_regression.py
 - Tags: dual-builder-drift, live-backtest-asymmetry, regression-test-design
 - See Also: LRN-20260829-002
+
+## [LRN-20260829-004] best_practice
+
+**Logged**: 2026-08-29T23:50:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: backend
+
+### Summary
+教训只写进工具自带记忆目录等于没写；且修复缺回归测试就是欠账（对齐复盘规律一/规律四的自查）
+
+### Details
+本 Agent 在 2026-08-24~29 的会话中犯了复盘点名的同类错误：
+1. heredoc 转义降级、ThreadPool with 块陷阱两条教训只写进了 Claude 专属记忆目录
+   （用户目录下的 .claude/projects），未落 .learnings/，违反跨工具可迁移原则；
+2. la SystemExit 击穿（c06e83d）、PlanGuard 止损冷却（7cf2117，ISS-068）两个行为修复
+   均未配套回归测试，其中 ISS-068 只有 A/B 回测对照没有单元级断言。
+
+### Suggested Action
+- 本条落库时同步把两条记忆内容并入本文件（已补 LRN-20260829-005）
+- ISS-068 冷却写入补单元测试（tests/core/test_plan_guard_cooldown.py）
+
+### Metadata
+- Source: user_feedback（用户主导的根因复盘对齐）
+- Related Files: skills/muyun-dev-discipline/SKILL.md, 开发问题根因复盘_20260829.md
+- See Also: LRN-20260829-001, LRN-20260829-002
+- Pattern-Key: harden.knowledge_channel | harden.test_debt
+- Recurrence-Count: 2
+- First-Seen: 2026-08-24
+- Last-Seen: 2026-08-29
+
+---
+
+## [LRN-20260829-005] best_practice
+
+**Logged**: 2026-08-29T23:50:00+08:00
+**Priority**: medium
+**Status**: pending
+**Area**: backend
+
+### Summary
+两条环境级坑的仓库内沉淀（此前只在 Claude 专属记忆）：heredoc 转义降级；ThreadPoolExecutor with 块 join
+
+### Details
+1. 本环境 Bash 内联 heredoc 传 python 多行文本会被静默转义降级（反斜杠n 变真实换行、箭头/引号替换），
+   失败模式静默。解法：多行精确补丁一律 Write 写 _patch 脚本文件再执行，Edit 锚点选纯 ASCII 行，
+   写完立即 ast.parse。
+2. with ThreadPoolExecutor 块内 fut.result(timeout=N) 超时后 __exit__ 的 shutdown(wait=True)
+   join 卡死线程，分钟级冻结。解法：显式 ex.shutdown(wait=False)（范本 source_check._probe_t；
+   该坑在 ISS-066 与 A04 两次发作才修全）。
+
+### Metadata
+- Source: conversation
+- Related Files: src/data/source_check.py
+- See Also: LRN-20260829-004
+- Pattern-Key: env.heredoc_escaping | py.threadpool_join
+
+---
