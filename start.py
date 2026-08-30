@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.7.8"  # v0.8.7.8=裁决修复执行（ISS-072/073/074 D/E/G/H 四批19项）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.7.9"  # v0.8.7.9=l all 批量深分析最近扫描+帮助文本补齐；与 cli/main.py --version、AGENTS.md 统一
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）
@@ -59,6 +59,8 @@ def show_help():
     print("┌────────────────────────────────────────────────────┐")
     print("│  ★ 股票分析                                        │")
     print("│    l <代码>               实时分析（如 l 600519）   │")
+    print("│    l all [-f]             └ 子命令:批量深分析最近   │")
+    print("│                           扫描(-f强制重析当天已析)  │")
     print("│    <6位代码>              同上（直接输代码也行）    │")
     print("│                                                    │")
     print("│  ★ 回测                                            │")
@@ -69,6 +71,8 @@ def show_help():
     print("│    scan                   一键扫描所有持仓          │")
     print("│    la                     一键分析所有持仓(简明卡)   │")
     print("│    ba                     批量评分最近扫描的股票     │")
+    print("│    #N 快捷                l #1/bz #1/pos add #1     │")
+    print("│                           取最近一次扫描的第N只      │")
     print("│    scan market [规则]     全市场扫描                │")
     print("│    scan market deep       全市场深度分析            │")
     print("│    可用规则:                                        │")
@@ -104,6 +108,7 @@ def show_help():
     print("│    bz scan <规则> [主题]  规则+主题一起用(v0.8.7.4)  │")
     print("│    bz scan --rule <规则> 指定规则初筛+评分(如超跌)  │")
     print("│    bz scan --allrules    五规则全跑合并(各Top5)⭐     │")
+    print("│    bz scan ... --backtest [起 止] 评分后批量回测     │")
     print("│    bz scan 规则名(可模糊) 单独=按规则全市场初筛:    │")
     print("│      healthy_pullback 健康回调 缩量小跌(-3%~-0.1%)   │")
     print("│      steady_advance  温和上涨 放量上涨(0.1%~5%)     │")
@@ -131,7 +136,12 @@ def show_help():
     print("│    scan market 低估值筛选   价值投资扫描            │")
     print("│    scan market AI,半导体   多主题扫描(英文逗号)     │")
     print("│    scan market deep        全市场自动深度分析       │")
+    print("│    bz scan 氮化镓,钽电容   主题选股+笨总评分排名     │")
+    print("│    ba                      批量评分最近扫描结果      │")
+    print("│    l all                   批量深分析最近扫描结果    │")
     print("│    pos add 002192 融捷股份 35.20 0.20               │")
+    print("│    pos add #1 35.20 0.20   扫描第1只直接建仓        │")
+    print("│    expect 60               看60天预期事件日历        │")
     print("└────────────────────────────────────────────────────┘")
     print()
 
@@ -208,8 +218,13 @@ def parse_input(user_input: str):
 
     if cmd in ("l", "live"):
         if len(parts) < 2:
-            print("  [!] 用法: l <6位代码> 或 l #N（取最近扫描第N只）")
+            print("  [!] 用法: l <6位代码> | l #N（取最近扫描第N只） | l all[-f]（批量深分析最近扫描）")
             return None
+        # v0.8.7.9: l all 批量深分析最近一次扫描结果（bz scan / scan market），补齐 ba（批评分）/la（批持仓）空白
+        # v0.8.7.9: 当天已深分析的默认跳过，-f/--force 强制全部重分析
+        if parts[1].lower() == "all":
+            force = any(p.lower() in ("-f", "--force") for p in parts[2:])
+            return ("live_scan_all", {"force": force})
         if parts[1].startswith("#"):
             ref = _resolve_index_arg(parts[1])
             if ref is None:
@@ -874,8 +889,10 @@ def run_benzong_scan(args: dict):
         terms = [t.strip() for t in theme.split(",") if t.strip()]
         print(f"  [Step 1/3] 双通道选股：法C精准定位 + 全市场行业筛选...")
 
-        # 通道A：法C
-        located = locate_theme_stocks(terms, config=config)
+        # 通道A：法C（v0.8.7.9 起同主题词当日走文件缓存，--refresh 强刷）
+        located = locate_theme_stocks(terms, config=config, use_cache=not force_refresh)
+        if located.get("cached"):
+            print("  ♻ 法C结果命中今日缓存（同主题词，加 --refresh 强刷）")
         a_stocks = [s for s in located.get("stocks", [])
                     if s["code"] not in exclude_codes]
         if located.get("invalid"):
@@ -901,6 +918,9 @@ def run_benzong_scan(args: dict):
                 market_query=theme,
                 exclude_codes=exclude_codes,
             )
+            _cs = (b_info or {}).get("cache_status", {}).get("stocks", {})
+            if _cs.get("cached") and not _cs.get("expired", True) and _cs.get("age_seconds", 0) > 5:
+                print(f"  ♻ 全市场快照缓存命中（{_cs['age_seconds']}秒前拉取，未重爬行情源）")
             if not b_info.get("error"):
                 a_codes = {s["code"] for s in a_stocks}
                 for c in b_candidates:
@@ -995,6 +1015,9 @@ def run_benzong_scan(args: dict):
                 else:
                     print(f"  ✗ 扫描失败: {err}")
                 return
+            _cs = (scan_info or {}).get("cache_status", {}).get("stocks", {})
+            if _cs.get("cached") and not _cs.get("expired", True) and _cs.get("age_seconds", 0) > 5:
+                print(f"  ♻ 全市场快照缓存命中（{_cs['age_seconds']}秒前拉取，未重爬行情源）")
             if not candidates:
                 print(f"  ⚠ 初筛无候选股（可能非交易时段或条件过严）")
                 return
@@ -1087,8 +1110,9 @@ def run_benzong_scan(args: dict):
         _rp = persist_scan_report(_items, _src)
         if _rp:
             print(f"  📝 扫描结果已存：{_rp}")
-            print(f"  💡 输序号快捷：bz #1 评分 / l #1 分析 / pos add #1 加仓")
-            print()
+        print(f"  💡 后续：l all 批量深分析这{len(batch['top_n'])}只(简明卡)")
+        print(f"     或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓")
+        print()
     except Exception as _e:
         print(f"  scan 落盘失败（不影响主流程）: {_e}")
 
@@ -1305,6 +1329,71 @@ def run_cli(mode: str, args: dict):
                 print(f"  [!] {pos.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
             except Exception as e:
                 print(f"  [!] 分析失败: {e}")
+
+    elif mode == "live_scan_all":
+        # v0.8.7.9: l all —— 对最近一次扫描结果（bz scan / scan market）批量深度分析
+        # 模式对齐 ba（读 session_state + 过期提示 + y/N 确认）与 la（compact 卡 + 单只失败跳过）
+        # 去重：当天已深分析的默认跳过（session_state 当日记录），-f/--force 强制重析
+        from src.cli import session_state
+        from datetime import datetime as _dt
+        force = bool(args.get("force"))
+        last = session_state.get_last_scan()
+        if not last or not last.get("items"):
+            print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market [规则]")
+            return
+        items = [it for it in last["items"] if isinstance(it, dict) and it.get("code")]
+        if not items:
+            print("\n  [!] 最近扫描结果里没有可用代码")
+            return
+        done = {} if force else session_state.get_deep_analyzed()
+        new_items = [it for it in items if it["code"] not in done]
+        skipped = [it for it in items if it["code"] in done]
+        when = (last.get("timestamp") or "")[:16].replace("T", " ")
+        try:
+            _age_min = max(0, round((_dt.now() - _dt.fromisoformat(last.get("timestamp") or "")).total_seconds() / 60))
+        except Exception:
+            _age_min = None
+        print(f"\n  最近扫描：{last.get('source', '?')}（{when}），共 {len(items)} 只")
+        if _age_min is not None and _age_min > 30:
+            print(f"  [!] 注意：该扫描已是 {_age_min} 分钟前的结果，行情可能已变化")
+        if skipped:
+            _sk = "、".join(f"{it.get('name') or it['code']}({done[it['code']].get('time', '?')}析)"
+                           for it in skipped[:6])
+            _more = f" 等{len(skipped)}只" if len(skipped) > 6 else ""
+            print(f"  ⏭ 今天已深分析 {len(skipped)} 只，默认跳过：{_sk}{_more}")
+        if not new_items:
+            print("  ✓ 这批今天全都分析过了（不重复花AI费用）。强制重分析：l all -f")
+            return
+        print(f"  将深分析 {len(new_items)} 只，每只一张简明卡（同 la），详情再单独 l <代码>")
+        try:
+            ans = input(f"  批量深度分析 {len(new_items)} 只（每只约0.5~1分钟，含AI调用）。继续?(y/N) ")
+        except (EOFError, KeyboardInterrupt):
+            print("\n  已取消")
+            return
+        if ans.strip().lower() not in ("y", "yes"):
+            print("  已取消")
+            return
+        src_label = last.get("source", "?")
+        failed = []
+        ok = 0
+        for i, it in enumerate(new_items, 1):
+            code, name = it["code"], it.get("name", "")
+            print(f"\n{'='*60}")
+            print(f"  [{i}/{len(new_items)}] {name or code} ({code})")
+            print(f"{'='*60}")
+            try:
+                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                # 成功才记当日已析（失败下次自动重试）；逐只落盘，Ctrl-C 中断不丢记录
+                session_state.mark_deep_analyzed([code], source=src_label)
+                ok += 1
+            except SystemExit:
+                print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
+                failed.append(code)
+            except Exception as e:
+                print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
+                failed.append(code)
+        print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
+              + (f"；失败: {', '.join(failed)}" if failed else ""))
 
     elif mode == "benzong_all":
         from src.cli import session_state

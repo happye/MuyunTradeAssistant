@@ -2461,7 +2461,8 @@ def scan_market(
         _rp = persist_scan_report(_items, _src, columns=_cols)
         if _rp:
             console.print(f"  [dim]📝 扫描结果已存：{_rp}[/dim]")
-            console.print(f"  [dim]💡 输序号快捷：l #1 分析 / bz #1 评分 / pos add #1 加仓[/dim]")
+            console.print(f"  [dim]💡 后续：l all 批量深分析全部(简明卡) / ba 批量评分排名[/dim]")
+            console.print(f"  [dim]   或单只：l #1 深分析 / bz #1 评分 / pos add #1 加仓[/dim]")
     except Exception as _e:
         logger.debug(f"scan market 落盘失败（不影响主流程）: {_e}")
 
@@ -3214,8 +3215,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.7.8：裁决修复执行（ISS-072/073/074）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.7.8 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
+        # v0.8.7.9：l all 批量深分析最近扫描（实现在 start.py run_cli）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.7.9 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
     )
     parser.add_argument(
         "--verbose",

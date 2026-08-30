@@ -6,6 +6,27 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ---
 
+## [LRN-20260831-001] best_practice
+
+**Logged**: 2026-08-31T00:10:00+08:00
+**Priority**: high
+**Status**: done
+**Area**: testing/caching
+
+### Summary
+给进程内存缓存加**磁盘持久化**时，测试进程会沿真实落盘路径写入假数据（mock 了网络层但落盘层是真执行），真实缓存文件也会反向漏进测试断言——双向污染。缓存层必须**一开始就内置 pytest 总开关**（`PYTEST_CURRENT_TEST` 环境变量探测），专项磁盘测试再显式重开。本项目 market_cache 磁盘 L2（v0.8.7.9）首跑全量即双向踩中：`test_cross_instance_cache_hit` 撞上真实 5550 行快照文件，"首次应真实拉取"断言失败。
+
+### Suggested Action（已落地 v0.8.7.9）
+1. `_disk_enabled()`：`MUYUN_DISABLE_DISK_CACHE=1` 显式禁用 + pytest 进程恒禁用（双层开关）。
+2. 专项磁盘测试用 fixture 强制 `_disk_enabled=lambda: True` + `_DISK_CACHE_DIR` 重定向 tmp_path。
+3. 通用纪律：凡新增**跨进程持久状态**（磁盘缓存/账本/会话状态文件），同一条 commit 必须同时落 pytest 隔离措施，否则全量测试门会随机挂、且用户真实数据会被测试悄悄改写。
+
+### Metadata
+- Source: self_discovery
+- Related Files: `src/scanner/market_cache.py`, `tests/core/test_scan_caches.py`, `tests/core/test_market_cache_shared.py`
+
+---
+
 ## [LRN-20260829-001] correction
 
 **Logged**: 2026-08-29T00:00:00+08:00

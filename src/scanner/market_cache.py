@@ -34,6 +34,63 @@ _DEFAULT_SINA_MARKET_URL = (
 _LOCAL_NETWORK_CONFIG = Path(__file__).resolve().parents[2] / "configs" / "network.local.yaml"
 
 
+# ── 磁盘 L2 缓存（v0.8.7.9）─────────────────────────────────
+# 内存缓存是进程级的：REPL 重启即清零，重进后第一条 scan/bz scan 会对新浪做 73 页
+# 全量分页 + THS 全页翻爬（全库最贵两端点、反爬敏感）。磁盘 L2 把快照/成分股按与
+# 内存相同的 TTL 口径落到 ~/.muyun/market_cache/，跨进程复用——上一次 scan 之后，
+# 下一次（哪怕重启过）在 TTL 内直接命中，不再打第三方接口。
+# 仅落最贵端点（全市场快照 + 行业/概念成分股）；板块列表等便宜端点维持内存缓存。
+# 逃生开关：MUYUN_DISABLE_DISK_CACHE=1 可整体停用（排障用）。
+_DISK_CACHE_DIR = Path.home() / ".muyun" / "market_cache"
+
+
+def _disk_key(key: str) -> str:
+    """缓存键转安全文件名（板块名可含中文/空格，Windows 文件名禁字符要替换）。"""
+    import re as _re
+    return _re.sub(r'[<>:"/\\|?*\s]+', "_", key)
+
+
+def _disk_enabled() -> bool:
+    """磁盘缓存总开关。
+
+    - 环境变量 MUYUN_DISABLE_DISK_CACHE=1 显式禁用（排障用）
+    - pytest 进程一律禁用：既有测试 mock 网络层后走真实落盘会把假快照写进
+      用户真实缓存，真实缓存文件也会漏进测试断言（两侧都得防）
+    """
+    if os.environ.get("MUYUN_DISABLE_DISK_CACHE", "") == "1":
+        return False
+    return "PYTEST_CURRENT_TEST" not in os.environ
+
+
+def _disk_load(key: str) -> Optional[dict]:
+    """读磁盘缓存文件 {"ts": float, "data": ...}。不存在/损坏返回 None，绝不抛异常。"""
+    if not _disk_enabled():
+        return None
+    try:
+        p = _DISK_CACHE_DIR / (_disk_key(key) + ".pkl")
+        if not p.exists():
+            return None
+        data = pd.read_pickle(p)
+        return data if isinstance(data, dict) and "ts" in data else None
+    except Exception as e:
+        logger.debug(f"MarketCache: 磁盘缓存读取失败({key}): {e}")
+        return None
+
+
+def _disk_save(key: str, data) -> bool:
+    """写磁盘缓存。IO 失败只 debug 不抛（缓存永远不许阻塞主流程）。"""
+    if not _disk_enabled() or data is None:
+        return False
+    try:
+        _DISK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        p = _DISK_CACHE_DIR / (_disk_key(key) + ".pkl")
+        pd.to_pickle({"ts": time.time(), "data": data}, p)
+        return True
+    except Exception as e:
+        logger.debug(f"MarketCache: 磁盘缓存写入失败({key}): {e}")
+        return False
+
+
 def _get_sina_market_url() -> str:
     """解析新浪行情地址：共享默认 HTTPS，本机可用 gitignored 配置覆盖。"""
     env_url = os.environ.get("MUYUN_SINA_MARKET_URL", "").strip()
@@ -235,6 +292,7 @@ class MarketCache:
         MarketCache._shared_stock_ts = time.time()
         MarketCache._shared_stock_count = len(df)
         MarketCache._shared_fail_ts = 0.0
+        _disk_save("stocks_df", df)  # 磁盘 L2（v0.8.7.9）：新浪/efinance 两源成功路径唯一入口，落一次盘
         logger.info(f"MarketCache: A股行情获取成功({len(df)}只, {source_label})")
         return True
 
@@ -258,6 +316,19 @@ class MarketCache:
         if not force_refresh and MarketCache._shared_stock_df is not None and not self._is_expired(MarketCache._shared_stock_ts):
             logger.info(f"MarketCache: A股缓存命中({MarketCache._shared_stock_count}只)")
             return MarketCache._shared_stock_df
+
+        # 磁盘 L2 命中（v0.8.7.9）：内存被进程重启清掉后，本进程第一条命令从这里复活，
+        # 免爬新浪73页。TTL 口径与内存一致（盘中 self._ttl / 盘后至最近收盘）。
+        if not force_refresh:
+            _d = _disk_load("stocks_df")
+            if _d and isinstance(_d.get("data"), pd.DataFrame):
+                _df_d = _d["data"]
+                if not _df_d.empty and self._snapshot_quality_ok(_df_d) and not self._is_expired(_d.get("ts", 0)):
+                    MarketCache._shared_stock_df = _df_d
+                    MarketCache._shared_stock_ts = _d["ts"]
+                    MarketCache._shared_stock_count = len(_df_d)
+                    logger.info(f"MarketCache: A股磁盘缓存命中({len(_df_d)}只)")
+                    return _df_d
 
         # 失败冷却：刚经历过双源全失败（且当时无旧缓存兜底），短暂歇手再试，
         # 防止被限流状态下继续高频全量拉取延长封禁
@@ -288,6 +359,15 @@ class MarketCache:
         if MarketCache._shared_stock_df is not None:
             logger.info("MarketCache: 新浪+东财均失败，用过期缓存兜底(新浪间歇性失效，下次可重试)")
             return MarketCache._shared_stock_df
+        # 内存也无 → 磁盘有过期快照同样兜底（v0.8.7.9，比直接空手而归强）
+        _d = _disk_load("stocks_df")
+        if _d and isinstance(_d.get("data"), pd.DataFrame) and not _d["data"].empty \
+                and self._snapshot_quality_ok(_d["data"]):
+            MarketCache._shared_stock_df = _d["data"]
+            MarketCache._shared_stock_ts = _d["ts"]
+            MarketCache._shared_stock_count = len(_d["data"])
+            logger.info(f"MarketCache: 双源失败，用磁盘过期快照兜底({len(_d['data'])}只)")
+            return _d["data"]
         # 无旧缓存可兜底：记失败时间戳进入冷却，60 秒内的后续调用直接返回空不再打源
         MarketCache._shared_fail_ts = time.time()
         logger.warning("MarketCache: 全市场行情源均失败(新浪间歇失效+东财断连)，改用主题词/单股模式")
@@ -689,6 +769,22 @@ class MarketCache:
                 return MarketCache._shared_industry_df
             return pd.DataFrame()
 
+    def _board_stocks_fallback(self, kind: str, name: str) -> list:
+        """成分股兜底链：内存过期数据 → 磁盘过期数据 → 空列表。
+
+        THS 翻页爬虫超时/失败时避免空手而归（过期名单好过没有，30 分钟口径内的
+        成分股变动本来就极少）。kind: "industry" | "concept"。
+        """
+        mem = (MarketCache._shared_industry_stocks if kind == "industry"
+               else MarketCache._shared_concept_stocks).get(name)
+        if mem:
+            return mem
+        _d = _disk_load(f"{kind}_stocks_{name}")
+        if _d and _d.get("data"):
+            logger.info(f"MarketCache: 磁盘过期成分股兜底({name}, {len(_d['data'])}只)")
+            return _d["data"]
+        return []
+
     def get_stocks_by_industry(self, industry_name: str) -> list[str]:
         """获取指定行业的成分股代码列表（带缓存）
 
@@ -708,6 +804,14 @@ class MarketCache:
                 logger.info(f"MarketCache: 行业成分股缓存命中({industry_name})")
                 return MarketCache._shared_industry_stocks[industry_name]
 
+        # 磁盘 L2 命中（v0.8.7.9）：THS 翻页是全库最贵端点，跨进程复用，30分钟口径
+        _d = _disk_load(f"industry_stocks_{industry_name}")
+        if _d and _d.get("data") and (time.time() - _d.get("ts", 0)) < MarketCache.INDUSTRY_STOCKS_TTL:
+            MarketCache._shared_industry_stocks[industry_name] = _d["data"]
+            MarketCache._shared_industry_stocks_ts[industry_name] = _d["ts"]
+            logger.info(f"MarketCache: 行业成分股磁盘缓存命中({industry_name}, {len(_d['data'])}只)")
+            return _d["data"]
+
         logger.info(f"MarketCache: 获取行业成分股(THS, {industry_name}, timeout=15s)...")
         try:
             import threading as _thr
@@ -719,19 +823,20 @@ class MarketCache:
             _t.start(); _t.join(timeout=15)
             if _t.is_alive():
                 logger.warning(f"MarketCache: 行业成分股获取超时({industry_name})")
-                return MarketCache._shared_industry_stocks.get(industry_name, [])
+                return self._board_stocks_fallback("industry", industry_name)
             if _err[0]:
                 raise _err[0]
             codes = _res[0]
             if codes:
                 MarketCache._shared_industry_stocks[industry_name] = codes
                 MarketCache._shared_industry_stocks_ts[industry_name] = time.time()
+                _disk_save(f"industry_stocks_{industry_name}", codes)  # 磁盘 L2
                 logger.info(f"MarketCache: 行业成分股获取成功(THS, {industry_name}, {len(codes)}只)")
                 return codes
             return []
         except Exception as e:
             logger.error(f"MarketCache: 行业成分股获取失败({industry_name}): {e}")
-            return MarketCache._shared_industry_stocks.get(industry_name, [])
+            return self._board_stocks_fallback("industry", industry_name)
 
     def get_concept_boards(self, force_refresh: bool = False) -> pd.DataFrame:
         """获取概念板块列表（带缓存）
@@ -775,6 +880,14 @@ class MarketCache:
                 logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
                 return MarketCache._shared_concept_stocks[concept_name]
 
+        # 磁盘 L2 命中（v0.8.7.9）：同行业成分股，30分钟口径
+        _d = _disk_load(f"concept_stocks_{concept_name}")
+        if _d and _d.get("data") and (time.time() - _d.get("ts", 0)) < MarketCache.CONCEPT_STOCKS_TTL:
+            MarketCache._shared_concept_stocks[concept_name] = _d["data"]
+            MarketCache._shared_concept_stocks_ts[concept_name] = _d["ts"]
+            logger.info(f"MarketCache: 概念成分股磁盘缓存命中({concept_name}, {len(_d['data'])}只)")
+            return _d["data"]
+
         logger.info(f"MarketCache: 获取概念成分股(THS, {concept_name}, timeout=15s)...")
         try:
             import threading as _thr2
@@ -786,19 +899,20 @@ class MarketCache:
             _t2.start(); _t2.join(timeout=15)
             if _t2.is_alive():
                 logger.warning(f"MarketCache: 概念成分股获取超时({concept_name})")
-                return MarketCache._shared_concept_stocks.get(concept_name, [])
+                return self._board_stocks_fallback("concept", concept_name)
             if _err2[0]:
                 raise _err2[0]
             codes = _res2[0]
             if codes:
                 MarketCache._shared_concept_stocks[concept_name] = codes
                 MarketCache._shared_concept_stocks_ts[concept_name] = time.time()
+                _disk_save(f"concept_stocks_{concept_name}", codes)  # 磁盘 L2
                 logger.info(f"MarketCache: 概念成分股获取成功(THS, {concept_name}, {len(codes)}只)")
                 return codes
             return []
         except Exception as e:
             logger.error(f"MarketCache: 概念成分股(THS)获取失败({concept_name}): {e}")
-            return MarketCache._shared_concept_stocks.get(concept_name, [])
+            return self._board_stocks_fallback("concept", concept_name)
 
     def is_trading_hours(self) -> bool:
         """判断当前是否在A股交易时段

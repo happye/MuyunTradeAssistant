@@ -24,6 +24,9 @@ logger = logging.getLogger(__name__)
 # 状态目录（跨会话，不污染仓库；与 benzong_cache 同级）
 _STATE_DIR = Path.home() / ".muyun"
 _LAST_SCAN_FILE = _STATE_DIR / "last_scan.json"
+# 当日已深分析记录（v0.8.7.9，l all 去重用）：文件只存当天 {日期: {code: {time, source}}}，
+# 写入时自动覆盖旧日期 → 文件不膨胀；语义对齐笨总六维当日缓存（跨天自动失效）。
+_DEEP_ANALYZED_FILE = _STATE_DIR / "deep_analyzed.json"
 
 # 报告目录（项目内，gitignored；src/cli/session_state.py -> parents[2]=项目根）
 _REPORT_DIR = Path(__file__).resolve().parents[2] / "分析报告" / "scan"
@@ -99,6 +102,45 @@ def _stale_warning(timestamp: Optional[str]) -> str:
     except (ValueError, TypeError):
         return ""
     return ""
+
+
+def get_deep_analyzed() -> dict:
+    """今天的已深分析记录 {code: {"time": "HH:MM", "source": str}}。非今天返回 {}。
+
+    供 l all 去重：同一天内重复 l all 默认跳过已分析过的股票（v0.8.7.9）。
+    """
+    try:
+        if not _DEEP_ANALYZED_FILE.exists():
+            return {}
+        data = json.loads(_DEEP_ANALYZED_FILE.read_text(encoding="utf-8"))
+        rec = data.get(datetime.now().strftime("%Y-%m-%d"))
+        if not isinstance(rec, dict):
+            return {}
+        # 过滤脏条目（值必须是 {time, source} 结构），防调用方 .get("time") 崩
+        return {k: v for k, v in rec.items() if isinstance(v, dict)}
+    except (OSError, json.JSONDecodeError) as e:
+        logger.warning(f"get_deep_analyzed 失败: {e}")
+        return {}
+
+
+def mark_deep_analyzed(codes: list, source: str = "") -> bool:
+    """把今天成功深分析的股票记入 deep_analyzed.json。失败不抛异常。"""
+    try:
+        rec = get_deep_analyzed()
+        now_hm = datetime.now().strftime("%H:%M")
+        for c in codes:
+            if c:
+                rec[str(c)] = {"time": now_hm, "source": source}
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        _DEEP_ANALYZED_FILE.write_text(
+            json.dumps({datetime.now().strftime("%Y-%m-%d"): rec},
+                       ensure_ascii=False, indent=1),
+            encoding="utf-8",
+        )
+        return True
+    except OSError as e:
+        logger.warning(f"mark_deep_analyzed 失败: {e}")
+        return False
 
 
 def persist_scan_report(items: list[dict], source: str,

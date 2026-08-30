@@ -21,9 +21,57 @@
 import json
 import logging
 import re
+from datetime import datetime
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
+
+# 当日文件缓存（v0.8.7.9）：同主题词当天复用 AI 报股+Baostock 验证结果。
+# 动机：同一天反复 bz scan 同一主题时，法C 每次都重调 DeepSeek（费用+延迟）并对
+# 每个候选打一次 Baostock query_stock_basic（第三方接口高频触发风险）。
+# 语义对齐笨总六维评分的当日缓存：跨天自动失效，文件只存当天，不膨胀。
+_CACHE_DIR = Path.home() / ".muyun" / "theme_locator_cache"
+
+
+def _cache_path(theme_terms: list[str]) -> Path:
+    safe = re.sub(r'[<>:"/\\|?*\s]+', "_", "_".join(sorted(theme_terms)))
+    return _CACHE_DIR / f"{safe}.json"
+
+
+def _load_today_cache(theme_terms: list[str]) -> Optional[dict]:
+    """命中当日缓存返回 locate 结果（带 cached=True 标记），否则 None。绝不抛异常。"""
+    try:
+        p = _cache_path(theme_terms)
+        if not p.exists():
+            return None
+        data = json.loads(p.read_text(encoding="utf-8"))
+        if data.get("date") != datetime.now().strftime("%Y-%m-%d"):
+            return None
+        if data.get("terms") != theme_terms:
+            return None
+        result = data.get("result")
+        if isinstance(result, dict) and result.get("stocks"):
+            result["cached"] = True
+            return result
+    except Exception as e:
+        logger.debug(f"theme_locator 缓存读取失败: {e}")
+    return None
+
+
+def _save_today_cache(theme_terms: list[str], result: dict) -> bool:
+    """落当日缓存。IO 失败只 debug，不阻塞主流程。"""
+    try:
+        _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        _cache_path(theme_terms).write_text(json.dumps({
+            "date": datetime.now().strftime("%Y-%m-%d"),
+            "terms": theme_terms,
+            "result": result,
+        }, ensure_ascii=False), encoding="utf-8")
+        return True
+    except Exception as e:
+        logger.debug(f"theme_locator 缓存写入失败: {e}")
+        return False
 
 
 SYSTEM_PROMPT = """你是A股主题定位助手。用户会给若干细分主题词（材料/技术/赛道），你要说出A股中真正主营或深度布局这些方向的上市公司。
@@ -120,6 +168,7 @@ def locate_theme_stocks(
     ai_client=None,
     ai_model: Optional[str] = None,
     config: Optional[dict] = None,
+    use_cache: bool = True,
 ) -> dict:
     """法C：AI 识别主题对应A股公司 + Baostock 验证。
 
@@ -127,13 +176,22 @@ def locate_theme_stocks(
         theme_terms: 主题词列表（如 ["PBO树脂材料","氮化镓"]）
         ai_client / ai_model: 可注入；None 时从 settings 构造
         config: settings.yaml
+        use_cache: True 时同主题词当日命中直接复用（v0.8.7.9），跳过 AI+Baostock；
+            调用方传 use_cache=not force_refresh 即可接上 bz scan --refresh
 
     Returns:
         {stocks: [{code,name,term,why}], invalid: [{code,name,reason}], terms: [...]}
+        命中缓存时额外带 cached=True
     """
-    theme_terms = [t for t in theme_terms if t and t.strip()]
+    theme_terms = [t.strip() for t in theme_terms if t and t.strip()]
     if not theme_terms:
         return {"stocks": [], "invalid": [], "terms": []}
+
+    if use_cache:
+        cached = _load_today_cache(theme_terms)
+        if cached is not None:
+            logger.info(f"theme_locator 命中当日缓存({len(cached.get('stocks', []))}只)")
+            return cached
 
     if ai_client is None:
         from src.core.benzong.auto_scorer import _build_ai_client
@@ -202,7 +260,12 @@ def locate_theme_stocks(
                             "reason": "代码不存在或名称不符（AI可能给错）"})
 
     logger.info(f"theme_locator 验证通过 {len(stocks)} / 丢弃 {len(invalid)}")
-    return {"stocks": stocks, "invalid": invalid, "terms": theme_terms}
+    result = {"stocks": stocks, "invalid": invalid, "terms": theme_terms}
+    # 只缓存验证通过非空的结果——空结果可能是 Baostock 登录失败等临时故障，
+    # 缓存一整天会放大故障
+    if stocks:
+        _save_today_cache(theme_terms, result)
+    return result
 
 
 def _parse_stock_list(text: str) -> list[dict]:
