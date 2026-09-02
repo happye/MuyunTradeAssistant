@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8"  # v0.8.8=chat全命令桥(run_command)+持仓文件修改(manage_portfolio)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8.1"  # v0.8.8.1=个股数据120s缓存(防chat高频反爬)；与 cli/main.py --version、AGENTS.md 统一
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）

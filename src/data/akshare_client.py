@@ -118,6 +118,12 @@ class AKShareClient:
     # 大盘指数趋势缓存（v0.8.7.2 审查修复，见 _get_index_trend）
     _index_trend_cache: dict = {}
 
+    # 个股全量数据（K线+指标+实时价）短TTL缓存（v0.8.8.1，见 calculate_indicators 包装器）。
+    # chat 对话场景 AI 短时间内反复分析同一只股票（追问/失败重试轮）会每次现爬
+    # 1次实时行情+3次K线，高频易触发反爬；REPL 的 l 同股连跑同样受益。
+    _stock_data_cache: dict = {}   # code -> (timestamp, StockData)
+    _STOCK_DATA_TTL = 120          # 秒；口径参考 market_cache 盘中快照 TTL=300s，个股取更保守值
+
     @staticmethod
     def _get_random_ua():
         """生成随机User-Agent降低被识别风险"""
@@ -773,8 +779,9 @@ class AKShareClient:
         return date_str  # 已经是正确格式或非日期字符串
 
     @classmethod
-    def calculate_indicators(cls, stock_code: str, require_historical: bool = False) -> Optional[StockData]:
-        """计算完整的技术指标数据（降级模式支持）
+    def _calculate_indicators_uncached(cls, stock_code: str, require_historical: bool = False) -> Optional[StockData]:
+        """计算完整的技术指标数据（降级模式支持）。v0.8.8.1 起经 calculate_indicators
+        包装器带短TTL缓存调用，新代码请勿直调本函数。
 
         Args:
             stock_code: 股票代码
@@ -1357,6 +1364,27 @@ class AKShareClient:
         return (round(kv, 2) if pd.notna(kv) else None,
                 round(dv, 2) if pd.notna(dv) else None,
                 round(jv, 2) if pd.notna(jv) else None)
+
+    @classmethod
+    def calculate_indicators(cls, stock_code: str, require_historical: bool = False) -> Optional[StockData]:
+        """带类级短TTL缓存的包装器（v0.8.8.1，模式同 _get_index_trend）。
+
+        chat 对话里 AI 反复分析同一只股票（追问、失败重试轮）、REPL 同股连跑，
+        此前每次都现爬 1次实时行情+3次K线——高频打接口易被反爬限流。
+        120 秒内同 code 直接复用；只缓存"完整"结果（有技术指标），降级/失败
+        结果不缓存，让"重跑一次就好"的恢复机会保持原样。
+        回测不受影响：回测走 DataFeeder._build_stock_data 独立路径，不经本函数。
+        线程安全：读写均为单条 dict 原子操作，最坏并发重复计算一次，无害。
+        """
+        key = str(stock_code).strip()
+        now_ts = time.time()
+        cached = AKShareClient._stock_data_cache.get(key)
+        if cached is not None and (now_ts - cached[0]) < AKShareClient._STOCK_DATA_TTL:
+            return cached[1]
+        result = AKShareClient._calculate_indicators_uncached(stock_code, require_historical)
+        if result is not None and getattr(result, "ma5", None):
+            AKShareClient._stock_data_cache[key] = (now_ts, result)
+        return result
 
 
 # 导出便捷函数

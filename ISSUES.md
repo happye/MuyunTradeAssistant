@@ -1669,3 +1669,16 @@ P3（已取消）:
 - **更新记录**:
   - 2026-09-02: 开发完成+验证通过，commit 6e0dcde
 
+---
+
+### ISS-077: 个股数据短 TTL 缓存——防 chat 高频爬取被反爬（v0.8.8.1）
+- **状态**: ✅ 已解决（2026-09-02）
+- **优先级**: P2（反爬预防，无故障报告的主动加固）
+- **描述**: 用户问"chat 调用功能时能否也用缓存避免高频爬取被反爬"。排查结论：项目已是缓存大户（笨总评分当日磁盘缓存/全市场快照+THS 成分股磁盘 L2 跨进程复用/法C 同主题词当日缓存/新闻 1h/产业链 1h/大盘趋势 TTL/股东户数融资余额日缓存/l all 当日去重），chat 复用同一代码路径全部自动继承。**唯一实质缺口**：`calculate_indicators`（`l`/`analyze_stock`/`la` 的主力路径）无缓存——每次 1 次实时行情+3 次 K 线现爬；chat 场景 AI 对话里反复分析同一只股票（追问、失败重试轮不占轮次）放大了爬取频率，REPL 同股连跑同样暴露。
+- **选定方案**: 类级 120s TTL 缓存（模式同既有 `_index_trend_cache`）：`_stock_data_cache: dict[str, (ts, StockData)]`，wrapper `calculate_indicators` 查缓存→miss 调 `_calculate_indicators_uncached`→**只缓存完整结果**（ma5 非空），失败（None）/降级（无技术指标）不缓存——保留"重跑一次就好"的恢复机会与 AI 失败重试轮的恢复语义。TTL 120s 参考 market_cache 盘中快照 300s 先例取更保守值。回测不受影响（走 `DataFeeder._build_stock_data` 独立路径，已核实 data_feader 无实际调用）。模块级别名 `get_stock_data` 自动覆盖全部调用方（cli/chat/tui/web/scanner）。
+- **实现**: `src/data/akshare_client.py`（原函数改名 `_calculate_indicators_uncached` + wrapper + 类级缓存字段）；`tests/core/test_stock_data_cache.py` 6 项；`tests/core/test_top_signal_announcements.py` 两个接线测试补类级缓存清理（见"同类点"）
+- **同类点（铁律1③）**: 类级缓存是全局状态——全量跑首挂 `test_calculate_indicators_populates_recent_announcements`（本文件测试泄漏 '600519' 缓存条目→公告测试命中不走真实路径），补齐后第二挂 `fail_open_to_none`（两个公告接线测试同 code 互相污染），两处都补 `_clear_stock_data_cache()` 前后清理。**铁律3 实证：类级缓存改动单文件跑绿≠全量绿**
+- **验证**: 新测试 6 项（命中/跨股隔离/失败不缓存/降级不缓存/TTL 过期/键 strip 规范化）全绿；全量 390 passed / 2 skipped
+- **更新记录**:
+  - 2026-09-02: 开发完成+验证通过，commit 落地于本 commit
+

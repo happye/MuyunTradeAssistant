@@ -82,6 +82,14 @@ def test_check_stock_top_signal_no_announcements():
 
 # ========== 第2层：接线（calculate_indicators 填充 recent_announcements） ==========
 
+
+def _clear_stock_data_cache():
+    """v0.8.8.1 calculate_indicators 加了类级短TTL缓存；本文件两个接线测试
+    同用 code 600519 走生产入口，前一个成功会写缓存让后一个命中旧数据。
+    前后各清一次，保证每个测试都走真实路径。"""
+    AKShareClient._stock_data_cache.clear()
+
+
 def _fake_quote(code="600519"):
     return {
         "stock_code": code, "stock_name": "贵州茅台", "price": 1500.0,
@@ -106,25 +114,33 @@ def _fake_kline_df(rows=70):
 def test_calculate_indicators_populates_recent_announcements():
     """calculate_indicators 把 get_recent_announcements 返回值赋给 recent_announcements。"""
     fake_ann = [{"title": "控股股东拟减持", "date": "2026-07-01", "content": "", "source": "em"}]
-    with patch.object(AKShareClient, "get_realtime_quote", return_value=_fake_quote()), \
-         patch.object(AKShareClient, "get_historical_kline", return_value=_fake_kline_df()), \
-         patch.object(AKShareClient, "_get_index_trend", return_value=None), \
-         patch.object(AKShareClient, "_build_timeframe_snapshot", return_value=None), \
-         patch("src.core.benzong.data_provider.get_recent_announcements", return_value=fake_ann):
-        sd = AKShareClient.calculate_indicators("600519")
+    _clear_stock_data_cache()
+    try:
+        with patch.object(AKShareClient, "get_realtime_quote", return_value=_fake_quote()), \
+             patch.object(AKShareClient, "get_historical_kline", return_value=_fake_kline_df()), \
+             patch.object(AKShareClient, "_get_index_trend", return_value=None), \
+             patch.object(AKShareClient, "_build_timeframe_snapshot", return_value=None), \
+             patch("src.core.benzong.data_provider.get_recent_announcements", return_value=fake_ann):
+            sd = AKShareClient.calculate_indicators("600519")
+    finally:
+        _clear_stock_data_cache()
     assert sd is not None
     assert sd.recent_announcements == fake_ann
 
 
 def test_calculate_indicators_fail_open_to_none():
     """get_recent_announcements 抛异常 -> recent_announcements 降 None，主流程不崩。"""
-    with patch.object(AKShareClient, "get_realtime_quote", return_value=_fake_quote()), \
-         patch.object(AKShareClient, "get_historical_kline", return_value=_fake_kline_df()), \
-         patch.object(AKShareClient, "_get_index_trend", return_value=None), \
-         patch.object(AKShareClient, "_build_timeframe_snapshot", return_value=None), \
-         patch("src.core.benzong.data_provider.get_recent_announcements",
-               side_effect=RuntimeError("network down")):
-        sd = AKShareClient.calculate_indicators("600519")
+    _clear_stock_data_cache()
+    try:
+        with patch.object(AKShareClient, "get_realtime_quote", return_value=_fake_quote()), \
+             patch.object(AKShareClient, "get_historical_kline", return_value=_fake_kline_df()), \
+             patch.object(AKShareClient, "_get_index_trend", return_value=None), \
+             patch.object(AKShareClient, "_build_timeframe_snapshot", return_value=None), \
+             patch("src.core.benzong.data_provider.get_recent_announcements",
+                   side_effect=RuntimeError("network down")):
+            sd = AKShareClient.calculate_indicators("600519")
+    finally:
+        _clear_stock_data_cache()
     assert sd is not None
     assert sd.recent_announcements is None  # fail-open 降级，不崩
 
