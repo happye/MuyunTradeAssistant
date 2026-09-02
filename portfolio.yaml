@@ -19,26 +19,26 @@ positions:
     stock_name: 融捷股份
     entry_date: '2026-07-25'
     entry_price: 61.41
-    current_ratio: 0.2679
-    last_action: STAY_OUT
-    last_action_semantic: null
+    current_ratio: 0.094
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
     last_sell_path: null
-    last_action_date: '2026-08-21'
+    last_action_date: '2026-09-02'
     high_since_entry: 74.03
-    lifecycle: OPEN
+    lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 8
-      last_decision: WATCH
+      inertia_counter: 2
+      last_decision: HOLD
       recent_signals:
       - WATCH
       - WATCH
-      - WATCH
-      - WATCH
-      - WATCH
-      signal_stability_score: 1.0
+      - BUY
+      - SELL
+      - SELL
+      signal_stability_score: 0.5
       reduce_protection_remaining: 0
       min_hold_remaining: 0
       add_protection_remaining: 0
@@ -59,6 +59,7 @@ positions:
       locked_initial_stop: 58.34
       current_stop: 58.34
       max_hold_days: 30
+      entry_price: null
       fundamental_outlook: neutral
       mode: jianzong
       flagbearer_code: null
@@ -75,30 +76,30 @@ positions:
   002738:
     stock_name: 中矿资源
     entry_date: null
-    entry_price: null
-    current_ratio: 0.3
+    entry_price: 68.55
+    current_ratio: 0.067
     last_action: CLOSE_ALL
-    last_action_semantic: HOLD
+    last_action_semantic: EXIT
     last_sell_path: trend_exit
-    last_action_date: '2026-08-21'
+    last_action_date: '2026-09-02'
     high_since_entry: null
-    lifecycle: HOLD
+    lifecycle: COOLDOWN
     strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
+      cooldown_remaining: 5
+      cooldown_reason: close_all
       reverse_count: 0
-      inertia_counter: 1
+      inertia_counter: 4
       last_decision: SELL
       recent_signals:
-      - BUY
-      - BUY
-      - BUY
       - WATCH
       - SELL
-      signal_stability_score: 0.5
+      - SELL
+      - SELL
+      - SELL
+      signal_stability_score: 0.75
       reduce_protection_remaining: 0
       min_hold_remaining: 0
-      add_protection_remaining: 3
+      add_protection_remaining: 0
     trade_plan:
       plan_id: 002738_2026-08-24
       opened_at: '2026-08-24'
@@ -116,6 +117,7 @@ positions:
       locked_initial_stop: 49.96
       current_stop: 49.96
       max_hold_days: 60
+      entry_price: null
       fundamental_outlook: neutral
       mode: null
       flagbearer_code: null
@@ -132,26 +134,28 @@ positions:
   '603125':
     stock_name: 常青科技
     entry_date: '2026-07-25'
-    entry_price: 20.66
-    current_ratio: 0.3
-    last_action: ADD
-    last_action_semantic: ADD
+    entry_price: 31.415
+    current_ratio: 0.031
+    last_action: HOLD_POSITION
+    last_action_semantic: HOLD
     last_sell_path: null
-    last_action_date: '2026-08-13'
+    last_action_date: '2026-09-02'
     high_since_entry: 23.76
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 1
+      inertia_counter: 3
       last_decision: HOLD
       recent_signals:
       - BUY
       - SELL
-      signal_stability_score: 0.0
+      - SELL
+      - SELL
+      signal_stability_score: 0.67
       reduce_protection_remaining: 0
-      min_hold_remaining: 4
+      min_hold_remaining: 2
       add_protection_remaining: 0
     trade_plan:
       plan_id: 603125_2026-08-24
@@ -170,6 +174,7 @@ positions:
       locked_initial_stop: 19.01
       current_stop: 19.01
       max_hold_days: 60
+      entry_price: null
       fundamental_outlook: neutral
       mode: null
       flagbearer_code: null
@@ -187,13 +192,13 @@ positions:
     stock_name: 中国黄金
     entry_date: '2026-07-25'
     entry_price: 7.2
-    current_ratio: 0.0418
+    current_ratio: 0.022
     last_action: STAY_OUT
     last_action_semantic: null
     last_sell_path: null
-    last_action_date: '2026-08-13'
-    high_since_entry: 7.67
-    lifecycle: OPEN
+    last_action_date: '2026-09-02'
+    high_since_entry: 8.05
+    lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
@@ -203,9 +208,11 @@ positions:
       recent_signals:
       - BUY
       - WATCH
+      - HOLD
+      - WATCH
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
-      min_hold_remaining: 4
+      min_hold_remaining: 2
       add_protection_remaining: 0
     trade_plan:
       plan_id: 600916_2026-08-24
@@ -223,6 +230,7 @@ positions:
       locked_initial_stop: 6.62
       current_stop: 6.62
       max_hold_days: 180
+      entry_price: null
       fundamental_outlook: bullish
       mode: qizong
       flagbearer_code: null
@@ -238,27 +246,28 @@ positions:
       adjustments: []
   '159201':
     stock_name: 自由现金流ETF华夏
-    entry_date: '2026-07-25'
-    entry_price: 1.146
-    current_ratio: 0.0466
-    last_action: STAY_OUT
-    last_action_semantic: null
-    last_sell_path: null
-    last_action_date: '2026-08-13'
-    high_since_entry: 1.172
-    lifecycle: OPEN
+    entry_date: null
+    entry_price: 1.145
+    current_ratio: 0.045
+    last_action: CLOSE_ALL
+    last_action_semantic: HOLD
+    last_sell_path: top_signal
+    last_action_date: '2026-09-02'
+    high_since_entry: null
+    lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
       inertia_counter: 1
-      last_decision: WATCH
+      last_decision: HOLD
       recent_signals:
       - BUY
       - WATCH
+      - SELL
       signal_stability_score: 0.0
       reduce_protection_remaining: 0
-      min_hold_remaining: 4
+      min_hold_remaining: 3
       add_protection_remaining: 0
     trade_plan:
       plan_id: 159201_2026-08-24
@@ -277,6 +286,7 @@ positions:
       locked_initial_stop: 1.05
       current_stop: 1.05
       max_hold_days: 30
+      entry_price: null
       fundamental_outlook: neutral
       mode: null
       flagbearer_code: null
@@ -291,83 +301,33 @@ positions:
       - 'RAG: 以下是关于当前分析的策略知识参考：  【望周知—系统化交易大纲】45. 认知重构：改变对亏损的看法  46. 接受不确定性：市场本来就是不确定的  47.
         专注...'
       adjustments: []
-  '159611':
-    stock_name: 电力ETF广发
-    entry_date: null
-    entry_price: null
-    current_ratio: 0.3
-    last_action: CLOSE_ALL
-    last_action_semantic: ADD
-    last_sell_path: trend_exit
-    last_action_date: '2026-08-13'
-    high_since_entry: null
-    lifecycle: HOLD
-    strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
-      reverse_count: 0
-      inertia_counter: 1
-      last_decision: HOLD
-      recent_signals:
-      - BUY
-      - SELL
-      signal_stability_score: 0.0
-      reduce_protection_remaining: 0
-      min_hold_remaining: 4
-      add_protection_remaining: 0
-    trade_plan:
-      plan_id: 159611_2026-08-24
-      opened_at: '2026-08-24'
-      why_buy: Weinstein S4 下跌阶段（MA20<MA60 且价在 MA20 下方）；MA20(1.06)<MA60(1.08) 空头排列；MACD
-        空头；基本面前景判定：bearish（规则版从技术阶段推断，AI 增强可改）
-      when_buy: 建仓价 ¥1.02，S4 阶段，价格在 MA20(1.06)下方
-      how_much: 0.3
-      when_sell_targets:
-      - 1.13
-      - 1.23
-      when_sell_invalidate:
-      - 跌破初始止损价（致命）
-      - 出现重大利空（如政策转向、财务造假、行业系统性风险）
-      locked_initial_stop: 0.94
-      current_stop: 0.94
-      max_hold_days: 8
-      fundamental_outlook: bearish
-      mode: null
-      flagbearer_code: null
-      penetration_stage: null
-      overweight_executed: false
-      overweight_expiry: null
-      overweight_basis: null
-      thesis_sources:
-      - ch48-止损位设置：基于 2×ATR(14) 的标准方法
-      - 望周知大纲 ch40-41：交易计划七要素（建仓时定，按计划执行）
-      - Weinstein S4 阶段判定（MA20/MA60 关系 + 价格位置）
-      - 'RAG: 以下是关于当前分析的策略知识参考：  【第60章】今年4月16日，三家公司同时爆雷。 实达集团，原本预计2025年营收3亿多，修正后只剩不到1个亿，缩水近70%...'
-      adjustments: []
   '600989':
     stock_name: 宝丰能源
     entry_date: '2026-07-25'
     entry_price: 23.38
-    current_ratio: 0.068
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
+    current_ratio: 0.3
+    last_action: ADD
+    last_action_semantic: ADD
     last_sell_path: null
-    last_action_date: '2026-08-13'
-    high_since_entry: 22.81
+    last_action_date: '2026-09-02'
+    high_since_entry: 24.37
     lifecycle: HOLD
     strategy_state:
       cooldown_remaining: 0
       cooldown_reason: null
       reverse_count: 0
-      inertia_counter: 1
+      inertia_counter: 4
       last_decision: HOLD
       recent_signals:
       - BUY
       - SELL
-      signal_stability_score: 0.0
+      - HOLD
+      - HOLD
+      - HOLD
+      signal_stability_score: 0.5
       reduce_protection_remaining: 0
-      min_hold_remaining: 4
-      add_protection_remaining: 0
+      min_hold_remaining: 1
+      add_protection_remaining: 5
     trade_plan:
       plan_id: 600989_2026-08-24
       opened_at: '2026-08-24'
@@ -386,6 +346,7 @@ positions:
       locked_initial_stop: 21.51
       current_stop: 21.51
       max_hold_days: 135
+      entry_price: null
       fundamental_outlook: bullish
       mode: null
       flagbearer_code: null
@@ -401,28 +362,28 @@ positions:
       adjustments: []
   002594:
     stock_name: 比亚迪
-    entry_date: '2026-07-25'
-    entry_price: 91.89
-    current_ratio: 0.1336
-    last_action: HOLD_POSITION
-    last_action_semantic: HOLD
-    last_sell_path: trend_exit
-    last_action_date: '2026-08-17'
-    high_since_entry: 89.71
-    lifecycle: HOLD
+    entry_date: null
+    entry_price: 79.573
+    current_ratio: 0.118
+    last_action: CLOSE_ALL
+    last_action_semantic: EXIT
+    last_sell_path: stop_loss_exit
+    last_action_date: '2026-09-02'
+    high_since_entry: null
+    lifecycle: COOLDOWN
     strategy_state:
-      cooldown_remaining: 0
-      cooldown_reason: null
+      cooldown_remaining: 5
+      cooldown_reason: close_all
       reverse_count: 0
-      inertia_counter: 1
+      inertia_counter: 3
       last_decision: SELL
       recent_signals:
-      - BUY
       - SELL
       - SELL
       - SELL
       - SELL
-      signal_stability_score: 0.75
+      - SELL
+      signal_stability_score: 1.0
       reduce_protection_remaining: 0
-      min_hold_remaining: 1
+      min_hold_remaining: 0
       add_protection_remaining: 0
