@@ -149,7 +149,8 @@ def create_sample_data() -> StockData:
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        "[bold cyan]暮云思辨投资助手 v0.8.6.6[/bold cyan]\n"
+        # ISS-078：横幅版本此前停在 v0.8.6.6，与 --version/start.py/AGENTS.md 打架
+        "[bold cyan]暮云思辨投资助手 v0.8.8.2[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -1979,6 +1980,14 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             console.print(f"[yellow]⚠ {stock_code} 已有持仓记录，请先 --pos-remove 删除[/yellow]")
             return
 
+        # ISS-078：CLI 入口同样校验（数据层 add_position 也会拦，这里给友好报错并 return）
+        if price is not None and price < 0:
+            console.print("[red]开仓价不能为负数（不设置请留空）[/red]")
+            return
+        if ratio is not None and not (0 <= ratio <= 1):
+            console.print("[red]仓位比例需在 0-1 之间（0%-100%）[/red]")
+            return
+
         pm.add_position(
             stock_code=stock_code,
             stock_name=name or stock_code,
@@ -2233,8 +2242,9 @@ def scan_market(
             pm = PortfolioManager()
             positions = pm.list_positions()
             exclude_codes = {pos.stock_code for pos in positions}
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
+            logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
 
     # 创建Scanner引擎
     entry_exit_config = config.get("entry_exit", None)
@@ -2977,8 +2987,9 @@ def scan_events(ai_debug: bool = False):
             positions = pm.list_positions()
             if positions:
                 console.print(f"  持仓: {len(positions)}只")
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：持仓事件扫描的 fail-open 必须留痕（此前静默跳过持仓事件）
+            logger.warning(f"持仓读取失败，本次事件扫描跳过持仓事件: {e}")
 
     # 执行完整扫描
     with console.status("扫描事件中..."):
@@ -3215,8 +3226,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.7.9：l all 批量深分析最近扫描（实现在 start.py run_cli）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.8.1 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
+        # v0.8.8.2：持仓数据安全批（ISS-078）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.8.2 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
     )
     parser.add_argument(
         "--verbose",

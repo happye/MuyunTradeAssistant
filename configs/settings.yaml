@@ -103,7 +103,7 @@ ai:
   kimi:
     api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 KIMI_API_KEY（ISS-042）
     base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）
-    model: "moonshot-v1-auto"     # moonshot-v1系列支持temperature参数
+    model: "kimi-k2.6"            # ISS-078：moonshot-v1 系列已全线下线（实测 404）；2026-09-03 探测在售: kimi-k3/kimi-k2.7-code(-highspeed)/kimi-k2.6
     model_pro: "kimi-k2.6"       # 思考型模型，content偶尔为空（reasoning_content兜底）
   modifier:
     sentiment_weight: 0.3    # 情绪调节权重（buy_score *= 1 - confidence * 0.3）

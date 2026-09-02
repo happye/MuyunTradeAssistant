@@ -11,6 +11,7 @@
 - 系统自动维护strategy_state，用户一般不需碰
 """
 
+import math
 import os
 import logging
 from pathlib import Path
@@ -32,6 +33,29 @@ DEFAULT_PORTFOLIO_PATH = os.path.join(
 )
 
 
+def _validate_ratio(value: float, field: str = "仓位比例") -> float:
+    """持仓比例合法性校验（ISS-078）：必须为有限数值且落在 [0, 1]。
+
+    背景：add 路径此前零校验（-0.5/NaN 实测可落盘，总仓位可被污染成负数）；
+    NaN/Inf 因 `nan < 0` 为 False 绕过 update 路径的简单比较。入口多为 AI
+    供参的 manage_portfolio，数据层必须兜底。
+    """
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        raise ValueError(f"{field}需为有限数值，收到 {value!r}")
+    if value < 0 or value > 1:
+        raise ValueError(f"{field}需在 0-1 之间（0%-100%），收到 {value}")
+    return float(value)
+
+
+def _validate_price(value: float, field: str = "开仓价") -> float:
+    """开仓价合法性校验（ISS-078）：必须为有限正数。"""
+    if not isinstance(value, (int, float)) or isinstance(value, bool) or not math.isfinite(value):
+        raise ValueError(f"{field}需为有限数值，收到 {value!r}")
+    if value <= 0:
+        raise ValueError(f"{field}需为正数，收到 {value}")
+    return float(value)
+
+
 class PositionRecord:
     """单只股票的持仓记录"""
 
@@ -50,6 +74,7 @@ class PositionRecord:
         lifecycle: str = "FLAT",
         strategy_state: Optional[dict] = None,
         trade_plan: Optional[TradePlan] = None,
+        trade_plan_raw: Optional[dict] = None,
     ):
         self.stock_code = stock_code
         self.stock_name = stock_name
@@ -64,6 +89,9 @@ class PositionRecord:
         self.lifecycle = lifecycle
         self.strategy_state = strategy_state or {}
         self.trade_plan = trade_plan  # v0.8.5 TradePlan 子系统
+        # ISS-078：加载时无法解析的 trade_plan 原始 dict 原样带回（保存时原样写回），
+        # 防"加载失败→保存→静默抹除计划数据"的第二层丢失
+        self.trade_plan_raw = trade_plan_raw
 
     def to_dict(self) -> dict:
         """转为YAML可序列化的字典"""
@@ -83,13 +111,26 @@ class PositionRecord:
         if self.trade_plan is not None:
             # Pydantic v2: model_dump() 转 dict；YAML 兼容
             d["trade_plan"] = self.trade_plan.model_dump()
+        elif self.trade_plan_raw is not None:
+            d["trade_plan"] = self.trade_plan_raw
         return d
 
     @classmethod
     def from_dict(cls, stock_code: str, data: dict) -> "PositionRecord":
         """从YAML字典创建"""
         plan_data = data.get("trade_plan")
-        trade_plan = TradePlan(**plan_data) if plan_data else None
+        trade_plan = None
+        trade_plan_raw = None
+        if plan_data:
+            # ISS-078：残缺 trade_plan 不再让整个持仓加载崩溃（此前 TradePlan(**plan_data)
+            # 的 ValidationError 会拖垮 get_position/list_positions 全体），原始数据保留
+            try:
+                trade_plan = TradePlan(**plan_data)
+            except Exception as e:
+                logger.error(
+                    f"持仓 {stock_code} 的 trade_plan 无法解析（字段残缺或类型不对），"
+                    f"原始数据已保留、分析时按无计划处理；修复字段后可恢复: {e}")
+                trade_plan_raw = plan_data if isinstance(plan_data, dict) else None
         return cls(
             stock_code=stock_code,
             stock_name=data.get("stock_name", ""),
@@ -104,6 +145,7 @@ class PositionRecord:
             lifecycle=data.get("lifecycle", "FLAT"),
             strategy_state=data.get("strategy_state", {}),
             trade_plan=trade_plan,
+            trade_plan_raw=trade_plan_raw,
         )
 
 
@@ -155,6 +197,11 @@ class PortfolioManager:
                 for k, v in positions.items()
             }
             self._corrupted = False
+            # ISS-078：记录加载时的文件 mtime，_save 据此检测会话外修改（防旧快照回滚无感知）
+            try:
+                self._loaded_mtime = os.path.getmtime(self.portfolio_path)
+            except OSError:
+                self._loaded_mtime = None
             logger.info(f"持仓文件已加载: {self.portfolio_path}")
         except Exception as e:
             logger.error(
@@ -176,6 +223,18 @@ class PortfolioManager:
             logger.error("G01 损坏保护生效：portfolio.yaml 此前加载失败，本次保存被拒绝。"
                          "请人工修复该文件（或删除后重试），期间持仓改动仅保留在内存")
             return False
+
+        # ISS-078 外部修改检测：文件在本实例加载后被外部（编辑器/其他进程）改过，
+        # 本次整文件写回会覆盖外部改动——至少要让用户知道（.bak 是保存前一版，可对照恢复）
+        if os.path.exists(self.portfolio_path) and getattr(self, "_loaded_mtime", None):
+            try:
+                disk_mtime = os.path.getmtime(self.portfolio_path)
+                if abs(disk_mtime - self._loaded_mtime) > 1e-6:
+                    logger.warning(
+                        "持仓文件在会话外被修改（检测到 mtime 变化），本次保存基于程序内数据、"
+                        "外部改动可能被覆盖；如外部改动是有意的，请先核对 portfolio.yaml 与 .bak")
+            except OSError:
+                pass
 
         os.makedirs(os.path.dirname(self.portfolio_path) or ".", exist_ok=True)
 
@@ -236,6 +295,11 @@ class PortfolioManager:
             # G01 原子替换：tmp 完整写完后一次性替换，杜绝半截文件
             os.replace(tmp_path, self.portfolio_path)
             self._corrupted = False
+            # ISS-078：自己的写入不算"会话外修改"，刷新基线防重复告警
+            try:
+                self._loaded_mtime = os.path.getmtime(self.portfolio_path)
+            except OSError:
+                pass
             logger.info(f"持仓文件已保存: {self.portfolio_path}")
             return True
         except Exception as e:
@@ -325,7 +389,14 @@ class PortfolioManager:
         ratio: float = 0.20,
         lifecycle: str = "OPEN",
     ):
-        """手动添加持仓"""
+        """手动添加持仓
+
+        ISS-078：ratio/entry_price 走数据层校验——此前本路径零校验，
+        负数/NaN/Inf 仓位实测可落盘并污染总仓位计算（AI 供参入口必须兜底）。
+        """
+        ratio = _validate_ratio(ratio)
+        if entry_price is not None:
+            entry_price = _validate_price(entry_price)
         today = datetime.now().strftime("%Y-%m-%d")
         record = PositionRecord(
             stock_code=stock_code,
@@ -382,16 +453,16 @@ class PortfolioManager:
             return False
 
         rec = positions[stock_code]
+        # ISS-078 监督审查 P3：先全部校验再落内存——此前 ratio 校验通过已写入、
+        # price 校验再抛异常会留下内存/磁盘短暂 desync
+        new_ratio = _validate_ratio(current_ratio) if current_ratio is not None else None
+        new_price = _validate_price(entry_price) if entry_price is not None else None
         changed = False
-        if current_ratio is not None:
-            if current_ratio < 0:
-                raise ValueError(f"仓位比例不能为负，收到 {current_ratio}")
-            rec["current_ratio"] = current_ratio
+        if new_ratio is not None:
+            rec["current_ratio"] = new_ratio
             changed = True
-        if entry_price is not None:
-            if entry_price <= 0:
-                raise ValueError(f"开仓价需为正数，收到 {entry_price}")
-            rec["entry_price"] = entry_price
+        if new_price is not None:
+            rec["entry_price"] = new_price
             changed = True
         if stock_name is not None and stock_name.strip():
             rec["stock_name"] = stock_name.strip()
@@ -491,6 +562,13 @@ class PortfolioManager:
             last_sell_path=strategy_decision.sell_path,
             last_action_date=today,
             lifecycle=new_state.lifecycle.value,
+            # ISS-078（P0）：重建记录必须把既有 trade_plan 带上——此前漏传导致
+            # chat analyze_stock 每回写一次就把该股交易计划从 portfolio.yaml 抹掉
+            # （PlanGuard 压制/追踪止损/超配"只出手一次"标志全部随计划一起丢失），
+            # HEAD 版持仓文件 7 处 trade_plan 实测被抹到 0 处。教训：重建记录
+            # 必须从 existing 全量携带，不能只列本次会变的字段。
+            trade_plan=existing.trade_plan if existing else None,
+            trade_plan_raw=existing.trade_plan_raw if existing else None,
             strategy_state={
                 "cooldown_remaining": new_state.cooldown_remaining,
                 "cooldown_reason": new_state.cooldown_reason,

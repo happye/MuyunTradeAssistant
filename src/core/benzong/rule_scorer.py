@@ -206,8 +206,9 @@ def _risk_deduction_rule(code: str, data_summary: dict) -> dict:
                 if close.iloc[-1] < ma60:
                     risk += 20
                     reasons.append("跌破 MA60")
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：风险检测失败必须留痕（此前静默 pass，风险分被低估无感知）
+            logger.warning(f"跌破MA60风险检测失败，该股风险分可能偏低: {e}")
 
     conf = 0.5 if announcements else 0.3
     return {"score": float(min(risk, 100)), "confidence": conf,

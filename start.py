@@ -29,7 +29,12 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8.1"  # v0.8.8.1=个股数据120s缓存(防chat高频反爬)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8.2"  # v0.8.8.2=持仓数据安全批(ISS-078: trade_plan回写保留/值校验/confirm门补齐/告警留痕)；与 cli/main.py --version、AGENTS.md 统一
+
+# ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
+# 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
+import logging
+logger = logging.getLogger("start")
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）
@@ -876,8 +881,9 @@ def run_benzong_scan(args: dict):
             from src.data.portfolio import PortfolioManager
             pm = PortfolioManager()
             exclude_codes = {pos.stock_code for pos in pm.list_positions()}
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
+            logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
 
     located_stocks = None  # 法C结果（有主题词时填充）
     if theme:
@@ -958,7 +964,8 @@ def run_benzong_scan(args: dict):
         )
 
         if allrules:
-            # 方案C: 五规则全跑，各取Top5合并去重
+            # 方案C: 五条市场规则全跑，各取Top5合并去重
+            # 注：theme_members 是主题专用规则（无主题词时=全市场流动性Top80），不参加 --allrules 全跑
             print("  [Step 1/3] 五规则全跑初筛（各Top5合并）...")
             ALL_RULES = ["healthy_pullback", "steady_advance", "shrink_pullback", "value_pick", "oversold_watch"]
             merged_codes = []

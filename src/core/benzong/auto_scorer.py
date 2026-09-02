@@ -70,8 +70,8 @@ def _build_ai_client(config: Optional[dict] = None):
             logger.warning("AI api_key 未配置，AI 维度将走降级")
             return None, None
 
-        if "OPENAI_API_KEY" not in os.environ:
-            os.environ["OPENAI_API_KEY"] = api_key
+        # ISS-078：删除 os.environ["OPENAI_API_KEY"] 写入——client 已显式传 api_key，
+        # 把密钥写进进程级 env 只会扩大泄漏面（子进程可继承），且全库无读取方
 
         from openai import OpenAI
         # 显式 timeout + 重试：防 bz scan 长批量时连接挂起到 WinError 10060/10054

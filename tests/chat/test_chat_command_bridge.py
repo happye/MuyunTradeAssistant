@@ -110,7 +110,12 @@ def test_confirm_gate_passes_with_confirm():
 
 
 def test_single_stock_and_readonly_no_gate():
-    """单股命令/只读命令与 REPL 平价不设门（b/expect/events/bz 单股）。"""
+    """单股命令/只读命令与 REPL 平价不设门（b/expect/bz 单股/pos plan 单只）。
+
+    ISS-078 变更：events 与 la 原列在本组"不设门"，但两者实为批量 AI 费用操作
+    （events 走事件层 AI 分类、la 逐持仓 AI 深析），已移入 confirm 硬门——
+    覆盖断言见 test_chat_confirm_gate_coverage.py。
+    """
     import start as start_mod
     calls = []
 
@@ -118,10 +123,10 @@ def test_single_stock_and_readonly_no_gate():
         calls.append((mode, args))
 
     with _swap(start_mod, "run_cli", _fake_run_cli):
-        for cmd in ("b 600519", "expect 60", "events", "bz 600519", "la", "pos plan 600519"):
+        for cmd in ("b 600519", "expect 60", "bz 600519", "pos plan 600519"):
             result, _ = _quiet(run_command, cmd)
             assert not result.startswith(TOOL_ERROR_MARK), f"'{cmd}' 不应被门拦: {result[:80]}"
-    assert len(calls) == 6
+    assert len(calls) == 4
 
 
 # ── parse+dispatch 桥接 ──────────────────────────────────

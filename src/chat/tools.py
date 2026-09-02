@@ -227,7 +227,7 @@ def analyze_stock(stock_code: str) -> str:
                     stock_code=quote.get("stock_code", stock_code),
                     stock_name=quote.get("stock_name", stock_code),
                     price=quote.get("price", 0),
-                    # v0.8.7.9 E02 同类点：open/high/low 此前被丢弃（quote 已返回）
+                    # v0.8.7.8 E02 同类点：open/high/low 此前被丢弃（quote 已返回）
                     open=quote.get("open") or None,
                     high=quote.get("high") or None,
                     low=quote.get("low") or None,
@@ -278,13 +278,25 @@ def analyze_stock(stock_code: str) -> str:
         # 与CLI一致；原chat只读不写->持仓股策略状态冻结，chat与CLI随时间分歧。
         # 仅持仓股回写(非持仓回写会创建虚假持仓记录)
         if has_position and pos and _portfolio_manager:
+            # ISS-078 监督审查 P2：用 pos 的实际存储键（H05 规范化后匹配到的）查询
+            # 与回写——AI 传 sh600519 式带前缀代码时 raw code 查询会误判"已被外部
+            # 删除"，update 还会按 raw code 创建重复键
+            _key = pos.stock_code
             try:
-                _stock_name = stock_data.stock_name or stock_code
+                # ISS-078：回写前重读一次并确认持仓仍在——分析期间用户可能在外部
+                # 编辑器改过 portfolio.yaml，陈旧 _data 整文件写回会静默回滚外部修改
+                # （_save 已有 mtime 告警兜底，这里把窗口进一步收窄并防"外部已删仓、
+                # 回写又把记录造回来"）
+                _reload_portfolio_manager()
+                if _portfolio_manager.get_position(_key) is None:
+                    logger.info(f"chat回写跳过({_key}): 持仓已被外部删除")
+                    return result
+                _stock_name = stock_data.stock_name or _key
                 _portfolio_manager.update_from_strategy_decision(
-                    stock_code, _stock_name, strategy_decision, stock_data
+                    _key, _stock_name, strategy_decision, stock_data
                 )
             except Exception as e:
-                logger.warning(f"chat回写策略状态失败({stock_code}): {e}")
+                logger.warning(f"chat回写策略状态失败({_key}): {e}")
 
         return result
 
@@ -307,8 +319,9 @@ def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None
         try:
             positions = pm.list_positions()
             exclude_codes = {pos.stock_code for pos in positions}
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
+            logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
 
         # 初筛
         candidates, scan_info = _scanner_engine.quick_scan(
@@ -660,7 +673,10 @@ def _confirm_gate(mode: str, args: dict, confirm: bool) -> Optional[str]:
     if confirm:
         return None
     _HINT = "该操作会批量调用 AI（耗时与费用）。请先在对话中征得用户明确同意，用户确认后带 confirm=true 重新调用"
-    if mode in ("live_scan_all", "benzong_all", "benzong_scan"):
+    # ISS-078：补齐 la/lall（live_all，逐持仓 AI 深析）、scan（analyze_portfolio，
+    # 逐持仓 ai_enabled=True）、events（事件层 AI 分类）——与 l all/ba 同属批量
+    # AI 费用操作，此前漏门（AI 调 run_command("la") 可无确认烧 N 次 AI 费）
+    if mode in ("live_scan_all", "benzong_all", "benzong_scan", "live_all", "scan", "events"):
         return f"{TOOL_ERROR_MARK}{_HINT}"
     if mode == "scan_market" and args.get("deep"):
         return f"{TOOL_ERROR_MARK}deep 深度分析会批量调用 AI。{_HINT}"
@@ -802,6 +818,24 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
 
     if not code:
         return TOOL_ERROR_MARK + "缺少股票代码（6位数字或 #N 引用）"
+
+    # ISS-078 入参校验：AI 传的数值不能原样进写盘路径——此前 add 走 CLI 的
+    # `price if price > 0 else None` 会把负价静默降级成"没给价格"，ratio 负数/NaN
+    # 曾直达数据层（数据层校验为本次新增的兜底，这里提前拦给 AI 可读的错误）
+    if price is not None:
+        try:
+            price = float(price)
+        except (TypeError, ValueError):
+            return TOOL_ERROR_MARK + f"开仓价不是数字: {price!r}"
+        if price <= 0:
+            return TOOL_ERROR_MARK + f"开仓价需为正数，收到 {price}（不填价格请传 null）"
+    if ratio is not None:
+        try:
+            ratio = float(ratio)
+        except (TypeError, ValueError):
+            return TOOL_ERROR_MARK + f"仓位比例不是数字: {ratio!r}"
+        if not (0 < ratio <= 1):
+            return TOOL_ERROR_MARK + f"仓位比例需在 0-1 之间（0%-100%），收到 {ratio}"
 
     # 写操作 confirm 硬门（plan 与 REPL 平价不设门：查看/生成单只计划）
     if action in ("add", "remove", "update", "overweight") and not confirm:

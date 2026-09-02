@@ -212,24 +212,31 @@ class ScannerEngine:
         sort_by = rule.get("sort_by", "change_pct")
         sort_desc = rule.get("sort_desc", True)
         col_name = ScannerFilter.FIELD_MAP.get(sort_by)
-        if col_name and col_name in df.columns:
+        col_in_source = bool(col_name) and col_name in df.columns
+        # 审查修复 M-G / ISS-078：排序列数据源缺失（如 change_60d 新浪/efinance 都没有）
+        # 且候选量在 60d 富集上限(_enrich_trend_data 的 50)内 → 推迟排序：先富集、
+        # 再排序、再截断，让 sort_by 真正生效（旧行为 head 先截断=「按60d取前N」实为任意N）。
+        # 超上限富集太贵，退回旧行为（截断+警告）。
+        deferred_sort = (not col_in_source) and len(df) <= 50
+        if not col_in_source:
+            if deferred_sort:
+                logger.info(
+                    f"ScannerEngine: sort_by '{sort_by}'(列'{col_name}')数据源缺失，"
+                    f"改为先富集60d再排序再截断（候选{len(df)}≤50，M-G 修复生效）")
+            else:
+                logger.warning(
+                    f"ScannerEngine: sort_by '{sort_by}'(列'{col_name}')在数据源不存在且候选"
+                    f"超富集上限，排序跳过--head({rule.get('max_candidates', 30)})取前N非按 {sort_by} 排序")
+        if col_in_source:
             df = df.sort_values(
                 by=col_name,
                 ascending=not sort_desc,
                 na_position="last"
             )
-        else:
-            # 审查修复 M-G：sort_by 列缺失（如新浪/efinance 无 change_60d）静默跳过排序，
-            # 且下面 head() 先截断再 _enrich_trend_data 填 60d -> "按60d降序取前30"实际是任意30。
-            # 警告让用户知道候选非按 sort_by 排序的前列。彻底修需富集前置（enrich all，昂贵，留后续）。
-            logger.warning(
-                f"ScannerEngine: sort_by '{sort_by}'(列'{col_name}')在数据源不存在，排序跳过--"
-                f"候选为过滤后未排序集，head({rule.get('max_candidates', 30)})取前N非按 {sort_by} 排序"
-            )
 
-        # 限制候选数量
+        # 限制候选数量（deferred_sort 时截断推迟到富集排序之后）
         max_candidates = rule.get("max_candidates", 30)
-        if len(df) > max_candidates:
+        if not deferred_sort and len(df) > max_candidates:
             df = df.head(max_candidates)
 
         # 转换为 ScanCandidate 列表
@@ -237,6 +244,18 @@ class ScannerEngine:
 
         # v0.8.4: enrich with 60d change
         candidates = self._enrich_trend_data(candidates)
+
+        if deferred_sort:
+            # ISS-078 监督审查 P1：None 必须按排序方向沉底（与上方 na_position="last"
+            # 约定一致）。元组 (is None, ...) 写法在 reverse=True 时反而把 None 顶到
+            # 最前——60d 富集失败的候选（次新/停牌/单股拉取失败）会挤掉真实候选。
+            _sentinel = float("-inf") if sort_desc else float("inf")
+            candidates.sort(
+                key=lambda c: (getattr(c, sort_by, None)
+                               if getattr(c, sort_by, None) is not None else _sentinel),
+                reverse=sort_desc,
+            )
+            candidates = candidates[:max_candidates]
 
         elapsed = time.time() - start_time
         scan_info = {
@@ -776,6 +795,18 @@ class ScannerEngine:
         try:
             with open(rules_path, "r", encoding="utf-8") as f:
                 rules = yaml.safe_load(f)
+            # ISS-078：加载期校验过滤器（validate_filters 此前从未被调用，字段/操作符
+            # 拼写错误会静默跳过、规则悄悄变宽松）。只告警不阻断，坏条件按原降级路径跳过。
+            try:
+                from src.scanner.scanner_filter import ScannerFilter as _SF
+                _sections = [("global_exclude", (rules or {}).get("global_exclude") or [])]
+                _sections += [(name, (rule or {}).get("filters") or [])
+                              for name, rule in ((rules or {}).get("rules", {}) or {}).items()]
+                for _name, _filters in _sections:
+                    for _err in _SF.validate_filters(_filters):
+                        logger.warning(f"ScannerEngine: 规则'{_name}'过滤器校验失败: {_err}")
+            except Exception as _ve:
+                logger.debug(f"ScannerEngine: 过滤器校验器自身异常（不阻断加载）: {_ve}")
             logger.info(f"ScannerEngine: 规则加载成功 ({len(rules.get('rules', {}))}个规则集)")
             return rules
         except Exception as e:

@@ -30,9 +30,15 @@ from src.data.models import StockData
 
 
 def _full_stock_data(code="600519", ma5=1500.0):
-    """完整结果：有技术指标（ma5 非空）。"""
+    """完整结果：有技术指标（ma5 非空）且周/月线齐。
+
+    ISS-078 收紧缓存条件后，「完整」= ma5 + weekly + monthly 三者齐
+    （周/月线缺失的半降级结果不再入缓存，见 test_stock_data_cache_half_degraded.py）。
+    """
     return StockData(stock_code=code, stock_name="测试股", price=1510.0,
-                     volume=1000000, ma5=ma5)
+                     volume=1000000, ma5=ma5,
+                     weekly={"date": ["2026-08-29"], "close": [1500.0]},
+                     monthly={"date": ["2026-08"], "close": [1480.0]})
 
 
 def _degraded_stock_data(code="600519"):

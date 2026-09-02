@@ -466,7 +466,10 @@ class Orchestrator:
                 strategy_decision.decision = SignalType.SELL
                 strategy_decision.strategy_reasons.insert(0, f"force_exit 救回: {entry_exit_result.exit_type}（覆盖 strategy_layer 降级）")
             strategy_decision.position_action = PositionAction.CLOSE_ALL
-            if not strategy_decision.sell_path:
+            # ISS-078：sell_path 残留 weak_sell 时必须覆写为 trend_exit——weak_sell 会被
+            # PlanGuard 规则1 在剑宗也压制（CLOSE_ALL+weak_sell 组合已加守卫，双保险），
+            # 且标注语义错误：这是技术安全网触发的清仓，不是策略层的弱卖出减仓。
+            if not strategy_decision.sell_path or strategy_decision.sell_path == "weak_sell":
                 strategy_decision.sell_path = "trend_exit"
         elif (entry_exit_result
                 and strategy_decision.decision == SignalType.SELL

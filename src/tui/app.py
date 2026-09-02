@@ -165,7 +165,7 @@ class MuyunTUI(App):
         if not stock_data:
             quote = AKShareClient.get_realtime_quote(code)
             if quote:
-                # v0.8.7.9 E02 同类点：此前只映射 4 个字段，open/high/low/volume 全丢
+                # v0.8.7.8 E02 同类点：此前只映射 4 个字段，open/high/low/volume 全丢
                 stock_data = StockData(
                     stock_code=quote.get("stock_code", code),
                     stock_name=quote.get("stock_name", code),
@@ -188,8 +188,9 @@ class MuyunTUI(App):
                     current_ratio = p.current_ratio
                     strategy_state = self._portfolio.to_strategy_state(code)
                     break
-        except Exception:
-            pass
+        except Exception as e:
+            # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
+            logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
         has_position = pos is not None and pos.current_ratio > 0
         dr, sd, ee, ai = self._orchestrator.analyze(
             stock_data,

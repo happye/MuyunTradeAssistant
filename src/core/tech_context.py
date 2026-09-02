@@ -42,10 +42,10 @@ class TechContextBuilder:
             ("ma20", data.ma20),
             ("ma60", data.ma60),
         ]
-        # v0.8.7.9 审查修复 E01（第五轮，原 R4 延后项 D-TC-01）：
+        # v0.8.7.8 审查修复 E01（第五轮，原 R4 延后项 D-TC-01）：
         # 本函数的契约（docstring 与下方注释）是「价格 > MA5 > MA10 > MA20 > MA60」
-        # 四条 MA 的排列。旧写法 `len(valid_mas) < 3` 允许缺 MA60 用 3 条 MA 宣布
-        # 多头/空头排列——次新股 / 数据缺口下给 AI Modifier 的 prompt 喂假排列
+        # 四条 MA 的排列。旧写法用「有效 MA 条数 < 3」放宽门槛，允许缺 MA60 用 3 条 MA
+        # 宣布多头/空头排列——次新股 / 数据缺口下给 AI Modifier 的 prompt 喂假排列
         # （实测：14.6% 的 K 线判定在"有无 MA60"两种口径间翻转）。
         # 修法：声明的 4 条 MA 任一缺失 → 数据不足。消费面仅 AI prompt（live 专属，
         # 回测 AI 禁用），不影响决策信号路径；缺 MA60 时 _judge_trend_direction

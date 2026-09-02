@@ -192,6 +192,11 @@ def save_auto_chain(name: str, graph: dict) -> str:
     # 大小保护：防模型输出超长结构撑爆文件
     graph = copy.deepcopy(graph)
     graph["aliases"] = [str(a)[:12] for a in (graph.get("aliases") or [])][:10]
+    # ISS-078：cycle_anchors/analysis_notes 归一为 list[str]——format_chain_graph 按
+    # 列表 join，字符串会逐字符碎裂（端侧AI 链实测「端；侧；A；I；…」）
+    for _key in ("cycle_anchors", "analysis_notes"):
+        if isinstance(graph.get(_key), str):
+            graph[_key] = [graph[_key]]
     graph["source_note"] = "AI自举生成（基于当次板块成分股+主营构成数据），未经人工复核"
     # 沉淀日期：动态维护用（>STALE_GRAPH_DAYS 展示时提示重新分析覆盖；重存同名自动刷新）
     graph["created_at"] = datetime.now().strftime("%Y-%m-%d")
@@ -866,10 +871,15 @@ def format_chain_graph(name: str, chain_cfg: dict, positions: list | None = None
             for comp in sec.get("代表公司", []):
                 lines.append(f"      {comp}")
     anchors = chain_cfg.get("cycle_anchors") or []
+    # ISS-078：历史落盘文件里可能是 str（如端侧AI链），按单元素列表处理防逐字符 join
+    if isinstance(anchors, str):
+        anchors = [anchors]
     if anchors:
         lines.append("")
         lines.append("周期位置锚点: " + "；".join(anchors))
     notes = chain_cfg.get("analysis_notes") or []
+    if isinstance(notes, str):
+        notes = [notes]
     if notes:
         lines.append("分析要点: " + "；".join(notes))
     # 持仓交叉定位

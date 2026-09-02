@@ -195,6 +195,10 @@ def build_replay_consistency_check(
             current_position_ratio=current_position_ratio,
             strategy_state=strategy_state,
             ai_enabled=False,
+            # ISS-078：回测重放路径必须带 is_backtest=True（跳过 fundamental_alert 当前
+            # 数据/置 top_signal live=False），否则属 AGENTS 点名的"回测调用点漏传"同类雷。
+            # 当前被 has_position=False + 构造无 ai/event_config 掩盖，加参数消雷。
+            is_backtest=True,
         )
         replay_decision = _serialize_replay_decision(decision_result)
         replay_strategy = _serialize_replay_strategy(strategy_decision)

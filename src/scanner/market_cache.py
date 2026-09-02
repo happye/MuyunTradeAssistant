@@ -440,7 +440,7 @@ class MarketCache:
                     result = future.result()
                     all_stocks.extend(result)
             except FuturesTimeoutError:
-                # v0.8.7.9 裁决（E 轮，原 R4 延后项 D-RG-2）：超时丢弃部分页是**特性**——
+                # v0.8.7.8 裁决（E 轮，原 R4 延后项 D-RG-2）：超时丢弃部分页是**特性**——
                 # _snapshot_quality_ok 只查">10 行有效价"，40/73 页的部分快照会通过校验
                 # 被当全市场快照缓存，静默偏置量比/涨幅排名；换源重拉才保完整性。
                 _done = sum(1 for f in futures if f.done())

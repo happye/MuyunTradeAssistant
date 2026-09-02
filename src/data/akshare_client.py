@@ -1382,7 +1382,10 @@ class AKShareClient:
         if cached is not None and (now_ts - cached[0]) < AKShareClient._STOCK_DATA_TTL:
             return cached[1]
         result = AKShareClient._calculate_indicators_uncached(stock_code, require_historical)
-        if result is not None and getattr(result, "ma5", None):
+        # ISS-078：ma5 之外还要求 weekly/monthly 齐——此前周/月线拉取失败的"半降级"
+        # 结果（ma5 在）也会占住缓存 120s，与 docstring「只缓存完整结果」的承诺不符
+        if (result is not None and getattr(result, "ma5", None)
+                and getattr(result, "weekly", None) and getattr(result, "monthly", None)):
             AKShareClient._stock_data_cache[key] = (now_ts, result)
         return result
 

@@ -211,6 +211,16 @@ class PlanGuard:
             suppressible_paths = ("weak_sell", "trend_exit", "take_profit_trim")
 
         if adjusted.decision == SignalType.SELL and adjusted.sell_path in suppressible_paths:
+            # ISS-078（2026-09-03 第三轮对抗审查）：CLOSE_ALL + weak_sell 是 force_exit
+            # 残留的错误标注组合（Chandelier/趋势破坏强制清仓经 strategy_layer REDUCE
+            # 分支后 sell_path 残留 weak_sell、position_action 已被 P1a 重设 CLOSE_ALL）。
+            # 规则1 只看 decision+sell_path 不看 position_action，剑宗也会把技术安全网
+            # 压成 HOLD（已实测复现）。此处守卫：CLOSE_ALL 意图的安全网不得按弱卖出压制。
+            if (adjusted.position_action == PositionAction.CLOSE_ALL
+                    and adjusted.sell_path == "weak_sell"):
+                logger.warning(
+                    "PlanGuard 规则1跳过压制: CLOSE_ALL+weak_sell 为force_exit残留标注（安全网保留）")
+                return adjusted
             if trade_plan.fundamental_outlook == "bearish":
                 # 前景已转空 → 不压制，让卖出执行
                 reasons.insert(0, f"PlanGuard 不压制弱卖出: fundamental_outlook=bearish")

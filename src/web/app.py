@@ -49,8 +49,9 @@ def _scan_work(rule="healthy_pullback", theme=None):
     exclude = set()
     try:
         exclude = {p.stock_code for p in _portfolio.list_positions()}
-    except Exception:
-        pass
+    except Exception as e:
+        # ISS-078：排除持仓失败留痕（此前静默 fail-open，已持仓股混入候选无感知）
+        logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
     candidates, info = _scanner.quick_scan(
         rule_name=rule, market_query=theme, exclude_codes=exclude
     )
@@ -68,7 +69,7 @@ def _analyze_work(code):
     if not stock_data:
         quote = AKShareClient.get_realtime_quote(code)
         if quote:
-            # v0.8.7.9 审查修复 E02（第五轮，原 R4 延后项 D-TC-02）：
+            # v0.8.7.8 审查修复 E02（第五轮，原 R4 延后项 D-TC-02）：
             # get_realtime_quote 三条策略全部返回 open/high/low/volume，
             # 兜底构造此前只映射 price/change_pct，指标与量能分析全拿 None。
             # quote 缺字段/为 0 时落 None（0 元价格是脏数据不是真值）。
@@ -94,8 +95,9 @@ def _analyze_work(code):
                 current_ratio = p.current_ratio
                 strategy_state = _portfolio.to_strategy_state(code)
                 break
-    except Exception:
-        pass
+    except Exception as e:
+        # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
+        logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
     has_position = pos is not None and pos.current_ratio > 0
     dr, sd, ee, ai = _orchestrator.analyze(
         stock_data,
