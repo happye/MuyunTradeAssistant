@@ -1667,5 +1667,5 @@ P3（已取消）:
 - **验证**: tests/chat/test_chat_command_bridge.py 18 项全绿（块列表/confirm 硬门/parse+dispatch 桥接/input 补丁语义/持仓 add→update→remove 往返/#N/reload/SystemExit 存活/update_position_fields 单元）；chat 套件 46 项回归；tests/core start 桥相关 25 项+portfolio 5 项；真实 AI 实跑：查看持仓/rules/expect 60/建仓 999999→删除往返，portfolio.yaml 与基线 diff 完全一致（.bak 备份生效）
 - **已知边界**: bz --manual/noai/debug/chains rm 在 chat 中不可用（AI 如实告知去 REPL 执行）；logger 告警不经 redirect 捕获（plain_errors 汇总补偿，未映射原始 warning 仅终端可见）；工具结果 4000 字符首尾截断照旧
 - **更新记录**:
-  - 2026-09-02: 开发完成+验证通过，commit 43e1326
+  - 2026-09-02: 开发完成+验证通过，commit 6e0dcde
 
