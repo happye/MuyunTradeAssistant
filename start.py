@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.7.9"  # v0.8.7.9=l all 批量深分析最近扫描+帮助文本补齐；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8"  # v0.8.8=chat全命令桥(run_command)+持仓文件修改(manage_portfolio)；与 cli/main.py --version、AGENTS.md 统一
 
 # ── 全局状态 ──────────────────────────────────────────────
 _ai_debug = False   # AI 调试模式（显示完整 AI 交互日志）
@@ -121,7 +121,8 @@ def show_help():
     print("│    noai                   切换 AI 开关（纯技术面）  │")
     print("│    chains                 产业链图谱列表/管理       │")
     print("│    debug                  切换 AI 调试模式          │")
-    print("│    chat                   AI 对话模式               │")
+    print("│    chat                   AI对话（v0.8.8 全命令桥:  │")
+    print("│                           自然语言跑任意命令+改持仓)│")
     print("│    h                      显示帮助                  │")
     print("│    q                      退出                      │")
     print("├────────────────────────────────────────────────────┤")

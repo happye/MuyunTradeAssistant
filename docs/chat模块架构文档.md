@@ -1,8 +1,8 @@
 # Chat 模块架构文档（Chat Agent）
 
-> 撰写：2026-08-23 ｜ 适用版本：v0.8.7 ｜ 取代 `2026-07-21_Chat功能说明.md`（v0.8.1 时代，已移入 [archive/](archive/2026-07-21_Chat功能说明.md)）
+> 撰写：2026-08-23 ｜ 适用版本：v0.8.8（v0.8.7.9 后新增命令桥） ｜ 取代 `2026-07-21_Chat功能说明.md`（v0.8.1 时代，已移入 [archive/](archive/2026-07-21_Chat功能说明.md)）
 > 定位：让读者在 15 分钟内完整理解 chat 模块的**功能边界、架构分层、核心循环实现、可靠性设计、数据来源与已知局限**。
-> 源码共 5 文件 ~1660 行：`src/chat/{agent,tools,prompts,formatter,__main__}.py`
+> 源码共 5 文件 ~2100 行：`src/chat/{agent,tools,prompts,formatter,__main__}.py`
 
 ---
 
@@ -32,7 +32,7 @@
 │  │   │    └─ _execute_tool()     工具分发 + 结果首尾保留截断            │   │
 │  │   └─ finally: shutdown_engines()  资源释放                          │   │
 │  └────────────────────────────────────────────────────────────────────┘   │
-│        │ TOOL_REGISTRY（9 个工具）                                         │
+│        │ TOOL_REGISTRY（11 个工具）                                        │
 │        ▼                                                                  │
 │  tools.py 模块级引擎单例（init_engines 一次初始化）                         │
 │   ├─ Orchestrator（7层分析链 + PlanGuard + 高位止盈 + fundamental_alert）   │
@@ -48,8 +48,8 @@
 | 文件 | 行数 | 职责 |
 |------|------|------|
 | `agent.py` | 661 | ChatAgent 类：AI 客户端、function calling 循环、流式/非流式调用、历史裁剪、回复后处理、REPL |
-| `prompts.py` | 222 | `CHAT_SYSTEM_PROMPT`（角色/行业分析规范/知识库指南/输出规则）+ `TOOL_DEFINITIONS`（9 个工具 schema） |
-| `tools.py` | 464 | `init_engines/shutdown_engines` + 9 个工具函数 + `TOOL_REGISTRY` 映射 |
+| `prompts.py` | 312 | `CHAT_SYSTEM_PROMPT`（角色/命令桥规范/行业分析规范/知识库指南/输出规则）+ `TOOL_DEFINITIONS`（11 个工具 schema） |
+| `tools.py` | 857 | `init_engines/shutdown_engines` + 11 个工具函数（含 v0.8.8 命令桥：Tee捕获/input补丁/run_command/manage_portfolio）+ `TOOL_REGISTRY` 映射 |
 | `formatter.py` | 238 | 结构化数据 → 纯文本（供 AI 读 + 终端打印） |
 | `__main__.py` | 35 | 子进程入口 `python -m src.chat` |
 
@@ -112,12 +112,12 @@ LLM 输出不总是干净的，回复返回给用户前过三道检查：
 - max_tokens 显式拉满到模型上限（384K），避免服务端小默认值静默截断长回答；API 拒绝时按 32768→8192→4096 逐级降级重试（只对"输出超限"类错误降级，避免 context 超限误触发）。
 - 客户端统一 `timeout=180, max_retries=2`（金融分析回答长，超时比常规 chat 宽）。
 
-## 七、九个工具与数据来源全景
+## 七、十一个工具与数据来源全景
 
 | 工具 | 功能 | 底层引擎 | 数据来源 |
 |------|------|---------|---------|
 | `analyze_stock` | 单股深度分析（7 层链路） | Orchestrator.analyze | Baostock K线/财务 + 新浪实时快照 + akshare 公告/股东户数/融资余额 + AI 情绪（DeepSeek） |
-| `scan_market` | 全市场规则扫描 | ScannerEngine.quick_scan | 新浪全市场快照（主）+ eFinance（备）+ THS 板块/概念成分股 + Baostock 60日趋势 |
+| `scan_market` | 全市场规则扫描 | ScannerEngine.quick_scan | 新浪全市场快照（主）+ eFinance（备）+ THS 板块/概念成分股 + Baostock 60日趋势；v0.8.8 起结果同步写 session_state（#N/l all/ba 跨命令接续） |
 | `search_stocks_by_sector` | 行业板块成分查询 | ScannerEngine.get_industry_list | THS 板块接口 |
 | `get_portfolio` | 持仓查询 | PortfolioManager | `portfolio.yaml` |
 | `get_news` | 个股+宏观新闻 | NewsClient | akshare 新闻接口 + 巨潮公告备用源 |
@@ -125,11 +125,49 @@ LLM 输出不总是干净的，回复返回给用户前过三道检查：
 | `analyze_industry` | 产业链深度分析 | industry_data.build_industry_report | 产业链图谱（手写 YAML + AI 自举沉淀）+ akshare 期货/现货基差/仓单 + 乘联会/能源局/统计局月度数据 + THS 成分股（全行业通用引擎） |
 | `get_main_business` | 个股主营构成 | industry_data.fetch_main_business | akshare 东财 F10（须带 SZ/SH 前缀） |
 | `save_chain_graph` | 图谱自举（AI 把梳理的产业链结构沉淀为 YAML，下次复用） | industry_data.save_auto_chain | 写 `configs/industry_chains_auto.yaml`（schema 校验+长度上限） |
+| `run_command` | **v0.8.8 命令桥**：执行 REPL 任意原生命令 | start.parse_input + start.run_cli | 与 REPL 完全同一套调度代码（详见 §七·五） |
+| `manage_portfolio` | **v0.8.8 持仓修改**：建仓/清仓/字段改/计划/超配 | cli.main.manage_positions + PortfolioManager.update_position_fields | 读写 `portfolio.yaml`（原子写+.bak 备份） |
 
 **工具层的可靠性约定**（每个工具都遵守）：
 - 网络调用一律带超时：akshare 类 25-30s（daemon 线程硬超时，如 `_get_stock_data_with_timeout`），超时降级（如 analyze_stock 数据超时→退化为纯实时行情快照）。
 - 所有异常在工具层捕获，返回 `[工具失败] + 原因`，绝不向上抛异常打断对话循环。
 - 结果超长（>4000 字符）时**保留首尾、截断中间**——因为格式化器把决策理由/风险提示放在末尾，切尾巴会喂给模型残缺信息。
+
+## 七·五、命令桥（v0.8.8）：run_command / manage_portfolio
+
+> 需求：chat 连通 REPL 全部命令 + 安全修改 portfolio.yaml。经对抗审查（含子进程备选方案评估）后采用进程内桥接。
+
+### 设计核心：单一真相源
+
+`run_command(command, confirm)` 惰性 `import start`，复用 **start.parse_input + start.run_cli**——与 REPL 完全同一份调度代码。行为平价由构造保证：REPL 新增命令 chat 自动可用，不存在"chat 与 CLI 分歧"的对账问题（对比 §八 的三次历史事故）。逐命令写结构化工具的方案被否决：~25 个 mode 的语义（`ba` 的缓存检查+y/N、`l all` 的去重记账、`#N` 解析、规则名模糊归位）全部活在 parse_input+run_cli 里，重写=双份真相源必然漂移。**子进程执行方案**（`python -m src.cli.repl_exec` 管道捕获，EOF 自动取消确认）也被评估过：更简单更稳（logging/SystemExit/client 累积天然隔离），但每命令 2-4s 启动开销+RAG torch 冷加载 10s 级，体验差，故否决。
+
+### 输出捕获：Tee 双写
+
+`_TeeBuf(io.StringIO)` 构造时捕获真实 stdout，write 双写（实时回显终端 + 缓冲喂 AI）。Rich `Console.file` 每次渲染动态解析 sys.stdout（cli/main.py 的 console 未固定 file），redirect_stdout 后 Rich 表格与 print 全落缓冲；非 tty 自动无 ANSI。
+
+### 交互确认映射：input 补丁 + confirm 硬门
+
+REPL 命令里的 `input()` 交互（ba/l all 的 y/N、pos add 的 TradePlan 草稿采用）由 `_InputPatcher` 接管：提示含 `y/N`/`Y/n` → `confirm ? "y" : "n"`；其他提示（scan market 选股菜单）或**空提示**（Rich console.input 内部调无参 input）→ "q" 安全跳过；提示词+答案回显进 Tee（否则用户和 AI 都不知道问题出现过）；try/finally 恢复 builtins.input（管道模式泄漏会废掉 REPL 主循环）。
+
+**confirm 硬门**（不靠提示词软约束，模型不听话也拦得住）：`l all`/`ba`/`bz scan`/`scan market deep`/`pos plan --update|all`/`bz --refresh` 与 `manage_portfolio` 的 add/remove/update/overweight，不带 confirm=true 直接返回 `[工具失败]` 拒绝。AI 必须先在对话中征得用户明确同意（系统提示词纪律），REPL 的 y/N 语义完整映射到 chat 对话。
+
+### 块列表（chat 中不可用）
+
+`chat`（防递归子进程）、`q/quit/exit/h/help`（会话级）、`noai/debug`（REPL 进程级状态跨不到 chat 子进程）、`bz --manual`/`bz` 空参（交互式打分循环）、`pos add/rm/overweight`（重定向到 manage_portfolio 结构化工具）、`chains rm`（parse_input 解析阶段就执行删除，无确认破坏性，必须在 parse 前拦截）。
+
+### 已知局限（诚实清单）
+
+- **logging 捕不到**：`logging.basicConfig` 的 StreamHandler 在进程启动时绑定真实 stderr，redirect_stderr 换不掉已绑定句柄——命令期间的降级告警靠 plain_errors 人话汇总（drain_new+render_summary，照抄 start.py 主循环收尾）追加喂给 AI；未命中映射表的原始 warning 仅终端用户可见。
+- tqdm 进度条写真实 stderr，用户可见、AI 不可见（纯视觉噪音，无信息损失）。
+- `manage_portfolio(plan)` 单股查看/生成与 REPL 平价不设 confirm 门（批量 update 走 run_command 有门）。
+- 工具结果仍受 4000 字符首尾截断，长命令（回测/bz scan）中段可能被切。
+
+### 配套一致性修复
+
+- **持仓无条件 reload**：run_command/manage_portfolio 结束后必重读 `_portfolio_manager`——l/la/l all 回写策略状态、pos plan 写计划都发生在新建 PM 实例上，chat 层若持陈旧快照，下次 analyze_stock 的 update_from_strategy_decision 会把旧快照整体写回、**静默回滚刚做的修改**（数据丢失向量，不能按"是否写操作"枚举）。
+- **RAG 单例对齐**：init_engines 把 chat 建的 `_rag_service` 注册为 `rag.service._rag_service_singleton`——CLI 的 TradePlan 路径（cli/main.py `_try_attach_trade_plan`/`_generate_or_update_plan`）调 get_rag_service() 懒加载，不对齐会在 chat 进程内二次加载 torch+FAISS（内存翻倍）。shutdown_engines 对应清空。
+- **scan_market 同步写 session_state**：chat 内扫描结果存 `~/.muyun/last_scan.json`（与 CLI 同一状态文件，跨进程可见），`#N`/`l all`/`ba`/`pos add #N` 全链路接续。
+- **SystemExit 接住**：CLI 内部数据失败 sys.exit(1)（SystemExit 是 BaseException，agent 层 except Exception 抓不住），漏接会杀死整个 chat 会话。
 
 ## 八、与 CLI 的行为一致性（血泪史）
 

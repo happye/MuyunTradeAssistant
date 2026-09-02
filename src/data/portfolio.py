@@ -362,6 +362,46 @@ class PortfolioManager:
             del positions[stock_code]
             self._save()
 
+    def update_position_fields(
+        self,
+        stock_code: str,
+        current_ratio: Optional[float] = None,
+        entry_price: Optional[float] = None,
+        stock_name: Optional[str] = None,
+    ) -> bool:
+        """字段级修改已有持仓（v0.8.8 chat 持仓编辑）。
+
+        只改用户可感知的三字段，strategy_state/lifecycle 等系统维护字段不动。
+        走 _save()（原子写 + .bak 备份 + 损坏保护）。
+
+        Returns:
+            True 修改成功；False 持仓不存在（含 ratio/price 传 None 且无可改项的情况）
+        """
+        positions = self._data.get("positions", {})
+        if stock_code not in positions:
+            return False
+
+        rec = positions[stock_code]
+        changed = False
+        if current_ratio is not None:
+            if current_ratio < 0:
+                raise ValueError(f"仓位比例不能为负，收到 {current_ratio}")
+            rec["current_ratio"] = current_ratio
+            changed = True
+        if entry_price is not None:
+            if entry_price <= 0:
+                raise ValueError(f"开仓价需为正数，收到 {entry_price}")
+            rec["entry_price"] = entry_price
+            changed = True
+        if stock_name is not None and stock_name.strip():
+            rec["stock_name"] = stock_name.strip()
+            changed = True
+
+        if not changed:
+            return False
+        self._save()
+        return True
+
     def attach_plan(self, stock_code: str, plan: TradePlan) -> bool:
         """为已存在持仓附加 TradePlan（v0.8.5）。
 

@@ -3216,7 +3216,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.7.9：l all 批量深分析最近扫描（实现在 start.py run_cli）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.7.9 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历)"
+        version="%(prog)s v0.8.8 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
     )
     parser.add_argument(
         "--verbose",

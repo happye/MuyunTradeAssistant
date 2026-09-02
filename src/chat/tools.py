@@ -7,9 +7,17 @@
 - 所有异常在工具层捕获并返回友好错误信息
 
 v0.8.1 新增：search_knowledge 工具（RAG策略知识检索）
+v0.8.8 新增：run_command（REPL 全命令桥，复用 start.parse_input+run_cli）
+            manage_portfolio（持仓文件写操作，结构化参数）
 """
 
+import builtins
+import contextlib
+import io
 import logging
+import os
+import re
+import sys
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -68,6 +76,17 @@ def init_engines(config: dict):
         except Exception as e:
             logger.warning(f"RAG服务初始化异常: {e}，search_knowledge工具不可用")
             _rag_service = None
+
+    # v0.8.8 RAG单例对齐：CLI 的 TradePlan 路径（cli/main.py _try_attach_trade_plan/
+    # _generate_or_update_plan）调 get_rag_service() 懒加载单例；不把 chat 已建实例
+    # 注册进去，run_command 执行 pos add/pos plan 时会在同一进程二次加载
+    # torch 嵌入模型+FAISS 索引（内存翻倍）。
+    if _rag_service is not None:
+        try:
+            import src.rag.service as _rag_svc_mod
+            _rag_svc_mod._rag_service_singleton = _rag_service
+        except Exception as e:
+            logger.warning(f"RAG单例对齐失败（CLI路径可能二次加载）: {e}")
 
     # 审查修复 H2：补 entry_exit_config + pyramid_config（原漏传 -> chat 买卖点计算器=None，
     # 突破/Chandelier/止盈全不计算，chat 分析永不产生买卖点，与 CLI 不一致）
@@ -128,6 +147,14 @@ def shutdown_engines():
     _scanner_engine = None
     _portfolio_manager = None
     _rag_service = None
+
+    # v0.8.8: RAG单例同步清空（init_engines 里注册到 rag.service 的引用一并放掉，
+    # 否则 shutdown 后单例仍持有 torch 模型，chat 退出前的内存释放失效）
+    try:
+        import src.rag.service as _rag_svc_mod
+        _rag_svc_mod._rag_service_singleton = None
+    except Exception:
+        pass
 
     # 触发GC，实际回收torch/faiss等C扩展分配的内存
     import gc
@@ -301,7 +328,27 @@ def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None
             )
 
         from src.chat.formatter import format_scan_result
-        return format_scan_result(candidates, scan_info)
+        result = format_scan_result(candidates, scan_info)
+
+        # v0.8.8: 扫描结果同步写 session_state（与 CLI scan market 同一状态文件），
+        # 让 chat 内扫描后的 #N / l all / ba / pos add #N 跨命令接续可用
+        try:
+            from src.cli.session_state import save_last_scan
+            items = [
+                {
+                    "code": c.stock_code, "name": c.stock_name,
+                    "price": c.price, "change_pct": c.change_pct,
+                    "turnover_rate": getattr(c, "turnover_rate", None),
+                    "volume_ratio": getattr(c, "volume_ratio", None),
+                }
+                for c in candidates
+            ]
+            save_last_scan(
+                items, f"chat: scan_market {scan_info.get('rule_display_name', rule_name)}")
+        except Exception as e:
+            logger.warning(f"chat扫描结果落盘失败（不影响主流程）: {e}")
+
+        return result
 
     except Exception as e:
         logger.error(f"scan_market失败: {e}")
@@ -358,6 +405,8 @@ TOOL_REGISTRY = {
     "analyze_industry": lambda industry="": analyze_industry(industry),      # ISS-061（定义在文件尾）
     "get_main_business": lambda stock_code="": get_main_business(stock_code),  # ISS-061（定义在文件尾）
     "save_chain_graph": lambda name="", graph_yaml="": save_chain_graph(name, graph_yaml),  # ISS-061 v4 图谱自举（定义在文件尾）
+    "run_command": lambda command="", confirm=False: run_command(command, confirm),  # v0.8.8 命令桥（定义在文件尾）
+    "manage_portfolio": lambda **kw: manage_portfolio(**kw),  # v0.8.8 持仓修改（定义在文件尾）
 }
 
 
@@ -475,3 +524,334 @@ def save_chain_graph(name: str, graph_yaml: str) -> str:
     except Exception as e:
         logger.error(f"save_chain_graph失败: {e}")
         return f"{TOOL_ERROR_MARK}图谱沉淀失败: {e}"
+
+
+# ══════════════════════════════════════════════════════════════
+# v0.8.8 命令桥：run_command / manage_portfolio
+#
+# 设计（详见 docs/chat模块架构文档.md 命令桥章节）：
+# - 单一真相源：复用 start.py 的 parse_input+run_cli，chat 与 REPL 走同一份
+#   调度代码，行为平价由构造保证（REPL 新增命令 chat 自动可用）
+# - 输出 Tee 捕获：命令输出实时回显终端（用户看进度）+ 缓冲留存喂 AI
+# - 交互确认映射：REPL 的 y/N 交互 → confirm 参数；批量AI费用 mode 不带
+#   confirm 会被硬门直接拒绝（不靠提示词软约束）
+# ══════════════════════════════════════════════════════════════
+
+_start_module = None  # 惰性加载的 start 模块（parse_input/run_cli 单一真相源）
+
+
+class _TeeBuf(io.StringIO):
+    """双写缓冲：命令输出实时回显终端 + 缓冲留存喂 AI。
+
+    Rich Console.file 每次渲染动态解析 sys.stdout（cli/main.py 的 console
+    未固定 file），redirect_stdout 后 Rich 表格与 print 全落本缓冲；非 tty
+    时 Rich 自动无 ANSI。_echo 在构造时（redirect 之前）捕获真实 stdout。
+    """
+
+    def __init__(self):
+        super().__init__()
+        self._echo = sys.stdout
+
+    def write(self, s):
+        try:
+            self._echo.write(s)
+        except Exception:
+            pass  # 回显失败不影响捕获
+        return super().write(s)
+
+    def flush(self):
+        try:
+            self._echo.flush()
+        except Exception:
+            pass
+
+
+class _InputPatcher:
+    """临时替换 builtins.input：把命令内的交互确认映射到 confirm 参数。
+
+    语义（2026-09-02 对抗审查定稿）：
+    - 提示含 "y/N"/"Y/n"（确认类）→ confirm ? "y" : "n"
+    - 其他提示（如 scan market 选股菜单 "  > "）或空提示（Rich console.input
+      内部调无参 input()，提示已由 console.print 打印过）→ "q"，一律非肯定
+      应答，未知交互点安全跳过
+    - 回显提示词+所选答案进 Tee：cli/main.py 的"是否采用此计划草稿"只存在于
+      prompt 参数里，不回显则用户和 AI 都不知道这个问题出现过
+    - __exit__ 恢复 builtins.input（管道模式 chat 与 REPL 共进程，泄漏会废掉
+      REPL 主循环的 input）
+
+    用法：with _InputPatcher(confirm, echo=buf): ...（__exit__ 恢复原 input）
+    """
+
+    _CONFIRM_RE = re.compile(r"[yY]/[nN]")
+
+    def __init__(self, confirm: bool, echo=None):
+        self.confirm = confirm
+        self.echo = echo
+
+    def __enter__(self):
+        self._orig = builtins.input
+        patcher = self
+
+        def _input(prompt=""):
+            p = prompt if isinstance(prompt, str) else ""
+            if patcher._CONFIRM_RE.search(p):
+                ans = "y" if patcher.confirm else "n"
+            else:
+                ans = "q"
+            if patcher.echo is not None:
+                try:
+                    patcher.echo.write(f"{p}[chat自动应答: {ans}]\n")
+                except Exception:
+                    pass
+            return ans
+
+        builtins.input = _input
+        return self
+
+    def __exit__(self, *exc):
+        builtins.input = self._orig
+        return False
+
+
+def _get_start_module():
+    """惰性导入 start.py（REPL 入口），复用其 parse_input/run_cli。
+
+    import start 依赖项目根在 sys.path；从非常规目录启动时兜底补路径。
+    start.py 模块级副作用（chdir 项目根/代理清理/chcp）均幂等无害；main()
+    有 __main__ 保护不会执行。tests/core/test_live_scan_all.py 已有先例。
+    """
+    global _start_module
+    if _start_module is not None:
+        return _start_module
+    try:
+        import start as _s
+    except ImportError:
+        _root = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", ".."))
+        if _root not in sys.path:
+            sys.path.insert(0, _root)
+        import start as _s
+    _start_module = _s
+    return _start_module
+
+
+def _reload_portfolio_manager():
+    """命令/持仓操作后无条件重读 portfolio.yaml。
+
+    run_command/manage_portfolio 的写盘（pos plan、l/la/l all 的策略状态回写、
+    pos add/rm）都发生在各自新建的 PortfolioManager 实例上；chat 的
+    _portfolio_manager 若不重读，analyze_stock 随后的 update_from_strategy_decision
+    会把旧快照整体写回，静默回滚刚做的修改（对抗审查点③：数据丢失向量，
+    不能按"是否写操作"枚举，必须无条件做）。
+    """
+    global _portfolio_manager
+    try:
+        from src.data.portfolio import PortfolioManager
+        _portfolio_manager = PortfolioManager()
+    except Exception as e:
+        logger.warning(f"chat重读持仓失败: {e}")
+
+
+def _confirm_gate(mode: str, args: dict, confirm: bool) -> Optional[str]:
+    """批量AI费用/写盘操作的 confirm 硬门：不带 confirm 直接拒绝（返回拒绝消息）。
+
+    不靠系统提示词软约束——模型不听话也拦得住。与 REPL 的 y/N 确认语义对齐
+    （l all/ba 会问"继续?y/N"，bz scan/plan all 等本身批量烧 AI）。
+    """
+    if confirm:
+        return None
+    _HINT = "该操作会批量调用 AI（耗时与费用）。请先在对话中征得用户明确同意，用户确认后带 confirm=true 重新调用"
+    if mode in ("live_scan_all", "benzong_all", "benzong_scan"):
+        return f"{TOOL_ERROR_MARK}{_HINT}"
+    if mode == "scan_market" and args.get("deep"):
+        return f"{TOOL_ERROR_MARK}deep 深度分析会批量调用 AI。{_HINT}"
+    if mode == "pos_plan" and (
+            args.get("update")
+            or str(args.get("stock_code", "")).lower() in ("all", "*", "全部")):
+        return f"{TOOL_ERROR_MARK}批量生成/更新交易计划会逐持仓调用 AI。{_HINT}"
+    if mode == "benzong" and args.get("refresh") and not args.get("check"):
+        return f"{TOOL_ERROR_MARK}--refresh 跳过缓存重算会消耗 AI 费用。{_HINT}"
+    return None
+
+
+def _finalize_output(buf: _TeeBuf, note: str = "") -> str:
+    """命令输出收尾：追加人话告警汇总（plain_errors）+ 空输出兜底 + 尾注。
+
+    logging 的 StreamHandler 在进程启动时就绑定了真实 stderr，redirect_stderr
+    换不掉已绑定句柄——plain_errors 的人话汇总是本次命令告警喂给 AI 的唯一通道
+    （照抄 start.py 主循环收尾的 drain_new+render_summary 模式）。未命中映射表
+    的原始 warning 仍只有终端用户可见，属已知局限。
+    """
+    out = buf.getvalue().strip()
+    try:
+        from src.cli.plain_errors import drain_new, render_summary
+        summary = render_summary(drain_new())
+        if summary:
+            out = (out + "\n" + summary).strip() if out else summary
+    except Exception:
+        pass  # 汇总渲染失败不影响主流程
+    if note:
+        out = (out + "\n" + note).strip() if out else note
+    return out if out else "（命令执行完成，无输出）"
+
+
+def run_command(command: str, confirm: bool = False) -> str:
+    """执行 REPL 原生命令（v0.8.8 命令桥）。输出实时回显终端并捕获给 AI。
+
+    复用 start.parse_input + start.run_cli——与 REPL 完全同一份调度代码。
+    """
+    cmd = (command or "").strip()
+    if not cmd:
+        return TOOL_ERROR_MARK + "命令不能为空"
+    parts = cmd.split()
+    first = parts[0].lower()
+
+    # 原始串预检（必须在 parse_input 之前）：chains rm 在解析阶段就直接执行
+    # 删除（start.py chains 分支），等 parse 完再拦就晚了
+    if first == "chains" and len(parts) >= 2 and parts[1].lower() in ("rm", "remove", "del"):
+        return TOOL_ERROR_MARK + "chains rm 是无确认的破坏性删除（删自举图谱），请在 REPL 手动执行"
+    # 会话级/交互式命令：chat 会递归子进程、noai/debug 是 REPL 进程级状态
+    if first in ("chat", "q", "quit", "exit", "h", "help", "?", "noai", "debug"):
+        return TOOL_ERROR_MARK + f"命令 '{first}' 属于会话级/交互式命令，在 chat 中不可用，请用户直接在 REPL 执行"
+    # pos 写操作重定向到结构化工具（名称含空格等场景下字符串拼命令易碎）
+    if (first == "pos" and len(parts) >= 2
+            and parts[1].lower() in ("add", "a", "remove", "rm", "r", "del", "d", "overweight", "ow")):
+        return TOOL_ERROR_MARK + "持仓增删/超配请使用 manage_portfolio 工具（结构化参数，confirm 硬门保护）"
+
+    start = _get_start_module()
+    buf = _TeeBuf()
+    note = ""
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf), \
+                _InputPatcher(confirm, echo=buf):
+            try:
+                parsed = start.parse_input(cmd)
+            except SystemExit:
+                return TOOL_ERROR_MARK + "命令解析阶段异常退出"
+            if parsed is None:
+                # parse_input 已自行打印"无法识别/用法"提示（已捕获并回显）
+                return _finalize_output(buf)
+            mode, args = parsed
+
+            # bz 交互式打分：_ask_score 循环吃满自动应答，出来的是垃圾分数
+            if mode == "benzong" and (args.get("manual") or not args.get("meta")):
+                return TOOL_ERROR_MARK + "bz --manual/空参是交互式打分，chat 中不可用；请用 bz <代码> 自动评分"
+
+            gate = _confirm_gate(mode, args, confirm)
+            if gate:
+                return gate
+
+            try:
+                start.run_cli(mode, args)
+            except SystemExit:
+                # CLI 内部数据获取失败会 sys.exit(1)（如 l <代码>）；SystemExit 是
+                # BaseException，agent 层 except Exception 掓不住，漏接会杀死整个 chat 会话
+                note = "[命令异常退出] 数据源可能暂时不可用，可稍后重试"
+            except KeyboardInterrupt:
+                note = "[命令被用户中断]"
+            except Exception as e:
+                note = f"[命令错误] {type(e).__name__}: {e}"
+    finally:
+        # 无条件重读持仓：l/la/l all 会回写策略状态、pos plan 会写计划，
+        # 陈旧 _portfolio_manager 会在下次 analyze_stock 回写时整体回滚
+        _reload_portfolio_manager()
+    return _finalize_output(buf, note)
+
+
+def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "",
+                     price: Optional[float] = None, ratio: Optional[float] = None,
+                     basis: str = "", confirm: bool = False) -> str:
+    """修改本地持仓文件 portfolio.yaml（v0.8.8，写操作带 confirm 硬门）。
+
+    add/remove/plan/overweight 复用 CLI manage_positions（含 TradePlan 草稿
+    生成、超配铁律检查、总仓位警告等全部副作用，与 REPL pos 命令完全同源）；
+    update 为字段级修改（PortfolioManager.update_position_fields，REPL 没有
+    的新能力：只改仓位/开仓价/名称，strategy_state 等系统字段不动）。
+    每次写盘走 _save()（原子写 + portfolio.yaml.bak 滚动备份）。
+    """
+    action = (action or "").strip().lower()
+    if action in ("rm",):
+        action = "remove"
+    elif action == "ow":
+        action = "overweight"
+    elif action == "ls":
+        action = "list"
+    if action not in ("add", "remove", "update", "plan", "overweight", "list"):
+        return TOOL_ERROR_MARK + f"未知操作: {action}（可用: add/remove/update/plan/overweight/list）"
+
+    if action == "list":
+        return get_portfolio()
+
+    # #N 引用：最近扫描第 N 只（code+name 取自 session_state 文件，与 REPL #N 同源）
+    code = (stock_code or "").strip()
+    if code.startswith("#"):
+        from src.cli.session_state import resolve_index, last_scan_count
+        if not code[1:].isdigit():
+            return TOOL_ERROR_MARK + f"无效引用: {code}（应为 #数字，如 #1）"
+        r = resolve_index(int(code[1:]))
+        if r is None:
+            total = last_scan_count()
+            hint = ("还没有扫描结果，先跑 scan market 或 bz scan" if total == 0
+                    else f"最近扫描共 {total} 只，序号越界")
+            return TOOL_ERROR_MARK + f"无法解析 {code}: {hint}"
+        item, warning = r
+        if warning:
+            logger.warning(f"#N 引用提醒: {warning}")
+        code = item.get("code", "")
+        if not stock_name:
+            stock_name = item.get("name", "")
+
+    if not code:
+        return TOOL_ERROR_MARK + "缺少股票代码（6位数字或 #N 引用）"
+
+    # 写操作 confirm 硬门（plan 与 REPL 平价不设门：查看/生成单只计划）
+    if action in ("add", "remove", "update", "overweight") and not confirm:
+        return (TOOL_ERROR_MARK + "持仓修改是写盘操作。请先在对话中向用户确认具体内容"
+                f"（{action} {code} 的名称/价格/仓位等），用户明确同意后带 confirm=true 重新调用")
+
+    from src.cli.main import manage_positions
+    buf = _TeeBuf()
+    note = ""
+    try:
+        with contextlib.redirect_stdout(buf), contextlib.redirect_stderr(buf), \
+                _InputPatcher(confirm, echo=buf):
+            try:
+                if action == "update":
+                    # 字段级修改：fresh 实例防读到 chat 层陈旧缓存
+                    from src.data.portfolio import PortfolioManager
+                    pm = PortfolioManager()
+                    changed = pm.update_position_fields(
+                        code,
+                        current_ratio=ratio if ratio is not None else None,
+                        entry_price=float(price) if price else None,
+                        stock_name=stock_name or None,
+                    )
+                    if not changed:
+                        return TOOL_ERROR_MARK + f"{code} 无持仓记录或没有可修改的字段（仓位/开仓价/名称至少提供一项）"
+                    pos = pm.get_position(code)
+                    buf.write(f"✓ 已更新 {code}：仓位 {pos.current_ratio:.0%}"
+                              f" / 开仓价 {pos.entry_price or '-'} / 名称 {pos.stock_name or '-'}\n")
+                elif action == "remove":
+                    manage_positions("remove", stock_code=code)
+                elif action == "plan":
+                    manage_positions("plan", stock_code=code)
+                elif action == "overweight":
+                    manage_positions("overweight", stock_code=code, name=basis or stock_name)
+                else:  # add
+                    manage_positions(
+                        "add",
+                        stock_code=code,
+                        name=stock_name,
+                        price=float(price) if price else 0.0,
+                        ratio=float(ratio) if ratio is not None else 0.20,
+                    )
+            except ValueError as e:
+                return TOOL_ERROR_MARK + f"参数校验失败: {e}"
+            except SystemExit:
+                note = "[命令异常退出]"
+            except KeyboardInterrupt:
+                note = "[操作被用户中断]"
+            except Exception as e:
+                note = f"[持仓操作错误] {type(e).__name__}: {e}"
+    finally:
+        _reload_portfolio_manager()
+    return _finalize_output(buf, note)

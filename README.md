@@ -68,9 +68,9 @@ Scanner 近期改成了统一主题词扫描：
 │   │   └── orchestrator.py      # 编排层（七层架构：Signal→Decision→Event→AI→Strategy→Execution）
 │   ├── chat/                    # 对话式智能助手 ⭐v0.8.0
 │   │   ├── agent.py             # ChatAgent核心（function calling+REPL主循环）
-│   │   ├── tools.py             # 5个工具函数（到引擎的映射层）+ TOOL_REGISTRY
+│   │   ├── tools.py             # 11个工具函数（引擎映射+命令桥）+ TOOL_REGISTRY
 │   │   ├── formatter.py         # 结构化数据→纯文本格式化器
-│   │   ├── prompts.py           # 系统提示词 + 5个工具JSON Schema定义
+│   │   ├── prompts.py           # 系统提示词 + 11个工具JSON Schema定义
 │   │   └── __init__.py          # 包初始化
 │   ├── scanner/                 # 全市场扫描模块 ⭐v0.8.0
 │   │   ├── market_cache.py      # 全市场行情缓存（新浪/efinance/过期缓存3层降级）
@@ -230,12 +230,12 @@ Scanner 近期改成了统一主题词扫描：
 │ TOP3推荐 + 综合分排序 + 颜色区分                                   │
 │ AI情绪维度仅复用AI调节层结果，不独立调用AI                           │
 ├─────────────────────────────────────────────────────────────────┤
-│ Chat Agent Mode（对话模式）⭐v0.8.0新增                            │
-│ 自然语言 → AI(function calling) → 5个工具函数 → 底层引擎           │
+│ Chat Agent Mode（对话模式）⭐v0.8.0新增（v0.8.8 全命令桥）         │
+│ 自然语言 → AI(function calling) → 11个工具 → 底层引擎/REPL命令     │
 │ 绕过CLI层，直接调Orchestrator/ScannerEngine/PortfolioManager等      │
 │ 纯文本输出（不使用Rich Console），对话历史滑动窗口(20条)            │
-│ 工具：search_stocks_by_sector / analyze_stock / scan_market       │
-│       / get_portfolio / get_news                                  │
+│ 工具：9个分析类 + run_command(执行任意REPL命令)                   │
+│       + manage_portfolio(持仓修改，confirm硬门)                   │
 │ 循环保护(3轮) + 结果截断(4000字符) + reset重置对话                 │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -394,6 +394,30 @@ volume_ratio:
 ---
 
 ## 版本历史
+
+### v0.8.8 (chat 全命令桥 + 持仓文件修改) - 2026-09-02
+
+- **chat 连通全部 REPL 命令（run_command 工具）**：chat 里用自然语言执行任意命令——
+  回测 `b`/`bb`、事件 `events`/`expect`、笨总评分 `bz <代码>`/`bz scan <主题>`、
+  批量分析 `la`/`ba`/`l all`、扫描规则 `rules`、板块 `industries`/`concepts`、
+  产业链 `chains`、`#N` 最近扫描引用等。复用 start.py 的 parse_input+run_cli
+  **同一份调度代码**（行为平价由构造保证，REPL 新增命令 chat 自动可用），
+  命令输出实时回显终端（用户看进度）+ 捕获喂给 AI
+- **chat 修改持仓文件（manage_portfolio 工具）**：建仓（add，带价格自动生成
+  TradePlan 草稿）/清仓（remove）/字段级修改（update：仓位/开仓价/名称，
+  REPL 没有的新能力）/交易计划（plan）/超配（overweight）。复用 CLI
+  manage_positions 全部副作用（超配铁律检查、总仓位>80% 警告），每次写盘自动
+  留 portfolio.yaml.bak 滚动备份
+- **confirm 硬门（AI 费用与写盘安全）**：批量AI费用操作（`l all`/`ba`/`bz scan`/
+  `scan market deep`/`pos plan --update`/`bz --refresh`）和持仓写操作必须先在
+  对话中征得用户明确同意、带 confirm=true 才执行，不带会被工具直接拒绝；
+  REPL 的 y/N 交互确认语义完整映射到 chat 对话
+- **一致性配套**：chat 的 scan_market 结果同步写 session_state（chat 内扫描后
+  `#N`/`l all`/`ba` 跨命令接续可用）；命令执行后无条件重读持仓（防陈旧快照
+  回滚刚做的修改）；RAG 单例对齐（防 CLI TradePlan 路径在 chat 进程内二次
+  加载 torch）；命令输出的降级告警经 plain_errors 人话汇总追加喂给 AI
+- 测试：tests/chat/test_chat_command_bridge.py 18 项（块列表/confirm 硬门/
+  parse+dispatch 桥接/input 补丁语义/持仓往返/#N/重读/SystemExit 存活）
 
 ### v0.8.7.9 (l all 批量深分析 + bz scan 接口缓存) - 2026-08-30
 

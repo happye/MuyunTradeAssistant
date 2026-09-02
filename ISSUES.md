@@ -1650,3 +1650,22 @@ P3（已取消）:
   - **ISS-075 baostock 重登噪声**（用户报告"每股 logout failed!/login success!"）: 实测定性=B23 缓存全量失效后每股 AI 评分间隔超服务端闲置阈值→连接被掐→逐股重登（130s 闲置即死，探针复现）；**数据无损、非反爬风险**（登录态 API 正常行为）。用户裁决静音：baostock 库内 print 无法走 logging，改在 login/logout 调用窗口重定向 stdout（`_quiet_baostock_print`，akshare_client 两处+data_feeder 三处），探针复验零噪声；已知代价=重登窗口内并行线程打印被吞（窗口<1s，可忽略）
 - **回归**: test_d04_regression 15 + test_e_block_regression 7 + test_plan_guard_cooldown 4（重放）+ test_g_block_fixes 8 + test_h_block_fixes 11（新增）= 45 项；全量 340 passed
 - **关联**: ISS-072/073（重放来源 backup/local-r4r5-chain）/ LRN-20260830-003（重放+红灯优先）/ 对抗审查 G/H 清单
+
+---
+
+### ISS-076: chat 全命令桥 + 持仓文件修改（v0.8.8）
+- **状态**: ✅ 已解决（2026-09-02 开发完成+验证）
+- **优先级**: P1（核心体验：chat 能力对齐 REPL）
+- **描述**: chat 模块原有 9 个分析类工具；回测（b/bb）、事件（events/expect）、笨总全家（bz/bz scan）、批量操作（la/ba/l all）、规则/板块/产业链列表、#N 引用等 REPL 命令 chat 全部不可达，且无法修改 portfolio.yaml（文档标榜"仅查询不操作"）。用户诉求："chat 能做我能手动输入的一切命令 + 修改本地持仓文件"。
+- **选定方案**（Plan agent 对抗审查定稿，含 8 项修正）:
+  - **run_command 工具**：复用 start.parse_input+run_cli 单一真相源（行为平价由构造保证，REPL 新增命令 chat 自动可用；逐命令重写结构化工具=双份真相源必然漂移，否决）；_TeeBuf 双写（输出实时回显终端+捕获喂 AI，Rich Console.file 动态解析 sys.stdout 已验证）；_InputPatcher 把 y/N 交互映射到 confirm 参数（空提示/菜单一律 "q" 安全跳过、提示词+答案回显进 Tee、try/finally 恢复 builtins.input 防管道模式废 REPL）；SystemExit/KeyboardInterrupt 接住不杀会话；命令尾追加 plain_errors 人话汇总（logging handler 绑定旧 stderr，redirect 捕不到）；命令后无条件 reload 持仓（防陈旧快照整体写回静默回滚）
+  - **manage_portfolio 工具**：add/rm/plan/overweight 复用 cli.manage_positions（TradePlan 草稿/超配铁律/总仓位警告全保留）；update 为字段级修改（新增 PortfolioManager.update_position_fields：仓位/开仓价/名称，strategy_state 不动）；#N 引用经 session_state.resolve_index
+  - **confirm 硬门**（不靠提示词软约束）：l all/ba/bz scan/scan market deep/pos plan --update|all/bz --refresh 与持仓写操作不带 confirm=true 直接拒绝
+  - 子进程执行方案（新入口管道捕获+EOF 免费取消）评估后否决：每命令 2-4s 启动 + RAG torch 冷加载 10s 级
+  - 配套：chat scan_market 同步写 session_state（#N/l all/ba 跨命令接续）；RAG 单例对齐 rag.service._rag_service_singleton（防 CLI TradePlan 路径在 chat 进程内二次加载 torch+FAISS）
+- **实现**: src/chat/tools.py +~380 行；src/chat/prompts.py +2 schema+命令桥规范；src/data/portfolio.py +update_position_fields；文档同步（使用手册 chat 章节重写+Q13/Q14/两处对比表、AI系统说明 chat 章节、chat架构文档 §七·五、报错速查手册 §I、AGENTS/README 版本 v0.8.7.9→v0.8.8 五处：start.py:32 / cli/main.py:3219 / AGENTS.md / README.md / docs）
+- **验证**: tests/chat/test_chat_command_bridge.py 18 项全绿（块列表/confirm 硬门/parse+dispatch 桥接/input 补丁语义/持仓 add→update→remove 往返/#N/reload/SystemExit 存活/update_position_fields 单元）；chat 套件 46 项回归；tests/core start 桥相关 25 项+portfolio 5 项；真实 AI 实跑：查看持仓/rules/expect 60/建仓 999999→删除往返，portfolio.yaml 与基线 diff 完全一致（.bak 备份生效）
+- **已知边界**: bz --manual/noai/debug/chains rm 在 chat 中不可用（AI 如实告知去 REPL 执行）；logger 告警不经 redirect 捕获（plain_errors 汇总补偿，未映射原始 warning 仅终端可见）；工具结果 4000 字符首尾截断照旧
+- **更新记录**:
+  - 2026-09-02: 开发完成+验证通过，commit 43e1326
+

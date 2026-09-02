@@ -12,6 +12,31 @@ CHAT_SYSTEM_PROMPT = """你是"暮云思辨投资助手"的AI对话代理，一�
 - get_portfolio: 查看用户当前持仓列表
 - get_news: 获取个股最新新闻
 - search_knowledge: 搜索策略知识库（55+章交易策略和投资心理学内容）
+- run_command: 执行 REPL 支持的任意原生命令（回测/事件日历/笨总评分/批量分析等全部命令）
+- manage_portfolio: 修改本地持仓文件 portfolio.yaml（建仓/清仓/改仓位/交易计划/超配）
+
+## 命令桥使用规范（run_command）
+用户说"回测一下XX"、"看看事件日历"、"笨总评分XX"、"bz scan 半导体"等命令类需求时，用 run_command 执行对应 REPL 命令。命令语法与 REPL 完全一致，例如：
+- 回测: "b 600519" / "b 000001 2024-01-01 2025-01-01 200000" / 批量 "bb 600519,000001"
+- 事件: "events"（事件驱动预警）/ "expect 60"（预期事件日历，默认30天）
+- 笨总: "bz 600519"（单股评分）/ "bz scan 氮化镓 --top 5"（主题选股+评分排名）/ "bz --check"（数据源体检）
+- 批量: "la"（分析所有持仓）/ "ba"（批量评分最近扫描）/ "l all"（批量深分析最近扫描，-f强制重析）
+- 其他: "rules" / "industries 半导体" / "concepts" / "chains"（产业链图谱列表）/ "scan market 缩量回调 半导体"
+- #N 引用最近扫描: "l #3"（深分析扫描第3只）、"bz #1"（评分第1只）
+
+工具优先级：单股深度分析用 analyze_stock；市场扫描用 scan_market；其余命令一律用 run_command。
+
+**confirm 纪律（硬性）**：l all / ba / bz scan / scan market deep / pos plan --update|all / bz --refresh 这类批量调用 AI 的操作，工具要求 confirm=true 才执行。你必须先在对话中向用户说明耗时与费用、征得明确同意（如"约X分钟，要继续吗"），用户同意后再带 confirm=true 调用；不带 confirm 会被工具直接拒绝。
+
+chat 中不可用（如实告知用户去 REPL 执行）：bz --manual（交互式打分）、noai/debug（REPL 会话开关）、chains rm（无确认破坏性删除）。
+
+## 持仓修改规范（manage_portfolio）
+用户说"帮我建仓/清仓/加仓/改仓位/改成本价/删持仓"等需求时用 manage_portfolio：
+- add 建仓（stock_code/stock_name/price/ratio；带 price 会自动生成 TradePlan 草稿并询问采用）
+- remove 清仓删除记录；update 字段级修改（ratio 仓位/price 开仓价/stock_name 名称）
+- plan 查看或生成交易计划；overweight 激活超配（basis=依据）
+**confirm 纪律（硬性）**：add/remove/update/overweight 是写盘操作，必须先在对话中复述你要做的修改（代码/名称/价格/仓位）征得用户明确同意，同意后带 confirm=true 调用。
+修改成功后如实向用户报告改了什么；系统每次写盘自动留 portfolio.yaml.bak 备份，误改可恢复。
 
 ## 你的角色
 - 你是信息提供者和分析助手，不是投资建议者
@@ -216,6 +241,71 @@ TOOL_DEFINITIONS = [
                     }
                 },
                 "required": ["stock_code"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "run_command",
+            "description": "执行 REPL 支持的任意原生命令（与命令行完全同一套代码，输出会实时显示给用户）。覆盖：回测 b/bb、事件 events、预期日历 expect N、批量分析 la/ba/'l all'、扫描规则列表 rules、板块 industries/concepts、笨总评分 bz <代码>、主题选股 bz scan <主题> [--top N/--rule R/--allrules/--backtest]、数据源体检 bz --check、交易计划 pos plan <代码|all> [--update]、全市场扫描 scan market [规则] [主题] [deep]、持仓分析 scan、产业链列表 chains、#N 引用最近扫描（如 l #3、bz #1）。confirm 纪律：'l all'/'ba'/'bz scan'/'scan market deep'/'pos plan --update|all'/'bz --refresh' 这类批量AI费用操作必须先征得用户明确同意再带 confirm=true 调用（不带会被拒绝）。chat 中不可用：bz --manual、noai/debug、chains rm；pos add/rm/overweight 请改用 manage_portfolio 工具。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "command": {
+                        "type": "string",
+                        "description": "REPL 命令原文（语法与 REPL 一致），如 'b 600519'、'expect 60'、'bz scan 氮化镓 --top 5'、'l all -f'、'l #3'"
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "用户已在对话中明确同意执行该批量/AI费用操作时传 true，否则 false（默认）",
+                        "default": False
+                    }
+                },
+                "required": ["command"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_portfolio",
+            "description": "修改本地持仓文件 portfolio.yaml（写盘操作，必须先在对话中向用户复述修改内容征得明确同意，再带 confirm=true 调用，不带会被拒绝）。操作：add 建仓（带 price 自动生成 TradePlan 草稿；ratio 仓位默认0.2）、remove 清仓删除记录、update 字段级修改（ratio 仓位/price 开仓价/stock_name 名称）、plan 查看或生成交易计划（不修改仓位）、overweight 激活超配策略（basis=超配依据）、list 查看持仓。stock_code 支持 '#N'（最近扫描第N只，如 '#1'）。每次写盘自动留 portfolio.yaml.bak 备份。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add", "remove", "update", "plan", "overweight", "list"],
+                        "description": "持仓操作类型"
+                    },
+                    "stock_code": {
+                        "type": "string",
+                        "description": "6位股票代码或 #N 引用（如 '600519'、'#1'）"
+                    },
+                    "stock_name": {
+                        "type": "string",
+                        "description": "股票名称（add 建仓时提供；update 时用于改名）"
+                    },
+                    "price": {
+                        "type": "number",
+                        "description": "开仓价（add 带价格会自动生成交易计划草稿；update 时为新开仓价）"
+                    },
+                    "ratio": {
+                        "type": "number",
+                        "description": "仓位比例（如 0.2=两成；add 缺省 0.2；update 时为新仓位）"
+                    },
+                    "basis": {
+                        "type": "string",
+                        "description": "超配依据（overweight 时，如 'AI算力需求质变'）"
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "用户已在对话中明确同意本次修改时传 true（add/remove/update/overweight 必需）",
+                        "default": False
+                    }
+                },
+                "required": ["action", "stock_code"]
             }
         }
     }
