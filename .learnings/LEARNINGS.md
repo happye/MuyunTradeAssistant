@@ -952,3 +952,55 @@ R4/R5 修复被用户整体回滚（ca01d27）但转"待裁决"，裁决通过�
 - Related Files: backup/local-r4r5-chain(git branch), tests/core/test_g_block_fixes.py, tests/core/test_h_block_fixes.py
 - Tags: revert-replay, red-first, adjudication-workflow
 - See Also: ERR-20260830-001
+
+## [LRN-20260903-001] best_practice
+
+**Logged**: 2026-09-03T01:10:00+08:00
+**Priority**: high
+**Status**: promoted
+**Area**: docs
+
+### Summary
+用户进入「Agent 开发教学」模式（教材 = docs/AI_Agent面试备战_技术深度剖析.html）。定下教学铁律：**先核对教材引用的代码坐标再开讲**，因为教材是静态生成物、会与代码漂移。首轮核对即抓到 2 处漂移。
+
+### Details
+1. **教材说「9 工具 Agent」，实为 11 个**（`src/chat/prompts.py:84` TOOL_DEFINITIONS）：原 9 个 + v0.8.8 新增 `run_command`、`manage_portfolio`。面试答「9 个」会被追问击穿。
+2. **行号漂移**：`TOOL_ERROR_MARK` 教材标 `tools.py:19` → 实际 `:27`（+8）；`_is_tool_failure` 教材标 `:522` → 实际 `:523`。
+3. **教材讲漏了一层**：「伪工具调用用正则剥离」只讲了第二道防线（`agent.py:47` 正则 + `:313` 使用），漏了真正的架构级修法 —— `agent.py:347-349/356` 注释写明「上限内每轮都带 tools，从根上消除模型陷入无工具境地」。讲成两层防御比只讲正则高一个段位。
+4. 已核对无误可直接引用的坐标：`_run_conversation` agent.py:337、`hard_cap=max_tool_rounds*2` :352、失败轮不占上限 :464-472、length 截断分支 :402、最终兜底去 tools :490-493；BM25 retrieval.py:104-133；RRF 0.4/0.6 k=60 retrieval.py:250/254。
+
+### Suggested Action
+每次教学回答前，对本次要引用的 file:line 跑一次 grep/Read 复核，再给结论。教材行号只当线索，不当事实。发现漂移要显式告知用户「教材此处已过期」，因为用户会拿教材去面试。
+
+### Metadata
+- Source: user_feedback
+- Related Files: docs/AI_Agent面试备战_技术深度剖析.html, src/chat/agent.py, src/chat/prompts.py, src/chat/tools.py, src/rag/retrieval.py
+- Tags: teaching, doc-drift, agent-loop, interview-prep
+- Pattern-Key: harden.verify_before_teach
+- Recurrence-Count: 1
+- First-Seen: 2026-09-03
+- **Promoted**: skills/muyun-agent-tutor/SKILL.md
+
+## [LRN-20260903-002] best_practice
+
+**Logged**: 2026-09-03T02:00:00+08:00
+**Priority**: high
+**Status**: completed
+**Area**: data-integrity / security
+
+### Summary
+「整文件替换写回」的记录必须从 existing 全量携带重建，只列"本次会变的字段"=静默丢掉其余字段（P0 实证：chat 回写抹光 7 份 TradePlan）；"确认门"若是模型自供的布尔参数，防漏不防恶意，对外表述必须降级。
+
+### Details
+第三轮对抗审查三大教训：① `update_from_strategy_decision` 重建 PositionRecord 只列了自己要写的字段，trade_plan/overweight_executed 全部随整文件替换写盘而蒸发，且唯一触发方是 chat 回写（H1 修复引入），CLI 路径不可见所以测试全绿——**"审查用例必须覆盖每个写入方的真实调用链"**。② chat confirm 硬门的 confirm 是模型自供参数，_InputPatcher 对 [Y/n] 自动答 y：它防的是"模型忘传参数"，防不了提示注入；AGENTS 里"confirm 硬门"的表述需与实际强度对齐，la/scan/events 三个批量 AI 费用 mode 就是靠逐 mode 与 parse_input 产出比对才抓到漏网。③ 审查发现的"修复"要先跑再信：本轮 4 个 P0/P1 全部先写最小复现脚本（红灯）再修，其中扫描排序项第一版测试假绿（fake enrich 值与顺序单调相关，区分不了新旧行为），改成与顺序无关的伪随机值才真正红起来。
+
+### Suggested Action
+- 新增/修改"记录整体写回"的函数时，diff 自检：重建对象列出的字段集 ⊇ 旧记录有的字段集，否则从 existing 携带
+- 任何"硬门"先问三个问题：参数谁提供？绕过成本多大？拒绝时用户能不能看到？——三者都要有代码级答案才能叫"硬"
+- 回归测试的 fake 数据要与被测顺序正交，写完先验证"旧代码下必红"
+
+### Metadata
+- Source: self_discovery
+- Related Files: src/data/portfolio.py, src/core/plan_guard.py, src/chat/tools.py, src/core/orchestrator.py
+- Tags: record-rebuild, confirm-gate, red-first, adversarial-review
+- See Also: LRN-20260830-001, ISS-078

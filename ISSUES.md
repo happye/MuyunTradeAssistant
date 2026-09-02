@@ -1671,6 +1671,65 @@ P3（已取消）:
 
 ---
 
+### ISS-078: 持仓数据安全批——chat 回写抹 TradePlan(P0)+confirm 门三洞+值校验+告警留痕（v0.8.8.2）
+- **状态**: ✅ 已解决（2026-09-03）
+- **优先级**: P0（TradePlan 静默数据丢失 + 技术安全网被吞，第三轮对抗审查实测复现）
+- **描述**: 第三轮对抗审查（实测优先）发现并复现 1 P0 + 3 P1 + 7 P2：
+  ① **P0** `update_from_strategy_decision`（portfolio.py）重建 PositionRecord 时漏传
+  trade_plan，而 chat analyze_stock 回写（tools.py H1 修复引入）是唯一活跃调用方——
+  chat 每深析一次持仓股即抹掉该股 TradePlan（PlanGuard 压制/追踪止损/超配
+  overweight_executed 标志随之失效）。现场证据：HEAD 7 份计划→工作区 0 份。
+  ② **P1** Chandelier/趋势破坏 force_exit 经 strategy_layer REDUCE 分支残留
+  sell_path=weak_sell，P1a 只在 sell_path 为空时补 trend_exit，PlanGuard 规则1
+  只看 decision+sell_path 不看 position_action——CLOSE_ALL 意图被压成 HOLD
+  （剑宗也中招，实测复现）。③ **P1** chat confirm 硬门漏 la/lall（live_all）、
+  scan（analyze_portfolio ai_enabled=True）、events（事件层 AI 分类）三个批量
+  AI 费用洞；confirm 本质是模型自供参数（_InputPatcher 自动答 y），非用户确认门。
+  ④ **P1** 持仓值校验缺口：add_position 零校验（ratio=-0.5/NaN 实测落盘、总仓位
+  变负）、update 的 `nan<0` 判定放过 NaN/Inf。⑤ **P2** kimi 兜底模型
+  moonshot-v1-auto 已下线（实测 404）；端侧AI 自举链 cycle_anchors/analysis_notes
+  为 str 被 format_chain_graph 逐字符 join（实测「端；侧；A；I」碎裂）；
+  backtest_validator 回测重放 orchestrator.analyze 漏传 is_backtest=True；
+  ISS-077 缓存「只缓存完整结果」仅按 ma5 判定（半降级结果占住 120s）；
+  M-G「head 截断先于 60d 富集」→ healthy_pullback 排序失效（只加过警告未修）；
+  web/tui 持仓 fail-open 当空仓、4 处扫描排除持仓 fail-open、rule_scorer 跌破
+  MA60 风险检测静默消失；残缺 trade_plan 会让整个持仓加载崩（TradePlan(**d) 无保护）。
+- **选定方案**: 见 AGENTS.md「当前版本 v0.8.8.2」①-⑦。要点：记录重建必须从
+  existing 全量携带（trade_plan + trade_plan_raw）；PlanGuard 规则1 加
+  CLOSE_ALL+weak_sell 守卫 + orchestrator P1a 覆写 weak_sell→trend_exit（双保险，
+  不触碰气宗压 trend_exit 的 ISS-033 设计）；confirm 门补三 mode + AGENTS 口径对齐；
+  数据层 `_validate_ratio`/`_validate_price`（isfinite + [0,1] / >0）统一兜底，
+  chat manage_portfolio 入参前置拦截给 AI 可读错误；残缺 plan 走 trade_plan_raw
+  原样透传（加载不崩、保存不抹）；`_save` mtime 会话外修改告警 + chat 回写前
+  重读并确认持仓仍在。
+- **实现**: src/data/portfolio.py、src/core/plan_guard.py、src/core/orchestrator.py、
+  src/chat/tools.py、src/data/akshare_client.py、src/data/industry_data.py、
+  src/core/backtest_validator.py、src/scanner/scanner_engine.py、src/web/app.py、
+  src/tui/app.py、src/core/benzong/{rule_scorer,auto_scorer}.py、src/cli/main.py、
+  start.py、configs/settings.yaml、src/cli/plain_errors.py、docs/报错速查手册.md、
+  tests/data_sources/conftest.py（假绿元组转 skip/断言）；新测试 6 文件 19 例
+  （test_iss078_portfolio_safety / test_plan_guard_force_exit_labeling /
+  test_chat_confirm_gate_coverage / test_stock_data_cache_half_degraded /
+  test_industry_chain_normalization / test_scan_sort_enrich_order）。
+- **数据补救**: 被抹的 6 份 TradePlan 已从 git HEAD 恢复（attach_plan 走数据层，
+  159611 已清仓不恢复；快照 portfolio.yaml.pre_plan_restore_20260903）。
+- **已知同类剩余（监督审查 P3-7，待裁决勿默默留着）**: PlanGuard 守卫仅覆盖
+  CLOSE_ALL+weak_sell；气宗 + CLOSE_ALL+trend_exit（force_exit 救回的残留形态）
+  仍按 ISS-033 设计被压成 HOLD——这是 orchestrator.py:460-461 注释文档化的既有
+  权衡（P1(b)「气宗是否该压 Chandelier」另议），与「force_exit 残留标注不得压制」
+  宗旨同构。是否放开需独立 A/B 立项（回测基线以 ISS-074 为准），未拍板前维持现状。
+- **同类点（铁律1③）**: `except: pass` 裸吞全库 58 处——本轮处理其中安全相关 7 处
+  （web/tui 持仓、扫描排除×4、rule_scorer），其余为展示/清理/解析兜底类（审查已
+  逐一定性，见第三轮审查报告）；「重建记录漏字段」模式全库仅此一处（PositionRecord
+  是唯一整体替换写回的记录）；补漏警告已全部同步 plain_errors 三处。
+- **验证**: 新测试先红灯（12 red）后全绿；全量 **455 passed / 2 skipped**（含
+  test_kimi 换模型后转绿）；P0/P1/P2 关键项均有运行时复现脚本证据（审查临时脚本
+  已按规范删除）。遗留清单 L01（5 处 v0.8.7.9 标签）/L02/L03（两报告状态收口）/
+  L05（全量口径固化进 AGENTS）同步清偿；L04（.git.corrupted_20260830/ 删除）
+  属破坏性操作仍待用户确认。
+- **更新记录**:
+  - 2026-09-03: 修复+测试+数据补救完成，代码 commit 落地于 `ef65ad8`（v0.8.8.2 批），数据补救 `26e1017`
+
 ### ISS-077: 个股数据短 TTL 缓存——防 chat 高频爬取被反爬（v0.8.8.1）
 - **状态**: ✅ 已解决（2026-09-02）
 - **优先级**: P2（反爬预防，无故障报告的主动加固）

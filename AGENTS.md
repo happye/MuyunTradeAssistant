@@ -61,9 +61,9 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 >
 > v0.8.6.4「跳法A」**笨总升为中长期决策主驾**：建仓时笨总评分定气宗/剑宗 mode（笨总首次真正参与买卖决策，此前仅展示），技术层降级为持仓内择时。详见 `ISSUES.md` ISS-046。
 
-核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、金字塔仓位、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
+核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-当前版本：**v0.8.8.1**（个股数据短 TTL 缓存，ISS-077：`calculate_indicators` 加类级 120 秒缓存（完整结果才缓存，失败/降级不缓存——保留"重跑一次就好"的恢复机会；回测走 `DataFeeder._build_stock_data` 不受影响）。背景：chat 对话里 AI 反复分析同一只股票（追问/失败重试轮）此前每次都现爬 1 次实时行情+3 次 K 线，高频易触发反爬限流；REPL 同股连跑同样受益。上一版 **v0.8.8**（chat 全命令桥 + 持仓文件修改，ISS-076：① 新增 `run_command` 工具——chat 里自然语言执行 REPL 任意命令（回测 b/bb、事件 events/expect、笨总 bz/bz scan、批量 la/ba/l all、规则/板块/产业链列表、#N 引用等），复用 start.parse_input+run_cli 单一真相源，输出 Tee 实时回显+捕获喂 AI，批量AI费用操作带 confirm 硬门；② 新增 `manage_portfolio` 工具——建仓/清仓/字段级修改（仓位/开仓价/名称）/交易计划/超配，复用 CLI manage_positions 全部副作用（TradePlan 草稿+超配铁律+总仓位警告），confirm 硬门+自动 .bak 备份；③ chat scan_market 同步写 session_state（#N 跨命令接续）+ RAG 单例对齐（防 CLI 路径二次加载 torch）+ 命令后无条件 reload 持仓（防陈旧快照回滚）。**回测行为基线提醒：v0.8.7.8 的 D03/D02/H01/G03 修复改变回测行为，基线以 ISS-074 A/B 对照为准。**
+当前版本：**v0.8.8.2**（持仓数据安全批，ISS-078，2026-09-03 第三轮对抗审查落地）：① **P0** chat 回写不再抹 TradePlan——`update_from_strategy_decision` 重建 PositionRecord 漏传 trade_plan，持仓文件 7 份计划被静默抹光（PlanGuard 压制/追踪止损/超配一次性标志随之失效），现从 existing 全量携带（含 trade_plan_raw）；② PlanGuard 规则1 加守卫：CLOSE_ALL+weak_sell（force_exit 残留标注）不压制 + orchestrator P1a 覆写 weak_sell→trend_exit——Chandelier/趋势破坏强制清仓在有计划时（剑宗也）不再被压成 HOLD；③ chat confirm 硬门补齐 la/lall、scan、events 三个批量 AI 费用洞；④ 持仓值校验：add/update 统一 isfinite+0-1 区间（负数/NaN/Inf 落盘路径全堵），chat manage_portfolio 入参前置拦截；⑤ 残缺 trade_plan 加载不崩且原始数据原样保留；⑥ 会话外修改检测：`_save` mtime 比对人话告警 + chat 回写前重读并确认持仓仍在；⑦ P2 批：kimi 兜底模型 moonshot-v1-auto 已下线→kimi-k2.6（2026-09-03 实测探测 models.list）/自举产业链 cycle_anchors/analysis_notes 字符串归一（端侧AI链渲染碎裂修复）/backtest_validator 补 is_backtest=True/ISS-077 缓存条件补周月线（半降级不入缓存）/M-G 修复：sort_by 列缺失且候选≤50 时先富集 60d 再排序再截断（「按60日涨幅Top30」首次真实生效）/web+tui+扫描排除持仓 fail-open 与 rule_scorer 风险检测全部留痕（人话映射三处同步）/auto_scorer 密钥撤出进程 env/scan_rules 启动期 validate_filters 接线/test_all_api 假绿元组经 tests/data_sources/conftest.py 转 skip/断言。全量测试 **455 passed / 2 skipped**。上一版 **v0.8.8.1**（个股数据短 TTL 缓存，ISS-077：`calculate_indicators` 类级 120 秒缓存防 chat 高频反爬；完整结果才缓存，回测走 `DataFeeder._build_stock_data` 不受影响）。上一版 **v0.8.8**（chat 全命令桥 + 持仓文件修改，ISS-076：① `run_command` 工具——chat 里执行 REPL 命令（复用 start.parse_input+run_cli 单一真相源，Tee 回显+捕获喂 AI，批量 AI 费用操作带 confirm 硬门，ISS-078 起覆盖 la/scan/events）；② `manage_portfolio` 工具——建仓/清仓/字段级修改/交易计划/超配（复用 CLI 全部副作用，confirm 硬门+自动 .bak+ISS-078 值校验）；③ scan_market 同步写 session_state + RAG 单例对齐 + 命令后无条件 reload 持仓）。**回测行为基线提醒：v0.8.7.8 的 D03/D02/H01/G03 修复改变回测行为，基线以 ISS-074 A/B 对照为准；v0.8.8.2 的 P1a 覆写与 PlanGuard 守卫也改变回测路径行为（force_exit 不再被 weak_sell 压制），涉及 force_exit 场景的 A/B 对比需注意。**
 
 ---
 
@@ -121,7 +121,7 @@ docs/               # 详细文档
 | `tests/artifacts/` | 历史回测/issue 验证的输出产物（json/log，非脚本） | extended_backtest_2024* / issue_033_round* |
 | `tests/rag_eval/` | RAG 检索质量评估工具 | evaluator.py + relevance_labels |
 
-跑法：`pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval` 全量；单文件 `.\.venv\Scripts\python.exe tests\chat	est_xxx.py`（脚本自带 sys.path 修复）；网络类脚本先看文件头注释。
+跑法：`pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval` 全量（统计口径固化 L05：每次全量的 passed/skipped 数字写进 commit message，历史对比以此为准）；单文件 `.\.venv\Scripts\python.exe tests\chat	est_xxx.py`（脚本自带 sys.path 修复）；网络类脚本先看文件头注释。
 
 ---
 
@@ -146,7 +146,7 @@ docs/               # 详细文档
 ### 代码编写
 
 - **不要用中文全角标点在 Python 字符串里**：`（ ）` 等全角括号在 Set-Content 写入的 .py 文件中会导致 SyntaxError
-- **修改 YAML 键名时，追踪所有硬编码引用**：如 scan_rules.yaml 的 `default` 改名时，main.py/start.py/scanner_engine.py 中有 8 处硬编码需要同步
+- **修改 YAML 键名时，追踪所有硬编码引用**（ISS-078 复核更新）：scan_rules.yaml 的 `default` 键 v0.8.4 已删；现行默认规则是 `healthy_pullback`，main.py/start.py/scanner_engine.py 共 14 处硬编码 + chat/tui/web 各 1~2 处——改默认规则/规则名前先 grep `healthy_pullback` 全库同步
 - **RAGDocument 字段名是 `content`，不是 `text`**
 - **StrategyDecision.entry_exit 是 dict，不是 EntryExitResult 对象**：通过 `ee.get("key")` 访问
 - **StockData 的 MA 字段通过 `dr.stock` 访问**：`_weinstein_stage()` 需要 StockData，不是 StrategyDecision
@@ -309,7 +309,7 @@ docs/               # 详细文档
 - 事件驱动预警 + **现象级事件四要素**（v0.8.6.3，真实性<30 信号一票否决 v0.8.6.8 强化）
 - 四维排名 + RAG 策略知识检索（Recall@5=0.800）
 - 买卖点精确触发（Chandelier/趋势破坏/止盈）
-- 金字塔仓位管理
+- 金字塔仓位管理（历史能力，已于 2026-07-17 拍板移除，commit 9b89ecd）
 - Weinstein 四阶段分类（S1-S4）
 - 买卖点分歧检测（技术 vs AI）
 - 回测框架 + 分层对照 + 偏差审计

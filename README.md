@@ -395,6 +395,33 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.2 (持仓数据安全批：trade_plan 回写保留 + confirm 门补齐 + 值校验) - 2026-09-03
+
+- **[P0] chat 回写不再抹掉 TradePlan**（ISS-078）：`update_from_strategy_decision`
+  重建 PositionRecord 时漏传 trade_plan，chat 每深析一次持仓股就把该股交易计划
+  从 portfolio.yaml 静默抹掉（实测 HEAD 7 份计划→0），PlanGuard 压制/追踪止损/
+  超配「只出手一次」标志随之失效。现从 existing 全量携带；被抹的 6 份计划已从
+  git 历史恢复（快照 portfolio.yaml.pre_plan_restore_20260903）
+- **Chandelier 强制清仓不再被 PlanGuard 静默吞掉**：force_exit 残留的
+  CLOSE_ALL+weak_sell 组合（strategy_layer REDUCE 分支推断残留）在剑宗也会被
+  规则1 压成 HOLD（实测复现）；现 PlanGuard 规则1 加守卫 + orchestrator P1a
+  覆写 weak_sell→trend_exit，双保险
+- **chat confirm 硬门补齐 la/lall、scan、events**：三者均为批量 AI 费用操作
+  （逐持仓 ai_enabled=True / 事件层 AI 分类），此前不在门内，AI 可无确认烧费
+- **持仓值校验**：add_position/update_position_fields 统一 isfinite+0-1 区间
+  （负数/NaN/Inf 仓位此前实测可落盘并污染总仓位），chat manage_portfolio 入参
+  前置拦截；残缺 trade_plan 加载不崩且原始数据原样保留
+- **会话外修改检测**：_save mtime 比对发人话告警 + chat 回写前重读并确认持仓仍在
+- **P2 批**：kimi 兜底模型 moonshot-v1-auto 已下线→kimi-k2.6（实测探测）；
+  自举产业链 cycle_anchors/analysis_notes 字符串归一（端侧AI链「端；侧；A；I」
+  碎裂修复）；backtest_validator 补 is_backtest=True；ISS-077 缓存条件补周月线
+  （半降级不入缓存）；**M-G 修复**：sort_by 列缺失且候选≤50 时先富集 60d 再排序
+  再截断（healthy_pullback「按60日涨幅Top30」首次真实生效）；web/tui/扫描排除
+  持仓 fail-open 与 rule_scorer 风险检测留痕（人话映射三处同步）；auto_scorer
+  密钥撤出进程 env；scan_rules 启动期 validate_filters 接线；test_all_api 假绿
+  元组经 conftest 转 skip/断言；遗留清单 L01（5 处版本标签）/L02/L03/L05 清偿
+- 全量测试 **455 passed / 2 skipped**
+
 ### v0.8.8.1 (个股数据 120s 缓存，防 chat 高频反爬) - 2026-09-02
 
 - **`calculate_indicators` 加类级 120 秒短 TTL 缓存**（ISS-077）：chat 对话里 AI
