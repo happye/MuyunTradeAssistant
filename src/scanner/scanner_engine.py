@@ -797,13 +797,15 @@ class ScannerEngine:
                 rules = yaml.safe_load(f)
             # ISS-078：加载期校验过滤器（validate_filters 此前从未被调用，字段/操作符
             # 拼写错误会静默跳过、规则悄悄变宽松）。只告警不阻断，坏条件按原降级路径跳过。
+            # global_exclude 走 apply_global_exclude（操作符集含 starts_with/contains/
+            # is_nan），必须用 validate_excludes；拿 VALID_OPS 套会把合法配置误报
+            # 「未知操作符」（2026-09-04 bz scan 实测误报4条×2轮）。
             try:
                 from src.scanner.scanner_filter import ScannerFilter as _SF
-                _sections = [("global_exclude", (rules or {}).get("global_exclude") or [])]
-                _sections += [(name, (rule or {}).get("filters") or [])
-                              for name, rule in ((rules or {}).get("rules", {}) or {}).items()]
-                for _name, _filters in _sections:
-                    for _err in _SF.validate_filters(_filters):
+                for _err in _SF.validate_excludes((rules or {}).get("global_exclude") or []):
+                    logger.warning(f"ScannerEngine: 规则'global_exclude'过滤器校验失败: {_err}")
+                for _name, _rule in ((rules or {}).get("rules", {}) or {}).items():
+                    for _err in _SF.validate_filters((_rule or {}).get("filters") or []):
                         logger.warning(f"ScannerEngine: 规则'{_name}'过滤器校验失败: {_err}")
             except Exception as _ve:
                 logger.debug(f"ScannerEngine: 过滤器校验器自身异常（不阻断加载）: {_ve}")

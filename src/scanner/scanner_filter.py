@@ -24,6 +24,7 @@ class ScannerFilter:
     用法：
         filtered_df = ScannerFilter.apply(df, filters)
         errors = ScannerFilter.validate_filters(filters)
+        errors = ScannerFilter.validate_excludes(excludes)  # global_exclude 专用
     """
 
     # Scanner字段名 → AKShare DataFrame列名 映射
@@ -49,10 +50,17 @@ class ScannerFilter:
         "name": "名称",               # 股票名称
     }
 
-    # 支持的操作符
+    # 支持的操作符（普通 filters，apply() 执行）
     VALID_OPS = frozenset({
         "gt", "gte", "lt", "lte", "eq", "neq",
         "between", "in", "not_in", "not_like", "like",
+    })
+
+    # global_exclude 支持的操作符（apply_global_exclude 执行，与 VALID_OPS 不同：
+    # 排除语义下有 contains/starts_with/is_nan，无 between/in/like 等。
+    # 校验时两套操作符集不可混用，否则合法配置被误报「未知操作符」）
+    EXCLUDE_VALID_OPS = frozenset({
+        "eq", "gt", "gte", "lt", "lte", "contains", "starts_with", "is_nan",
     })
 
     @classmethod
@@ -207,6 +215,48 @@ class ScannerFilter:
                     errors.append(
                         f"过滤器#{i}: between操作需要value为[min, max]列表"
                     )
+
+        return errors
+
+    @classmethod
+    def validate_excludes(cls, excludes: list[dict]) -> list[str]:
+        """校验 global_exclude 配置合法性
+
+        与 validate_filters 的操作符集不同：global_exclude 由
+        apply_global_exclude 执行，支持 contains/starts_with/is_nan
+        （ISS-078 的加载期校验曾拿 VALID_OPS 套 global_exclude，
+        把合法配置误报成「未知操作符」）。
+
+        Args:
+            excludes: global_exclude 规则列表，每项格式: {field, op, value}
+
+        Returns:
+            错误信息列表（空列表表示全部合法）
+        """
+        errors = []
+
+        for i, exc in enumerate(excludes):
+            if "field" not in exc:
+                errors.append(f"过滤器#{i}: 缺少field字段")
+                continue
+            if "op" not in exc:
+                errors.append(f"过滤器#{i}: 缺少op字段")
+                continue
+
+            field = exc["field"]
+            op = exc["op"]
+
+            if field not in cls.FIELD_MAP:
+                errors.append(
+                    f"过滤器#{i}: 未知字段 '{field}'，"
+                    f"可用字段: {list(cls.FIELD_MAP.keys())}"
+                )
+
+            if op not in cls.EXCLUDE_VALID_OPS:
+                errors.append(
+                    f"过滤器#{i}: 未知操作符 '{op}'，"
+                    f"可用操作符: {sorted(cls.EXCLUDE_VALID_OPS)}"
+                )
 
         return errors
 
