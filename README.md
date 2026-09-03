@@ -395,6 +395,17 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.3 (扫描校验误报修复：bz scan 启动告警消除) - 2026-09-04
+
+- **`bz scan` 启动期 8 条「未知操作符」误告警消除**（ISS-078 残留）：ISS-078 给
+  `ScannerEngine._load_rules` 接的加载期校验，把普通 filters 的 `VALID_OPS` 错套到
+  `global_exclude` 段——而该段由 `apply_global_exclude` 执行，本就合法支持
+  `starts_with`/`contains`/`is_nan`（排除北交所 8/920/430 开头代码与退市股一直在
+  正常工作，告警文案「筛选变宽松」是假的）。现新增 `ScannerFilter.validate_excludes`
+  （`EXCLUDE_VALID_OPS` 专属操作符集）校验排除段，`validate_filters` 只管规则段
+- **回归测试双侧锁死**（tests/core/test_scan_rules_validation.py）：真实
+  scan_rules.yaml 加载零误报 + 真拼错操作符仍告警（防矫枉过正）
+
 ### v0.8.8.2 (持仓数据安全批：trade_plan 回写保留 + confirm 门补齐 + 值校验) - 2026-09-03
 
 - **[P0] chat 回写不再抹掉 TradePlan**（ISS-078）：`update_from_strategy_decision`

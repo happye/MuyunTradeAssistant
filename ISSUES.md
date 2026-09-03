@@ -1729,6 +1729,13 @@ P3（已取消）:
   属破坏性操作仍待用户确认。
 - **更新记录**:
   - 2026-09-03: 修复+测试+数据补救完成，代码 commit 落地于 `ef65ad8`（v0.8.8.2 批），数据补救 `26e1017`
+  - 2026-09-04: 残留修复——`scan_rules 启动期 validate_filters 接线`（v0.8.8.2 ⑦ 项）把普通
+    filters 的 `VALID_OPS` 错套到 `global_exclude` 段，`bz scan` 启动误报 8 条「未知操作符
+    starts_with/contains」（该段执行器 `apply_global_exclude` 本就合法支持这些操作符，
+    运行时排除一直正常）。现新增 `ScannerFilter.validate_excludes`（`EXCLUDE_VALID_OPS`
+    专属操作符集，`src/scanner/scanner_filter.py`）+ `_load_rules` 分段校验
+    （`src/scanner/scanner_engine.py:805`）；回归测试
+    `tests/core/test_scan_rules_validation.py` 4 项（真实 YAML 零误报 + 真拼错仍告警）。落地于 v0.8.8.3，代码 commit `ddfdaca`。
 
 ### ISS-077: 个股数据短 TTL 缓存——防 chat 高频爬取被反爬（v0.8.8.1）
 - **状态**: ✅ 已解决（2026-09-02）

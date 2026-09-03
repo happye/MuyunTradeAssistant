@@ -249,3 +249,32 @@ Use separate short commands or a temporary script when validating Python express
 - Tags: git, stash, corruption, rescue
 
 ---
+
+## [ERR-20260904-001] bz scan 启动期误报 8 条「未知操作符 starts_with/contains」
+
+**Logged**: 2026-09-04T00:30:00+08:00
+**Severity**: low（纯告警误报，运行时行为正确）
+**Status**: resolved
+
+### Symptom
+`bz scan shrink_pullback` 启动期连出 8 条 WARNING：
+```
+规则'global_exclude'过滤器校验失败: 过滤器#1: 未知操作符 'starts_with'，可用操作符: ['between', 'eq', ...]
+```
+（4 条 starts_with + 1 条 contains，×2 轮：`run_benzong_scan` 先建一个 ScannerEngine 解析规则名再建一个真扫描。）
+
+### Root Cause
+ISS-078（v0.8.8.2）给 `_load_rules` 接的加载期校验，对**所有 section** 用 `validate_filters`（普通 filters 的 `VALID_OPS`），而 `global_exclude` 段的执行器是 `apply_global_exclude`——合法支持 starts_with/contains/is_nan。校验器操作符集与执行器不匹配 → 合法配置误报；告警文案「该规则筛选变宽松」是假的（运行时排除一直正常）。
+
+### Fix
+`ScannerFilter.validate_excludes`（EXCLUDE_VALID_OPS 专属操作符集）校验排除段；`validate_filters` 只管规则 filters 段。回归测试 `tests/core/test_scan_rules_validation.py` 4 项：真实 YAML 零误报 + 真拼错操作符（规则段和排除段各一处）仍告警。v0.8.8.3。
+
+### Prevention
+校验器与执行器成对同步（见 LRN-20260904-001）；配置校验的回归测试必须用线上真实配置文件做断言。
+
+### Metadata
+- Reproducible: yes（v0.8.8.2 上跑任意 bz scan / --scan 即可复现）
+- Related Files: src/scanner/scanner_engine.py, src/scanner/scanner_filter.py, src/scanner/scan_rules.yaml
+- Tags: scanner, yaml-validation, false-alarm
+
+---

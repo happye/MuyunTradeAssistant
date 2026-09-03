@@ -1004,3 +1004,29 @@ R4/R5 修复被用户整体回滚（ca01d27）但转"待裁决"，裁决通过�
 - Related Files: src/data/portfolio.py, src/core/plan_guard.py, src/chat/tools.py, src/core/orchestrator.py
 - Tags: record-rebuild, confirm-gate, red-first, adversarial-review
 - See Also: LRN-20260830-001, ISS-078
+
+---
+
+## [LRN-20260904-001] correction
+
+**Logged**: 2026-09-04T00:30:00+08:00
+**Priority**: medium
+**Status**: completed
+**Area**: scanner / config-validation
+
+### Summary
+同一份 YAML 里不同 section 由**不同执行器**消费时，校验器必须按段使用对应的合法操作符集——拿 A 段（普通 filters，`VALID_OPS`）的操作符集去校验 B 段（`global_exclude`，执行器 `apply_global_exclude` 支持 starts_with/contains/is_nan）会把**合法配置误报成「未知操作符」**，且告警文案断言「筛选变宽松」与运行时实况相反（排除逻辑一直在正常执行）——谎报会训练用户忽略告警。
+
+### Details
+ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_filters`（VALID_OPS）套到了所有 section，包括 global_exclude。结果 `bz scan` 每次启动误报 8 条 WARNING（两个 ScannerEngine 实例 × 4 条），用户以为配置坏了，实际排除北交所/退市股一直在正常工作。这类「校验器操作符集 ≠ 执行器操作符集」的错配只有跑真实配置才能暴露——单测里 handcrafted 的 global_exclude 若只写 VALID_OPS 内的操作符就测不出来（本项目回归测试特意用**真实 scan_rules.yaml 原文**做零误报断言）。
+
+### Suggested Action
+- 校验器与执行器必须成对出现：`apply` ↔ `validate_filters`（VALID_OPS），`apply_global_exclude` ↔ `validate_excludes`（EXCLUDE_VALID_OPS）；新增配置段时两套必须同步
+- 配置校验的回归测试要用**线上真实配置文件**做「零误报」断言，不能只用 handcrafted 理想样本
+- 告警文案不得断言未经证实的后果（「筛选变宽松」）——误报时文案本身就是谎报
+
+### Metadata
+- Source: user_report
+- Related Files: src/scanner/scanner_filter.py, src/scanner/scanner_engine.py, tests/core/test_scan_rules_validation.py
+- Tags: validation-mismatch, false-alarm, yaml-config
+- See Also: ISS-078, LRN-20260903-002
