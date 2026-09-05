@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8.6"  # v0.8.8.6=审查小项清扫批(PlanGuard冷却对齐/ba未评出显示/代码规范化等,ISS-082)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8.7"  # v0.8.8.7=景气度接线(客观数据注入industry_prosperity prompt,ISS-083方案A)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

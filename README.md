@@ -395,6 +395,25 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.7 (景气度接线方案A：客观数据注入 industry_prosperity prompt) - 2026-09-05
+
+- **笨总景气度维从「AI 看新闻猜」升级为「客观数据主导」**（ISS-083）：新增
+  `get_industry_metrics` 三级桥接（L1 手写链代表公司代码直配 > L2 链名/别名 >
+  L3 COMMODITY_MAP 13 类商品关键词，自举链不参与），拉取商品价格 90/250 日
+  区间分位/基差/仓单趋势 + NEV 渗透率/乘用车/用电量 + 宏观 PMI/PPI，注入
+  industry_prosperity prompt（SYSTEM_PROMPT 增「客观证据优先、矛盾以客观为准、
+  [数据缺失]不得脑补」）
+- **兜底变严**：行业名+新闻+客观行业数据三者全空才给兜底 50（原双空即兜底）
+- **回测零影响（结构性隔离）**：回测显式构造 data_summary 不经过
+  get_data_summary；冒烟 600354/2021 stash 前后 ret/trades/mdd 逐格一致；
+  rule_scorer 不动（无 point-in-time 数据源，接入即前瞻）
+- **CACHE_VERSION → v0.8.8.7**（景气度旧缓存全部失效重算）；scorer.py 公式
+  与闸门零改动（评分系统不重设计，病根是输入不是公式）
+- live 验收：6 命中股 sources 全带客观标签、reasoning 引用具体价格分位
+  （融捷股份 ip 70→30，客观证据修正纯新闻情绪误判）；未命中股行为不变。
+  证据 tests/artifacts/iss083_wiring_round1/；探针命中率 56%（L1 主力）
+- 回归：test_industry_prosperity_wiring 9 项先红 5 后全绿；全量 **484 passed / 2 skipped**
+
 ### v0.8.8.6 (第三轮审查小项清扫：PlanGuard 冷却对齐 + ba 未评出显示等) - 2026-09-05
 
 - **PlanGuard 规则 4.5/P1/3 强制清仓补写 COOLDOWN**（ISS-082）：此前仅规则4 有

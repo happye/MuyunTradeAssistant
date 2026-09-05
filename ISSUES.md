@@ -12,7 +12,7 @@
 
 | # | 事项 | 状态/阻塞 | 前置条件 | 关联 |
 |---|------|----------|---------|------|
-| 1 | **bz 景气度接线**：行业数据层喂给 industry_prosperity（AI从猜->看价格分位/库存/需求） | 待笨总拍板+阻塞 | 5年回测跑完作对比载体；四项验收门槛（回测对比/bump CACHE_VERSION/不动effective_grade/兜底变严） | docs/2026-08-16_行业数据层跨模块适用性评估.md §三 / .learnings FEAT-20260816-001 |
+| 1 | ~~bz 景气度接线~~ | ✅ 方案A prompt 注入已落地（2026-09-05，ISS-083，四项验收门槛全过）；后续：扩13类映射外行业/方案B客观夹逼/point-in-time回测规则版接入（各需独立立项） | - | ISS-083 / docs/2026-08-16_行业数据层跨模块适用性评估.md §三 |
 | 2 | ~~5年回测收尾~~ | ✅ 已完成（2026-08-29 三批基线重跑落账，修复后口径见第二轮报告§八） | - | ISS-069 / docs/2026-08-29_第二轮对抗审查27项裁决与修复报告.md |
 | 3 | ~~阶段分歧 M-A~~ | ✅ 已拍板关闭（2026-08-24，ISS-065 维持现状勿再提） | - | ISS-065 |
 | 4 | 笨总视频理念 3.2（撞数据墙部分） | 待办 | 数据源条件 | docs/2026-08-10_笨总视频理念优化报告.md |
@@ -1690,6 +1690,20 @@ P3（已取消）:
   position_tier 何时放开 base/full 档。
 - **更新记录**:
   - 2026-09-05: 立项待办
+
+### ISS-083: bz 景气度接线——客观数据注入 industry_prosperity prompt（v0.8.8.7，方案A）
+- **状态**: ✅ 已解决（2026-09-05，四项验收门槛全过，live 质量验收通过）
+- **优先级**: P1（ISS-055 根因「景气闸门立在最软柱子上」的修复：维度只吃行业名+新闻标题让 AI 猜）
+- **方案（已批准规划 v1）**: 方案A prompt 注入——不动 scorer.py 公式/闸门/规则版（评分系统**不需要**重新设计，病根是输入不是公式）；复用 industry_data.py 现成商品锚/需求/宏观函数（全部带 1h 缓存+25s 线程超时+降级文本）；三级桥接只认手写链（L1 代表公司代码直配 > L2 链名/别名 > L3 COMMODITY_MAP 13 类商品关键词）+ 宏观 PMI/PPI 通用底色；自举链不参与。回测隔离：回测显式构造 data_summary（A03）→ 结构性不触网不前瞻；rule_scorer 本批不动（industry_data 全是"今天"锚定，无 point-in-time，接入即前瞻+触网双违规）。
+- **实现**: `src/core/benzong/data_provider.py`（`get_industry_metrics` 三级桥接 + `_safe_call(90s)` fail-soft + `get_data_summary` 增 `industry_metrics` 键）；`dimensions/industry_prosperity.py`（SYSTEM_PROMPT 增客观证据优先规则+缺失不得脑补；user_prompt 注入【客观行业数据】块；兜底变严=行业名+新闻+metrics 三者全空才 50；sources 带客观标签）；`cache.py` CACHE_VERSION→v0.8.8.7。
+- **第0步前提探针**: 18 股（持仓7+链代表9+对照2）实测命中率 **56%（10/18），全部经 L1 代码直配，6 条手写链全覆盖**；对照组茅台/平安如设计未命中。口径摩擦实锤：baostock 证监会行业名（电气机械/畜牧业）与链别名（锂电/生猪）对不上——L1 代码直配是主力，L2 实测贡献 0。
+- **验收（四项门槛）**: ① 回测对比=结构隔离（源码断言+单测）+ 冒烟 600354/2021 stash 前后逐格一致（ret -1.18/trades 51/mdd 21.97）✓ ② CACHE_VERSION bump ✓ ③ scorer.py 零改动 ✓ ④ 兜底变严（三源全空才 50，单测锁死）✓
+- **live 质量验收**（8 股×2 轮 stash 切换，证据 tests/artifacts/iss083_wiring_round1/）: 6 命中股 sources 全部出现 商品锚/需求端/宏观PMI/PPI，reasoning 以「客观数据主导」开头引用具体数字（碳酸锂 90日分位 6%+仓单累库 22.9%+贴水→融捷股份 ip 70→30，修正纯新闻情绪误判；多晶硅 20% 分位→隆基维持 30）；赣锋 conf 0.6→0.8；未命中股路径不变。
+- **测试**: `tests/benzong/test_industry_prosperity_wiring.py` 9 项（注入/兜底变严/诚实降级/未命中不变/三级桥接含自举链排除/fail-soft/回测源码断言），先红 5 后全绿；全量 **484 passed / 2 skipped**
+- **同类点（铁律1③）**: dimensions 其余 5 维不接 industry_metrics（业务纯度/估值/龙头/辨识度/风险各有自己的数据面，本期不扩）；rule_scorer 源码断言不含 industry_metrics。
+- **待办（后续独立立项）**: 扩 COMMODITY_MAP 外行业；方案B 客观信号夹逼闸门（需笨总拍板）；point-in-time 历史序列落盘后回测规则版接入；akshare news_economic_baidu（被 BAIDUID cookies 挡，见 ISS-080）。
+- **更新记录**:
+  - 2026-09-05: 规划批准+实现+验收完成，代码落地于本批 feat 提交（v0.8.8.7）
 
 ### ISS-082: 第三轮审查小项清扫批（v0.8.8.6）
 - **状态**: ✅ 已解决（2026-09-05，用户裁决"按建议修/不修"后落地）
