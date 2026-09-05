@@ -278,3 +278,36 @@ ISS-078（v0.8.8.2）给 `_load_rules` 接的加载期校验，对**所有 secti
 - Tags: scanner, yaml-validation, false-alarm
 
 ---
+
+## [ERR-20260905-001] expect 命令财报披露 Length mismatch 英文告警
+
+**Date**: 2026-09-05
+**Symptom**: `expect 60` 输出 `data_provider.calendar.disclosure 失败: ValueError:
+Length mismatch: Expected axis has 0 elements, new values have 10 elements`，
+每次执行都重复出现（不缓存），英文原文未命中人话映射直接透传吓用户。
+
+### Root Cause
+巨潮预约披露接口对**尚未发布预约表的报告期**返回空列表（`prbookinfos: []`），
+akshare `stock_report_disclosure`（stock_yjyg_cninfo.py）对空数据直接
+`temp_df.columns=[10个列名]` → 0 列 DataFrame 赋 10 列名必崩。触发窗口=每年
+「预约表未发布的强制披露期」（实测 2026-09 的 2026三季；5-6 月半年报表同理）。
+次要问题：`get_stock_disclosure` 的 `df.empty → return []` 早退绕过函数尾部的
+缓存写入——空结果从不缓存，每次 expect 重复打接口。
+
+### Fix
+`calendar_client._fetch` 仅对 Length mismatch 签名 catch 转 `pd.DataFrame()`
+（"该期间无预约表"是合法业务空态非故障；其余异常原样上抛 `_safe_call` 告警，
+防 fail-open 吞真故障）+ `empty/None` 分离：空态入缓存、真故障（None）不缓存
+保持重试语义。v0.8.8.4。回归 `tests/core/test_calendar_empty_period.py`：
+空态三断言（[]/无 WARNING/二次命中缓存）+ 真故障守卫（超时仍告警）。
+
+### Prevention
+上游 akshare 对"合法业务空态"常以崩溃表达（0 列赋列名是惯犯模式）——对接
+akshare 的包装层要把"接口返回空"翻译成业务空态而非告警；翻译必须**按异常签名
+收窄**并保留真故障告警路径，不许裸 except。缓存语义要区分"空结果"（可缓存）
+与"失败"（不缓存）。
+
+### Metadata
+- Reproducible: yes（v0.8.8.3 上跑 `expect 60`，9 月-三季表未发布窗口内必现）
+- Related Files: src/data/calendar_client.py, .venv/.../akshare/stock_feature/stock_yjyg_cninfo.py
+- Tags: akshare-upstream, empty-state, cache-semantics, fail-open-guard

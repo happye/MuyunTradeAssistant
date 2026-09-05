@@ -1671,6 +1671,35 @@ P3（已取消）:
 
 ---
 
+### ISS-079: expect 财报披露空态——未发布期间刷英文告警+重复打接口（v0.8.8.4）
+- **状态**: ✅ 已解决（2026-09-05）
+- **优先级**: P3（命令不崩、半年报数据正常，但每次 expect 刷一条吓人的英文告警
+  并多打一次接口；同类窗口每年复发）
+- **描述**: `expect 60` 报 `data_provider.calendar.disclosure 失败: ValueError:
+  Length mismatch: Expected axis has 0 elements, new values have 10 elements`。
+  调用链：expect→`expectation/calendar.get_disclosure_events`→
+  `calendar_client.get_stock_disclosure`→`ak.stock_report_disclosure(market,period)`。
+  **直接原因在 akshare 上游**（读 venv 源码坐实）：巨潮对"预约披露表尚未发布"的
+  报告期返回空列表，akshare 对空数据直接 `temp_df.columns=[10列]` → 0 列
+  DataFrame 赋 10 列名必崩。**触发条件实测**：9 月 `current_disclosure_periods()`
+  返回 ["2026三季","2026半年报"]，2026三季崩（三季报 10 月披露、预约表 9 月上旬
+  未发布）、2026半年报正常 5550 行。ETF 猜测被实测推翻（该接口是全市场日历
+  不按个股）。
+- **选定方案**: 「该期间无预约表」是合法业务空态非故障——`_fetch` 仅对
+  Length mismatch 签名 catch 转 `pd.DataFrame()`（其余异常原样上抛 `_safe_call`
+  告警，防 fail-open 吞真故障）；顺带修**空态不入缓存**的既有早退
+  （`df.empty → return []` 绕过缓存写入），空态也入缓存，二次 expect 不再重打接口。
+- **实现**: `src/data/calendar_client.py`（_fetch 空态翻译 + empty/None 分离缓存）；
+  `tests/core/test_calendar_empty_period.py` 2 项（空态三断言：[]/无 WARNING/
+  缓存命中；真故障守卫：超时仍告警不吞）。
+- **同类点（铁律1③）**: grep src 内 `.columns =`/`set_axis`/`.index =` 无防护
+  轴操作——零命中，崩点全在 akshare 上游内部；已用 errata 记 ERR-20260905-001。
+- **验证**: 先红灯（告警原文与用户所见逐字一致）后全绿；真实接口终态实测：
+  2026三季 首次=0/二次=0（缓存命中，无告警）、2026半年报 首次=5550/二次=5550；
+  全量 **461 passed / 2 skipped**
+- **更新记录**:
+  - 2026-09-05: 修复+验证完成，代码落地于 `c6478aa`（v0.8.8.4 批）
+
 ### ISS-078: 持仓数据安全批——chat 回写抹 TradePlan(P0)+confirm 门三洞+值校验+告警留痕（v0.8.8.2）
 - **状态**: ✅ 已解决（2026-09-03）
 - **优先级**: P0（TradePlan 静默数据丢失 + 技术安全网被吞，第三轮对抗审查实测复现）
@@ -1713,7 +1742,8 @@ P3（已取消）:
   test_industry_chain_normalization / test_scan_sort_enrich_order）。
 - **数据补救**: 被抹的 6 份 TradePlan 已从 git HEAD 恢复（attach_plan 走数据层，
   159611 已清仓不恢复；快照 portfolio.yaml.pre_plan_restore_20260903）。
-- **已知同类剩余（监督审查 P3-7，待裁决勿默默留着）**: PlanGuard 守卫仅覆盖
+- **已知同类剩余（监督审查 P3-7；✅ 2026-09-05 用户已拍板：维持现状勿再提，
+  详见 AGENTS.md 已拍板清单）**: PlanGuard 守卫仅覆盖
   CLOSE_ALL+weak_sell；气宗 + CLOSE_ALL+trend_exit（force_exit 救回的残留形态）
   仍按 ISS-033 设计被压成 HOLD——这是 orchestrator.py:460-461 注释文档化的既有
   权衡（P1(b)「气宗是否该压 Chandelier」另议），与「force_exit 残留标注不得压制」

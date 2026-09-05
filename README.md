@@ -395,6 +395,20 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.4 (expect 财报披露空态修复：未发布期间不再刷告警+空态入缓存) - 2026-09-05
+
+- **`expect` 命令的 `Length mismatch: Expected axis has 0 elements, new values
+  have 10 elements` 英文告警根治**（ISS-079）：巨潮预约披露接口对尚未发布预约表
+  的报告期返回空列表，akshare `stock_report_disclosure` 对空数据直接
+  `temp_df.columns=[10列]` 崩 Length mismatch（实测 2026-09 的 2026三季；
+  每年预约表未发布的强制披露期同窗口复发）
+- **修法**：`calendar_client._fetch` 仅对 Length mismatch 签名转空 DataFrame
+  （合法业务空态，非故障）+ 空态结果入缓存（原 `df.empty` 早退绕过缓存写入，
+  每次 expect 重复打接口）；其余异常原样上抛 `_safe_call` 告警，防 fail-open
+- 回归测试 2 项：空态→[]+无 WARNING+二次调用命中缓存；真故障（超时）仍告警
+- 同类点扫描：src 内无其它无防护列赋值/轴操作（崩点全在 akshare 上游）
+- 全量测试 **461 passed / 2 skipped**（455 + v0.8.8.3 批 4 项 + 本批 2 项）
+
 ### v0.8.8.3 (扫描校验误报修复：bz scan 启动告警消除) - 2026-09-04
 
 - **`bz scan` 启动期 8 条「未知操作符」误告警消除**（ISS-078 残留）：ISS-078 给
