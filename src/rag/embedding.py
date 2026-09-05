@@ -261,6 +261,10 @@ class TFIDFEmbedder(Embedder):
             from sklearn.feature_extraction.text import TfidfVectorizer
             import jieba
 
+            # P2-C: TF-IDF分词前确保金融自定义词典已加载（幂等）
+            from src.rag.userdict import load_userdict
+            load_userdict()
+
             # jieba分词器
             def tokenize(text):
                 return list(jieba.cut(text))

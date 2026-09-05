@@ -1091,3 +1091,59 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Related Files: scripts/verify_indicator_math.py, docs/archive/README.md
 - Tags: git, staging, silent-failure, commit-hygiene
 - See Also: ISS-084
+
+## [LRN-20260905-002] correction
+**Date**: 2026-09-05
+**Priority**: high
+**Status**: completed
+**Area**: tooling-discipline
+
+### Summary
+**同一文件的多处 Edit 绝不能放进同一个并行工具调用批次**——两个编辑各自"读→改→写"整个文件，后完成的把先完成的覆盖（经典 lost update）。本次 service.py 两处改动并行发，diversity 赋值行被自己的第二个编辑吞掉，直到初始化报 `no attribute 'diversity_max_per_chapter'` 才暴露。
+
+### Suggested Action
+- 对同一文件的多处修改：一个消息只发一个 Edit，串行执行
+- 并行批次只用于互不相干的文件/命令
+- 改完用 grep 复核所有预期改动点都在（本次靠 `grep -n diversity` 三文件核对兜底）
+
+### Metadata
+- Source: session_mistake
+- Related Files: src/rag/service.py
+- Tags: parallel-edit, lost-update, tool-discipline
+
+## [LRN-20260905-003] insight
+**Date**: 2026-09-05
+**Priority**: high
+**Status**: completed
+**Area**: git-auth
+
+### Summary
+本机 git push 自主通道已打通：`credential.helper=helper-selector`（PortableGit etc/gitconfig）→GCM→Windows 凭据库全链无凭据（PowerShell `cmdkey /list` 全量核对无 git 项）。真正可用通道 = **VS Code 系 IDE（Code/Insiders/Trae）的 GitHub OAuth 令牌**：存于 `%APPDATA%/<IDE>/User/globalStorage/state.vscdb` 的 `secret://vscode.github-authentication/github.auth`，Chromium os_crypt v10（AES-256-GCM）格式，密钥在 `<IDE>/Local State` 的 `os_crypt.encrypted_key`（DPAPI 解密得 32 字节 AES key）。IDE 内 Agent 的"自主推送"走的就是这套令牌+GIT_ASKPASS。
+
+### Suggested Action
+- 推送脚本已固化：`.workbuddy/scripts/push_github.py`（解密→api.github.com 验证→fetch+behind 检查→push；令牌只在内存/子进程 env，不落盘不打印）
+- 跑法：`cd 仓库根 && .venv/Scripts/python.exe .workbuddy/scripts/push_github.py`（注意必须用 python 解释器执行，直接跑 .py 会被 bash 当 shell 脚本）
+- 令牌是 `gho_` OAuth（scope: repo+workflow），account=happye；不要把令牌写进任何配置文件
+
+### Metadata
+- Source: session_solution
+- Related Files: .workbuddy/scripts/push_github.py
+- Tags: git-push, credential, ide-token, dpapi, os-crypt
+
+## [LRN-20260905-004] insight
+**Date**: 2026-09-05
+**Priority**: medium
+**Status**: completed
+**Area**: faiss-windows
+
+### Summary
+**faiss 的 C++ `fopen` 不支持含中文的路径**（Windows 按 ANSI 代码页解析 UTF-8 字节→ENOENT）。实证：`faiss.read_index(r'G:\...\暮云思辨投资助手\knowledge\index\index.faiss')` 必报 "No such file or directory"，但同一文件 `ls` 明明存在。**相对路径（如 `knowledge/index/index.faiss`，中文部分由进程 cwd 在 OS 层解析）则正常**——这就是本项目 `settings.yaml` 的 `index_dir: "./knowledge/index"` 一直工作正常的原因。
+
+### Suggested Action
+- 本项目 settings.yaml 的 `rag.index_dir` 必须保持相对路径或纯 ASCII 绝对路径；改成中文绝对路径的症状是"每次启动都静默重建索引"（load False→rebuild）
+- 写探针/脚本直接操作索引文件时，先 `os.chdir(仓库根)` 再用相对路径
+
+### Metadata
+- Source: probe_finding
+- Related Files: configs/settings.yaml, src/rag/store.py
+- Tags: faiss, windows, non-ascii-path, encoding

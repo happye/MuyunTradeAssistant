@@ -24,6 +24,7 @@ logging.getLogger("jieba").setLevel(logging.WARNING)
 from src.rag.models import RAGDocument, RetrievalResult
 from src.rag.embedding import Embedder
 from src.rag.store import VectorStore
+from src.rag.userdict import load_userdict
 
 logger = logging.getLogger(__name__)
 
@@ -42,6 +43,8 @@ class KeywordRetriever:
         self._avg_dl: float = 0.0  # 平均文档长度
         self._k1: float = 1.5  # BM25参数
         self._b: float = 0.75  # BM25参数
+        # P2-C: 建关键词索引前确保金融自定义词典已加载（幂等）
+        load_userdict()
 
     def index(self, docs: list[RAGDocument]) -> None:
         """建立关键词索引

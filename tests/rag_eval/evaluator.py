@@ -7,7 +7,9 @@ import sys;sys.stdout.reconfigure(encoding="utf-8")
 
 import json
 import math
+import shutil
 import sys
+import time
 import yaml
 from pathlib import Path
 
@@ -76,8 +78,13 @@ def auto_label(rag_service, queries, top_k=5):
     "Auto-label using semantic cosine similarity (sentence-transformers)."
     labels = {}
     # Build query embeddings
+    # P1-B修复(2026-09-05): 查询侧必须用 embed_query（带BGE检索前缀、与线上检索分布一致），
+    # 原实现用 embed() 打标 = 用无前缀分布判定相关性 = 循环验证失真。
+    # 文档侧保持 embed()（与建索引时一致，文档不加前缀）。
     query_texts = [q["query"] for q in queries]
-    query_embeddings = rag_service._embedder.embed(query_texts)
+    query_embeddings = [
+        rag_service._embedder.embed_query(t) for t in query_texts
+    ]
     
     for qi, q in enumerate(queries):
         result = rag_service.retrieve(q["query"], top_k=top_k)
@@ -107,6 +114,31 @@ def auto_label(rag_service, queries, top_k=5):
                 q_labels[doc.id] = 0
         labels[q["id"]] = q_labels
     return labels
+def check_label_coverage(rag_service, labels):
+    """检查标注中的 doc_id 与当前索引的命中率（P1-B守卫，2026-09-05）
+
+    背景：索引重建/分块规则变更后 doc_id 体系会变（如 ch54_p5 -> rz54_p5），
+    旧 labels 全部失配时评估指标全 0，质量保障形同虚设且无人察觉。
+
+    Returns:
+        (hit_ratio, index_ids): 命中率0-1, 当前索引doc_id集合
+    """
+    index_ids = set()
+    store = getattr(rag_service, "_store", None)
+    if store is not None:
+        docs = getattr(store, "_docs", None) or getattr(store, "documents", None) or []
+        index_ids = {d.id for d in docs}
+    labeled_ids = set()
+    for q_labels in labels.values():
+        labeled_ids.update(q_labels.keys())
+    if not labeled_ids:
+        return 0.0, index_ids
+    if not index_ids:
+        return 0.0, index_ids
+    hits = sum(1 for d in labeled_ids if d in index_ids)
+    return hits / len(labeled_ids), index_ids
+
+
 def evaluate(rag_service, queries, labels, top_k=5):
     """运行评估，计算所有指标"""
     results = []
@@ -239,6 +271,17 @@ def main():
         print("提示: 使用语义相似度自动标注(cosine>=0.72 relevant, >=0.60 partial). 可人工审核调整")
     else:
         print(f"加载已有标注: {len(labels)} 条查询")
+        # P1-B守卫: doc_id命中率<50%视为标注体系过期，自动备份并重标
+        hit_ratio, _ = check_label_coverage(rag, labels)
+        print(f"标注doc_id与当前索引命中率: {hit_ratio:.1%}")
+        if hit_ratio < 0.5:
+            backup_path = labels_path + "." + time.strftime("%Y%m%d_%H%M%S") + ".bak"
+            shutil.copyfile(labels_path, backup_path)
+            print(f"警告: 命中率不足50%，标注体系已过期（索引重建/分块变更），旧标注备份至 {backup_path}")
+            print("重新自动标注中（查询侧已改用带BGE前缀的embed_query）...")
+            labels = auto_label(rag, queries, top_k=5)
+            save_relevance_labels(labels_path, labels)
+            print(f"新标注已保存到 {labels_path}，建议人工抽查校准")
     
     # 运行评估
     print("\n运行评估...")

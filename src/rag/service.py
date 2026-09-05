@@ -203,19 +203,25 @@ class RAGService:
             logger.warning("保存RAG嵌入器元数据失败: %s", exc)
 
     def _is_index_embedder_compatible(self) -> bool:
+        current = self._get_embedder_metadata()
+        # P1-A修复(2026-09-05): TF-IDF词汇表只在内存(fit于建索引进程)、不随索引持久化，
+        # 旧索引加载后重启进程的embed_query会现场重新fit，维度与索引必然错配。
+        # 故tfidf嵌入器一律判定不兼容、每次重建(秒级)，绝不复用旧索引。
+        if current.get("provider") == "tfidf":
+            return False
         metadata_path = self._embedder_metadata_path()
         if not metadata_path.exists():
             # 旧索引没有元数据；sentence 降级时必须重建，避免维度或算法不匹配。
             return not (
                 self.embedding_provider == "sentence"
-                and self._get_embedder_metadata().get("provider") == "tfidf"
+                and current.get("provider") == "tfidf"
             )
         try:
             with open(metadata_path, "r", encoding="utf-8") as handle:
                 saved = json.load(handle)
         except Exception:
             return False
-        return saved == self._get_embedder_metadata()
+        return saved == current
 
     def _try_load_index(self) -> bool:
         """尝试加载已有索引

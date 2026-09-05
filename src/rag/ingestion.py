@@ -249,13 +249,13 @@ def _split_into_chunks(
     chunk_overlap: int = 50,
     min_chunk_size: int = 100,
 ) -> list[str]:
-    """将文本切分为合适大小的块
+    """将文本切分为合适大小的块（v0.8.9.0 修复 P2-A/P2-B）
 
     策略：
     1. 先按双换行（段落）切分
-    2. 过短的段落合并
-    3. 过长的段落按句号二次切分
-    4. 保证每个chunk在min_chunk_size到chunk_size之间
+    2. 超过 chunk_size 的段落先按句硬切（P2-B：杜绝 bge 512 token 截断）
+    3. 未超限的段落合并；闭块时携带前块尾部 chunk_overlap 字（P2-A：实装重叠）
+    4. 硬顶 chunk_size + chunk_overlap（默认 550 字）
 
     Args:
         text: 输入文本
@@ -273,40 +273,49 @@ def _split_into_chunks(
     if not paragraphs:
         return []
 
-    chunks = []
-    current_chunk = ""
-
+    # P2-B：超长段落先按句硬切，保证进入合并环节的片段不超过 chunk_size
+    pieces: list[str] = []
     for para in paragraphs:
-        # 如果当前块+新段落不超过上限，合并
-        if len(current_chunk) + len(para) + 2 <= chunk_size:
-            if current_chunk:
-                current_chunk += "\n\n" + para
-            else:
-                current_chunk = para
+        if len(para) > chunk_size:
+            pieces.extend(
+                _split_by_sentences(para, chunk_size, min_chunk_size, chunk_overlap)
+            )
         else:
-            # 保存当前块
-            if len(current_chunk) >= min_chunk_size:
-                chunks.append(current_chunk)
-                current_chunk = para
-            elif current_chunk:
-                # 当前块太短，合并到新段落
-                current_chunk += "\n\n" + para
-                # 合并后可能超长，按句号切分
-                if len(current_chunk) > chunk_size * 1.5:
-                    sub_chunks = _split_by_sentences(
-                        current_chunk, chunk_size, min_chunk_size
-                    )
-                    chunks.extend(sub_chunks[:-1])
-                    current_chunk = sub_chunks[-1] if sub_chunks else ""
-            else:
-                current_chunk = para
+            pieces.append(para)
+
+    chunks: list[str] = []
+    current = ""
+
+    for piece in pieces:
+        if not current:
+            current = piece
+            continue
+        # 未超上限则合并
+        if len(current) + len(piece) + 2 <= chunk_size:
+            current = current + "\n\n" + piece
+            continue
+        # 闭块：携带前块尾部 overlap 字符，保证跨块上下文连续（P2-A）
+        chunks.append(current)
+        if chunk_overlap > 0:
+            # 重叠不能让新块超过硬顶 chunk_size + chunk_overlap
+            headroom = chunk_size + chunk_overlap - len(piece) - 2
+            tail_len = min(chunk_overlap, headroom) if headroom > 0 else 0
+            if tail_len > 0:
+                current = current[-tail_len:] + "\n\n" + piece
+                continue
+        current = piece
 
     # 处理最后一块
-    if current_chunk and len(current_chunk) >= min_chunk_size:
-        chunks.append(current_chunk)
-    elif current_chunk and chunks:
-        # 最后一块太短，合并到前一块
-        chunks[-1] += "\n\n" + current_chunk
+    if current:
+        if len(current) >= min_chunk_size or not chunks:
+            chunks.append(current)
+        else:
+            merged = chunks[-1] + "\n\n" + current
+            if len(merged) <= chunk_size + chunk_overlap:
+                chunks[-1] = merged
+            else:
+                # 并入会破硬顶：短尾独立成块（宁短勿超）
+                chunks.append(current)
 
     return chunks
 
@@ -315,8 +324,12 @@ def _split_by_sentences(
     text: str,
     chunk_size: int = 500,
     min_chunk_size: int = 100,
+    chunk_overlap: int = 0,
 ) -> list[str]:
-    """按句号切分过长的文本块"""
+    """按句号切分过长的文本块
+
+    v0.8.9.0: 新增单句超限硬切（无标点长句按滑窗切分），内容不丢失。
+    """
     # 中文句号、问号、感叹号、分号
     sentences = re.split(r'([。！？；])', text)
 
@@ -337,8 +350,21 @@ def _split_by_sentences(
     chunks = []
     current = ""
     for sent in combined:
+        if len(sent) > chunk_size:
+            # 单句超限（无标点长句）：按滑窗硬切，步长带 overlap，不丢内容
+            if current:
+                chunks.append(current)
+                current = ""
+            step = max(chunk_size - chunk_overlap, 1)
+            start = 0
+            while start < len(sent):
+                part = sent[start:start + chunk_size]
+                if len(part) >= min_chunk_size or start + chunk_size >= len(sent):
+                    chunks.append(part)
+                start += step
+            continue
         if len(current) + len(sent) <= chunk_size:
-            current += sent
+            current = current + sent
         else:
             if current and len(current) >= min_chunk_size:
                 chunks.append(current)

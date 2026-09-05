@@ -183,6 +183,7 @@ docs/               # 详细文档
 - **eFinance 有量比但无市净率和 60 日涨跌幅**
 - **AKShare `stock_zh_a_spot_em()` 有完整字段但需 4 分钟**：已废弃，改用新浪+eFinance
 - **Baostock preclose 字段仅日线支持**：周线/月线查询时 fields 字符串不含 preclose
+- **faiss 读写索引路径必须用相对路径或 ASCII**（2026-09-05 实证）：faiss C++ 层 fopen 按 ANSI 代码页解析 UTF-8 中文绝对路径 → ENOENT（文件明明存在）；产品代码本就用相对路径（cwd 由 OS 层解析）不受影响，写探针/脚本时 `cd` 到仓库根再传相对路径即可
 
 ### 网络
 
