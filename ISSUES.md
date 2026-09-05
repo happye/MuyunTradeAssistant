@@ -121,7 +121,7 @@
 ### ISS-006: StateMachine缺少TRANSITION状态
 - **状态**: ✅ 已解决
 - **优先级**: P2
-- **描述**: 架构规范(ai_investment_advisor_spec.md)定义了4个市场状态(RISK_ON/RISK_OFF/PANIC/TRANSITION)，但代码只实现了3个，缺少TRANSITION（过渡状态）。
+- **描述**: 架构规范(docs/archive/ai_investment_advisor_spec.md)定义了4个市场状态(RISK_ON/RISK_OFF/PANIC/TRANSITION)，但代码只实现了3个，缺少TRANSITION（过渡状态）。
 - **实现细节**:
   - MarketState枚举新增 TRANSITION = "TRANSITION"
   - StateMachine.determine_state 新增 TRANSITION 判定：
@@ -1523,7 +1523,7 @@ P3（已取消）:
 - **关联**: f0ac272（上次发作）/ c2bf53e（首批修复）/ docs/数据接口台账.md §一总原则
 
 ### ISS-067: 2026-08-29 对抗性代码审查 42 项——逐条裁决+39 项修复（v0.8.7.5）
-- **状态**: ✅ 41 项属实已修 40 项 + 1 项（A24）待拍板（见下）；审查清单见 `对抗审查_20260829_待裁决清单.md`
+- **状态**: ✅ 41 项属实已修 40 项 + 1 项（A24）待拍板（见下）；审查清单见 `docs/archive/audit/对抗审查_20260829_待裁决清单.md`
 - **裁决方式**: 全部 42 条逐条打开 file:line 复核，41 条属实（A18 属实但属 docstring 明示的设计，A39 属实但映射本身是 M-D 拍板的刻意收紧）；无一条误报
 - **已修复（v0.8.7.5，按审查编号）**:
   - P0: A01 start.py 缩进断裂（`_patch_audit.py` 锚点缩进错误所致，脚本已删）/ A02 live 路径 atr_14 恒 None → akshare_client 补算 ATR(14)（Chandelier/2×ATR 止损实盘恢复生效）/ A03 回测建仓 rule_scorer 拉实时数据（前瞻+网络）→ 改 bar 时点驱动（DataFeeder.get_kline_until 切片，公告/快照显式置空中性降级）/ A04 `_call_with_timeout` with 块回归（ISS-066 实际只修了 data_provider 一处）
@@ -1532,7 +1532,7 @@ P3（已取消）:
   - P3: A32 start.py 纯 print 路径 rich 标记清除（17 行）/ A33 expect 非法参数提示 / A34 pos add 无价格提示+帮助文本 / A35 临时补丁脚本删除 / A36 规则名子串匹配要求 ASCII≥2 字符 / A37 batch_scorer None 等级兜底 / A38 策略层 trace 未命中加权分告警 / A39 price_level 注释纠正 / A40 check_trend_break 除零防
 - **待拍板（A24）**: PlanGuard `_days_since` 用自然日、StrategyState.tick_* 用交易日——气宗 max_hold_days=180 实为 180 自然日 ≈122 交易日。**不改**：ISS-046 五年回测(+12.32pp)验证的就是 180 自然日行为，改成交易日口径会作废已验证结论且需重跑全部基线。改不改、往哪改，等笨总拍板
 - **影响声明**: A02/A03/A07/A10/A14-A16 修复会改变回测与实盘行为——ISS-046 五年回测数值需重跑基线对比后方可引用；重跑前旧结论标注"修复前口径"
-- **关联**: 对抗审查_20260829_待裁决清单.md / ISS-066（A04 属其回归）/ LRN-20260825-001（A08 兼容性约束）
+- **关联**: docs/archive/audit/对抗审查_20260829_待裁决清单.md / ISS-066（A04 属其回归）/ LRN-20260825-001（A08 兼容性约束）
 
 ### ISS-068: 小盘组止损后冷却缺失--PlanGuard强制清仓绕过防护循环接刀（2026-08-29）
 - **状态**: 🟢 已修复+全量A/B验证通过（净改善+1.43pp）
@@ -1563,7 +1563,7 @@ P3（已取消）:
   插桩才发现冷却压根没启动）；网格参数实验全部无差异=假设域错了，不是"参数恰好都对"
 
 ### ISS-069: 2026-08-29 第二轮对抗性审查 27 项——逐条裁决+24 项修复（v0.8.7.6）
-- **状态**: ✅ 25 条属实已修 24 项 + B19 属实待拍板 + B18 复核不成立；清单见 `对抗审查_20260829_第二轮_待裁决清单.md`
+- **状态**: ✅ 25 条属实已修 24 项 + B19 属实待拍板 + B18 复核不成立；清单见 `docs/archive/audit/对抗审查_20260829_第二轮_待裁决清单.md`
 - **裁决方式**: 27 条逐条读码/脚本验算复核（B18 另跑了两次全量测试套件）
 - **已修复（v0.8.7.6，按审查编号）**:
   - P0: B01 技能引擎 majority 阈值 off-by-one（`//2`→`//2+1`，2/3 条件规则原等同 any；配套把 `multi_timeframe.yaml` 四条"状态描述"规则显式 `require: all` 对齐自身注释）/ B02 9 个 YAML 条件未注册（kdj×3 + rsi×6 补注册表 + 未知条件 debug→warning；修复前 RSI 多头排列实为"RSI6>50 即触发"）/ B03 一票否决强制 F（BenzhongScore 加 invalidate 字段，effective_grade 红线判 F，pos add `_mode_from_grade` 经 effective_grade 传导不会再进气宗；grade()/total_score 保真值不动）/ B04 坏缓存崩溃（get 改 `except Exception` + isinstance dict 校验 + set 改 tmp+os.replace 原子写=B24）
@@ -1573,7 +1573,7 @@ P3（已取消）:
 - **复核不成立（B18）**: "测试套件 8 failed"在本机两次全量跑均不复现（324 passed 2 skipped / 278+网络类 passed）——审查员自认 6 个是其沙箱删除拦截，另 2 个（HF_ENDPOINT 污染/env 超长）未复现，但 B12 的 env 污染机制本身属实已修
 - **属实不修（B26）**: 25 个注册条件无 YAML 引用属死代码——删除收益低风险高（条件注册表兼作文档），登记不动
 - **行为改变声明**: B01/B02（技能信号触发面收紧）、B03（否决股不再进气宗）、B07（事件层 AI 同开时生效）、B16（展示分变化）、B23（缓存全量失效重算）——历史回测/评分结论引用前需重跑基线
-- **关联**: 对抗审查_20260829_第二轮_待裁决清单.md / ISS-067（第一轮）/ e123371+未提交改动（另一 Agent 的 ISS-068 小盘诊断工作，本轮未触碰）
+- **关联**: docs/archive/audit/对抗审查_20260829_第二轮_待裁决清单.md / ISS-067（第一轮）/ e123371+未提交改动（另一 Agent 的 ISS-068 小盘诊断工作，本轮未触碰）
   - **B26 落实清单（2026-08-29 二次复核实测：注册表 91 / YAML 使用 66 / 死条件 25）**——下一轮清理照此单执行，勿再重扫：
     死条件 25 个：`change_20d_below` `index_neutral` `kdj_j_above` `kdj_j_above_80` `kdj_j_below` `kdj_k_above` `kdj_k_below` `long_lower_shadow` `ma_cross` `ma_distance` `monthly_price_above_ma20` `monthly_price_below_ma20` `price_above_ma` `price_back_above_ma5` `price_below_ma` `rsi_24_above_70` `rsi_24_below_30` `rsi_above` `rsi_below` `rsi_bottom_divergence` `timeframe_price_above_ma` `timeframe_price_below_ma` `timeframe_trend` `volume_shrink_stop` `weekly_price_below_ma20`
     注意分两类：①真死代码（如 `rsi_bottom_divergence` `volume_shrink_stop` `long_lower_shadow` `index_neutral` `change_20d_below` `price_back_above_ma5` 及参数化快捷名 kdj_j_above_80/rsi_24_* 等）→ 可删；②**通用参数化条件名**（`price_above_ma` `price_below_ma` `ma_cross` `ma_distance` `rsi_above` `rsi_below` `timeframe_trend` `timeframe_price_above_ma` `timeframe_price_below_ma` `kdj_k_above` `kdj_k_below` `kdj_j_above` `kdj_j_below` `monthly_price_*` `weekly_price_below_ma20`）是注册表注释明示的"新通用条件名"自定义 YAML 扩展 API → **保留**。清理前先跑本条同款比对脚本确认清单未漂移，删后跑全套测试。
@@ -1587,7 +1587,7 @@ P3（已取消）:
 
 ### ISS-071: 第三轮对抗审查 C 区块——指标公式数学正确性 7 项裁决+6 项修复（v0.8.7.7）
 - **状态**: ✅ C01-C05/C07 属实已修；C06 复核为**假阳性**不改（实测推翻，见报告 §三）
-- **清单**: `对抗审查_20260829_第三轮_待裁决清单.md`；报告: `docs/2026-08-29_第三轮对抗审查C区块裁决与修复报告.md`
+- **清单**: `docs/archive/audit/对抗审查_20260829_第三轮_待裁决清单.md`；报告: `docs/2026-08-29_第三轮对抗审查C区块裁决与修复报告.md`
 - **已修复**:
   - C01 RSI 切 Wilder RMA（通达信 SMA(X,N,1)=ewm alpha=1/N）——live `_calculate_rsi` / 回测 `_calc_rsi` / live `rsi_6_series` **三处**同步；`MUYUN_INDICATOR_LEGACY=1` 可复现旧口径
   - C02 ATR 切通达信 EXPMEMA（Wilder）——两处同步，同一开关
@@ -1631,7 +1631,7 @@ P3（已取消）:
 
 ### ISS-074: G/H 区块裁决修复执行 + 四批 A/B 对照（v0.8.7.8）
 - **状态**: ✅ 用户裁决"四批全修 + G02 方向A"，执行完成（回归 26 重放 + 8 G + 11 H 全绿；全量 340 passed）
-- **清单**: `对抗审查_20260830_G区块_待裁决清单.md` + `对抗审查_20260830_H区块_待裁决清单.md`
+- **清单**: `docs/archive/audit/对抗审查_20260830_G区块_待裁决清单.md` + `docs/archive/audit/对抗审查_20260830_H区块_待裁决清单.md`
 - **G 批实现**（D/E 为备份链重放，G/H 为新实现，测试红灯优先）:
   - G01🔴 portfolio 损坏→fail-open清空：`_load` 置 `_corrupted` 拒绝覆盖（损坏文件原样保留供人工修复）+ `_save` 原子写（tmp+os.replace）+ .bak 滚动备份 + 减半快照保护（≥4只减半以上留 before_ 时间戳快照，合法删仓放行不阻断）
   - G02 状态机 PANIC 文档对齐（方向A）：docstring 如实声明 PANIC 第一优先用个股量价是有意设计（持仓保护性），消除与"基于大盘"的矛盾

@@ -105,7 +105,7 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ### Metadata
 - Source: self_discovery
-- Related Files: `src/data/akshare_client.py`, `src/rag/embedding.py`, `src/core/skill_engine.py`, `src/core/plan_guard.py`, `src/cli/main.py`, `start.py`, `AGENTS.md`, `README.md`, `开发问题根因复盘_20260829.md`, `对抗审查_20260829_待裁决清单.md`, `对抗审查_20260829_第二轮_待裁决清单.md`
+- Related Files: `src/data/akshare_client.py`, `src/rag/embedding.py`, `src/core/skill_engine.py`, `src/core/plan_guard.py`, `src/cli/main.py`, `start.py`, `AGENTS.md`, `README.md`, `开发问题根因复盘_20260829.md`, `docs/archive/audit/对抗审查_20260829_待裁决清单.md`, `docs/archive/audit/对抗审查_20260829_第二轮_待裁决清单.md`
 - Tags: regression, incomplete-fix, docs-as-fix, no-test-coverage, same-class-scan, verification-by-running
 
 **See Also**: LRN-20260829-001, LRN-20260619-001, LRN-20260618-002
