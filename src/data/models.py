@@ -65,14 +65,6 @@ def infer_action_semantic(
     return None
 
 
-class PositionTier(str, Enum):
-    """仓位档位（v0.8.3 Phase D 金字塔仓位管理）"""
-    FLAT = "FLAT"        # 空仓
-    PILOT = "PILOT"      # 试探仓（10-15%，首次入场）
-    BASE = "BASE"        # 基础仓（25-30%，趋势确认+试探盈利>3%）
-    FULL = "FULL"        # 重仓（40-50%，强趋势+基础盈利>5%）
-
-
 class TradeLifecycle(str, Enum):
     """交易生命周期状态（v0.7.2 Strategy Layer核心抽象）
 
@@ -269,8 +261,6 @@ class StrategyState(BaseModel):
     entry_price: Optional[float] = Field(default=None, description="开仓均价")
     current_position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例")
 
-    # v0.8.3 Phase D: 金字塔仓位档位
-    position_tier: PositionTier = Field(default=PositionTier.FLAT, description="当前仓位档位（试探/基础/重仓）")
     unrealized_profit_pct: float = Field(default=0.0, description="浮动盈亏百分比")
     days_held: int = Field(default=0, description="持仓天数")
 

@@ -25,7 +25,7 @@ import logging
 from typing import Optional
 from copy import deepcopy
 
-from src.data.models import (PositionTier,
+from src.data.models import (
     SignalType, MarketState, PositionAction,
     TradeLifecycle, StrategyState, StrategyDecision,
     infer_action_semantic,
