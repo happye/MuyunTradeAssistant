@@ -77,6 +77,9 @@ class RAGService:
         self.keyword_weight = hybrid_cfg.get("keyword", 0.4)
         self.semantic_weight = hybrid_cfg.get("semantic", 0.6)
 
+        # v0.8.8.9 同章节多样性截断：top_k 不再被单章多分块占满（0=关闭）
+        self.diversity_max_per_chapter = config.get("diversity_max_per_chapter", 2)
+
         embed_cfg = config.get("embedding", {})
         self.embedding_provider = embed_cfg.get("provider", "sentence")
         self.embedding_model = embed_cfg.get("model", "BAAI/bge-small-zh-v1.5")
@@ -235,6 +238,7 @@ class RAGService:
             store=self._store,
             keyword_weight=self.keyword_weight,
             semantic_weight=self.semantic_weight,
+            diversity_max_per_chapter=self.diversity_max_per_chapter,
         )
         # 关键词索引需要文档列表
         if docs:

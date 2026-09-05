@@ -19,6 +19,7 @@ rag:
   chunk_overlap: 50                            # 分块重叠（字）
   default_top_k: 5                             # 默认检索数量
   retrieval_method: "hybrid"                   # keyword/semantic/hybrid
+  diversity_max_per_chapter: 2                 # 同一章节在top_k结果中最多占几条，防长章节（如合刊）霸榜（0=关闭）
   hybrid_weights:                              # 混合检索权重
     keyword: 0.4
     semantic: 0.6

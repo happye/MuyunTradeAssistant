@@ -147,6 +147,7 @@ class HybridRetriever:
         keyword_weight: float = 0.4,
         semantic_weight: float = 0.6,
         rrf_k: int = 60,  # RRF常数，默认60
+        diversity_max_per_chapter: int = 2,  # 同章节在最终结果中最多占几条（<=0 关闭）
     ):
         """初始化
 
@@ -156,6 +157,8 @@ class HybridRetriever:
             keyword_weight: 关键词权重
             semantic_weight: 语义权重
             rrf_k: RRF常数
+            diversity_max_per_chapter: 同一 metadata.chapter 在截断后结果中
+                最多保留的块数（v0.8.8.9 多样性截断；<=0 表示关闭）
         """
         self.embedder = embedder
         self.store = store
@@ -163,6 +166,7 @@ class HybridRetriever:
         self.keyword_weight = keyword_weight
         self.semantic_weight = semantic_weight
         self.rrf_k = rrf_k
+        self.diversity_max_per_chapter = diversity_max_per_chapter
 
     def index_documents(self, docs: list[RAGDocument]) -> None:
         """建立关键词索引（语义索引由store管理）
@@ -210,6 +214,42 @@ class HybridRetriever:
         else:
             return self._hybrid_retrieve(query, top_k)
 
+    def _apply_diversity(
+        self,
+        ranked: list[tuple[RAGDocument, float]],
+        top_k: int,
+    ) -> list[tuple[RAGDocument, float]]:
+        """同章节多样性截断（v0.8.8.9）
+
+        问题：一个长章节（如456合刊）被切成几十块时，排名前列的结果可能
+        全部来自同一章节，top_k 名额被单章占满，其他章节的优质内容进不来。
+
+        策略：贪心保留排名靠前的结果，同一 metadata.chapter 最多保留
+        diversity_max_per_chapter 条；一轮扫完后名额不满则按原排名回填
+        被限流的项（保证结果数量不缩水）。chapter 缺失的块视为独立项
+        不受限。diversity_max_per_chapter <= 0 时关闭（行为与旧版一致）。
+        """
+        cap = self.diversity_max_per_chapter
+        if cap is None or cap <= 0 or top_k <= 0:
+            return ranked[:top_k]
+
+        primary: list[tuple[RAGDocument, float]] = []
+        overflow: list[tuple[RAGDocument, float]] = []
+        counts: dict[str, int] = defaultdict(int)
+        for doc, score in ranked:
+            chapter = (doc.metadata or {}).get("chapter")
+            if chapter is not None and counts[chapter] >= cap:
+                overflow.append((doc, score))
+                continue
+            if chapter is not None:
+                counts[chapter] += 1
+            primary.append((doc, score))
+            if len(primary) >= top_k:
+                break
+        if len(primary) < top_k:
+            primary.extend(overflow[: top_k - len(primary)])
+        return primary
+
     def _filter_by_layer(
         self,
         result: RetrievalResult,
@@ -241,6 +281,12 @@ class HybridRetriever:
             kept_docs = result.documents[:top_k]
             kept_scores = result.scores[:top_k]
 
+        # 候选级多样性（_dispatch 内）+ 最终截断级多样性双保险：
+        # 层过滤可能把前排多样结果筛掉、只剩同章节，这里对最终结果再截一次。
+        kept_pairs = self._apply_diversity(list(zip(kept_docs, kept_scores)), top_k)
+        kept_docs = [d for d, _ in kept_pairs]
+        kept_scores = [s for _, s in kept_pairs]
+
         return RetrievalResult(
             query=query,
             documents=kept_docs,
@@ -253,13 +299,15 @@ class HybridRetriever:
         """纯关键词检索"""
         results = self.keyword_retriever.search(query, top_k * 2)
 
-        docs = []
-        scores = []
-        for doc_id, score in results[:top_k]:
+        ranked = []
+        for doc_id, score in results:
             doc = self.store.get_doc_by_id(doc_id) if hasattr(self.store, 'get_doc_by_id') else None
             if doc:
-                docs.append(doc)
-                scores.append(score)
+                ranked.append((doc, score))
+
+        kept = self._apply_diversity(ranked, top_k)
+        docs = [d for d, _ in kept]
+        scores = [s for _, s in kept]
 
         return RetrievalResult(
             query=query,
@@ -272,15 +320,18 @@ class HybridRetriever:
     def _semantic_retrieve(self, query: str, top_k: int) -> RetrievalResult:
         """纯语义检索"""
         query_embedding = self.embedder.embed_query(query)
-        results = self.store.query(query_embedding, top_k)
+        # 多取 3 倍候选给多样性截断留出替换空间
+        results = self.store.query(query_embedding, top_k * 3)
 
-        docs = []
-        scores = []
-        for doc_id, score in results[:top_k]:
+        ranked = []
+        for doc_id, score in results:
             doc = self.store.get_doc_by_id(doc_id) if hasattr(self.store, 'get_doc_by_id') else None
             if doc:
-                docs.append(doc)
-                scores.append(score)
+                ranked.append((doc, score))
+
+        kept = self._apply_diversity(ranked, top_k)
+        docs = [d for d, _ in kept]
+        scores = [s for _, s in kept]
 
         return RetrievalResult(
             query=query,
@@ -310,13 +361,15 @@ class HybridRetriever:
         # 按融合得分排序
         sorted_ids = sorted(rrf_scores.items(), key=lambda x: x[1], reverse=True)
 
-        docs = []
-        scores = []
-        for doc_id, score in sorted_ids[:top_k]:
+        ranked = []
+        for doc_id, score in sorted_ids:
             doc = self.store.get_doc_by_id(doc_id) if hasattr(self.store, 'get_doc_by_id') else None
             if doc:
-                docs.append(doc)
-                scores.append(score)
+                ranked.append((doc, score))
+
+        kept = self._apply_diversity(ranked, top_k)
+        docs = [d for d, _ in kept]
+        scores = [s for _, s in kept]
 
         return RetrievalResult(
             query=query,
