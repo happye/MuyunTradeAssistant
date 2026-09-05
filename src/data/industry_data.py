@@ -278,16 +278,18 @@ def delete_auto_graph(name: str) -> str:
     return f"已删除自举图谱'{name}'"
 
 
-def match_chain(query: str):
+def match_chain(query: str, chains: dict | None = None):
     """按别名/链名匹配图谱。返回 (链名, 链配置) 或 None。
 
     匹配规则：query 包含别名，或别名包含 query（双向，长度>=2 防单字误匹配；
     单字别名如"锂"仅当 query 与别名完全相等时命中）。
+    chains: 可选链子集（ISS-083 监督审查 P2-4：bz 景气度接线只在手写链子集内
+    匹配，防 auto 链别名遮蔽 manual 次长匹配）；None 时用全量 load_chains()。
     """
     q = (query or "").strip()
     if not q:
         return None
-    chains = load_chains()
+    chains = chains if chains is not None else load_chains()
     best = None  # 最长匹配优先（"碳酸锂"优先于"锂"）
     for name, cfg in chains.items():
         for alias in [name] + list(cfg.get("aliases", [])):

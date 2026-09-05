@@ -32,7 +32,8 @@ SYSTEM_PROMPT = """你是笨总「超景气价值投机」体系的行业景气�
 - 时效性：是否第一次（重复消息打折）
 
 客观证据优先（v0.8.8.7 景气度接线，ISS-083）：
-- 若用户消息提供【客观行业数据】（商品价格分位/库存方向/需求同比/宏观 PMI），评分必须以其为主要证据，新闻仅作催化剂与情绪修正
+- 客观块头部标注本期可用度（✓/✗）。商品锚与需求端至少一项 ✓ → 以客观数据为主要证据，新闻仅作催化剂与情绪修正
+- 商品锚与需求端均 ✗（仅剩宏观底色甚至全缺）→ 回到新闻主导评分，confidence 不得超过 0.5，并在 reasoning 说明客观证据不足
 - 价格处历史低位+去库 → 景气底部区域；价格高位+累库 → 景气顶部风险；需求同比加速 → 景气上行
 - 客观数据与新闻矛盾时，以客观数据为准，并在 reasoning 中说明矛盾点
 - 标注[数据缺失]/[数据缺口]的项是数据源不可用，不是利空信号，不得据此扣分或脑补
@@ -57,25 +58,35 @@ def score(code: str, name: str, *, data_summary: dict,
     # ISS-083：客观行业数据（商品锚/需求/宏观），data_provider 三级桥接命中时非 None
     metrics = data_summary.get("industry_metrics") or None
 
-    # 客观块组装（[数据缺失]/[数据缺口] 文本原样注入——AI 被明示"缺失=不可用不得脑补"）
+    def _is_missing(t: str) -> bool:
+        return t.strip().startswith(("[数据缺失]", "[数据缺口]"))
+
+    # 客观块组装：缺口占位符原样注入（AI 被明示"缺失=不可用不得脑补"），
+    # 但来源标签只给真实可用的节——缺口节标「商品锚」形似有数据（监督审查 P2 诚实性）
     objective_text = ""
     objective_sources = []
+    availability = {"commodity": False, "demand": False, "macro": False}
     if metrics:
         sections = []
-        if metrics.get("commodity"):
-            sections.append(f"【商品价格锚/库存（{metrics.get('chain', '')}）】\n{metrics['commodity']}")
-            objective_sources.append(f"商品锚({metrics.get('chain', '')})")
-        if metrics.get("demand"):
-            sections.append(f"【需求端】\n{metrics['demand']}")
-            objective_sources.append("需求端")
-        if metrics.get("macro"):
-            sections.append(f"【宏观底色】\n{metrics['macro']}")
-            objective_sources.append("宏观PMI/PPI")
+        for key, title in (("commodity", "商品价格锚/库存"), ("demand", "需求端"), ("macro", "宏观底色")):
+            text = metrics.get(key) or ""
+            if not text:
+                continue
+            ok = not _is_missing(text)
+            availability[key] = ok
+            chain_tag = f"（{metrics.get('chain', '')}）" if key == "commodity" else ""
+            sections.append(f"【{title}{chain_tag}】\n{text}")
+            if ok:
+                objective_sources.append(f"商品锚({metrics.get('chain', '')})" if key == "commodity" else title)
         if sections:
-            objective_text = "\n".join(sections)
+            avail_line = (f"本期客观证据可用度：商品锚{'✓' if availability['commodity'] else '✗'} / "
+                          f"需求端{'✓' if availability['demand'] else '✗'} / "
+                          f"宏观{'✓' if availability['macro'] else '✗'}（✗=数据源不可用）")
+            objective_text = avail_line + "\n" + "\n".join(sections)
 
-    # 兜底变严（验收门槛④，v0.8.8.7）：行业名+新闻+客观行业数据三者全空才走 50 兜底
-    if not industry_name and not announcements and not objective_text:
+    # 兜底变严（验收门槛④，v0.8.8.7）：行业名+新闻+客观行业数据通道三者全空才走 50 兜底。
+    # metrics 命中即视为有数据通道（哪怕节文本全是缺失标记，也不在此兜底——由 AI 按缺失声明处理）。
+    if not industry_name and not announcements and metrics is None:
         return _missing_data_result(
             "无法获取所属行业 + 最近 30 天新闻 + 客观行业数据",
             dim_name="行业景气度",

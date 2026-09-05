@@ -323,60 +323,122 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
         return None
 
 
-def get_industry_metrics(code: str, industry_name: str = "") -> Optional[dict]:
+def get_industry_metrics(code: str, industry_name: str = "") -> tuple:
     """ISS-083 景气度接线（v0.8.8.7）：客观行业数据摘要，供 industry_prosperity 维 prompt。
 
     三级桥接（**只用手写链**——自举链未经人工复核，不参与评分）：
       L1 手写链代表公司代码直配（最强信号，第0步探针实测命中主力，56%）
-      L2 链名/别名匹配（baostock 证监会行业名与链别名口径摩擦大，实测贡献 0）
+      L2 链名/别名匹配——**只在手写链子集内匹配**（监督审查 P2-4：全量匹配后
+         否决会让 auto 链别名遮蔽 manual 次长匹配）
       L3 COMMODITY_MAP 商品关键词（13 类：生猪/钢铁/有色/化工…）
-    需求段：链 demand_data 绑定（乘联会/用电量）；宏观 PMI/PPI 全行业通用底色。
-    全部复用 industry_data 的缓存（1h）/线程超时/降级文本（数据接口台账已登记坑）。
+    需求段：链 demand_data 绑定（缓存键与 chat 路径共享）；宏观 PMI/PPI 通用底色。
+    三节**并行**拉取（监督审查 P1-1：串行最坏 200-275s 必穿聚合上限；并行后
+    最坏=max≈150s），全部复用 industry_data 的缓存/超时/降级文本。
 
-    未命中（无链且无商品映射）返回 None → 维度走原新闻路径，未命中股行为不变。
+    Returns:
+        (metrics|None, status)：status ∈ "matched"（命中）/"not_matched"（设计内
+        未命中，非故障）/ "failed"（拉取失败）。未命中与失败都返回 None metrics，
+        由 status 区分——get_data_summary 据此记三态 fetch_status（未命中不该
+        被告警成「数据源失败」，P2-1）。
     回测隔离：回测引擎显式构造 data_summary（A03 禁网修复），本函数只在 live
     get_data_summary 被调——industry_data 接口全是"今天"锚定，进回测即前瞻。
     """
     from src.data import industry_data as ind
 
-    def _pull() -> Optional[dict]:
-        ind.load_chains()
+    class _BridgeMiss(Exception):
+        """三级桥接全部未命中（设计内状态，非故障）。"""
+
+    def _safe_section(key: str, fn):
+        """节级兜底：industry_data._cached 理论上不抛（异常转缺失文本），
+        这里再兜一层防未知 bug 拖垮整包——坏节转缺失标记，好节照常存活。"""
+        try:
+            return fn()
+        except Exception as e:
+            return f"[数据缺失]（{key} 异常: {type(e).__name__}）"
+
+    def _pull() -> dict:
+        chains = ind.load_chains()
+        manual_chains = {n: c for n, c in chains.items()
+                         if ind._graph_sources.get(n) == "manual"}
         chain_name, chain_cfg = None, None
+        matched_via = None
         # L1：手写链代表公司代码直配
-        for n, cfg in ind.load_chains().items():
-            if ind._graph_sources.get(n) != "manual":
-                continue
+        for n, cfg in manual_chains.items():
             if code in ind._company_codes(cfg):
                 chain_name, chain_cfg = n, cfg
+                matched_via = "company_code"
                 break
-        # L2：链名/别名（仅手写链）
+        # L2：链名/别名（仅手写链子集）
         if chain_name is None:
-            h = ind.match_chain(industry_name or "")
-            if h and ind._graph_sources.get(h[0]) == "manual":
+            h = ind.match_chain(industry_name or "", chains=manual_chains)
+            if h:
                 chain_name, chain_cfg = h
-        matched_via = "company_code" if chain_cfg is not None else None
-        if chain_name is not None:
-            commodity_text = ind.get_commodity_section(chain_cfg)
-            demand_text = ind.get_demand_section(chain_cfg, cache_key=f"bz:{chain_name}")
-        else:
-            # L3：商品关键词映射（无需求绑定）
-            cm = ind.match_commodity(industry_name or "")
-            if not cm:
-                return None
-            chain_name = f"商品:{cm[0]}"
-            matched_via = "commodity_keyword"
-            commodity_text = ind.get_generic_commodity_section(industry_name or "")
-            demand_text = ""
-        return {
-            "chain": chain_name,
-            "matched_via": matched_via,
-            "commodity": commodity_text,
-            "demand": demand_text,
-            "macro": ind.format_macro(),
-        }
+                matched_via = "chain_name"
 
-    result = _safe_call("industry_metrics", _pull, timeout=90)
-    return result if isinstance(result, dict) else None
+        import concurrent.futures as cf
+        if chain_name is not None:
+            logger.info(f"industry_metrics 命中 {code}: 链[{chain_name}] via {matched_via}")
+            # 三节并行（禁 with 块——__exit__ 的 join 会让超时失效，显式 shutdown(wait=False)）
+            ex = cf.ThreadPoolExecutor(max_workers=3)
+            try:
+                futs = {
+                    "commodity": ex.submit(_safe_section, "commodity",
+                                           lambda: ind.get_commodity_section(chain_cfg)),
+                    "demand": ex.submit(_safe_section, "demand",
+                                        lambda: ind.get_demand_section(chain_cfg)),
+                    "macro": ex.submit(_safe_section, "macro", ind.format_macro),
+                }
+                commodity_text = futs["commodity"].result(timeout=150)
+                demand_text = futs["demand"].result(timeout=150)
+                macro_text = futs["macro"].result(timeout=150)
+            finally:
+                ex.shutdown(wait=False)
+            return {
+                "chain": chain_name,
+                "matched_via": matched_via,
+                "commodity": commodity_text,
+                "demand": demand_text,
+                "macro": macro_text,
+            }
+
+        # L3：COMMODITY_MAP 商品关键词映射（无需求绑定，双节并行）
+        cm = ind.match_commodity(industry_name or "")
+        if not cm:
+            raise _BridgeMiss()
+        logger.info(f"industry_metrics 命中 {code}: 商品[{cm[0]}] via commodity_keyword")
+        ex = cf.ThreadPoolExecutor(max_workers=2)
+        try:
+            fcom = ex.submit(_safe_section, "commodity",
+                             lambda: ind.get_generic_commodity_section(industry_name or ""))
+            fmac = ex.submit(_safe_section, "macro", ind.format_macro)
+            commodity_text = fcom.result(timeout=150)
+            macro_text = fmac.result(timeout=150)
+        finally:
+            ex.shutdown(wait=False)
+        return {
+            "chain": f"商品:{cm[0]}",
+            "matched_via": "commodity_keyword",
+            "commodity": commodity_text,
+            "demand": "",
+            "macro": macro_text,
+        }
+    ex = ThreadPoolExecutor(max_workers=1)
+    fut = ex.submit(_pull)
+    try:
+        result = fut.result(timeout=150)
+    except _BridgeMiss:
+        return None, "not_matched"
+    except FuturesTimeout:
+        logger.warning(
+            "industry_metrics 超时(>150s)，本次放弃走降级"
+            "（已完成的节已入 industry_data 缓存，下次调用更快）")
+        return None, "failed"
+    except Exception as e:
+        logger.warning(f"industry_metrics 拉取失败: {type(e).__name__}: {str(e)[:80]}")
+        return None, "failed"
+    finally:
+        ex.shutdown(wait=False)
+    return result, "matched"
 
 
 def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict:
@@ -411,9 +473,13 @@ def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict
 
     # ISS-083：客观行业数据摘要（商品锚/需求/宏观），只在手写链/商品映射命中时非 None。
     # 回测路径显式构造 data_summary 不经过本函数——结构性隔离（禁网+防前瞻）。
+    # 三态 fetch_status（监督审查 P2-1）：True=命中 / "not_matched"=设计内未命中
+    # （truthy，不触发「数据源失败」告警）/ False=拉取失败（告警）。
     industry_name = (summary["industry"] or {}).get("industry_name", "")
-    summary["industry_metrics"] = get_industry_metrics(code, industry_name)
-    summary["fetch_status"]["industry_metrics"] = summary["industry_metrics"] is not None
+    summary["industry_metrics"], metrics_status = get_industry_metrics(code, industry_name)
+    summary["fetch_status"]["industry_metrics"] = (
+        True if metrics_status == "matched"
+        else ("not_matched" if metrics_status == "not_matched" else False))
 
     summary["kline"] = get_recent_kline(code)
     summary["fetch_status"]["kline"] = summary["kline"] is not None and not summary["kline"].empty if summary["kline"] is not None else False
