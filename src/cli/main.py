@@ -85,13 +85,6 @@ def load_config(config_path: str = "./configs/settings.yaml") -> dict:
     return config
 
 
-def load_pyramid_config(config: dict, position_tiers_path: str = "./configs/position_tiers.yaml") -> dict | None:
-    """[已废弃] 金字塔仓位管理已移除（审查 chat-M3：从未生效 + 无分仓需求，用户拍板删除）。
-    保留函数签名向后兼容调用方，恒返回 None（StrategyLayer 不再用 pyramid_config）。
-    """
-    return None
-
-
 def apply_ai_overrides(config: dict, ai_overrides: dict) -> dict:
     """应用AI参数覆盖到配置（v0.8.0）
 
@@ -178,10 +171,8 @@ def analyze_interactive():
         console.print("[yellow]⚠[/yellow] 将加载所有可用技能")
 
     entry_exit_config = config.get("entry_exit", None)
-    pyramid_config = load_pyramid_config(config)
-
     # 创建编排器（含AI调节层+事件层）
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, pyramid_config=pyramid_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     console.print(f"[green]✓[/green] 已加载技能: {', '.join(orchestrator.get_available_skills())}")
     if orchestrator.ai_modifier and orchestrator.ai_modifier.is_available():
@@ -221,9 +212,7 @@ def analyze_json(json_path: str):
     ai_config = config.get("ai", None)
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
-    pyramid_config = load_pyramid_config(config)
-
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, pyramid_config=pyramid_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(stock_data, ai_enabled=False)
 
@@ -465,8 +454,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         ai_config["debug"] = True
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
-    pyramid_config = load_pyramid_config(config)
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, pyramid_config=pyramid_config)
+    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -884,9 +872,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             ai_config["debug"] = True
         event_config = config.get("event", None)
         entry_exit_config = config.get("entry_exit", None)
-        pyramid_config = load_pyramid_config(config)
-
-        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, pyramid_config=pyramid_config)
+        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config)
         has_position = pos is not None and pos.current_ratio > 0
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
@@ -961,8 +947,6 @@ def run_backtest(
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
     entry_exit_config = config.get("entry_exit", None)
-    pyramid_config = load_pyramid_config(config)
-
     def build_engine(target_layer_mode: str, target_start_date: str | None = None, target_end_date: str | None = None) -> BacktestEngine:
         return BacktestEngine(
             stock_code=stock_code,
@@ -975,7 +959,6 @@ def run_backtest(
             signal_weights=weights,
             skill_types=skill_types,
             entry_exit_config=entry_exit_config,
-            pyramid_config=pyramid_config,
         )
 
     engine = build_engine(layer_mode)
@@ -1079,7 +1062,6 @@ def run_batch_validation(
     weights = config.get("decision", {}).get("signal_weights", None)
     skill_types = config.get("skills", {}).get("types", None)
     entry_exit_config = config.get("entry_exit", None)
-    pyramid_config = load_pyramid_config(config)
 
     payloads: list[dict] = []
     failures: list[dict[str, str]] = []
@@ -1099,7 +1081,6 @@ def run_batch_validation(
                 signal_weights=weights,
                 skill_types=skill_types,
                 entry_exit_config=entry_exit_config,
-                pyramid_config=pyramid_config,
             )
 
         try:

@@ -65,7 +65,6 @@ class Orchestrator:
         event_config: Optional[dict] = None,
         rag_service=None,  # v0.8.1: RAG服务实例
         entry_exit_config: Optional[dict] = None,  # v0.8.3 Phase C
-        pyramid_config: Optional[dict] = None,     # v0.8.3 Phase D
     ):
         # v0.8.1: RAG服务（可选，用于策略知识增强）
         self.rag_service = rag_service
@@ -104,7 +103,7 @@ class Orchestrator:
                 self.event_layer = None
 
         # 初始化策略层（Strategy Layer）
-        self.strategy_layer = StrategyLayer(pyramid_config=pyramid_config if pyramid_config is not None else None)
+        self.strategy_layer = StrategyLayer()
 
         # 初始化执行层（Execution Layer）
         self.execution_layer = ExecutionLayer(execution_constraint)

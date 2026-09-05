@@ -33,7 +33,7 @@ for k in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY",
     os.environ.pop(k, None)
 os.environ["TQDM_DISABLE"] = "1"
 
-from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+from src.cli.main import load_config, normalize_stock_code
 from src.core.backtest_engine import BacktestEngine
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 
@@ -110,7 +110,6 @@ def run_one(code, year, force_mode=None):
             signal_weights=cfg.get("decision", {}).get("signal_weights", None),
             skill_types=cfg.get("skills", {}).get("types", None),
             entry_exit_config=cfg.get("entry_exit", None),
-            pyramid_config=load_pyramid_config(cfg),
             enable_trade_plan=True,
             qizong_codes=qizong_codes,    # 手动指定气宗股
             jianzong_codes=jianzong_codes,  # 手动指定剑宗股

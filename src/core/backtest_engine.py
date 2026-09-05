@@ -195,7 +195,6 @@ class BacktestEngine:
         skill_types: Optional[dict[str, str]] = None,
         execution_constraint: Optional[ExecutionConstraint] = None,
         entry_exit_config: Optional[dict] = None,
-        pyramid_config: Optional[dict] = None,
         enable_trade_plan: bool = True,  # v0.8.5 阶段 3.1: 回测自动建 TradePlan + PlanGuard 生效
         qizong_codes: Optional[set] = None,  # DEPRECATED(跳法A阶段1.3): 显式气宗股集，建 plan 时强制 mode=qizong
         jianzong_codes: Optional[set] = None,  # 跳法A阶段4: 显式剑宗股集，建 plan 时强制 mode=jianzong(短持30天紧止损)
@@ -240,7 +239,6 @@ class BacktestEngine:
         # 回测固定纯历史模式：禁用AI调节层+事件层
         self.orchestrator = Orchestrator(
             entry_exit_config=entry_exit_config,
-            pyramid_config=pyramid_config,
             skills_dir=skills_dir, enabled_skills=enabled_skills, signal_weights=signal_weights,
             skill_types=skill_types, execution_constraint=execution_constraint
         )

@@ -88,14 +88,12 @@ def init_engines(config: dict):
         except Exception as e:
             logger.warning(f"RAG单例对齐失败（CLI路径可能二次加载）: {e}")
 
-    # 审查修复 H2：补 entry_exit_config + pyramid_config（原漏传 -> chat 买卖点计算器=None，
+    # 审查修复 H2：补 entry_exit_config（原漏传 -> chat 买卖点计算器=None，
     # 突破/Chandelier/止盈全不计算，chat 分析永不产生买卖点，与 CLI 不一致）
-    from src.cli.main import load_pyramid_config
     _orchestrator = Orchestrator(
         skills_dir, enabled_skills, weights, skill_types,
         ai_config=ai_config, event_config=event_config,
         entry_exit_config=config.get("entry_exit"),
-        pyramid_config=load_pyramid_config(config),
         rag_service=_rag_service,  # v0.8.1: 传递RAG服务给子组件
     )
 

@@ -1143,8 +1143,7 @@ def run_benzong_scan(args: dict):
     print("=" * 64)
 
     from src.core.backtest_engine import BacktestEngine
-    from src.cli.main import load_pyramid_config, normalize_stock_code
-    pyramid_config = load_pyramid_config(config)
+    from src.cli.main import normalize_stock_code
 
     bt_rows = []
     for idx, item in enumerate(batch["top_n"], 1):
@@ -1157,7 +1156,6 @@ def run_benzong_scan(args: dict):
                 layer_mode="decision_strategy_execution",
                 skills_dir=skills_dir, signal_weights=signal_weights,
                 skill_types=skill_types, entry_exit_config=entry_exit_config,
-                pyramid_config=pyramid_config,
             )
             res = eng.run()
             bt_rows.append({

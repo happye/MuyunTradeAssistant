@@ -150,10 +150,9 @@ class StrategyLayer:
         "weak_sell",
     }
 
-    def __init__(self, pyramid_config: Optional[dict] = None):
+    def __init__(self):
         """初始化策略层"""
         self._active_mode = None  # 跳法A: 当前持仓笨总 mode（process 透传），气宗走固定长持参数
-        # pyramid_config 保留参数（向后兼容调用方）；金字塔仓位管理已移除（从未生效，审查 chat-M3）
 
 
     def get_params(self) -> dict:

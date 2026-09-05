@@ -117,7 +117,7 @@ def _backtest_work(code, start, end, capital):
     if not _init_engines():
         return {"error": "引擎初始化失败"}
     from src.core.backtest_engine import BacktestEngine
-    from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+    from src.cli.main import load_config, normalize_stock_code
 
     config = load_config()
     eng = BacktestEngine(
@@ -129,7 +129,6 @@ def _backtest_work(code, start, end, capital):
         signal_weights=config.get("decision", {}).get("signal_weights"),
         skill_types=config.get("skills", {}).get("types"),
         entry_exit_config=config.get("entry_exit"),
-        pyramid_config=load_pyramid_config(config),
     )
     res = eng.run()
     return {

@@ -50,7 +50,7 @@ def run_once(code, year, atr_mult, hold_days):
     os.environ["MUYUN_JIANZONG_ATR_MULT"] = str(atr_mult)
     os.environ["MUYUN_JIANZONG_HOLD_DAYS"] = str(hold_days)
     try:
-        from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+        from src.cli.main import load_config, normalize_stock_code
         from src.core.backtest_engine import BacktestEngine
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
         cfg = load_config()
@@ -64,7 +64,6 @@ def run_once(code, year, atr_mult, hold_days):
             signal_weights=cfg.get("decision", {}).get("signal_weights", None),
             skill_types=cfg.get("skills", {}).get("types", None),
             entry_exit_config=cfg.get("entry_exit", None),
-            pyramid_config=load_pyramid_config(cfg),
             enable_trade_plan=True,
             jianzong_codes={code},
             benzong_auto_mode=False,
@@ -89,7 +88,7 @@ def main():
     baselines = {}
     for code, name, year in CASES:
         print(f"▶ baseline {code} {name} {year}")
-        from src.cli.main import load_config, load_pyramid_config, normalize_stock_code
+        from src.cli.main import load_config, normalize_stock_code
         from src.core.backtest_engine import BacktestEngine
         from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
         cfg = load_config()
@@ -103,7 +102,6 @@ def main():
             signal_weights=cfg.get("decision", {}).get("signal_weights", None),
             skill_types=cfg.get("skills", {}).get("types", None),
             entry_exit_config=cfg.get("entry_exit", None),
-            pyramid_config=load_pyramid_config(cfg),
             enable_trade_plan=True,
             benzong_auto_mode=False,
         )
