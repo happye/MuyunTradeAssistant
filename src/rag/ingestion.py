@@ -65,6 +65,78 @@ CHAPTER_LAYERS_MAP = {
     range(51, 66): ["AI_Modifier", "Chat"],             # 心理学
 }
 
+# v0.8.8.8 系列隔离：知识库不再是单一「第N章」序列，而是 4 个并行系列。
+# 若不加系列前缀，「我的金融战争第10章」与「第10章 融资盘」会解析出相同 doc_id
+# → store._id_to_idx 字典覆盖 → 其中一半文档被静默屏蔽（实测 91 个 ID / 182 块冲突）。
+SERIES_ID_PREFIX = {
+    "cognition": "rz",   # 认知革命（第N章）
+    "war": "jrz",        # 我的金融战争（操盘篇第N章，纪实小说）
+    "qianpian": "qp",    # 交易千篇之N
+    "outline": "ol",     # 大纲类（望周知等）
+    "other": "ot",       # 其他（子目录 .md 等）
+}
+
+# 认知革命 66-83 章：51-65 心理篇的延续（热手谬误/情绪记录/认知失调…）
+COGNITION_EXT_CATEGORY_MAP = {range(66, 84): "psychology"}
+COGNITION_EXT_QUANT_MAP = {range(66, 84): "low"}
+COGNITION_EXT_LAYERS_MAP = {range(66, 84): ["AI_Modifier", "Chat"]}
+
+# 交易千篇按主题分段（编号不连续：84-99 / 101-105 / 451-459）
+QIANPIAN_CATEGORY_MAP = {
+    range(84, 100): "psychology",        # 情绪管理与纪律
+    range(101, 106): "risk_management",  # 止损系列
+    range(451, 460): "market_analysis",  # 熊市三段 / 熊市怎么活
+}
+QIANPIAN_QUANT_MAP = {
+    range(84, 100): "low",
+    range(101, 106): "high",             # 止损规则可直接编码
+    range(451, 460): "medium",
+}
+QIANPIAN_LAYERS_MAP = {
+    range(84, 100): ["AI_Modifier", "Chat"],
+    range(101, 106): ["Strategy", "Execution", "Chat"],
+    range(451, 460): ["Decision", "AI_Modifier", "Chat"],
+}
+
+
+def _detect_series(filename: str) -> str:
+    """按文件名判定所属系列
+
+    Args:
+        filename: 文件名（不含路径）
+
+    Returns:
+        cognition / war / qianpian / outline / other
+    """
+    if filename.startswith("我的金融战争"):
+        return "war"
+    if filename.startswith("交易千篇"):
+        return "qianpian"
+    if filename.startswith("望周知"):
+        return "outline"
+    if re.match(r"^第\d+章", filename):
+        return "cognition"
+    return "other"
+
+
+def _get_series_number(filename: str, series: str) -> Optional[int]:
+    """提取系列内编号（章号/篇号）
+
+    Args:
+        filename: 文件名
+        series: _detect_series 的返回值
+
+    Returns:
+        编号；合刊（如451-455）返回起始号；无编号返回 None
+    """
+    if series in ("cognition", "war"):
+        m = re.search(r"第(\d+)章", filename)
+        return int(m.group(1)) if m else None
+    if series == "qianpian":
+        m = re.search(r"交易千篇之?(\d+)", filename)
+        return int(m.group(1)) if m else None
+    return None
+
 
 def _get_chapter_number(filename: str) -> Optional[int]:
     """从文件名提取章节号
@@ -109,6 +181,58 @@ def _get_applicable_layers(chapter: Optional[int]) -> list[str]:
         if chapter in rng:
             return layers
     return ["Chat"]
+
+
+def _lookup_range(mapping: dict, num: Optional[int], default):
+    """在 range 键映射表中查值"""
+    if num is None:
+        return default
+    for rng, val in mapping.items():
+        if num in rng:
+            return val
+    return default
+
+
+def _resolve_metadata(
+    filename: str,
+    series: str,
+    num: Optional[int],
+    fallback_stem: str,
+) -> tuple[str, str, str, list[str]]:
+    """按系列解析 (chapter显示名, category, quantifiability, applicable_layers)
+
+    认知革命沿用历史章节映射；其余系列走各自的主题映射，
+    避免新系列全部落进 market_analysis / Chat 的默认值。
+    """
+    if series == "cognition":
+        chapter_str = f"第{num}章" if num else fallback_stem
+        # 66 章之后是心理篇延伸，历史映射表未覆盖
+        category = _lookup_range(COGNITION_EXT_CATEGORY_MAP, num, None) \
+            or _get_category(num)
+        quant = _lookup_range(COGNITION_EXT_QUANT_MAP, num, None) \
+            or _get_quantifiability(num)
+        layers = _lookup_range(COGNITION_EXT_LAYERS_MAP, num, None) \
+            or _get_applicable_layers(num)
+        return chapter_str, category, quant, layers
+
+    if series == "war":
+        # 纪实小说：内容与真实盘面叙事强相关，但不可驱动决策，
+        # 限定 Chat 层，避免小说情节进入 Decision/Strategy 链路。
+        chapter_str = f"金融战争第{num:02d}章" if num else f"金融战争·{fallback_stem}"
+        return chapter_str, "market_analysis", "low", ["Chat"]
+
+    if series == "qianpian":
+        chapter_str = f"交易千篇之{num}" if num else fallback_stem
+        category = _lookup_range(QIANPIAN_CATEGORY_MAP, num, "market_analysis")
+        quant = _lookup_range(QIANPIAN_QUANT_MAP, num, "medium")
+        layers = _lookup_range(QIANPIAN_LAYERS_MAP, num, ["Chat"])
+        return chapter_str, category, quant, layers
+
+    if series == "outline":
+        return fallback_stem, "market_analysis", "medium", ["Chat"]
+
+    # other：子目录下的 .md（笨总教学等）与未归类文件
+    return fallback_stem, "market_analysis", "medium", ["Chat"]
 
 
 def _is_flow_state_content(text: str) -> bool:
@@ -295,13 +419,13 @@ def _process_single_file(
     if not text:
         return []
 
-    # 提取章节信息
+    # 提取系列与章节信息（v0.8.8.8：系列感知，消除跨系列 doc_id 冲突）
     filename = file_path.name
-    chapter_num = _get_chapter_number(filename)
-    chapter_str = f"第{chapter_num}章" if chapter_num else file_path.stem
-    category = _get_category(chapter_num)
-    quantifiability = _get_quantifiability(chapter_num)
-    applicable_layers = _get_applicable_layers(chapter_num)
+    series = _detect_series(filename)
+    chapter_num = _get_series_number(filename, series)
+    chapter_str, category, quantifiability, applicable_layers = _resolve_metadata(
+        filename, series, chapter_num, file_path.stem
+    )
 
     # 切分为块
     chunks = _split_into_chunks(text, chunk_size, chunk_overlap)
@@ -313,7 +437,13 @@ def _process_single_file(
             logger.info(f"排除心流战法内容: {chapter_str}_p{i+1}")
             continue
 
-        doc_id = f"ch{chapter_num or '00'}_p{i+1}" if chapter_num else f"{file_path.stem}_p{i+1}"
+        # doc_id 必须全局唯一：系列前缀 + 系列内编号
+        prefix = SERIES_ID_PREFIX.get(series, "ot")
+        if chapter_num:
+            doc_id = f"{prefix}{chapter_num:02d}_p{i+1}"
+        else:
+            safe_stem = re.sub(r"[^\w一-鿿-]", "_", file_path.stem)
+            doc_id = f"{prefix}_{safe_stem}_p{i+1}"
 
         doc = RAGDocument(
             id=doc_id,
@@ -322,6 +452,7 @@ def _process_single_file(
             metadata={
                 "chapter": chapter_str,
                 "chapter_num": chapter_num,
+                "series": series,
                 "category": category,
                 "quantifiability": quantifiability,
                 "applicable_layers": applicable_layers,

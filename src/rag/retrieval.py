@@ -177,6 +177,7 @@ class HybridRetriever:
         query: str,
         top_k: int = 5,
         method: str = "hybrid",
+        layer: Optional[str] = None,
     ) -> RetrievalResult:
         """执行检索
 
@@ -184,16 +185,69 @@ class HybridRetriever:
             query: 查询文本
             top_k: 返回数量
             method: 检索方式 "keyword"/"semantic"/"hybrid"
+            layer: 适用系统层过滤（"Chat"/"Decision"/"Strategy"/"AI_Modifier"/"Execution"）。
+                   传入后只保留 metadata.applicable_layers 含该层的文档块。
+                   为 None 时不过滤（兼容旧调用）。
 
         Returns:
             RetrievalResult
         """
+        if not layer:
+            return self._dispatch(query, top_k, method)
+
+        # 先多取候选，过滤后再截断到 top_k（避免过滤后结果不足）。
+        # 稀有层（如 AI_Modifier）在靠前的候选里占比低，窗口需放宽到 8 倍。
+        candidate_k = max(top_k * 8, 40)
+        raw = self._dispatch(query, candidate_k, method)
+        return self._filter_by_layer(raw, layer, top_k, query, method)
+
+    def _dispatch(self, query: str, top_k: int, method: str) -> RetrievalResult:
+        """按 method 分派到具体检索实现"""
         if method == "keyword":
             return self._keyword_retrieve(query, top_k)
         elif method == "semantic":
             return self._semantic_retrieve(query, top_k)
         else:
             return self._hybrid_retrieve(query, top_k)
+
+    def _filter_by_layer(
+        self,
+        result: RetrievalResult,
+        layer: str,
+        top_k: int,
+        query: str,
+        method: str,
+    ) -> RetrievalResult:
+        """按 applicable_layers 过滤检索结果
+
+        用途：把 ingestion 一直在算、但检索层从未使用的 applicable_layers 元数据
+        真正用起来。典型场景——金融战争（纪实小说）的 applicable_layers 只有
+        ["Chat"]，因此不会进入 Decision/Strategy 等决策链路。
+        """
+        kept_docs, kept_scores = [], []
+        for doc, score in zip(result.documents, result.scores):
+            layers = doc.metadata.get("applicable_layers") or []
+            if layer in layers:
+                kept_docs.append(doc)
+                kept_scores.append(score)
+            if len(kept_docs) >= top_k:
+                break
+
+        if not kept_docs:
+            logger.debug(
+                f"层过滤后无结果（layer={layer}, query={query[:20]}），"
+                f"回退为未过滤结果（候选{len(result.documents)}条）"
+            )
+            kept_docs = result.documents[:top_k]
+            kept_scores = result.scores[:top_k]
+
+        return RetrievalResult(
+            query=query,
+            documents=kept_docs,
+            scores=kept_scores,
+            method=method,
+            total_found=result.total_found,
+        )
 
     def _keyword_retrieve(self, query: str, top_k: int) -> RetrievalResult:
         """纯关键词检索"""

@@ -102,6 +102,18 @@ class FAISSVectorStore(VectorStore):
         else:
             assert dim == self._dimension, f"维度不匹配: 期望{self._dimension}，实际{dim}"
 
+        # v0.8.8.8 幂等保护：剔除与本次 ID 冲突的历史文档，防止重复 add 累积。
+        # 历史事故：docs.json 存过 1129 块但唯一内容仅 417 块（306 组各存 3 份），
+        # 语义检索 top_k 被同一段内容占掉 3 个名额，多样性稀释 60%。
+        incoming_ids = {doc.id for doc in docs}
+        if self._docs and (incoming_ids & set(self._id_to_idx)):
+            overlap = incoming_ids & set(self._id_to_idx)
+            logger.warning(
+                f"FAISS: 检测到{len(overlap)}个重复 doc_id，剔除旧记录后重新添加"
+                f"（样例: {sorted(overlap)[:3]}）"
+            )
+            self._drop_docs_by_ids(overlap)
+
         # 添加到FAISS索引
         self._index.add(embeddings)
 
@@ -112,6 +124,34 @@ class FAISSVectorStore(VectorStore):
         self._docs.extend(docs)
 
         logger.info(f"FAISS: 添加{n}个文档，总计{len(self._docs)}个")
+
+    def _drop_docs_by_ids(self, ids: set) -> None:
+        """剔除指定 ID 的文档并重建 FAISS 索引
+
+        IndexFlatIP 不支持原地删除，只能重建。知识库规模（千级块）下开销可忽略。
+
+        Args:
+            ids: 待剔除的 doc_id 集合
+        """
+        import faiss
+
+        keep = [(i, d) for i, d in enumerate(self._docs) if d.id not in ids]
+
+        if not keep:
+            # 保留空索引而非 None：调用方 add() 后续仍会 self._index.add(...)
+            self._docs = []
+            self._id_to_idx = {}
+            self._index = faiss.IndexFlatIP(self._dimension)
+            return
+
+        vectors = np.vstack([self._index.reconstruct(i) for i, _ in keep])
+        self._docs = [d for _, d in keep]
+
+        new_index = faiss.IndexFlatIP(self._dimension)
+        new_index.add(vectors.astype(np.float32))
+        self._index = new_index
+        self._id_to_idx = {d.id: i for i, d in enumerate(self._docs)}
+        logger.info(f"FAISS: 剔除{len(ids)}个文档后重建索引，剩余{len(self._docs)}个")
 
     def query(self, embedding: np.ndarray, top_k: int = 5) -> list[tuple[str, float]]:
         """查询最相似的文档"""

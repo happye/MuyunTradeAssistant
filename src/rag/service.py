@@ -31,6 +31,14 @@ logger = logging.getLogger(__name__)
 
 EMBEDDER_METADATA_FILE = "embedder_metadata.json"
 
+# v0.8.8.8：get_context 的 target → ingestion metadata.applicable_layers 的层名
+# 未在表中的 target 返回 None，表示不过滤（保持旧行为，兼容未来新增调用方）
+TARGET_LAYER_MAP = {
+    "chat": "Chat",
+    "event": "Decision",
+    "modifier": "AI_Modifier",
+}
+
 
 class RAGService:
     """RAG服务 - 统一入口
@@ -241,6 +249,7 @@ class RAGService:
         query: str,
         top_k: Optional[int] = None,
         method: Optional[str] = None,
+        layer: Optional[str] = None,
     ) -> RetrievalResult:
         """执行检索
 
@@ -248,6 +257,8 @@ class RAGService:
             query: 查询文本
             top_k: 返回数量（默认使用配置值）
             method: 检索方式（默认使用配置值）
+            layer: 适用系统层过滤（透传给 HybridRetriever），
+                   如 "Chat"/"Decision"/"AI_Modifier"；None 表示不过滤
 
         Returns:
             RetrievalResult
@@ -258,7 +269,7 @@ class RAGService:
         k = top_k or self.default_top_k
         m = method or self.retrieval_method
 
-        return self._retriever.retrieve(query, k, m)
+        return self._retriever.retrieve(query, k, m, layer=layer)
 
     def get_context(
         self,
@@ -280,7 +291,10 @@ class RAGService:
         Returns:
             格式化的策略知识上下文文本
         """
-        result = self.retrieve(query, top_k)
+        # v0.8.8.8：按调用场景过滤适用层（把 ingestion 一直在算的 applicable_layers 用起来）。
+        # 典型效果：金融战争（纪实小说，仅 Chat 层）不会进入决策/修正链路。
+        target_layer = TARGET_LAYER_MAP.get(target)
+        result = self.retrieve(query, top_k, layer=target_layer)
 
         if not result.documents:
             return ""
