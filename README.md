@@ -412,7 +412,7 @@ volume_ratio:
 - live 验收：6 命中股 sources 全带客观标签、reasoning 引用具体价格分位
   （融捷股份 ip 70→30，客观证据修正纯新闻情绪误判）；未命中股行为不变。
   证据 tests/artifacts/iss083_wiring_round1/；探针命中率 56%（L1 主力）
-- 回归：test_industry_prosperity_wiring 9 项先红 5 后全绿；全量 **484 passed / 2 skipped**
+- 回归：test_industry_prosperity_wiring 15 项（含监督审查强化）；全量 **490 passed / 2 skipped**
 
 ### v0.8.8.6 (第三轮审查小项清扫：PlanGuard 冷却对齐 + ba 未评出显示等) - 2026-09-05
 

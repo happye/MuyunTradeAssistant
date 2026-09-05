@@ -1699,7 +1699,8 @@ P3（已取消）:
 - **第0步前提探针**: 18 股（持仓7+链代表9+对照2）实测命中率 **56%（10/18），全部经 L1 代码直配，6 条手写链全覆盖**；对照组茅台/平安如设计未命中。口径摩擦实锤：baostock 证监会行业名（电气机械/畜牧业）与链别名（锂电/生猪）对不上——L1 代码直配是主力，L2 实测贡献 0。
 - **验收（四项门槛）**: ① 回测对比=结构隔离（源码断言+单测）+ 冒烟 600354/2021 stash 前后逐格一致（ret -1.18/trades 51/mdd 21.97）✓ ② CACHE_VERSION bump ✓ ③ scorer.py 零改动 ✓ ④ 兜底变严（三源全空才 50，单测锁死）✓
 - **live 质量验收**（8 股×2 轮 stash 切换，证据 tests/artifacts/iss083_wiring_round1/）: 6 命中股 sources 全部出现 商品锚/需求端/宏观PMI/PPI，reasoning 以「客观数据主导」开头引用具体数字（碳酸锂 90日分位 6%+仓单累库 22.9%+贴水→融捷股份 ip 70→30，修正纯新闻情绪误判；多晶硅 20% 分位→隆基维持 30）；赣锋 conf 0.6→0.8；未命中股路径不变。
-- **测试**: `tests/benzong/test_industry_prosperity_wiring.py` 9 项（注入/兜底变严/诚实降级/未命中不变/三级桥接含自举链排除/fail-soft/回测源码断言），先红 5 后全绿；全量 **484 passed / 2 skipped**
+- **测试**: `tests/benzong/test_industry_prosperity_wiring.py` 15 项（注入+可用度/兜底变严/诚实降级/未命中不变/L1-L2-L3 桥接含自举链排除与真实 YAML 反 drill/三态 fetch_status/节级存活/回测行为+源码双断言），先红后全绿；全量 **490 passed / 2 skipped**（tests/data_sources 网络测试偶发外部抖动：kimi/cninfo 交替，复跑即过）
+- **监督审查修复（2026-09-05 第二轮，commit `4c7d690`）**: 独立监督代理审查发现并修复——P1-1 超时预算错配（串行内部最坏 200-275s 必穿 90s 聚合上限→回退新闻路径且 conf>0 当天固化；三节并行+150s 上限+节级兜底，聚合最坏降为 max≈150s）；P1-2 桥接 L2/L3 零测试覆盖盲区（L2 误标 bug 正因此漏网，补 4 项含真实 YAML 反 drill）；P2-1 三态 fetch_status（未命中 44% 此前被常态误报「数据源失败」）；P2-2 SYSTEM_PROMPT 分级退路（商品锚/需求均✗时回新闻主导+conf≤0.5，防同小时批次被宏观锚定趋同）+ 缺口节不宣称来源；P2-4 L2 只在手写链子集内匹配（match_chain 加可选 chains 参数，防 auto 链别名遮蔽）；P2-3 回测隔离升级为行为断言（rule_score 回测形态触碰 live 拉数即爆炸）。**已知限制（记录不修）**: 拉取失败当天景气度仍按新闻评分入缓存（bz --refresh/次日可破）；auto_score_batch 批量预取与「6维全命中跳过拉取」留待办；90s→150s 放大孤儿线程退出延迟窗口（低频）。
 - **同类点（铁律1③）**: dimensions 其余 5 维不接 industry_metrics（业务纯度/估值/龙头/辨识度/风险各有自己的数据面，本期不扩）；rule_scorer 源码断言不含 industry_metrics。
 - **待办（后续独立立项）**: 扩 COMMODITY_MAP 外行业；方案B 客观信号夹逼闸门（需笨总拍板）；point-in-time 历史序列落盘后回测规则版接入；akshare news_economic_baidu（被 BAIDUID cookies 挡，见 ISS-080）。
 - **更新记录**:
