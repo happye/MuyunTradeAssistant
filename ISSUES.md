@@ -1691,6 +1691,19 @@ P3（已取消）:
 - **更新记录**:
   - 2026-09-05: 立项待办
 
+### ISS-084: 瘦身重构批——死代码清零+pyramid 链拆除+REPL 猜你想输+根目录归档（v0.8.8.7 内部批）
+- **状态**: ✅ 已解决（2026-09-05，依据 docs/2026-09-05_代码重构交接文档.md 分批执行，全量测试逐 commit 守恒 490 passed / 2 skipped）
+- **方案**: docs/2026-09-05_瘦身重构会话方案.md（含「评估后不做」清单：industry_data.py 归并、main.py 深拆、parse_input 派发表——均因协议区/收益风险比记录在案）
+- **落地（6 commit，版本号未变）**:
+  1. 删 `Orchestrator.analyze_legacy`（零调用，-20 行）commit `6d76cd3`
+  2. 拆 `pyramid_config` 全链 no-op 兼容壳（main.py×6/start.py/chat/tools.py/web/app.py/orchestrator/strategy_layer/backtest_engine + 6 测试脚本机械同步 + AGENTS.md 描述更新）commit `dd3b395`——exit_rules 的 `position_tier: str`（pilot/base/full Chandelier 倍率）活代码未触碰，ISS-081 所述 backtest_engine 硬编码行号由 614 移至 612
+  3. 删 `PositionTier` 枚举 + `StrategyState.position_tier` 字段 + strategy_layer 死 import（旧数据带未知键 pydantic 忽略，portfolio.yaml 实测无该键）commit `e0cc1df`
+  4. `verify_indicator_math.py` tests/core/ -> scripts/（sys.path 层级+docstring 同步，实跑验证）commit `e17c8a5`
+  5. **UX 行为变化**: REPL 未知命令「猜你想输」（difflib 建议+代码格式提示，只提示不代跑，chat 桥断言的「无法识别」文案保留）+ run_cli 未知 mode 兜底告警（help/quit 由 main 先行处理，协议 mode 全覆盖核对无误伤）commit `83accfd`
+  6. 根目录 6 份已完结对抗审查清单 -> docs/archive/audit/ + 老 spec -> docs/archive/，引用同步（ISSUES/审查覆盖台账/LEARNINGS/裁决报告），根目录 md 15->9 commit 见本条末
+- **测试**: 每 commit 全量 `pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval` 守恒；cninfo 单点失败按交接文档纪律复跑单测定性（第三方接口抖动，复跑即过，未改代码）
+- **教训双写**: LRN-20260905-001（git add 多 pathspec 遇无效路径整体静默失败 -> amend 补交；`git add <目录>` 会扫入用户未跟踪文件 -> 逐文件显式 add）
+
 ### ISS-083: bz 景气度接线——客观数据注入 industry_prosperity prompt（v0.8.8.7，方案A）
 - **状态**: ✅ 已解决（2026-09-05，四项验收门槛全过，live 质量验收通过）
 - **优先级**: P1（ISS-055 根因「景气闸门立在最软柱子上」的修复：维度只吃行业名+新闻标题让 AI 猜）

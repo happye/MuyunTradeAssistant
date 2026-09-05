@@ -1068,3 +1068,26 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Related Files: src/scanner/scanner_filter.py, src/scanner/scanner_engine.py, tests/core/test_scan_rules_validation.py
 - Tags: validation-mismatch, false-alarm, yaml-config
 - See Also: ISS-078, LRN-20260903-002
+
+## [LRN-20260905-001] correction
+**Date**: 2026-09-05
+**Priority**: medium
+**Status**: completed
+**Area**: git-workflow
+
+### Summary
+`git add` 的两个静默坑：① 一条命令传多个 pathspec 时，只要有一个路径无效（如已被 git mv 走的旧路径），**整条 add 全部失败**且提交照样进行——结果提交的是「半成品暂存区」（本次 C4 只提交了 rename 没带上 2 行修改）；② `git add <目录>` 会把该目录下**用户未跟踪的本地文件**（教材 html 等「勿动勿提交」项）一并扫进暂存区。
+
+### Details
+重构会话 C4：`git add scripts/verify_indicator_math.py tests/core/verify_indicator_math.py 2>/dev/null`——后者已不存在，整个 add 失败被 stderr 吞掉，`git commit` 随后只提交了此前 `git mv` 暂存的 rename（100% similarity、0 行变更），路径修改滞留工作区。C6：`git add docs/` 误扫入 docs/ 下两份未跟踪文件，靠 commit 前 `git status` 核对才发现。
+
+### Suggested Action
+- 本项目提交纪律：**逐文件显式 add，禁止 `git add .` / `git add <目录>`**；add 后 commit 前必看 `git status --short` 暂存清单
+- add 失败（尤其带 `2>/dev/null` 时）不要继续 commit；先 `git status` 确认暂存区内容
+- 提交后抽查 `git show HEAD --stat` 与预期文件集比对，发现短少立即 `--amend` 补齐（push 前均可）
+
+### Metadata
+- Source: session_mistake
+- Related Files: scripts/verify_indicator_math.py, docs/archive/README.md
+- Tags: git, staging, silent-failure, commit-hygiene
+- See Also: ISS-084
