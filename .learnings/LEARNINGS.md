@@ -806,7 +806,7 @@ rebase 合并“共享缓存”和“全零行情拒绝入缓存”时，聚焦�
 
 ### Metadata
 - Source: self_discovery
-- Related Files: tests/core/verify_indicator_math.py, tests/core/test_indicator_math_regression.py, src/data/data_feeder.py, src/data/akshare_client.py
+- Related Files: scripts/verify_indicator_math.py, tests/core/test_indicator_math_regression.py, src/data/data_feeder.py, src/data/akshare_client.py
 - Tags: formula-verification, known-input-known-output, false-positive, wilder-rma
 - See Also: LRN-20260829-001
 

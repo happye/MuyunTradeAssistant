@@ -175,7 +175,7 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 
 | 事故 | 根因 | 修复 |
 |------|------|------|
-| chat 分析持仓股永不产生买卖点 | Orchestrator 漏传 `entry_exit_config/pyramid_config` → 买卖点计算器为 None | init_engines 补齐 |
+| chat 分析持仓股永不产生买卖点 | Orchestrator 漏传 `entry_exit_config` → 买卖点计算器为 None | init_engines 补齐 |
 | chat 对持仓股的决策与 CLI 不同 | `analyze` 漏传 `has_position/entry_price/high_since_entry/trade_plan` → PlanGuard/止损/高位止盈全失效 | analyze_stock 补齐 7 项 |
 | 持仓策略状态随时间分歧 | chat 只读不写 → inertia/cooldown 冻结 | 分析后回写 `update_from_strategy_decision`（仅持仓股，防创建虚假记录） |
 
