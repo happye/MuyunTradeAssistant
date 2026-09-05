@@ -500,7 +500,42 @@ def parse_input(user_input: str):
         return ("benzong", {"meta": meta, "manual": manual, "refresh": refresh, "check": check})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
+    _suggest_command(cmd, parts)
     return None
+
+
+# ── 未知命令「猜你想输」（2026-09-05 丝滑批：只提示不代跑） ─────
+_COMMAND_HINTS = {
+    "l": "l <6位代码> 深析 | la 一键析全部持仓 | l all 批量析最近扫描",
+    "live": "l <6位代码> 深析（l 即 live）",
+    "la": "la 一键分析全部持仓",
+    "ba": "ba 批量笨总评分最近扫描结果",
+    "bz": "bz <代码|名称|主题> 笨总评分 | bz scan <主题> 主题选股",
+    "b": "b <代码> 回测 | bb 批量回测",
+    "bb": "bb 批量回测",
+    "scan": "scan market [主题] 全市场扫描 | scan <主题>",
+    "s": "scan market [主题] 全市场扫描（s 即 scan）",
+    "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan 交易计划",
+    "expect": "expect 未来事件日历+预期透支度",
+    "events": "events 事后事件复盘",
+    "chat": "chat 进入 AI 对话模式",
+    "help": "h 或 ? 查看全部命令用法",
+    "quit": "q 退出",
+}
+_COMMAND_TOKENS = list(_COMMAND_HINTS.keys())
+
+
+def _suggest_command(cmd: str, parts: list) -> None:
+    """未知命令时按编辑距离给「猜你想输」建议；像代码就顺带提示格式。"""
+    import difflib
+    # 参数像 6 位代码但位数不对（4-5 位数字，如手滑少打一位）才提示代码格式；
+    # 2-3 位数字更可能是一般参数（如 expect 30），不往代码上引导
+    if len(parts) > 1 and parts[1].isdigit() and 4 <= len(parts[1]) <= 5:
+        print(f"  💡 股票代码须为 6 位数字（当前「{parts[1]}」{len(parts[1])} 位），例: l 600519")
+    matches = difflib.get_close_matches(cmd, _COMMAND_TOKENS, n=2, cutoff=0.6)
+    if matches:
+        hints = "；".join(_COMMAND_HINTS[m] for m in matches)
+        print(f"  💡 你是想输入「{matches[0]}」吗？  {hints}")
 
 
 # ── 命令执行 ──────────────────────────────────────────────
@@ -1611,6 +1646,11 @@ def run_cli(mode: str, args: dict):
     elif mode == "benzong_scan":
         # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
         run_benzong_scan(args)
+
+    else:
+        # 防御兜底：mode 名是 chat run_command 桥 + confirm 硬门的协议，
+        # 正常 parse_input 不会产生未知 mode；出现说明桥接层被改坏，宁告警勿静默
+        print(f"  [!] 未知执行模式: {mode}（内部协议名，请检查 parse_input/run_cli 派发）")
 
 
 # ── 主循环 ────────────────────────────────────────────────
