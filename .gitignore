@@ -57,5 +57,3 @@ tests/artifacts/
 # 用户自留备忘（文件名明确标注"无需commit"）
 勿删！自留备忘，无需commit.txt
 
-# git 抢救归档（.git 损坏后的原始备份，永不入库）
-.git.corrupted_20260830/
