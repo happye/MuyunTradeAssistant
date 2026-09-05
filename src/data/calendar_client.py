@@ -172,10 +172,29 @@ class CalendarClient:
 
         def _fetch():
             import akshare as ak
-            return ak.stock_report_disclosure(market=market, period=period)
+            try:
+                return ak.stock_report_disclosure(market=market, period=period)
+            except ValueError as e:
+                # ISS-079：巨潮对"预约披露表尚未发布"的报告期返回空列表，akshare
+                # 对空数据直接 temp_df.columns=[10列] 崩 Length mismatch（实测
+                # 2026-09 的 2026三季；每年预约表未发布的强制披露期同窗口复发）。
+                # "该期间无预约披露表"是合法业务空态而非故障——转空 DataFrame
+                # 走正常解析入缓存，不再每次 expect 重复打接口+刷英文告警。
+                # 仅吞 Length mismatch 签名，其余异常原样上抛给 _safe_call 告警。
+                if "Length mismatch" in str(e):
+                    logger.info(f"财报预约披露表 {period} 尚未发布（巨潮返回空），按无事件处理")
+                    import pandas as pd
+                    return pd.DataFrame()
+                raise
 
         df = _safe_call("calendar.disclosure", _fetch, timeout=30)
-        if df is None or df.empty:
+        if df is None:
+            # 真故障（超时/网络/接口异常）：不缓存，下次 expect 重试
+            return []
+        if df.empty:
+            # ISS-079：业务空态（如预约披露表尚未发布的期间）入缓存——原早退
+            # 绕过缓存写入，每次 expect 都重复打接口
+            cls._disclosure_cache[cache_key] = (now, [])
             return []
         events = []
         for _, row in df.iterrows():
