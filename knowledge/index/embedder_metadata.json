@@ -1,0 +1,4 @@
+{
+  "provider": "sentence",
+  "model": "BAAI/bge-small-zh-v1.5"
+}
