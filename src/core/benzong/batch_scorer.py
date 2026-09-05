@@ -84,6 +84,9 @@ def auto_score_batch(
             )
             bs = result.score
             dim_scores = {k: v["score"] for k, v in result.dimensions_meta.items()}
+            # v0.8.8.6（ISS-082）：带上各维置信度——ba 白话点评据此把 conf=0
+            # （降级未评出）的维度显示为"未评出"，不再拿中性 50 冒充真实打分
+            dim_confidences = {k: v.get("confidence", 0) for k, v in result.dimensions_meta.items()}
             ranked.append({
                 "code": code,
                 "name": bs.stock_name or code,
@@ -93,6 +96,7 @@ def auto_score_batch(
                 "effective_grade": bs.effective_grade(),
                 "confidence": result.overall_confidence,
                 "dim_scores": dim_scores,
+                "dim_confidences": dim_confidences,
                 "warnings": result.warnings,
                 "invalidate": result.invalidate,
             })

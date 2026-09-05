@@ -159,7 +159,6 @@ class PortfolioManager:
         # 转为StrategyState
         state = pm.to_strategy_state("002192")
         # 分析后更新
-        pm.suggest_update("002192", strategy_decision, stock_data)
         # 手动操作
         pm.add_position("002192", stock_name="融捷股份", entry_price=35.20, ratio=0.20)
         pm.list_positions()
@@ -533,7 +532,7 @@ class PortfolioManager:
         else:
             # 持仓期最高价(Chandelier追踪止损用)：取 已存值/本次entry_exit算的/当前价 三者大值
             # 审查修复H1关联：原PositionRecord构造未传high_since_entry -> to_dict覆盖重置None
-            # (CLI main.py:558手动改pos.high_since_entry会被suggest_update->本函数覆盖丢失)
+            # (任何调用方手动改过 pos.high_since_entry 都会被本函数整体覆盖丢失，故取三者大值)
             _ee = getattr(strategy_decision, 'entry_exit', None) or {}
             _ee_highest = _ee.get('highest_since_entry') if isinstance(_ee, dict) else None
             _prev_high = existing.high_since_entry if existing else None
@@ -598,66 +597,3 @@ class PortfolioManager:
 
         self._save()
 
-    def suggest_update(
-        self,
-        stock_code: str,
-        stock_name: str,
-        strategy_decision,
-        stock_data,
-        console=None,
-    ) -> bool:
-        """分析后建议更新持仓，Y/N交互确认
-
-        Args:
-            stock_code: 股票代码
-            stock_name: 股票名称
-            strategy_decision: 策略层决策结果
-            stock_data: 股票数据
-            console: Rich Console实例
-
-        Returns:
-            bool: 是否更新了持仓
-        """
-        from rich.console import Console as RichConsole
-        if console is None:
-            console = RichConsole(legacy_windows=False)
-
-        # 构建建议摘要
-        pos_action_cn = {
-            "OPEN": "试探建仓", "ADD": "加仓", "REDUCE": "减仓",
-            "CLOSE_ALL": "全部清仓", "HOLD_POSITION": "维持仓位", "STAY_OUT": "空仓观望"
-        }
-        action_display = pos_action_cn.get(
-            strategy_decision.position_action.value,
-            strategy_decision.position_action.value
-        )
-        new_state = strategy_decision.new_state
-
-        # 展示建议
-        console.print(f"\n[bold cyan]📋 持仓更新建议[/bold cyan]")
-        console.print(f"  股票: {stock_name} ({stock_code})")
-        console.print(f"  动作: [bold]{action_display}[/bold]")
-        if strategy_decision.action_semantic:
-            console.print(f"  动作语义: {strategy_decision.action_semantic}")
-        if strategy_decision.sell_path:
-            console.print(f"  卖出路径: {strategy_decision.sell_path}")
-        console.print(f"  生命周期: {strategy_decision.lifecycle_before.value} → {strategy_decision.lifecycle_after.value}")
-        if new_state.cooldown_remaining > 0:
-            console.print(f"  冷却期: 剩余{new_state.cooldown_remaining}天")
-
-        # Y/N 确认
-        try:
-            answer = console.input("\n  [bold yellow]是否更新持仓记录？[Y/n][/bold yellow] ").strip().lower()
-        except (EOFError, KeyboardInterrupt):
-            console.print("\n  [dim]跳过更新[/dim]")
-            return False
-
-        if answer in ("", "y", "yes"):
-            self.update_from_strategy_decision(
-                stock_code, stock_name, strategy_decision, stock_data
-            )
-            console.print("  [green]✓ 持仓记录已更新[/green]")
-            return True
-        else:
-            console.print("  [dim]跳过更新，持仓记录不变[/dim]")
-            return False

@@ -57,3 +57,52 @@ def test_rule1_still_suppresses_reduce_weak_sell():
                                _plan(), _data(), today="2024-02-01")
     assert out.decision == SignalType.HOLD, "正常弱卖出压制（核心功能）不得回退"
     assert out.position_action == PositionAction.HOLD_POSITION
+
+
+# ── v0.8.8.6：规则 4.5/P1/3 强制清仓冷却对齐规则4（ISS-066 遗留） ──
+
+def _dec_with(extra: dict) -> StrategyDecision:
+    from src.data.models import MarketState
+    st = StrategyState(current_position_ratio=0.2)
+    st.lifecycle = TradeLifecycle.HOLD
+    base = dict(
+        decision=SignalType.SELL, state=MarketState.TRANSITION, new_state=st,
+        position_action=PositionAction.CLOSE_ALL, position_ratio=0.0,
+        lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.HOLD,
+    )
+    base.update(extra)
+    return StrategyDecision(**base)
+
+
+def _assert_cooldown(out):
+    from src.core.strategy_layer import StrategyLayer
+    ns = out.new_state
+    assert ns.lifecycle == TradeLifecycle.COOLDOWN, "强制清仓必须写冷却（对齐规则4 ISS-068）"
+    assert ns.cooldown_remaining == StrategyLayer.COOLDOWN_AFTER_CLOSE_DAYS
+    assert ns.cooldown_reason == "close_all"
+    assert ns.current_position_ratio == 0.0
+
+
+def test_fundamental_alert_exit_writes_cooldown():
+    out = PlanGuard().evaluate(
+        _dec_with({"fundamental_alert": "被ST"}),
+        _plan(), _data(), today="2024-02-01")
+    assert out.sell_path == "fundamental_alert"
+    _assert_cooldown(out)
+    assert out.new_state.last_close_sell_path == "fundamental_alert"
+
+
+def test_top_signal_exit_writes_cooldown():
+    out = PlanGuard().evaluate(
+        _dec_with({"top_signal": "宏观:成交额破1.5万亿"}),
+        _plan(), _data(), today="2024-02-01")
+    assert out.sell_path == "top_signal"
+    _assert_cooldown(out)
+
+
+def test_time_stop_exit_writes_cooldown():
+    # opened_at 2024-01-01 + max_hold_days 默认 90 → today 2024-06-01 已到期
+    out = PlanGuard().evaluate(
+        _dec_with({}), _plan(), _data(), today="2024-06-01")
+    assert out.sell_path == "time_stop"
+    _assert_cooldown(out)

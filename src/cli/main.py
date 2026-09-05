@@ -150,7 +150,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-078：横幅版本此前停在 v0.8.6.6，与 --version/start.py/AGENTS.md 打架
-        "[bold cyan]暮云思辨投资助手 v0.8.8.5[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.8.6[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -1612,6 +1612,15 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
     console.print(Panel("\n".join(body), title="📖 人话摘要", border_style="cyan"))
 
 
+def _ba_dim_cell(row: dict, key: str) -> str:
+    """v0.8.8.6（ISS-082）：ba 表格单维格子——conf=0（降级未评出）显示"未评出"
+    而非形似真实打分的数字（风险维缺新闻降级为中性50 的教训，ISS-066 遗留）。"""
+    conf = (row.get("dim_confidences") or {}).get(key, 0)
+    if conf == 0:
+        return "未评出"
+    return f"{(row.get('dim_scores') or {}).get(key, 0):.0f}"
+
+
 def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> None:
     """ba 命令：对最近一次扫描找到的股票批量笨总评分（缓存优先，排序输出白话点评）。
 
@@ -1654,10 +1663,16 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> Non
             note = "[red]风险红线触发（造假/违禁类），一票否决，放弃[/red]"
         else:
             ds = row.get("dim_scores", {})
-            if ds:
-                best = max(ds, key=lambda k: ds[k])
-                worst = min(ds, key=lambda k: ds[k])
-                note = f"{_BZ_DIM_CN.get(best, best)}最强({ds[best]:.0f})，{_BZ_DIM_CN.get(worst, worst)}最弱({ds[worst]:.0f})"
+            dc = row.get("dim_confidences") or {}
+            # v0.8.8.6（ISS-082）：conf=0（降级未评出）的维度不参与最强/最弱点评
+            # ——风险维缺新闻降级为中性50，此前在点评里形似真实打分
+            rated = {k: v for k, v in ds.items() if dc.get(k, 1) != 0}
+            if rated:
+                best = max(rated, key=lambda k: rated[k])
+                worst = min(rated, key=lambda k: rated[k])
+                note = f"{_BZ_DIM_CN.get(best, best)}最强({rated[best]:.0f})，{_BZ_DIM_CN.get(worst, worst)}最弱({rated[worst]:.0f})"
+            elif ds:
+                note = "各维未评出（AI 全降级，仅技术面参考）"
             else:
                 note = "-"
             if conf < 0.5:
@@ -1667,7 +1682,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> Non
             str(i), row["code"], row.get("name") or "-",
             f"{row.get('normalized_score', 0):.0f}",
             f"[{gc}]{eff}[/{gc}]",
-            f"{row.get('dim_scores', {}).get('industry_prosperity', 0):.0f}",
+            _ba_dim_cell(row, "industry_prosperity"),
             note,
         )
     console.print(table)
@@ -3226,8 +3241,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.8.5：静态事件表自动化（ISS-080）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.8.5 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
+        # v0.8.8.6：审查小项清扫批（ISS-082）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.8.6 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
     )
     parser.add_argument(
         "--verbose",

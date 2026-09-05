@@ -88,9 +88,12 @@ def test_stop_close_cooldown_ignores_extreme():
 
 
 def test_no_breach_no_cooldown_write():
+    # v0.8.8.6 契约更新：time_stop（规则3）现在也写冷却——原场景 today=2024-06-01
+    # 同时触发时间止损（152天≥90），会误撞新冷却写入。改到 90 天内的日期，
+    # 保证四条强制清仓规则（4/4.5/P1/3）全不触发，才是本测试要锁的"无规则命中"。
     g = PlanGuard()
-    out = g.evaluate(_dec(), _plan(stop=10.0), _sd(price=12.0), today="2024-06-01")
-    assert out.new_state.lifecycle == TradeLifecycle.HOLD, "未穿止损不改生命周期"
+    out = g.evaluate(_dec(), _plan(stop=10.0), _sd(price=12.0), today="2024-03-01")
+    assert out.new_state.lifecycle == TradeLifecycle.HOLD, "四条强制规则均未触发时不改生命周期"
     print("PASS 未穿止损不写冷却")
 
 

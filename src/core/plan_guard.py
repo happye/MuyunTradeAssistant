@@ -89,6 +89,30 @@ def _check_max_hold_expired(plan: TradePlan, today: Optional[str] = None) -> boo
     return days >= plan.max_hold_days
 
 
+def _write_force_exit_cooldown(adjusted, sell_path: str):
+    """强制清仓路径的冷却写入（v0.8.8.6 审查遗留清扫：规则 4.5/P1/3 对齐规则 4）。
+
+    规则4 已有 ISS-068 冷却写入（止损-回头-再接刀病根），但 4.5/P1/3 三条强制
+    清仓路径此前不写 COOLDOWN——次日无冷却可直接买回，口径不一致。
+    与规则4 同款参数（COOLDOWN_AFTER_CLOSE_DAYS=5，reason=close_all）。
+    """
+    try:
+        ns = getattr(adjusted, "new_state", None)
+        if ns is not None:
+            from src.core.strategy_layer import StrategyLayer
+            from src.data.models import TradeLifecycle
+            ns.lifecycle = TradeLifecycle.COOLDOWN
+            ns.cooldown_remaining = StrategyLayer.COOLDOWN_AFTER_CLOSE_DAYS
+            ns.cooldown_reason = "close_all"
+            ns.last_close_sell_path = sell_path
+            ns.current_position_ratio = 0.0
+            ns.min_hold_remaining = 0
+            ns.add_protection_remaining = 0
+            ns.reduce_protection_remaining = 0
+    except Exception as e:
+        logger.debug(f"PlanGuard 强制清仓冷却写入失败(不阻断清仓): {e}")
+
+
 class PlanGuard:
     """计划守卫 — 在 Strategy Layer 之后调用，根据 TradePlan 调整 strategy_decision
 
@@ -171,6 +195,8 @@ class PlanGuard:
             adjusted.position_action = PositionAction.CLOSE_ALL
             adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "fundamental_alert"
+            # v0.8.8.6：冷却对齐规则4（此前不写，强制清仓次日可立即买回被ST股票）
+            _write_force_exit_cooldown(adjusted, "fundamental_alert")
             logger.warning(f"PlanGuard force EXIT by fundamental_alert: {adjusted.fundamental_alert}")
             adjusted.strategy_reasons = reasons
             return adjusted
@@ -183,6 +209,8 @@ class PlanGuard:
             adjusted.position_action = PositionAction.CLOSE_ALL
             adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "top_signal"
+            # v0.8.8.6：冷却对齐规则4
+            _write_force_exit_cooldown(adjusted, "top_signal")
             reasons.insert(0, f"PlanGuard 高位止盈(不可压): {adjusted.top_signal}")
             logger.info(f"PlanGuard force EXIT by top_signal: {adjusted.top_signal}")
             adjusted.strategy_reasons = reasons
@@ -197,6 +225,8 @@ class PlanGuard:
             adjusted.position_action = PositionAction.CLOSE_ALL
             adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "time_stop"
+            # v0.8.8.6：冷却对齐规则4（计划到期清仓后次日不应立即重买）
+            _write_force_exit_cooldown(adjusted, "time_stop")
             logger.info(f"PlanGuard force EXIT(CLOSE_ALL): held {days} days >= max {trade_plan.max_hold_days}")
             adjusted.strategy_reasons = reasons
             return adjusted

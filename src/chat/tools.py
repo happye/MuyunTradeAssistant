@@ -819,6 +819,10 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
     if not code:
         return TOOL_ERROR_MARK + "缺少股票代码（6位数字或 #N 引用）"
 
+    # v0.8.8.6：与 H05 持仓匹配同口径规范化——SH.600519 式带前缀/空格输入此前
+    # 直接按原样进写盘路径（add 会建垃圾键、update/plan 报无持仓）
+    code = _normalize_code(code)
+
     # ISS-078 入参校验：AI 传的数值不能原样进写盘路径——此前 add 走 CLI 的
     # `price if price > 0 else None` 会把负价静默降级成"没给价格"，ratio 负数/NaN
     # 曾直达数据层（数据层校验为本次新增的兜底，这里提前拦给 AI 可读的错误）

@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8.5"  # v0.8.8.5=静态事件表自动化(过期自动归档+周期事件recur滚动,不再逐月手动维护,ISS-080)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8.6"  # v0.8.8.6=审查小项清扫批(PlanGuard冷却对齐/ba未评出显示/代码规范化等,ISS-082)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -480,11 +480,14 @@ def parse_input(user_input: str):
         refresh = False
         check = False
         for p in parts[1:]:
-            if p in ("--manual", "-m", "manual"):
+            # v0.8.8.6：flag 匹配大小写不敏感——此前 `bz <code> -R` 不匹配也无提示，
+            # 静默按缓存跑且不触发 chat confirm 门
+            pl = p.lower()
+            if pl in ("--manual", "-m", "manual"):
                 manual = True
-            elif p in ("--refresh", "-r", "refresh"):
+            elif pl in ("--refresh", "-r", "refresh"):
                 refresh = True
-            elif p in ("--check", "--体检", "check"):
+            elif pl in ("--check", "--体检", "check"):
                 check = True
             elif not meta:
                 meta = p
