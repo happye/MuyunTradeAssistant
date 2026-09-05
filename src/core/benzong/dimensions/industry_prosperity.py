@@ -31,6 +31,12 @@ SYSTEM_PROMPT = """你是笨总「超景气价值投机」体系的行业景气�
 - 规模性：行业体量是否足够大
 - 时效性：是否第一次（重复消息打折）
 
+客观证据优先（v0.8.8.7 景气度接线，ISS-083）：
+- 若用户消息提供【客观行业数据】（商品价格分位/库存方向/需求同比/宏观 PMI），评分必须以其为主要证据，新闻仅作催化剂与情绪修正
+- 价格处历史低位+去库 → 景气底部区域；价格高位+累库 → 景气顶部风险；需求同比加速 → 景气上行
+- 客观数据与新闻矛盾时，以客观数据为准，并在 reasoning 中说明矛盾点
+- 标注[数据缺失]/[数据缺口]的项是数据源不可用，不是利空信号，不得据此扣分或脑补
+
 输出 JSON：{"score": 0-100, "confidence": 0-1, "reasoning": "评分依据..."}
 温度低，不要发挥，只看证据。
 """
@@ -48,10 +54,30 @@ def score(code: str, name: str, *, data_summary: dict,
     industry = data_summary.get("industry") or {}
     industry_name = industry.get("industry_name", "")
     announcements = data_summary.get("announcements") or []
+    # ISS-083：客观行业数据（商品锚/需求/宏观），data_provider 三级桥接命中时非 None
+    metrics = data_summary.get("industry_metrics") or None
 
-    if not industry_name and not announcements:
+    # 客观块组装（[数据缺失]/[数据缺口] 文本原样注入——AI 被明示"缺失=不可用不得脑补"）
+    objective_text = ""
+    objective_sources = []
+    if metrics:
+        sections = []
+        if metrics.get("commodity"):
+            sections.append(f"【商品价格锚/库存（{metrics.get('chain', '')}）】\n{metrics['commodity']}")
+            objective_sources.append(f"商品锚({metrics.get('chain', '')})")
+        if metrics.get("demand"):
+            sections.append(f"【需求端】\n{metrics['demand']}")
+            objective_sources.append("需求端")
+        if metrics.get("macro"):
+            sections.append(f"【宏观底色】\n{metrics['macro']}")
+            objective_sources.append("宏观PMI/PPI")
+        if sections:
+            objective_text = "\n".join(sections)
+
+    # 兜底变严（验收门槛④，v0.8.8.7）：行业名+新闻+客观行业数据三者全空才走 50 兜底
+    if not industry_name and not announcements and not objective_text:
         return _missing_data_result(
-            "无法获取所属行业 + 最近 30 天新闻数据",
+            "无法获取所属行业 + 最近 30 天新闻 + 客观行业数据",
             dim_name="行业景气度",
         )
 
@@ -65,10 +91,17 @@ def score(code: str, name: str, *, data_summary: dict,
     if not news_text:
         news_text = "（最近 30 天无相关新闻）"
 
+    objective_block = ""
+    if objective_text:
+        objective_block = f"""
+【客观行业数据（系统自动采集，可信度高于新闻；标注[数据缺失]的项=数据源不可用，不得脑补）】
+{objective_text}
+"""
+
     user_prompt = f"""请评估 {name}（{code}）的行业景气度。
 
 所属行业：{industry_name or "未知"}
-
+{objective_block}
 最近 30 天相关新闻（{len(announcements)} 条）：
 {news_text}
 
@@ -87,6 +120,7 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "评分依据..
     sources = []
     if industry_name:
         sources.append(f"行业: {industry_name}")
+    sources.extend(objective_sources)
     if announcements:
         sources.append(f"新闻 {len(announcements)} 条")
 

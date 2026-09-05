@@ -323,6 +323,62 @@ def get_market_turnover(date: Optional[str] = None) -> Optional[float]:
         return None
 
 
+def get_industry_metrics(code: str, industry_name: str = "") -> Optional[dict]:
+    """ISS-083 景气度接线（v0.8.8.7）：客观行业数据摘要，供 industry_prosperity 维 prompt。
+
+    三级桥接（**只用手写链**——自举链未经人工复核，不参与评分）：
+      L1 手写链代表公司代码直配（最强信号，第0步探针实测命中主力，56%）
+      L2 链名/别名匹配（baostock 证监会行业名与链别名口径摩擦大，实测贡献 0）
+      L3 COMMODITY_MAP 商品关键词（13 类：生猪/钢铁/有色/化工…）
+    需求段：链 demand_data 绑定（乘联会/用电量）；宏观 PMI/PPI 全行业通用底色。
+    全部复用 industry_data 的缓存（1h）/线程超时/降级文本（数据接口台账已登记坑）。
+
+    未命中（无链且无商品映射）返回 None → 维度走原新闻路径，未命中股行为不变。
+    回测隔离：回测引擎显式构造 data_summary（A03 禁网修复），本函数只在 live
+    get_data_summary 被调——industry_data 接口全是"今天"锚定，进回测即前瞻。
+    """
+    from src.data import industry_data as ind
+
+    def _pull() -> Optional[dict]:
+        ind.load_chains()
+        chain_name, chain_cfg = None, None
+        # L1：手写链代表公司代码直配
+        for n, cfg in ind.load_chains().items():
+            if ind._graph_sources.get(n) != "manual":
+                continue
+            if code in ind._company_codes(cfg):
+                chain_name, chain_cfg = n, cfg
+                break
+        # L2：链名/别名（仅手写链）
+        if chain_name is None:
+            h = ind.match_chain(industry_name or "")
+            if h and ind._graph_sources.get(h[0]) == "manual":
+                chain_name, chain_cfg = h
+        matched_via = "company_code" if chain_cfg is not None else None
+        if chain_name is not None:
+            commodity_text = ind.get_commodity_section(chain_cfg)
+            demand_text = ind.get_demand_section(chain_cfg, cache_key=f"bz:{chain_name}")
+        else:
+            # L3：商品关键词映射（无需求绑定）
+            cm = ind.match_commodity(industry_name or "")
+            if not cm:
+                return None
+            chain_name = f"商品:{cm[0]}"
+            matched_via = "commodity_keyword"
+            commodity_text = ind.get_generic_commodity_section(industry_name or "")
+            demand_text = ""
+        return {
+            "chain": chain_name,
+            "matched_via": matched_via,
+            "commodity": commodity_text,
+            "demand": demand_text,
+            "macro": ind.format_macro(),
+        }
+
+    result = _safe_call("industry_metrics", _pull, timeout=90)
+    return result if isinstance(result, dict) else None
+
+
 def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict:
     """一次性拉所有可用数据，给 6 维评分器使用。
 
@@ -353,6 +409,12 @@ def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict
     summary["industry"] = get_industry_info(code)
     summary["fetch_status"]["industry"] = summary["industry"] is not None
 
+    # ISS-083：客观行业数据摘要（商品锚/需求/宏观），只在手写链/商品映射命中时非 None。
+    # 回测路径显式构造 data_summary 不经过本函数——结构性隔离（禁网+防前瞻）。
+    industry_name = (summary["industry"] or {}).get("industry_name", "")
+    summary["industry_metrics"] = get_industry_metrics(code, industry_name)
+    summary["fetch_status"]["industry_metrics"] = summary["industry_metrics"] is not None
+
     summary["kline"] = get_recent_kline(code)
     summary["fetch_status"]["kline"] = summary["kline"] is not None and not summary["kline"].empty if summary["kline"] is not None else False
 
@@ -364,6 +426,6 @@ def get_data_summary(code: str, market_turnover: Optional[float] = None) -> dict
         summary["fetch_status"]["market_turnover"] = summary["market_turnover"] is not None
 
     success_count = sum(1 for v in summary["fetch_status"].values() if v)
-    logger.info(f"data_provider 数据拉取 {code}: {success_count}/5 成功")
+    logger.info(f"data_provider 数据拉取 {code}: {success_count}/6 成功")
 
     return summary
