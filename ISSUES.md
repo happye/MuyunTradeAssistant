@@ -1671,6 +1671,31 @@ P3（已取消）:
 
 ---
 
+### ISS-080: 静态事件表手动维护负担——过期自动归档+周期事件 recur 滚动（v0.8.8.5）
+- **状态**: ✅ 已解决（2026-09-05）
+- **优先级**: P3（用户体验/维护负担：用户实测 expect 逐条刷「请更新 static_events.yaml」
+  催办，月度 CPI 等周期事件需手动逐月加条目，明确要求简化/自动化）
+- **描述**: `configs/static_events.yaml` 的 landed 标记与逐月加条目是纯手工重复劳动。
+  旧 `check_stale_static_events` 对每个过期未标 landed 条目输出一条催办告警
+  （纯维护催办，不影响面板数据——过期事件本就被 upcoming 过滤器排除）。
+- **选定方案**: ① 过期一次性事件 >7 天宽限自动归档（不删文件、内存跳过+计数，
+  landed=true 语义保留用于主动复盘标记）；② 新增 `recur` 周期事件 schema
+  （monthly/quarter + day + window_days），自动滚动到宽限期内下一个档期；
+  `{m}`/`{q}` 占位符按中国宏观数据命名惯例解析（数据月=公布月-1、数据季=公布季-1，
+  1月/4月公布分别回绕 12月/4季度）；③ 逐条催办改一条汇总（防静默空表）。
+- **实现**: `src/core/expectation/calendar.py`（_next_occurrence/_render_recur_name/
+  load 自动归档分支/check_stale 重写）；`configs/static_events.yaml` 迁移为
+  recur 形态；`tests/core/test_static_events_auto_archive.py` 7 项。
+- **同类点（铁律1③）**: 显示层 display.py 无需改动（check_stale 返回文本列表接口
+  不变）；_STATIC_EVENTS_PATH 其余消费方仅此两函数。
+- **验证**: 红灯 4 项后全绿 7 项；真表终态实测：两条催办消失，自动滚动出
+  「中国8月CPI/PPI(9-10)」「中国3季度GDP(10-17)」；全量 **468 passed / 2 skipped**
+- **待办（治本候选）**: akshare `news_economic_baidu`（百度经济数据日程）已存在，
+  2026-09-05 实测含 fix_curl_ssl_paths 后仍被 "Missing BAIDUID cookies" 挡住
+  不可用；若后续可用可接入动态宏观日历，静态表只留美联储日期。
+- **更新记录**:
+  - 2026-09-05: 修复+验证完成，代码落地于 `626114e`（v0.8.8.5 批）
+
 ### ISS-079: expect 财报披露空态——未发布期间刷英文告警+重复打接口（v0.8.8.4）
 - **状态**: ✅ 已解决（2026-09-05）
 - **优先级**: P3（命令不崩、半年报数据正常，但每次 expect 刷一条吓人的英文告警

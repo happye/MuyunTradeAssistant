@@ -395,6 +395,20 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.5 (静态事件表自动化：过期自动归档 + 周期事件 recur 滚动) - 2026-09-05
+
+- **`expect` 不再逐条刷「静态事件表可能过时…请更新」催办**（ISS-080）：过期
+  一次性事件（>7 天宽限）自动归档，无需手动标 `landed`（landed 仍可用于主动
+  标记复盘）；逐条催办改为至多一条「已自动归档 N 条」汇总（防静默空表）
+- **新增 recur 周期事件**：`recur: monthly|quarter` + `day` + `window_days`，
+  占位符 `{m}`=数据所属月份（公布月-1）、`{q}`=数据所属季度——CPI/PPI、季度
+  GDP 自动滚动到下一档期，不再每月手动加条目；static_events.yaml 已迁移，
+  年维护量从 ~20 次手动编辑降为每年初更新一次美联储 8 次议息日期
+- 实测 `akshare news_economic_baidu`（百度经济日历）存在但本环境被
+  BAIDUID cookies 挡住，接入留待办（ISS-080）
+- 回归测试 7 项（自动归档/汇总可见/宽限期/月季滚动/{m}{q}解析/旧 schema 兼容
+  +landed/周期永不过时）；全量测试 **468 passed / 2 skipped**
+
 ### v0.8.8.4 (expect 财报披露空态修复：未发布期间不再刷告警+空态入缓存) - 2026-09-05
 
 - **`expect` 命令的 `Length mismatch: Expected axis has 0 elements, new values

@@ -31,7 +31,9 @@ Corrections, insights, and knowledge gaps captured during development.
 
 **Logged**: 2026-08-29T00:00:00+08:00
 **Priority**: critical
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：AGENTS §五·五 skill 五目录部署纪律 + scripts/sync-agent-skills.sh；本批已补 tutor skill 缺失的 .claude 副本
 **Area**: workflow
 
 ### Summary
@@ -69,7 +71,9 @@ Corrections, insights, and knowledge gaps captured during development.
 
 **Logged**: 2026-08-29T00:00:00+08:00
 **Priority**: critical
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：AGENTS 铁律1（修bug四步法+同类点清单），v0.8.8.2/0.8.8.4/0.8.8.5 各批均按此执行
 **Area**: workflow
 
 ### Summary
@@ -112,7 +116,9 @@ Corrections, insights, and knowledge gaps captured during development.
 
 **Logged**: 2026-08-25T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 知识型条目，无未竟动作（处理方式已并入工作习惯）
 **Area**: tooling
 
 ### Summary
@@ -137,7 +143,9 @@ Corrections, insights, and knowledge gaps captured during development.
 
 **Logged**: 2026-05-11T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 流程纪律，已并入 dev-flow 收口步骤
 **Area**: backend
 
 ### Summary
@@ -160,7 +168,9 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 
 **Logged**: 2026-05-11T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：self-improvement skill + 本文件持续执行（后续 LRN/ERR 均即时落库为证）
 **Area**: backend
 
 ### Summary
@@ -183,7 +193,9 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 
 **Logged**: 2026-05-15T15:40:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已实现：market_cache._snapshot_quality_ok 快照质量门 + E轮超时丢弃特性锁死
 **Area**: backend
 
 ### Summary
@@ -207,7 +219,9 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 
 **Logged**: 2026-05-19T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已并入 AGENTS §二·五「用户可感知」五条硬条件
 **Area**: backend
 
 ### Summary
@@ -234,7 +248,9 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 
 **Logged**: 2026-06-18T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已并入各工具入口文件的开局读 AGENTS 纪律（AGENTS/CLAUDE.md/copilot-instructions 等）
 **Area**: workflow
 
 ### Summary
@@ -261,7 +277,9 @@ Phase 迭代中不能边收主线边持续扩外围，一旦核心闭环跑通�
 
 **Logged**: 2026-06-18T00:00:00+08:00
 **Priority**: medium
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：AGENTS 铁律5（ISS 状态带 file:line+日期+commit 短哈希）
 **Area**: docs
 
 ### Summary
@@ -293,7 +311,9 @@ ISSUES.md 状态变更必须满足：
 
 **Logged**: 2026-06-18T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已并入 AGENTS §五关键约束（调卖出参数前先打 trade['sell_path']）
 **Area**: backend
 
 ### Summary
@@ -328,7 +348,9 @@ ISS-033 原方案基于"Chandelier Exit 过早离场"假设展开了 4 个调参
 
 **Logged**: 2026-06-18T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：AGENTS §二·五（本条即其源头）
 **Area**: workflow
 
 ### Summary
@@ -363,7 +385,9 @@ ISS-033 原方案基于"Chandelier Exit 过早离场"假设展开了 4 个调参
 
 **Logged**: 2026-06-19T00:00:00+08:00
 **Priority**: critical
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已升格 AGENTS 铁律4（执行属持续纪律，非本条未竟动作）
 **Area**: workflow
 
 ### Summary
@@ -403,7 +427,9 @@ v0.8.5 ISS-033 + 阶段 3 累计跑了 5 轮调参（一阶段 +0.22pp / 二阶�
 
 **Logged**: 2026-06-19T00:00:00+08:00
 **Priority**: critical
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 流程纪律，触发条件与出路已写明
 **Area**: workflow
 
 ### Summary
@@ -441,7 +467,9 @@ v0.8.5 ISS-033 + 阶段 3 累计跑了 5 轮调参（一阶段 +0.22pp / 二阶�
 
 **Logged**: 2026-06-19T00:00:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 五年回测已落地（ISS-069 ✅ 2026-08-29 三批基线重跑）
 **Area**: backend
 
 ### Summary
@@ -532,7 +560,9 @@ AI 输出"没专业度"类问题，先查数据供给缺口，再动 prompt--gar
 
 **Logged**: 2026-08-16
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 已制度化：docs/数据接口台账.md 登记 + live-probe 先行纪律，后续接口接入均执行
 **Area**: backend
 
 ### Summary
@@ -808,7 +838,9 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 
 **Logged**: 2026-08-29T23:50:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 动作项已完成：tests/core/test_plan_guard_cooldown.py 已存在并全绿
 **Area**: backend
 
 ### Summary
@@ -840,7 +872,9 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 
 **Logged**: 2026-08-29T23:50:00+08:00
 **Priority**: medium
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 本条本身即沉淀动作的完成态
 **Area**: backend
 
 ### Summary
@@ -866,7 +900,9 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 
 **Logged**: 2026-08-30T17:05:00+08:00
 **Priority**: high
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 判据已并入对抗审查纪律；残留复跑在 v0.8.8.2/0.8.8.4/0.8.8.5 各批验收中均执行
 **Area**: backend
 
 ### Summary
@@ -900,7 +936,9 @@ C03/C04/C07 三个问题的共同根因：`akshare_client.calculate_indicators`�
 
 **Logged**: 2026-08-30T18:30:00+08:00
 **Priority**: medium
-**Status**: pending
+**Status**: completed
+
+**销账批注**（2026-09-05 集中销账）: 流程纪律，v0.8.8.2 批（先 grep 消费者再定修复面）已实践
 **Area**: backend
 
 ### Summary
