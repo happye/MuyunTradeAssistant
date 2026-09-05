@@ -5,7 +5,7 @@
 不是"读代码看像不像对"，而是用已知输入算已知输出，跟权威参考实现逐项比对。
 
 跑法：
-    .\\.venv\\Scripts\\python.exe tests\\core\\verify_indicator_math.py
+    .\\.venv\\Scripts\\python.exe scripts\\verify_indicator_math.py
 
 判定口径：
     - 与通达信/同花顺（A股主流口径）不一致  -> FAIL
@@ -17,7 +17,7 @@ import os
 import numpy as np
 import pandas as pd
 
-sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
 from src.data.data_feeder import DataFeeder  # noqa: E402
 
