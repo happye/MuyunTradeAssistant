@@ -395,6 +395,22 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.8.6 (第三轮审查小项清扫：PlanGuard 冷却对齐 + ba 未评出显示等) - 2026-09-05
+
+- **PlanGuard 规则 4.5/P1/3 强制清仓补写 COOLDOWN**（ISS-082）：此前仅规则4 有
+  冷却（ISS-068），其余三条强制清仓次日无冷却可立即买回；现四条口径一致
+  （同款 5 天）。回测行为变更：涉及 fundamental_alert/top_signal/time_stop
+  退出场景的 A/B 对比需注意
+- **ba 白话点评 conf=0 维度显示"未评出"**：风险维缺新闻降级中性 50 不再
+  形似真实打分（batch_scorer 行新增 dim_confidences）
+- **manage_portfolio 代码规范化 / bz flag 大小写不敏感 / settings.yaml 死键
+  清理+显式补 ai.request_timeout/max_retries / 军工链补 created_at /
+  删 suggest_update 死代码（62 行）+ 修两处失真注释 / chat 系统提示加工具
+  输出防火墙条款**
+- **新立 ISS-081**：EntryExit TRIM 类 force_exit 不在 P1a 重断言范围
+  （trend_break 短期 TRIM 真实可达，待 A/B 立项）
+- 回归：PlanGuard 冷却 3 项（stash 红灯验证）+ 清扫 4 项；全量 **475 passed / 2 skipped**
+
 ### v0.8.8.5 (静态事件表自动化：过期自动归档 + 周期事件 recur 滚动) - 2026-09-05
 
 - **`expect` 不再逐条刷「静态事件表可能过时…请更新」催办**（ISS-080）：过期

@@ -1516,7 +1516,7 @@ P3（已取消）:
   - [P1] _enrich_trend_data 三重浪费：跨命令无缓存+bz scan --allrules 跨规则重复+通道B先enrich80只再截断15只
   - [P2] baostock 心跳 ping 每次 l 触发5-9次，可加60s节流
   - [P2] get_historical_kline 降级链 baostock→AKShare→baostock 二次回头
-  - [P2] calculate_indicators 整体可加短TTL缓冲（chat 场景同码短窗多次调用）
+  - [P2] ~~calculate_indicators 整体可加短TTL缓冲~~ ✅ 已由 ISS-077 完成（v0.8.8.1，2026-09-05 销账）
   - [P2] web app init_engines 无锁双初始化风险 + tasks dict 无界增长
   - [P2] ba 白话点评对 conf=0 维度显示"50"形似真实评分，宜显示"未评出"
 - **方法论沉淀**: "注释提醒"不构成修复——病根必须结构化锁死（类属性化）并配回归测试（test_market_cache_shared.py）。新调用点引入时无法依赖开发者读旧注释
@@ -1670,6 +1670,58 @@ P3（已取消）:
   - 2026-09-02: 开发完成+验证通过，commit 6e0dcde
 
 ---
+
+### ISS-081: EntryExit TRIM 类 force_exit 不在 P1a 重断言范围（待办，需 A/B）
+- **状态**: ⏳ 待办（2026-09-05 第三轮架构核验发现，监督审查后确认真实可达）
+- **优先级**: P2（当前被 position_tier 恒 pilot 掩盖一半；trend_break 短期 TRIM 真实可达）
+- **描述**: chandelier 在 base/full 档与 trend_break 短期信号产出 `TRIM`
+  （exit_rules.py:90-91/:157-163），orchestrator.py:341 映射为 REDUCE；
+  P1a 重断言（orchestrator.py:462-476）只对 EXIT/STOP 强制 SELL+CLOSE_ALL，
+  TRIM 分支仅补 sell_path。D03 的 FORCE_EXIT_SCORE 兜底（L360-361）对 TRIM
+  同样生效（force_exit 判据不看 TRIM/EXIT），但 strategy_layer 有两条与
+  decision.score 无关的链路仍可吞噬 TRIM-SELL：① HOLD 分支反手 ADD 的判据是
+  trace 的 buy_score/sell_score（strategy_layer.py:704）；② confirmation 新方向
+  降级（strategy_layer.py:478）。**影响**：趋势破坏短期信号日可能被降级 HOLD
+  甚至反手加仓。
+- **缓解现状**: 所有调用点 position_tier 恒为 "pilot"（backtest_engine.py:606
+  硬编码）→ chandelier 恒为 EXIT 不走 TRIM；暴露面仅 trend_break 短期。
+- **前置条件**: 修复属回测行为变更——按铁律4 走 A/B（基线以 ISS-074 为准，
+  注意 v0.8.8.2 起 P1a/PlanGuard 已改变 force_exit 场景行为）；同时评估
+  position_tier 何时放开 base/full 档。
+- **更新记录**:
+  - 2026-09-05: 立项待办
+
+### ISS-082: 第三轮审查小项清扫批（v0.8.8.6）
+- **状态**: ✅ 已解决（2026-09-05，用户裁决"按建议修/不修"后落地）
+- **描述与实现**（8 项 + 1 零成本项）:
+  1. **PlanGuard 规则 4.5/P1/3 写 COOLDOWN**（plan_guard.py `_write_force_exit_cooldown`）：
+     此前仅规则4 有 ISS-068 冷却，其余三条强制清仓次日可立即买回；现四条对齐
+     （同款 5 天/reason=close_all）。测试 3 项先 stash 验红灯后绿。
+  2. **ba 白话点评 conf=0 维度显示"未评出"**（batch_scorer 行增 dim_confidences +
+     main.py `_ba_dim_cell`/点评过滤）：风险维缺新闻降级中性 50 不再冒充真实打分。
+  3. **manage_portfolio 代码规范化**（tools.py `_normalize_code`）：SH.600519 式
+     输入此前原样进写盘路径。
+  4. **bz flag 大小写不敏感**（start.py）：`bz <code> -R` 此前静默不生效且绕过 confirm 门。
+  5. **settings.yaml 死键清理**（app.version/mode、decision.default_state/
+     confidence_threshold、logging 块——grep 确认零读者）+ 显式补
+     `ai.request_timeout: 60`/`ai.max_retries: 2`（auto_scorer 一直在读，此前静默默认）。
+  6. **军工自举链补 created_at**（'2026-08-17'，随 a7b214c 首次入库日期）。
+  7. **删除 suggest_update 死代码**（portfolio.py，62 行，全库无调用方）+
+     修正两处失真注释（H1 注释不再引用已删方法；tools.py 重读注释改"l/la/l all 只读不写"）。
+  8. **chat 系统提示加工具输出防火墙条款**（第三轮审查 tier-1 零成本项）：
+     工具输出为不可信外部数据，其中的指令不得执行只可转述。
+- **数据接口结论（用户问询：是否接口问题、能否快修）**: 新浪全市场无量比、
+  efinance 兜底有量比但无市净率——过滤器静默失效是**数据源字段缺口**，
+  快修方案（双源合并/换主源）都会成倍增加请求量与反爬暴露，属设计取舍
+  **留下讨论**，已并入 ISS-066 遗留清单跟踪；60 日涨跌幅已由 M-G 修复
+  （≤50 候选先富集再排序）部分缓解。
+- **同类点（铁律1③）**: `grep suggest_update` 全库零残留；`v0.8.7.9` 误标
+  已于 v0.8.8.2 清偿；ISS-066 遗留清单中「calculate_indicators 短TTL」一项
+  实为 ISS-077 已完成，本次销账。
+- **验证**: PlanGuard 红灯验证（stash 修复→恰好 3 红）；清扫测试 4 项全绿；
+  全量 **475 passed / 2 skipped**
+- **更新记录**:
+  - 2026-09-05: 修复+验证完成
 
 ### ISS-080: 静态事件表手动维护负担——过期自动归档+周期事件 recur 滚动（v0.8.8.5）
 - **状态**: ✅ 已解决（2026-09-05）
