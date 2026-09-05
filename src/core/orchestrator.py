@@ -536,26 +536,6 @@ class Orchestrator:
 
         return decision_result, strategy_decision, execution_eval, ai_result
 
-    def analyze_legacy(
-        self,
-        data: StockData,
-        force_state: Optional[str] = None,
-        current_position_ratio: float = 0.0,
-        ai_enabled: bool = False,
-    ) -> DecisionResult:
-        """旧版分析接口（兼容回测引擎过渡期）
-
-        与旧版Orchestrator.analyze()签名一致，返回DecisionResult。
-        v0.8.0 新代码应使用 analyze() 方法。
-        回测默认 ai_enabled=False（回测不应使用实时新闻）。
-        """
-        decision_result, _, _, _ = self.analyze(
-            data, force_state, current_position_ratio,
-            ai_enabled=ai_enabled,
-            is_backtest=True,  # 报告②审查修复：legacy 接口供回测用，传 is_backtest=True 避免 live 信号(股东户数/融资余额)误触 akshare
-        )
-        return decision_result
-
     def get_available_skills(self) -> list[str]:
         """获取已加载的技能列表"""
         return list(self.skill_engine.skills.keys())
