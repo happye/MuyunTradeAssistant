@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8.4"  # v0.8.8.4=expect财报披露空态修复(未发布期间不再刷英文告警+空态入缓存,ISS-079)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.8.5"  # v0.8.8.5=静态事件表自动化(过期自动归档+周期事件recur滚动,不再逐月手动维护,ISS-080)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

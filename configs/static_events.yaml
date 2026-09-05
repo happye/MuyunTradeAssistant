@@ -1,59 +1,49 @@
-# 预期事件日历-手动维护的宏观事件表（v0.8.7 预期管理 Phase 1）
+# 预期事件日历-宏观事件表（v0.8.7 预期管理 Phase 1；v0.8.8.5 ISS-080 自动化改造）
 #
-# akshare 无"经济事件日历"接口（含预期值/公布时间），故宏观事件用手动维护静态表。
+# 为什么还需要本表：akshare 已有 news_economic_baidu（百度经济数据日程），
+# 但实测在本环境被 "Missing BAIDUID cookies" 挡住不可用（2026-09-05 探针，
+# 含 fix_curl_ssl_paths 后），后续若可接入再做（ISSUES ISS-080 待办）。
 # 财报披露日历走 akshare stock_report_disclosure（动态源），不在此表。
 #
-# 维护规则：
-# - 每年初更新当年美联储议息日期（8次）、重要经济数据公布规律
-# - 事件落地后由 calendar.py 检测过期，输出黄色提示（不自动改本文件）
-# - date_window_days: 公布日不固定时±N天都算
-# - landed: 事件落地后手动改 true（或由 calendar.py 提示后改）
+# 维护规则（v0.8.8.5 起大幅简化，无需逐月/逐事件手动维护）：
+# - 过期一次性事件自动归档（7 天宽限），无需手动标 landed
+#   （landed=true 仍可用：主动标记"已兑现"供复盘）
+# - 月度/季度周期事件用 recur 自动滚动，无需每月手动加条目
+# - 唯一保留的手动事项：每年初更新当年美联储 8 次议息日期（以官网为准）
 #
-# 更新日期：2026-07-25
+# recur 周期事件用法：
+#   - name: "中国{m}月CPI/PPI"   # {m}=数据所属月份（公布月-1，1月回绕12月）
+#     recur: monthly             # monthly=每月 day 日 / quarter=每季(1/4/7/10月) day 日
+#     day: 10                    # 档期日（公布日；超出当月天数取月末兜底）
+#     window_days: 2             # 公布日不固定时 ±N 天窗口
+#   常用占位符：{m}=数据月（8月CPI 于 9月公布 → 显示"中国8月CPI/PPI"）
+#              {q}=数据季度（10月公布的 → "中国3季度GDP"）
 
 events:
-  - name: "美联储议息-7月"
-    date: "2026-07-29"
-    type: policy
-    impact: high
-    note: "每年8次，北京时间次日凌晨公布，日期见美联储官网"
-    source: static
-    landed: false
-
   - name: "美联储议息-9月"
     date: "2026-09-17"
     type: policy
     impact: high
-    note: "每年8次，日期见美联储官网"
+    note: "每年8次，北京时间次日凌晨公布，日期见美联储官网"
     source: static
-    landed: false
 
-  - name: "中国二季度GDP"
-    date: "2026-07-15"
-    date_window_days: 3
-    type: macro
-    impact: high
-    note: "季度数据，7月中旬公布，国家统计局月初公告具体日期"
-    source: static
-    landed: true
-
-  - name: "中国7月CPI/PPI"
-    date: "2026-08-09"
-    date_window_days: 2
+  - name: "中国{m}月CPI/PPI"
+    recur: monthly
+    day: 10
+    window_days: 2
     type: macro
     impact: medium
     note: "每月9-11日左右公布，国家统计局月初公告具体日期"
     source: static
-    landed: false
 
-  - name: "中国8月CPI/PPI"
-    date: "2026-09-09"
-    date_window_days: 2
+  - name: "中国{q}季度GDP"
+    recur: quarter
+    day: 17
+    window_days: 5
     type: macro
-    impact: medium
-    note: "每月9-11日左右公布"
+    impact: high
+    note: "季末后月中旬公布，国家统计局月初公告具体日期"
     source: static
-    landed: false
 
   - name: "A股三季报披露窗口"
     date: "2026-10-15"
@@ -61,7 +51,6 @@ events:
     impact: medium
     note: "10月15日-31日强制披露，具体见 akshare stock_report_disclosure"
     source: static
-    landed: false
 
   - name: "A股年报披露窗口"
     date: "2027-01-15"
@@ -69,4 +58,3 @@ events:
     impact: medium
     note: "1月-4月披露，具体见 akshare stock_report_disclosure"
     source: static
-    landed: false
