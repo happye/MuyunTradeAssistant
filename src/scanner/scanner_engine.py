@@ -88,7 +88,15 @@ class ScannerEngine:
     def _get_orchestrator(self) -> Orchestrator:
         """延迟初始化Orchestrator（避免不必要的import开销）"""
         if self._orchestrator is None:
-            self._orchestrator = Orchestrator(**self._orchestrator_args)
+            # ISS-090：scan 深析接入 RAG 门控——懒加载（深析真正发生时才
+            # 触发模型加载），scan 启动阶段不吃 18s；MUYUN_CLI_RAG=0 关闭
+            args = dict(self._orchestrator_args)
+            try:
+                from src.rag.service import get_cli_rag_service
+                args["rag_service"] = get_cli_rag_service()
+            except Exception:
+                pass
+            self._orchestrator = Orchestrator(**args)
         return self._orchestrator
 
     def _init_match_client(self):

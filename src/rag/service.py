@@ -462,6 +462,7 @@ class RAGService:
 
 # v0.8.6.2: 模块级 singleton 工厂（懒加载，失败返回 None 不抛）
 _rag_service_singleton = None
+_rag_service_failed = False   # ISS-090：本进程初始化失败记忆——避免每次分析重复 18s 模型加载
 
 
 def get_rag_service(config: dict = None, auto_initialize: bool = True):
@@ -474,9 +475,13 @@ def get_rag_service(config: dict = None, auto_initialize: bool = True):
     Returns:
         RAGService 实例，或 None（初始化失败时）
     """
-    global _rag_service_singleton
+    global _rag_service_singleton, _rag_service_failed
     if _rag_service_singleton is not None:
         return _rag_service_singleton
+    if _rag_service_failed:
+        # ISS-090：本进程已确认初始化失败（模型加载失败/配置缺失），直接返回。
+        # 否则 CLI 每次分析都重试 18s 模型加载——一次失败拖慢整个会话。
+        return None
     try:
         if config is None:
             from src.cli.main import load_config
@@ -490,7 +495,33 @@ def get_rag_service(config: dict = None, auto_initialize: bool = True):
             _rag_service_singleton = svc
             return svc
         logger.warning("RAG service 初始化后不可用（可能配置未启用或嵌入模型加载失败）")
+        _rag_service_failed = True
         return None
     except Exception as e:
         logger.warning(f"RAG service 初始化失败: {type(e).__name__}: {e}")
+        _rag_service_failed = True
         return None
+
+
+# ISS-090：CLI/REPL/scan 分析路径的 RAG 门控（单次启用提示 + env 开关）
+_cli_rag_announced = False
+
+
+def get_cli_rag_service():
+    """CLI/REPL 分析路径的 RAG 门控（ISS-085 拍板接线，v0.8.9.2）。
+
+    - 默认启用：首次成功加载后向终端打印一次启用提示（用户可感知，§二·五）
+    - MUYUN_CLI_RAG=0 关闭（A/B 对照用）
+    - 失败记忆复用 get_rag_service（一次失败整个会话不再重试加载）
+
+    Returns:
+        RAGService 或 None（关闭/失败）
+    """
+    global _cli_rag_announced
+    if os.environ.get("MUYUN_CLI_RAG", "").strip().lower() in ("0", "false", "off"):
+        return None
+    svc = get_rag_service()
+    if svc is not None and not _cli_rag_announced:
+        _cli_rag_announced = True
+        print(f"  📚 RAG知识增强：已启用（{svc.doc_count} 个知识块，增强 AI 情绪判断的策略引用；MUYUN_CLI_RAG=0 可关闭）")
+    return svc
