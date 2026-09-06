@@ -433,8 +433,16 @@ class Orchestrator:
 
         # 跳法A（MarketState 降级）：把笨总 mode 透传给策略层，气宗走固定长持参数
         self.strategy_layer._active_mode = trade_plan.mode if trade_plan is not None else None
+        # ISS-086：live 路径 analyze 未传 today → 注入真实今天，策略层按日期去重
+        # 日频推进（同日重复分析不再烧冷却/保护期）；回测每 bar 显式传 today=bar
+        # 日期 → 每 bar 恰好推进一次，行为零变化；不传日期的调用方（tests 等）
+        # 在 strategy_layer 内保持旧语义（无条件推进）。
+        effective_tick_date = today
+        if today is None and not is_backtest:
+            from datetime import datetime as _dt
+            effective_tick_date = _dt.now().strftime("%Y-%m-%d")
         strategy_decision = self.strategy_layer.process(
-            decision_result, strategy_state, data, current_date=today
+            decision_result, strategy_state, data, current_date=effective_tick_date
         )
 
         # v0.8.3 Phase C: 将买卖点结果附加到策略决策

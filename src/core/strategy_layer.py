@@ -226,11 +226,25 @@ class StrategyLayer:
         # 深拷贝状态，避免修改原始数据
         new_state = deepcopy(strategy_state)
 
-        # 冷却期递减
-        new_state.tick_cooldown()
-        new_state.tick_reduce_protection()
-        new_state.tick_min_hold()
-        new_state.tick_add_protection()
+        # ISS-086 日频语义防护：tick 四计数器与信号入史都按"每个交易日一次"设计——
+        # 回测每 bar 调一次 process 恰好正确；live 同一天重复分析（REPL 连跑 l /
+        # chat 多问 / la 批量）此前会每次递减一天冷却/保护期并重复推信号，把
+        # 5 天禁买烧穿成 N 次分析（2026-09-06 探针实证）。现按日期去重：
+        # - current_date 与上次推进日期相同 → 跳过（本日已推进过）
+        # - current_date 为 None → 保持旧语义无条件推进（兼容 tests 等不传日期的调用方）
+        # - 日期变化 → 推进一次并记录
+        is_new_trading_day = (
+            current_date is None or current_date != strategy_state.last_tick_date
+        )
+        if current_date is not None:
+            new_state.last_tick_date = current_date
+
+        if is_new_trading_day:
+            # 冷却期递减
+            new_state.tick_cooldown()
+            new_state.tick_reduce_protection()
+            new_state.tick_min_hold()
+            new_state.tick_add_protection()
 
         # 当前决策（Decision Layer输出）
         raw_decision = decision_result.decision
@@ -240,9 +254,11 @@ class StrategyLayer:
         # ===== 极端情况自动感知（v0.7.2） =====
         is_extreme = self._detect_extreme_condition(data, market_state, decision_result)
 
-        # Step 1: 更新信号历史和稳定性
-        new_state.push_signal(raw_decision)
-        new_state.update_stability()
+        # Step 1: 更新信号历史和稳定性（与 tick 同门：同日重入不重复入史，
+        # 否则同一天的多次分析会被当成多日信号污染稳定性评分）
+        if is_new_trading_day:
+            new_state.push_signal(raw_decision)
+            new_state.update_stability()
 
         # Step 2: 应用信号稳定性调整
         stability_adjusted = False

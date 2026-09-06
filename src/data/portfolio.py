@@ -376,6 +376,7 @@ class PortfolioManager:
             reduce_protection_remaining=ss.get("reduce_protection_remaining", 0),
             min_hold_remaining=ss.get("min_hold_remaining", 0),
             add_protection_remaining=ss.get("add_protection_remaining", 0),
+            last_tick_date=ss.get("last_tick_date"),
         )
 
     # ===== 写入操作 =====
@@ -417,6 +418,7 @@ class PortfolioManager:
                 "reduce_protection_remaining": 0,
                 "min_hold_remaining": self.DEFAULT_MIN_HOLD_DAYS if lifecycle == "OPEN" else 0,
                 "add_protection_remaining": 0,
+                "last_tick_date": None,
             }
         )
 
@@ -579,6 +581,8 @@ class PortfolioManager:
                 "reduce_protection_remaining": new_state.reduce_protection_remaining,
                 "min_hold_remaining": new_state.min_hold_remaining,
                 "add_protection_remaining": new_state.add_protection_remaining,
+                # getattr 防御：调用方可能传测试桩/简化对象（无该属性时落 None）
+                "last_tick_date": getattr(new_state, "last_tick_date", None),
             }
         )
 

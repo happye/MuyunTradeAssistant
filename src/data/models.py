@@ -291,6 +291,11 @@ class StrategyState(BaseModel):
     min_hold_remaining: int = Field(default=0, description="最短持有窗口剩余天数")
     add_protection_remaining: int = Field(default=0, description="加仓保护期剩余天数")
 
+    # ISS-086：最近一次日频推进（tick 四计数器 + 信号入史）的交易日。
+    # process 按此去重——live 同一天重复分析不再重复递减冷却/保护期、不再重复推信号；
+    # None=尚未按日期推进过（旧状态/未传日期的调用方走无条件推进旧语义）。
+    last_tick_date: Optional[str] = Field(default=None, description="最近一次日频推进的交易日(YYYY-MM-DD)")
+
     def push_signal(self, signal: SignalType):
         """记录今日信号，维护滑动窗口"""
         self.recent_signals.append(signal.value)
