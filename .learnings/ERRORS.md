@@ -311,3 +311,40 @@ akshare 的包装层要把"接口返回空"翻译成业务空态而非告警；�
 - Reproducible: yes（v0.8.8.3 上跑 `expect 60`，9 月-三季表未发布窗口内必现）
 - Related Files: src/data/calendar_client.py, .venv/.../akshare/stock_feature/stock_yjyg_cninfo.py
 - Tags: akshare-upstream, empty-state, cache-semantics, fail-open-guard
+
+---
+
+## [ERR-20260906-001] 重排器默认开启致内存暴涨、用户机器一天重启三次（RAG 批事故）
+
+**Logged**: 2026-09-06T21:30:00+08:00
+**Severity**: high（用户机器不可用级别：稳定复现硬件级重启 3 次）
+**Status**: resolved
+
+### Symptom
+用户跑 start.py / 分析 / chat 即触发 Windows 硬件级重启，稳定复现三次；机器
+当天上午还发生三次蓝屏（Windows 记录故障模块 rt25cx21x64.sys，Realtek 2.5G
+网卡驱动）。事故复盘（docs/2026-09-06_RAG变更对比与重启事故复盘.html）定论：
+RAG 批把 reranker.enabled 写成 true（默认开启），每次启动自动加载
+bge-reranker-base（1.04GB 权重），进程内存 1.2GB→3.5-4GB，叠加当时后台多个
+验证进程各加载模型 → 内存耗尽触发硬件保护重启。
+
+### Root Cause
+两个错误叠加：① 会加载重型模型的开关默认值写成 enabled=true，且开启门槛
+（内存预算）没写进配置注释；② 同一台机器上连续后台跑多个真实模型加载的
+验证进程，未与用户会话错峰。
+
+### Fix
+reranker.enabled 回滚 false（代码保留，A/B 实测重排负收益 ON 0.433/0.232/0.286
+vs OFF 0.633/0.553/0.568，永不该默认开）；残留 Python 进程清零。后续对抗审查
+（本会话）进一步封死同机制的另一入口：embedding.model 动态解析本地 HF 快照、
+命中即零联网加载，断网时"hub→失败→多源重试风暴"（蓝屏的另一嫌疑）路径不进入。
+
+### Prevention
+- 会加载模型的开关，默认值必须是关；开启门槛（空闲内存 ≥4GB）写进配置注释
+- 重型模型验证不得与用户共用机器时段串行叠加
+- 网络重试循环必须可被"本地命中"短路（快照解析模式，见 LRN-20260906-001）
+
+### Metadata
+- Reproducible: yes（reranker.enabled=true + 空闲内存 <4GB 跑 start.py 即复现）
+- Related Files: configs/settings.yaml, src/rag/reranker.py, src/rag/embedding.py
+- Tags: memory, model-loading, default-off, blue-screen, incident

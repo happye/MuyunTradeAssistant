@@ -1147,3 +1147,61 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Source: probe_finding
 - Related Files: configs/settings.yaml, src/rag/store.py
 - Tags: faiss, windows, non-ascii-path, encoding
+
+## [LRN-20260906-001] insight
+**Date**: 2026-09-06
+**Priority**: high
+**Status**: completed
+**Area**: rag-index-lifecycle
+
+### Summary
+对抗性审查实证三个 RAG 索引生命周期规律：① `RAGService.initialize` 的"重建"分支曾复用 `_try_load_index` 装进 store 的旧索引——`store.add` 只按相同 doc_id 替换，**已删除/改名文件的旧块成为僵尸向量残留且被 save 固化**（探针实证，测试 test_index_freshness 红灯锁死）。② 同一批 add 内 doc_id 重复时，FAISS 存下全部向量但 `_id_to_idx` 后者覆盖前者 → 查询返回重复条目、`get_doc_by_id` 错位；触发源是两个知识文件解析出同系列同章号（如「第10章上/下」）。③ HF 模型名→本地快照动态解析（`~/.cache/huggingface/hub/models--<org>--<repo>/snapshots/*` 取含 config.json 的目录）可同时保住"零联网加载"与"settings.yaml 可移植"两头；用 `Path.as_posix()` 生成路径字符串与既有 embedder_metadata.json 完全一致，避免元数据漂移触发无谓重建。
+
+### Suggested Action
+- 任何"重建索引"路径必须从空 store 开始，不能在已加载的旧 store 上 add
+- ingestion 层新增 doc_id 生成规则时，必须配"跨文件撞号告警"（load_strategy_files 已内置）
+- 嵌入器元数据是索引兼容性的唯一真相源：改加载路径字符串格式前先对照 metadata 的既有格式，否则一次无谓的全量重建（837 块 CPU ~12s）
+- 本地快照解析模式可推广到 reranker 等其它 HF 模型加载点
+
+### Metadata
+- Source: probe_finding
+- Related Files: src/rag/service.py, src/rag/store.py, src/rag/ingestion.py, src/rag/embedding.py, tests/rag/test_index_freshness.py
+- Tags: rag, index-rebuild, zombie-docs, doc-id, hf-snapshot, offline-loading
+
+## [LRN-20260906-002] insight
+**Date**: 2026-09-06
+**Priority**: high
+**Status**: completed
+**Area**: state-machine-cadence
+
+### Summary
+`strategy_layer.process()` 是全项目唯一假设"1 次调用 = 1 个交易日"的状态机入口（tick 四计数器 + push_signal 都在调用时无条件执行）。回测每 bar 调一次恰好成立，**live 违反之**：同一天重复分析会按次数烧掉冷却期/减仓保护/最短持有/加仓保护，并重复污染信号历史。这类"调用频次=时间流逝"的隐式耦合在 live/回测共用状态机的架构里是系统性风险模式——探针实证 cooldown 5 连跑 3 次变 2。修复用 `last_tick_date` 日期去重，None 保持旧语义保护既有调用方。
+
+### Suggested Action
+- 新增任何"按调用推进的持久化状态"时，先问：live 会被重复调用吗？回测/live 的调用频次语义是否一致？
+- 状态机入口的日期参数（current_date/today）要区分三态：显式日期（按日期去重）、None+live（注入真实今天）、None+回测（保持旧语义）——不要一刀切
+- 排查此类 bug 用"全库 grep 计数器字段的所有赋值点"而非只看递减函数（tick 藏在 models.py 的模型方法里，第一轮 grep 漏了，差点误报"永不递减"假 P1）
+
+### Metadata
+- Source: probe_finding
+- Related Files: src/core/strategy_layer.py, src/data/models.py, src/core/orchestrator.py, src/data/portfolio.py, tests/core/test_strategy_layer_daily_tick.py
+- Tags: state-machine, live-vs-backtest, cooldown, idempotency, date-guard
+
+## [LRN-20260906-003] insight
+**Date**: 2026-09-06
+**Priority**: medium
+**Status**: completed
+**Area**: batch-architecture
+
+### Summary
+多代码批量需求的三条实测结论：① 本项目第三方接口封装全部是单代码形态（get_realtime_quote/calculate_indicators/baostock/news），不存在"一个请求拉 N 只"的批量形态——新浪原生 list 接口项目未用；② 但串行循环没有反爬问题：实测 2 只×两类接口 4 次请求 0.1-0.8s/只全部成功，la/ba 一直是这个模式；③ 6 维评分 prompt 按股独立设计（行业/业务/估值各不同），多股合并进一次 AI 调用=重设计评分系统（笨总域禁改），所以"多代码只调 6 次 AI"在当前架构下不成立，正确预期是 6×N 次但整批共享 AI client+全市场成交额、同日缓存命中免费。批量能力应优先复用既有 auto_score_batch/benzong_batch_analyze 管道而不是新写循环。
+
+### Suggested Action
+- 用户提出"批量=X 次调用"类预期时，先读维度 prompt 设计确认是否按股独立，再承诺成本
+- 新批量入口一律接 _enforce_confirm 硬门名单（mode 名写进 tests/chat/test_chat_confirm_gate_coverage.py 同款断言）
+- chat 工具 schema 改动必须同步三处：TOOL_DEFINITIONS schema / CHAT_SYSTEM_PROMPT 工具清单 / 命令桥使用规范——agent 的能力认知只来自这三处文本
+
+### Metadata
+- Source: probe_finding
+- Related Files: start.py, src/chat/tools.py, src/chat/prompts.py, src/core/benzong/batch_scorer.py, tests/core/test_multi_code_parse.py
+- Tags: multi-code, batch, confirm-gate, tool-schema, anti-scraping

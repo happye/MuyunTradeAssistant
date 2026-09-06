@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.8.7"  # v0.8.8.7=景气度接线(客观数据注入industry_prosperity prompt,ISS-083方案A)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.9.0"  # v0.8.9.0=RAG知识库扩充+检索质量批+审查修复(僵尸索引/批内ID去重/动态快照解析)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -105,7 +105,7 @@ def show_help():
     print("│    pos overweight <代码> [依据]  超配策略(教学十)    │")
     print("│                                                    │")
     print("│  ★ 笨总「超景气价值投机」(v0.8.6.1)                │")
-    print("│    bz <代码>             笨总 AI 自动 6 维评分       │")
+    print("│    bz <代码>[,代码2...]  笨总 AI 6维评分(支持多代码)  │")
     print("│    bz <代码> --refresh   强制刷新（跳过缓存）        │")
     print("│    bz --manual           旧交互式手动打分（兜底）    │")
     print("│    bz --check            数据源连通性体检(ISS-043)  │")
@@ -186,6 +186,42 @@ def _resolve_index_arg(s: str):
     return item.get("code", ""), item.get("name", "")
 
 
+def _extract_codes(tokens: list) -> tuple:
+    """从 token 列表提取股票代码（v0.8.9.0 ISS-087 多代码支持）。
+
+    分隔符：token 内部支持 英文逗号/中文逗号/顿号/分号（中英文），token 之间
+    天然按空格切分——三种分隔符可混用。每个片段支持：
+    - 6位代码或带后缀（600519 / 000001.SZ，_is_stock_code 判定）
+    - #N 序号引用（复用 _resolve_index_arg，取最近扫描第 N 只）
+    - 以 - 开头的 token 视为 flag 跳过（如 -f/--force/--refresh）
+
+    Returns:
+        (codes, invalid)：codes 去重保序；invalid 为既非代码也非引用的片段
+        （供调用方告警，消除此前"多给代码静默丢弃"的可用性陷阱）。
+    """
+    codes: list = []
+    invalid: list = []
+    for tok in tokens:
+        # 中英文逗号/顿号/分号统一当分隔符（空格已由外层 split 处理）
+        for piece in str(tok).replace("，", ",").replace("、", ",").replace("；", ";").replace(";", ",").split(","):
+            piece = piece.strip()
+            if not piece or piece.startswith("-"):
+                continue
+            if piece.startswith("#"):
+                ref = _resolve_index_arg(piece)
+                if ref and ref[0]:
+                    if ref[0] not in codes:
+                        codes.append(ref[0])
+                else:
+                    invalid.append(piece)
+            elif _is_stock_code(piece):
+                if piece not in codes:
+                    codes.append(piece)
+            else:
+                invalid.append(piece)
+    return codes, invalid
+
+
 def parse_input(user_input: str):
     """解析用户输入，返回 (mode, args_dict) 或 None"""
     # 兼容处理：在 GBK/Windows 命令行下，如果输入通过管道输入且含有 UTF-8 BOM，
@@ -222,27 +258,54 @@ def parse_input(user_input: str):
     if cmd in ("ba", "bzall"):
         return ("benzong_all", {})
 
+    if not text:
+        return None
+
+    parts = text.split()
+    cmd = parts[0].lower()
+
+    # ── 基础命令 ──
+    if cmd in ("q", "quit", "exit"):
+        return ("quit", {})
+    if cmd in ("h", "help", "?"):
+        return ("help", {})
+
+    # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
+    if cmd in ("la", "lall"):
+        return ("live_all", {})
+
+    if cmd in ("ba", "bzall"):
+        return ("benzong_all", {})
+
     if cmd in ("l", "live"):
         if len(parts) < 2:
-            print("  [!] 用法: l <6位代码> | l #N（取最近扫描第N只） | l all[-f]（批量深分析最近扫描）")
+            print("  [!] 用法: l <代码>[,代码2,...] | l #N | l all[-f]（批量深分析最近扫描）")
+            print("      多代码用 英文逗号/中文逗号/空格 分隔，如: l 600519,000001 或 l 600519 000001")
             return None
         # v0.8.7.9: l all 批量深分析最近一次扫描结果（bz scan / scan market），补齐 ba（批评分）/la（批持仓）空白
         # v0.8.7.9: 当天已深分析的默认跳过，-f/--force 强制全部重分析
         if parts[1].lower() == "all":
             force = any(p.lower() in ("-f", "--force") for p in parts[2:])
             return ("live_scan_all", {"force": force})
-        if parts[1].startswith("#"):
-            ref = _resolve_index_arg(parts[1])
-            if ref is None:
-                return None
-            return ("live", {"stock_code": ref[0]})
-        if not _is_stock_code(parts[1]):
-            print("  [!] 用法: l <6位股票代码>  例如: l 600519")
+        codes, invalid = _extract_codes(parts[1:])
+        if invalid:
+            print(f"  [!] 无法识别的参数已跳过: {'、'.join(invalid)}（代码用6位数字；批量用逗号/空格分隔）")
+        if not codes:
+            print("  [!] 用法: l <6位股票代码>  例如: l 600519（多代码: l 600519,000001）")
             return None
-        return ("live", {"stock_code": parts[1]})
+        if len(codes) == 1:
+            return ("live", {"stock_code": codes[0]})
+        # v0.8.9.0 ISS-087: 多代码一次性批量深分析（compact 卡片 + 单只失败跳过）
+        return ("live_multi", {"codes": codes})
 
     if _is_stock_code(parts[0]):
-        return ("live", {"stock_code": parts[0]})
+        # ISS-087：裸代码输入也支持多只（"600519 000001"），单只行为不变
+        codes, invalid = _extract_codes(parts)
+        if invalid:
+            print(f"  [!] 无法识别的参数已跳过: {'、'.join(invalid)}")
+        if len(codes) >= 2:
+            return ("live_multi", {"codes": codes})
+        return ("live", {"stock_code": codes[0] if codes else parts[0]})
 
     # ── 回测 ──
     if cmd == "b":
@@ -479,6 +542,7 @@ def parse_input(user_input: str):
         manual = False
         refresh = False
         check = False
+        non_flag_tokens = []
         for p in parts[1:]:
             # v0.8.8.6：flag 匹配大小写不敏感——此前 `bz <code> -R` 不匹配也无提示，
             # 静默按缓存跑且不触发 chat confirm 门
@@ -489,14 +553,27 @@ def parse_input(user_input: str):
                 refresh = True
             elif pl in ("--check", "--体检", "check"):
                 check = True
-            elif not meta:
-                meta = p
-        # #N 引用：取最近扫描第 N 只的 code
-        if meta.startswith("#"):
-            ref = _resolve_index_arg(meta)
-            if ref is None:
-                return None
-            meta = ref[0]
+            else:
+                non_flag_tokens.append(p)
+        # ISS-087 多代码：提取代码（英文逗号/中文逗号/空格混分/#N 引用），非法 token 告警
+        codes, invalid = _extract_codes(non_flag_tokens)
+        if manual and len(codes) > 1:
+            print("  [!] --manual 交互式只支持单只，仅处理第一只（多代码批量请去掉 --manual 走自动评分）")
+            codes = codes[:1]
+        if invalid and codes:
+            print(f"  [!] 无法识别的参数已跳过: {'、'.join(invalid)}")
+        if len(codes) >= 2:
+            # v0.8.9.0 ISS-087: 多代码批量评分——复用 ba 同款批量管道
+            # （AI client 建一次/整批共享成交额/串行防登录态竞争/单只失败不阻塞/缓存优先）
+            return ("benzong_multi", {"codes": codes, "refresh": refresh})
+        if len(codes) == 1:
+            meta = codes[0]
+        elif invalid:
+            # 无有效代码：单 token 保持旧行为（主题词等原样传给评分器按现有报错处理）；
+            # 多 token 则明确告警后仍取第一个（消除静默丢弃）
+            if len(invalid) > 1:
+                print(f"  [!] 以下参数不是有效代码，已跳过: {'、'.join(invalid[1:])}")
+            meta = invalid[0]
         return ("benzong", {"meta": meta, "manual": manual, "refresh": refresh, "check": check})
 
     print(f"  [!] 无法识别: {text}  输入 h 查看用法")
@@ -506,11 +583,11 @@ def parse_input(user_input: str):
 
 # ── 未知命令「猜你想输」（2026-09-05 丝滑批：只提示不代跑） ─────
 _COMMAND_HINTS = {
-    "l": "l <6位代码> 深析 | la 一键析全部持仓 | l all 批量析最近扫描",
-    "live": "l <6位代码> 深析（l 即 live）",
+    "l": "l <代码>[,代码2...] 多代码深析 | la 一键析全部持仓 | l all 批量析最近扫描",
+    "live": "l <代码>[,代码2...] 深析（l 即 live；中英文逗号/空格分隔多只）",
     "la": "la 一键分析全部持仓",
     "ba": "ba 批量笨总评分最近扫描结果",
-    "bz": "bz <代码|名称|主题> 笨总评分 | bz scan <主题> 主题选股",
+    "bz": "bz <代码>[,代码2...] 评分(支持多代码) | bz scan <主题> 主题选股",
     "b": "b <代码> 回测 | bb 批量回测",
     "bb": "bb 批量回测",
     "scan": "scan market [主题] 全市场扫描 | scan <主题>",
@@ -1355,6 +1432,35 @@ def run_cli(mode: str, args: dict):
     if mode == "live":
         analyze_live(args["stock_code"], ai_overrides=ai_overrides, ai_debug=_ai_debug)
 
+    elif mode == "live_multi":
+        # v0.8.9.0 ISS-087: 多代码一次性批量深分析（l 600519,000001 / l 600519 000001）。
+        # 模式对齐 l all：compact 卡片 + 单只失败跳过不拖垮批次 + 成功记当日已析
+        # （后续 l all 自动跳过，缓存化省钱）。显式点名的代码全部重析，不做当日跳过。
+        from src.cli import session_state as _ss
+        codes = [c for c in args.get("codes", []) if c]
+        if not codes:
+            print("  [!] 没有可分析的代码")
+            return
+        print(f"\n  批量深分析 {len(codes)} 只（每只约0.5~1分钟，含AI调用）：{'、'.join(codes)}")
+        failed = []
+        ok = 0
+        for i, code in enumerate(codes, 1):
+            print(f"\n{'='*60}")
+            print(f"  [{i}/{len(codes)}] {code}")
+            print(f"{'='*60}")
+            try:
+                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                _ss.mark_deep_analyzed([code], source="手动多代码")
+                ok += 1
+            except SystemExit:
+                print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
+                failed.append(code)
+            except Exception as e:
+                print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
+                failed.append(code)
+        print(f"\n  批量完成：{ok}/{len(codes)} 成功"
+              + (f"；失败: {', '.join(failed)}" if failed else ""))
+
     elif mode == "live_all":
         from src.data.portfolio import PortfolioManager
         pm = PortfolioManager()
@@ -1642,6 +1748,45 @@ def run_cli(mode: str, args: dict):
             manual=args.get("manual", False),
             refresh=args.get("refresh", False),
         )
+
+    elif mode == "benzong_multi":
+        # v0.8.9.0 ISS-087: bz 多代码批量评分——复用 ba 同款管道
+        # （auto_score_batch：AI client 建一次、整批共享全市场成交额、串行防
+        # baostock 登录态竞争、单只失败不阻塞、同日缓存优先不重算）
+        from src.cli.main import benzong_batch_analyze
+        from src.core.benzong import cache as bz_cache
+        from datetime import datetime as _dt
+        codes = [c for c in args.get("codes", []) if c]
+        if not codes:
+            print("  [!] 没有可评分的代码")
+            return
+        today = _dt.now().strftime("%Y-%m-%d")
+        dims = ["industry_prosperity", "business_purity", "valuation_position",
+                "industry_leader", "market_recognition", "risk_deduction"]
+        uncached = [
+            c for c in codes
+            if any(bz_cache.get(c, today, d) is None for d in dims)
+        ]
+        print(f"\n  笨总批量评分 {len(codes)} 只：{'、'.join(codes)}"
+              + ("（--refresh 强制重算）" if args.get("refresh") else ""))
+        if args.get("refresh"):
+            est_min = max(1, round(len(codes) * 0.5))
+            print(f"  每只 6 维 AI（约 {est_min} 分钟/只），共约 {est_min * len(codes)} 分钟")
+        elif uncached:
+            est_min = max(1, round(len(uncached) * 0.5))
+            try:
+                ans = input(
+                    f"  其中 {len(uncached)} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            except (EOFError, KeyboardInterrupt):
+                print("  已取消")
+                return
+            if ans.strip().lower() not in ("y", "yes"):
+                print("  已取消")
+                return
+        else:
+            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）")
+        items = [{"code": c} for c in codes]
+        benzong_batch_analyze(items, force_refresh=args.get("refresh", False))
 
     elif mode == "benzong_scan":
         # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）

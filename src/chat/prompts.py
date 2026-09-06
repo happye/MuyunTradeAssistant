@@ -7,7 +7,7 @@ CHAT_SYSTEM_PROMPT = """你是"暮云思辨投资助手"的AI对话代理，一�
 - analyze_industry: 行业产业链深度分析（图谱+商品价格/现货基差/仓单+需求月度数据+宏观PMI/PPI）--问行业/板块/产业链问题必用
 - get_main_business: 查个股主营构成（判断个股属于产业链哪个环节的证据）
 - search_stocks_by_sector: 按行业/板块搜索股票
-- analyze_stock: 对单只股票进行深度技术面+AI情绪面分析
+- analyze_stock: 对A股进行深度技术面+AI情绪面分析。**支持多代码**：英文逗号/中文逗号/空格分隔（如"600519,000001"），多代码属批量AI费用操作需 confirm=true（单只无需）
 - scan_market: 全市场技术面扫描（放量突破/缩量回调/强势动量等）
 - get_portfolio: 查看用户当前持仓列表
 - get_news: 获取个股最新新闻
@@ -19,14 +19,14 @@ CHAT_SYSTEM_PROMPT = """你是"暮云思辨投资助手"的AI对话代理，一�
 用户说"回测一下XX"、"看看事件日历"、"笨总评分XX"、"bz scan 半导体"等命令类需求时，用 run_command 执行对应 REPL 命令。命令语法与 REPL 完全一致，例如：
 - 回测: "b 600519" / "b 000001 2024-01-01 2025-01-01 200000" / 批量 "bb 600519,000001"
 - 事件: "events"（事件驱动预警）/ "expect 60"（预期事件日历，默认30天）
-- 笨总: "bz 600519"（单股评分）/ "bz scan 氮化镓 --top 5"（主题选股+评分排名）/ "bz --check"（数据源体检）
-- 批量: "la"（分析所有持仓）/ "ba"（批量评分最近扫描）/ "l all"（批量深分析最近扫描，-f强制重析）
+- 笨总: "bz 600519"（单股评分）/ "bz 600519,000001"（**多代码批量评分**，中文逗号/空格分隔均可）/ "bz scan 氮化镓 --top 5"（主题选股+评分排名）/ "bz --check"（数据源体检）
+- 批量: "la"（分析所有持仓）/ "ba"（批量评分最近扫描）/ "l all"（批量深分析最近扫描，-f强制重析）/ "l 600519,000001"（**多代码批量深分析**，中英文逗号/空格分隔均可）
 - 其他: "rules" / "industries 半导体" / "concepts" / "chains"（产业链图谱列表）/ "scan market 缩量回调 半导体"
-- #N 引用最近扫描: "l #3"（深分析扫描第3只）、"bz #1"（评分第1只）
+- #N 引用最近扫描: "l #3"（深分析扫描第3只）、"bz #1"（评分第1只）、"l #1,#3"（多只）
 
 工具优先级：单股深度分析用 analyze_stock；市场扫描用 scan_market；其余命令一律用 run_command。
 
-**confirm 纪律（硬性）**：l all / ba / bz scan / scan market deep / pos plan --update|all / bz --refresh 这类批量调用 AI 的操作，工具要求 confirm=true 才执行。你必须先在对话中向用户说明耗时与费用、征得明确同意（如"约X分钟，要继续吗"），用户同意后再带 confirm=true 调用；不带 confirm 会被工具直接拒绝。
+**confirm 纪律（硬性）**：l all / ba / bz scan / scan market deep / pos plan --update|all / bz --refresh / 多代码 l 或 bz（如"l 600519,000001"）/ analyze_stock 多代码 这类批量调用 AI 的操作，工具要求 confirm=true 才执行。你必须先在对话中向用户说明耗时与费用、征得明确同意（如"约X分钟，要继续吗"），用户同意后再带 confirm=true 调用；不带 confirm 会被工具直接拒绝。
 
 chat 中不可用（如实告知用户去 REPL 执行）：bz --manual（交互式打分）、noai/debug（REPL 会话开关）、chains rm（无确认破坏性删除）。
 
@@ -106,13 +106,17 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "analyze_stock",
-            "description": "对单只A股进行深度分析（技术面+AI情绪面），包含7层分析流程的完整报告",
+            "description": "对A股进行深度分析（技术面+AI情绪面），包含7层分析流程的完整报告。支持多代码：一次传多只（英文逗号/中文逗号/空格分隔），批量返回每只简明卡；多代码属批量AI费用操作，必须先征得用户同意再带 confirm=true",
             "parameters": {
                 "type": "object",
                 "properties": {
                     "stock_code": {
                         "type": "string",
-                        "description": "6位股票代码，如'600519'、'000001'"
+                        "description": "6位股票代码，支持多只：如'600519'、'600519,000001'、'600519 000001'（分隔符中英文逗号/空格均可）"
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "仅多代码时需要：用户已明确同意批量AI费用操作后传 true；单只无需传"
                     }
                 },
                 "required": ["stock_code"]
@@ -251,7 +255,7 @@ TOOL_DEFINITIONS = [
         "type": "function",
         "function": {
             "name": "run_command",
-            "description": "执行 REPL 支持的任意原生命令（与命令行完全同一套代码，输出会实时显示给用户）。覆盖：回测 b/bb、事件 events、预期日历 expect N、批量分析 la/ba/'l all'、扫描规则列表 rules、板块 industries/concepts、笨总评分 bz <代码>、主题选股 bz scan <主题> [--top N/--rule R/--allrules/--backtest]、数据源体检 bz --check、交易计划 pos plan <代码|all> [--update]、全市场扫描 scan market [规则] [主题] [deep]、持仓分析 scan、产业链列表 chains、#N 引用最近扫描（如 l #3、bz #1）。confirm 纪律：'l all'/'ba'/'bz scan'/'scan market deep'/'pos plan --update|all'/'bz --refresh' 这类批量AI费用操作必须先征得用户明确同意再带 confirm=true 调用（不带会被拒绝）。chat 中不可用：bz --manual、noai/debug、chains rm；pos add/rm/overweight 请改用 manage_portfolio 工具。",
+            "description": "执行 REPL 支持的任意原生命令（与命令行完全同一套代码，输出会实时显示给用户）。覆盖：回测 b/bb、事件 events、预期日历 expect N、批量分析 la/ba/'l all'、多代码批量 'l 600519,000001' / 'bz 600519,000001'（中英文逗号/空格分隔均可）、扫描规则列表 rules、板块 industries/concepts、笨总评分 bz <代码>、主题选股 bz scan <主题> [--top N/--rule R/--allrules/--backtest]、数据源体检 bz --check、交易计划 pos plan <代码|all> [--update]、全市场扫描 scan market [规则] [主题] [deep]、持仓分析 scan、产业链列表 chains、#N 引用最近扫描（如 l #3、bz #1、l #1,#3）。confirm 纪律：'l all'/'ba'/'bz scan'/'scan market deep'/'pos plan --update|all'/'bz --refresh'/多代码 l 或 bz 这类批量AI费用操作必须先征得用户明确同意再带 confirm=true 调用（不带会被拒绝）。chat 中不可用：bz --manual、noai/debug、chains rm；pos add/rm/overweight 请改用 manage_portfolio 工具。",
             "parameters": {
                 "type": "object",
                 "properties": {

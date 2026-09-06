@@ -202,11 +202,58 @@ def _get_stock_data_with_timeout(stock_code: str, timeout: int = 30):
     return result_container[0]
 
 
-def analyze_stock(stock_code: str) -> str:
-    """对单只股票进行深度分析"""
+def _split_codes_arg(raw: str) -> tuple:
+    """解析多代码参数（ISS-087）：英文逗号/中文逗号/顿号/分号/空格均可作分隔符。
+
+    Returns:
+        (codes, invalid)：codes 为 6 位代码（含 .SZ/.SS 后缀，去重保序）；
+        invalid 为无法识别的片段（#N 序号引用不支持——请用 run_command('l #1')）。
+    """
+    codes: list = []
+    invalid: list = []
+    for tok in str(raw or "").replace("，", ",").replace("、", ",").replace("；", ";").replace(";", ",").split():
+        for piece in tok.split(","):
+            piece = piece.strip()
+            if not piece or piece.startswith("-"):
+                continue
+            base = piece.split(".")[0] if "." in piece else piece
+            if base.isdigit() and len(base) == 6:
+                if piece not in codes:
+                    codes.append(piece)
+            else:
+                invalid.append(piece)
+    return codes, invalid
+
+
+def analyze_stock(stock_code: str = "", confirm: bool = False) -> str:
+    """对股票进行深度分析（支持单只或多只，多只用逗号/空格分隔）"""
     if not _orchestrator:
         return TOOL_ERROR_MARK + "编排器未初始化"
 
+    # ISS-087 多代码：单只走完整报告路径；多只走批量管道（confirm 硬门护 AI 费用）
+    codes, invalid = _split_codes_arg(stock_code)
+    if not codes:
+        return TOOL_ERROR_MARK + ("请提供股票代码，如'600519'；多只用逗号/空格分隔："
+                                  "'600519,000001'（#N 序号引用请改用 run_command('l #1')）")
+    skip_note = ""
+    if invalid:
+        skip_note = f"[!] 以下片段不是有效代码已跳过: {'、'.join(invalid)}\n"
+    if len(codes) > 1:
+        if not confirm:
+            return (TOOL_ERROR_MARK
+                    + f"多代码（{len(codes)}只：{'、'.join(codes)}）属于批量AI费用操作"
+                      f"（每只约0.5~1分钟+多次AI调用）。请先向用户说明耗时与费用并征得明确同意，"
+                      f"然后带 confirm=true 重新调用本工具；单只分析无需 confirm。")
+        # 复用 REPL live_multi 管道：compact 卡片 + 单只失败跳过 + 当日已析记录
+        result = run_command("l " + " ".join(codes), confirm=True)
+        return skip_note + result if skip_note else result
+
+    result = _analyze_stock_single(codes[0])
+    return skip_note + result if skip_note else result
+
+
+def _analyze_stock_single(stock_code: str) -> str:
+    """单只深度分析（原 analyze_stock 主体，供多代码调度器复用）"""
     try:
         from src.data.akshare_client import AKShareClient
         # get_stock_data 是 AKShareClient.calculate_indicators 的别名
@@ -440,14 +487,19 @@ def search_knowledge(query: str) -> str:
         return TOOL_ERROR_MARK + "请提供查询内容，如'止损怎么设'、'突破买入注意事项'"
 
     try:
-        context = _rag_service.get_context(
-            query, target="chat", top_k=5, max_length=3000
-        )
+        # 2026-09-06 审查修复：单次检索同时供计数与上下文（原实现 get_context 后
+        # 又无条件 retrieve 一次只为拿条数，双倍编码+搜索；且旧计数不带层过滤，
+        # 与上下文口径不一致）。layer="Chat" 与 get_context(target="chat") 同源。
+        from src.rag.service import TARGET_LAYER_MAP
+        from src.rag.context import build_chat_context
 
-        if not context:
+        result = _rag_service.retrieve(
+            query, top_k=5, layer=TARGET_LAYER_MAP.get("chat")
+        )
+        if not result.documents:
             return f"未找到与'{query}'相关的策略知识"
 
-        result = _rag_service.retrieve(query, top_k=5)
+        context = build_chat_context(result, max_length=3000)
         header = f"找到 {len(result.documents)} 条相关策略知识：\n\n"
         return header + context
 
@@ -674,7 +726,9 @@ def _confirm_gate(mode: str, args: dict, confirm: bool) -> Optional[str]:
     # ISS-078：补齐 la/lall（live_all，逐持仓 AI 深析）、scan（analyze_portfolio，
     # 逐持仓 ai_enabled=True）、events（事件层 AI 分类）——与 l all/ba 同属批量
     # AI 费用操作，此前漏门（AI 调 run_command("la") 可无确认烧 N 次 AI 费）
-    if mode in ("live_scan_all", "benzong_all", "benzong_scan", "live_all", "scan", "events"):
+    if mode in ("live_scan_all", "benzong_all", "benzong_scan", "live_all", "scan", "events",
+                # ISS-087：l/bz 多代码批量（live_multi/benzong_multi）与 la 同属批量 AI 费用
+                "live_multi", "benzong_multi"):
         return f"{TOOL_ERROR_MARK}{_HINT}"
     if mode == "scan_market" and args.get("deep"):
         return f"{TOOL_ERROR_MARK}deep 深度分析会批量调用 AI。{_HINT}"

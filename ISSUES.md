@@ -1691,6 +1691,43 @@ P3（已取消）:
 - **更新记录**:
   - 2026-09-05: 立项待办
 
+### ISS-087: l/bz/chat 多代码批量支持 + 静默丢弃告警（用户需求，v0.8.9.0）
+- **状态**: ✅ 已解决（2026-09-06，解析层/chat 门回归全绿，全量守恒见本条末）
+- **需求背景**: 用户要求 `l`/`bz`/chat 支持一次性输入多代码批量分析（明确不要循环调用的 UI 形态），分隔符兼容英文逗号/中文逗号/空格；chat agent 需原生理解该能力（此前 AI 会把多代码一次性塞给单代码工具且不知可批量）。另修复此前的静默丢弃可用性陷阱（`l 600519 000001` 第二只被无声忽略）
+- **可行性实测（先行验证，用户要求）**: ① 第三方接口均为**单代码**封装（`get_realtime_quote`/`calculate_indicators`/baostock 查询/news），无批量传参形态——"一次性查找"不可行，批量=串行循环（la/ba 既有模式）；② 串行实测 2 只×实时行情+深度数据链共 4 次请求全部成功、0.1-0.8s/只、无反爬拦截；③ **"只调 6 次 AI"不成立**：6 维 prompt 为每股独立设计（不同行业/业务/估值无法合并），多代码=6×N 次 AI 调用，但整批共享 1 个 AI client+1 次全市场成交额（auto_score_batch 既有设计，防 4380 次自残请求），同日缓存命中免费
+- **落地**:
+  1. `start.py` 新增 `_extract_codes()`：token 内 `,，、;；` 与 token 间空格均可分隔，支持 6 位代码/后缀/`#N` 引用，去重保序，非法片段返回供告警
+  2. `l` 分支：多代码 → 新 mode `live_multi`（逐只 analyze_live compact 卡 + SystemExit/Exception 单只失败跳过 + 成功 mark_deep_analyzed 与 `l all` 跳过逻辑互通）；裸多代码输入（"600519 000001"）同样支持；单只/`l all`/`-f` 行为不变
+  3. `bz` 分支：多代码 → 新 mode `benzong_multi`（复用 `benzong_batch_analyze`/`auto_score_batch`：AI client 建一次、整批共享成交额、串行、单只失败不阻塞、缓存优先；未评分只数 y/N 确认与 ba 同款；`--refresh` 透传）；`--manual` 多代码降级第一只并告警；单主题词（如 `bz 氮化镓`）保持旧透传不误报
+  4. 静默丢弃修复：`l`/`bz` 非法 token 一律显式告警"已跳过"（单主题词透传除外）
+  5. chat：`analyze_stock` 接受多代码（单只=原完整报告路径不变；多只=confirm 硬门→复用 `run_command("l ...")` 批量管道），非法片段以 skip_note 前置；`_enforce_confirm` 新增 `live_multi`/`benzong_multi` mode；prompts.py 三处（系统提示工具清单/命令桥规范/analyze_stock+run_command schema）明示多代码能力与 confirm 纪律——agent 不再需要"猜"
+- **测试**: `tests/core/test_multi_code_parse.py` 24 项（解析 18 + chat 门 4 + run_cli 分发接线 2：中英文逗号/空格/混合分隔、去重保序、非法告警、单只不变、l all 不回归、manual 降级、主题透传、confirm 门拒绝与委托、skip_note、live_multi/benzong_multi 接线）；全量 **554 passed / 2 skipped**
+- **教训双写**: LRN-20260906-003
+
+### ISS-086: strategy_layer 日频推进无日期去重——live 重复分析烧穿冷却/保护期（底层挖掘 P1，v0.8.9.0）
+- **状态**: ✅ 已解决（2026-09-06，回归测试先红后绿，全量守恒见本条末）
+- **优先级**: P1（live 安全机制被日常使用方式绕过；不影响回测基线）
+- **描述**: `strategy_layer.process()` 每次调用无条件 `tick_cooldown/reduce_protection/min_hold/add_protection` 四计数器并无条件 `push_signal`——该语义假设"1 次调用 = 1 个交易日"，回测满足（每 bar 一次），**live 不满足**：REPL 同日连跑 `l`、chat 多问几次、`la` 批量，每次分析都烧一天。后果：① 止损清仓后 5 天禁买（ISS-068 防"止损-回头-接刀"）被重复分析烧穿，当天多跑几遍即可提前买回；② 减仓保护 10 天同理失效；③ 同日信号重复入史污染 `signal_stability_score`，可触发错误的"信号不稳定降级"。探针实证：cooldown 5/protect 10/min_hold 3 连跑 3 次变 2/7/0。portfolio.yaml 实际状态佐证（融捷 recent_signals 同日多次 SELL、reduce_protection_remaining=10）
+- **修复**: ① `models.StrategyState` 新增 `last_tick_date` 字段；② `process()` 按 `current_date` 去重——同日重入跳过 tick+入史、日期变化推进一次并记录、`current_date=None` 保持旧语义无条件推进（兼容 tests 等不传日期的调用方）；③ `orchestrator.analyze` 调 process 处：live（today=None 且 is_backtest=False）注入真实今天；④ `portfolio.py` 三处持久化/重建 `last_tick_date`
+- **行为矩阵（逐调用点核实）**: backtest_engine 每 bar 传 today=bar 日期 → 每 bar 恰好推进一次=**零变化**；backtest_validator（is_backtest=True 不传 today）→ legacy=零变化；live（cli/main×4、chat/tools、scanner_engine 均不传 today）→ 同日去重=修复生效；tests 直调 process 不传日期 → legacy=零变化
+- **测试**: `tests/core/test_strategy_layer_daily_tick.py` 5 项（同日一次/跨日各一次/None 旧语义/信号史不污染/旧状态迁移），红灯验证：还原修复 4 failed；全量 **529 passed / 2 skipped**（巨潮网络抖动单跑即过）
+- **同类点（铁律1③）**: 全库 grep `remaining` 递减点仅 models.py tick 四方法（已同门处理）；PlanGuard `_write_force_exit_cooldown` 写 5 不受影响（清仓时刻一次性写入）；无其它"按调用次数推进"的日频状态
+- **教训双写**: LRN-20260906-002
+
+### ISS-085: RAG 批对抗审查——僵尸索引/批内 ID 重复/硬编码模型路径修复 + CLI 分析路径 RAG 接线缺口（v0.8.9.0）
+- **状态**: 🟡 部分解决（2026-09-06 代码修复+回归测试全绿；CLI 分析路径接线属行为变更，影响评估已交用户拍板）
+- **背景**: 第三方 Agent 完成 RAG 优化批（73 篇入库/分块修复/多样性截断/层过滤/重排器默认关/本地快照加载，commit d12b4a0..485419c）后，独立对抗性审查逐条核实其报告声称（7 项全部属实）并挖出以下问题
+- **发现与修复**:
+  1. **僵尸索引（P2，探针实证）**: `service.initialize` 在"索引加载成功→检测到知识文件变化→重建"分支复用已加载旧 store，`store.add` 只按相同 doc_id 替换——已删除/改名文件的旧块永久残留并被 save 固化。修复：重建分支先 `create_vector_store` 换新 store。回归 `tests/rag/test_index_freshness.py::test_rebuild_after_knowledge_change_drops_zombie_docs`（红灯验证：还原修复必失败）
+  2. **批内 doc_id 重复（P2，探针实证）**: 同批 add 重复 id → FAISS 存双向量、查询返回重复条目、`get_doc_by_id` 错位。当前索引 0 冲突，但未来"第10章上/下"类文件名即触发（同系列同章号 → 同 doc_id）。修复：`store.add` 批内去重（保留后者，与 `_id_to_idx` 语义一致）+ 告警；`load_strategy_files` 摄入层新增跨文件撞号诊断告警
+  3. **embedding.model 硬编码 `C:/Users/Crux/...` 绝对路径（P2）**: 换机器/HF 缓存清理即断链 → 回退"hub→失败→多源重试风暴"（ERR-20260906-001 蓝屏事故同机制）。修复：`embedding._resolve_local_snapshot` 动态解析 `models--BAAI--bge-small-zh-v1.5/snapshots/*`（含 config.json 校验），命中即零联网加载；settings.yaml 回归可移植模型名 `BAAI/bge-small-zh-v1.5`；解析结果 `as_posix()` 与既有 embedder_metadata.json 字符串逐字一致 → 不触发无谓重建（实测二次启动走"FAISS索引已加载"）
+  4. **chat search_knowledge 双检索（P3）**: get_context 后又无条件 retrieve 一次仅为拿条数（双倍编码+搜索），且计数不带层过滤与上下文口径不一。修复：单次 `retrieve(layer="Chat")` 同时供计数与 build_chat_context
+  5. **卫生项**: retrieval.py 重复 import 删除；embedding.py 重复 HF_MIRROR 定义删除；settings.yaml 重排器 A/B 注释数字对齐磁盘产物（ON 0.433/0.232/0.286，原注释 0.467/0.262/0.322 与报告 47% 三处不一致）
+- **记录不修（已知权衡）**: ① 层过滤空匹配回退未过滤结果（`retrieval._filter_by_layer`）——Chat-only 内容可进 Decision/AI_Modifier 上下文，设计如此（可用性优先），Decision/AI_Modifier 层各有 184/295 块触发概率低；② 评估器 auto_label 用检索系统自身 top-5 + 同一嵌入模型打标——Recall@5=0.633 是"与标注快照的一致性"非真实全库召回，相对比较（A/B）有效、绝对值慎用（ISS-028 遗留问题的另一半）
+- **接线缺口（待拍板，未修）**: CLI/REPL 分析路径（`cli/main.py:175/215/457/875` + `scanner_engine.py:91`）自 v0.8.1 起构造 Orchestrator 从未传 `rag_service`，AIModifier/EventLayer 的 RAG 增强在 `-l`/`l`/`la`/`scan` 深析中静默跳过——AGENTS.md"RAG 用于 scan/analysis 增强"与现实不符。实际接 RAG 的仅 chat（单例对齐）与 TradePlan（pos add/pos plan）。接线涉及 AI Modifier 输入变化（行为变更需 A/B + 内存预算 + 用户可感知输出标注），影响评估已交用户
+- **测试**: tests/rag 35 passed（新增 3 项）；全量 **524 passed / 2 skipped**（tests/data_sources 网络测试 cninfo 偶发抖动，单跑即过）
+- **教训双写**: ERR-20260906-001（重排器内存事故补记）+ LRN-20260906-001（索引生命周期三规律）
+
 ### ISS-084: 瘦身重构批——死代码清零+pyramid 链拆除+REPL 猜你想输+根目录归档（v0.8.8.7 内部批）
 - **状态**: ✅ 已解决（2026-09-05，依据 docs/2026-09-05_代码重构交接文档.md 分批执行，全量测试逐 commit 守恒 490 passed / 2 skipped）
 - **方案**: docs/2026-09-05_瘦身重构会话方案.md（含「评估后不做」清单：industry_data.py 归并、main.py 深拆、parse_input 派发表——均因协议区/收益风险比记录在案）
