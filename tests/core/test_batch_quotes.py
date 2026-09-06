@@ -142,6 +142,8 @@ def test_prefetch_consumed_by_get_realtime_quote(monkeypatch):
 def test_prefetch_expired_not_consumed(monkeypatch):
     old = __import__("time").time() - akc.AKShareClient._QUOTE_PREFETCH_TTL - 1
     with _swap(AKShareClient, "_QUOTE_PREFETCH", {"600519": (old, {"stock_code": "600519", "price": 9.9})}):
+        # ISS-089 后链路为 新浪→baostock→EM：全部 mock 失败，过期预取不得命中
+        monkeypatch.setattr(AKShareClient, "_fetch_sina_batch", classmethod(lambda cls, codes: {}))
         monkeypatch.setattr(AKShareClient, "_fetch_baostock_realtime", classmethod(lambda cls, code: None))
         monkeypatch.setattr(AKShareClient, "_retry_with_backoff", classmethod(lambda cls, func, **kw: None))
         with _quiet():

@@ -270,7 +270,17 @@ class AKShareClient:
         # 不包含ETF(15xx/51xx)和指数(000xxx)，跳过避免浪费时间
         is_etf_or_index = code.startswith(('15', '51', '56'))
 
-        # --- 策略1：Baostock（优先，因为本机已验证可用）---
+        # --- 策略0：新浪实时（v0.8.9.2 ISS-089）——真实盘中价 ---
+        # 此前 baostock 优先，但其日线盘中给的是"最近已完成交易日"的收盘价——
+        # 盘中跑 l 看到的"现价"实为昨收，技术面/AI 情绪全基于过期价格计算。
+        # 新浪 list 接口（ISS-088 已封装 _fetch_sina_batch，单只=批量大小1）
+        # 给真实盘中价；失败自动落回下方 baostock/EM 既有降级链。
+        sina_quote = cls._fetch_sina_batch([stock_code]).get(code)
+        if sina_quote:
+            logger.info(f"新浪实时行情成功 {stock_code}")
+            return sina_quote
+
+        # --- 策略1：Baostock（新浪失败后的降级，注意盘中给的是昨收）---
         try:
             bs_quote = cls._fetch_baostock_realtime(stock_code)
             if bs_quote:
