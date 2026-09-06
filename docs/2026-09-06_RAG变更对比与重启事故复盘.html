@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>RAG 变更前后对比 &amp; 重启事故复盘 — 2026-09-06</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f6f8; color: #24292f; line-height: 1.7; padding: 24px; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 24px; margin-bottom: 4px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; margin-bottom: 18px; }
+  h2 { font-size: 18px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #eef0f3; }
+  .red { color: #d92d20; }
+  .green { color: #067647; }
+  .amber { color: #b54708; }
+  .incident { border-left: 5px solid #d92d20; background: #fef3f2; }
+  .incident h2 { border-color: #fecaca; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; white-space: nowrap; }
+  tr:nth-child(even) td { background: #fcfcfd; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-right: 4px; }
+  .tag-bad { background: #fef3f2; color: #d92d20; border: 1px solid #fecaca; }
+  .tag-ok { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
+  .tag-mid { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
+  .bar-wrap { background: #eef0f3; border-radius: 6px; height: 22px; position: relative; margin: 4px 0 10px; }
+  .bar { height: 100%; border-radius: 6px; display: flex; align-items: center; padding-left: 10px; color: #fff; font-size: 12px; font-weight: 600; white-space: nowrap; }
+  code { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 6px; font-family: Consolas, monospace; font-size: 13px; }
+  ul { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .small { font-size: 13px; color: #6b7280; }
+  .kbd { background: #1f2937; color: #f9fafb; border-radius: 6px; padding: 10px 14px; font-family: Consolas, monospace; font-size: 13px; margin: 8px 0; overflow-x: auto; }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<h1>RAG 变更前后对比 &amp; 电脑重启事故复盘</h1>
+<div class="meta">报告生成：今天上午 10:06 · 范围：昨晚 commit <code>106d50e</code> 之后至现在的全部改动 · 性质：自我追责 + 止血记录</div>
+
+<!-- 事故定论 -->
+<div class="card incident">
+  <h2>🔴 事故定论：你的电脑为什么重启了三次</h2>
+  <p><b class="red">直接责任是我。</b>我在 <code>configs/settings.yaml</code> 里把新加的重排器写成了 <code>enabled: true</code>（默认开启），而你机器上的 RAG 服务在每次跑 <code>start.py</code> / 分析 / chat 时启动，都会自动加载重排模型。后果是进程内存需求从约 <b>1.2GB</b> 暴涨到约 <b>3.5–4GB</b>（见下方内存账本），叠加当时我后台还在跑的多个验证进程，内存耗尽触发 Windows 硬件级保护重启。</p>
+  <p style="margin-top:8px">你每次重启后重试，配置没变，于是「一跑就重启」稳定复现三次。<b>确切的保护机制（内存耗尽 / 温度 / 电源）我无法远程确诊</b>，但「一跑模型就重启」+ 双模型内存账本，指向内存耗尽的置信度极高。</p>
+  <p style="margin-top:8px"><b class="green">已止血</b>：<code>reranker.enabled</code> 已改回 <code>false</code>，残留 Python 进程已清零（<code>tasklist</code> 核实无残留）。<b>你现在跑 <code>start.py</code>，行为和昨晚 <code>106d50e</code> 完全一致，不会再加载重排模型。</b></p>
+</div>
+
+<!-- 内存账本 -->
+<div class="card">
+  <h2>内存账本：你跑 start.py 时 RAG 的一次性内存开销</h2>
+  <table>
+    <tr><th>场景</th><th>加载的模型</th><th>进程内存估算</th></tr>
+    <tr>
+      <td><span class="tag tag-ok">改动前（106d50e，安全）</span></td>
+      <td>bge-small-zh-v1.5（约 95MB 权重）+ torch 运行时</td>
+      <td><b>约 1.2–1.5GB</b></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-bad">事故期间（我改 enabled:true）</span></td>
+      <td>bge-small（95MB）+ bge-reranker-base（<b>1.04GB</b> 权重）+ 双份推理开销 + torch 运行时</td>
+      <td><b>约 3.5–4GB</b></td>
+    </tr>
+    <tr>
+      <td><span class="tag tag-mid">我后台验证进程叠加时</span></td>
+      <td>上面那个，再加 2–3 个各自加载模型的 Python 进程</td>
+      <td><b>峰值可达 6GB+</b></td>
+    </tr>
+  </table>
+  <div class="bar-wrap"><div class="bar" style="width:26%; background:#067647;">改动前 ≈1.2–1.5GB</div></div>
+  <div class="bar-wrap"><div class="bar" style="width:66%; background:#d92d20;">事故时 ≈3.5–4GB</div></div>
+  <div class="bar-wrap"><div class="bar" style="width:96%; background:#7f1d1d;">叠加后台验证 ≈6GB+</div></div>
+  <p class="small">两个错误叠加：① 重排器默认开启（我的配置决策失误）；② 我在同一台机器上连续后台跑多个真实模型加载验证（NWkhla / akuzLR / Q5MjQ5 三个进程先后加载模型），没有考虑你的内存余量。</p>
+</div>
+
+<!-- 逐文件改动对比 -->
+<div class="card">
+  <h2>逐文件改动前后对比（106d50e → 现在）</h2>
+  <table>
+    <tr><th>文件</th><th>改动前</th><th>改动后</th><th>对你的影响</th></tr>
+    <tr>
+      <td><code>configs/settings.yaml</code></td>
+      <td>无 reranker 节</td>
+      <td>新增 <code>reranker</code> 节，<b class="red">enabled 曾为 true（事故根源）→ 现已回滚 false</b>，注释写明禁开原因与内存门槛</td>
+      <td><span class="tag tag-ok">已止血</span>不再自动加载重排模型</td>
+    </tr>
+    <tr>
+      <td><code>src/rag/reranker.py</code></td>
+      <td>不存在</td>
+      <td>新建：交叉编码重排器，带 <code>is_available()</code> 可用性探测 + 加载失败单次降级（不抛异常、不阻断检索）</td>
+      <td><span class="tag tag-ok">零影响</span>enabled=false 时完全不创建、不加载、不占内存</td>
+    </tr>
+    <tr>
+      <td><code>src/rag/retrieval.py</code></td>
+      <td><code>_dispatch</code> 直接三分派；检索后多样性截断</td>
+      <td>拆出 <code>_dispatch_raw</code>；新增 <code>_rerank_result</code>（候选池放大 → 交叉编码精排 → 再套多样性截断防单章霸榜）；<code>HybridRetriever</code> 新增 <code>reranker</code> / <code>rerank_candidate_multiplier</code> 参数（默认 None = 行为不变）</td>
+      <td><span class="tag tag-ok">零影响</span>reranker=None 时走原路径，回归测试锁死</td>
+    </tr>
+    <tr>
+      <td><code>src/rag/service.py</code></td>
+      <td>不读 reranker 配置</td>
+      <td>读 <code>rag.reranker</code> 配置；<code>_get_reranker()</code> 惰性创建；<code>_create_retriever</code> 传入</td>
+      <td><span class="tag tag-ok">零影响</span>enabled=false 时 <code>_get_reranker()</code> 恒返 None</td>
+    </tr>
+    <tr>
+      <td><code>tests/rag/test_ingestion_chunking.py</code></td>
+      <td>11 项（有 2 处语义重复）</td>
+      <td><b>精简为 9 项</b>：词典加载+生效合并为 1 项；「2831 字复现」并入混合场景硬顶测试（注释保留出处）；重排顺序断言改为动态构造（原静态假设候选池必含特定文档，测试设计错误已修）</td>
+      <td><span class="tag tag-ok">变干净</span>每项对应独立行为契约，你质疑的冗余已删</td>
+    </tr>
+    <tr>
+      <td><code>tests/rag/test_reranker.py</code></td>
+      <td>不存在</td>
+      <td>新建 6 项：候选池放大 / 重排定序 / 重排后多样性仍生效 / 关闭时不改行为 / 模型不可用降级不抛异常 / 层过滤路径回归。<b>全部用假重排器（FakeReranker），不加载任何真实模型</b></td>
+      <td><span class="tag tag-ok">零成本</span>跑测试秒级，不吃内存</td>
+    </tr>
+    <tr>
+      <td><code>src/rag/embedding.py</code> / <code>embedding.model</code> 配置</td>
+      <td>bge-small-zh-v1.5</td>
+      <td><b>一字未动</b>。bge-base 只下载到了缓存，A/B 对照从未执行，从未切换</td>
+      <td><span class="tag tag-ok">零影响</span>你跑的始终是 bge-small</td>
+    </tr>
+  </table>
+</div>
+
+<!-- 磁盘与缓存 -->
+<div class="card">
+  <h2>磁盘占用交代（不影响运行，但占了你的硬盘）</h2>
+  <table>
+    <tr><th>位置</th><th>内容</th><th>大小</th><th>处置建议</th></tr>
+    <tr>
+      <td><code>C:\Users\Crux\.cache\huggingface\hub\models--BAAI--bge-base-zh-v1.5</code></td>
+      <td>bge-base 权重+分词器（我今早下载，用于 A/B，<b>从未在运行中生效</b>）</td>
+      <td>约 420MB</td>
+      <td><span class="tag tag-mid">可删可留</span>不做模型升级就删；想以后再 A/B 就留</td>
+    </tr>
+    <tr>
+      <td><code>...\models--BAAI--bge-reranker-base</code></td>
+      <td>重排模型（<b>8月9日就存在，不是我下的</b>）</td>
+      <td>约 1.04GB</td>
+      <td><span class="tag tag-mid">建议保留</span>reranker 功能保留但默认关；彻底不要可删</td>
+    </tr>
+    <tr>
+      <td><code>...\models--BAAI--bge-small-zh-v1.5</code></td>
+      <td>正在用的嵌入模型</td>
+      <td>约 95MB</td>
+      <td><span class="tag tag-ok">必须保留</span></td>
+    </tr>
+  </table>
+</div>
+
+<!-- 现在的状态 -->
+<div class="card">
+  <h2>你现在的状态（一句话版）</h2>
+  <ul>
+    <li><b>跑 <code>start.py</code>：安全。</b>与昨晚 <code>106d50e</code> 行为完全一致——bge-small 单模型、约 1.2GB 内存、检索结果不变、评分缓存不受影响（CACHE_VERSION 没动）。</li>
+    <li><b>P3-C 重排功能：代码保留、默认关闭。</b>以后想开：先确认空闲内存 ≥4GB，再把 <code>settings.yaml</code> 里 <code>reranker.enabled</code> 改 <code>true</code>。不满足条件时开了也不会炸（加载失败会降级为无重排），但<b>加载成功后常驻 1GB+ 内存</b>，内存不足仍可能触发你遇到的重启，所以门槛写在注释里了。</li>
+    <li><b>P3-B 模型升级（bge-base A/B 对照）：搁置。</b>不是功能没做完，是<b>你的机器跑不动这类实验</b>——重建索引是 CPU 满载 1–2 分钟 + 双模型内存峰值，在你这台机器上就是二次事故。模型文件我留在缓存里没删，要不要做、什么时候做（建议内存 ≥16GB 或换机器）由你拍板。</li>
+  </ul>
+</div>
+
+<!-- 教训 -->
+<div class="card">
+  <h2>我的三条整改（写进项目记忆，不是道歉完就算了）</h2>
+  <ul>
+    <li><b>铁律：动配置前先算内存账。</b>任何会加载模型的开关，默认值必须是关，开启门槛（内存/显存）写进配置注释。这次我违反了。</li>
+    <li><b>铁律：重型模型验证不得与用户共用机器时段。</b>后台验证进程串行跑、跑完即清，不在用户可能操作 REPL 的时间窗口叠加模型进程。</li>
+    <li><b>「实验性增强」与「用户默认路径」必须隔离。</b>reranker 这类未经过 A/B 收益验证的功能，没资格出现在默认开启的配置里。</li>
+  </ul>
+</div>
+
+<div class="small" style="text-align:center; margin: 18px 0 6px;">
+  交付时间：今天上午 10:06 · 回归基线：tests/rag 32 passed（全假模型 fixture，跑测试不吃内存） · 待你确认后再 commit
+</div>
+
+</div>
+</body>
+</html>

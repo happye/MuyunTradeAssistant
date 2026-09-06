@@ -80,6 +80,12 @@ class RAGService:
         # v0.8.8.9 同章节多样性截断：top_k 不再被单章多分块占满（0=关闭）
         self.diversity_max_per_chapter = config.get("diversity_max_per_chapter", 2)
 
+        # v0.8.9.0 P3-C 二阶段重排：双塔粗排 + 交叉编码精排（模型不可用时自动退化）
+        rerank_cfg = config.get("reranker", {}) or {}
+        self.reranker_enabled = bool(rerank_cfg.get("enabled", False))
+        self.reranker_model = rerank_cfg.get("model", "BAAI/bge-reranker-base")
+        self.rerank_candidate_multiplier = int(rerank_cfg.get("candidate_multiplier", 3))
+
         embed_cfg = config.get("embedding", {})
         self.embedding_provider = embed_cfg.get("provider", "sentence")
         self.embedding_model = embed_cfg.get("model", "BAAI/bge-small-zh-v1.5")
@@ -88,6 +94,7 @@ class RAGService:
         self._embedder: Optional[Embedder] = None
         self._store: Optional[VectorStore] = None
         self._retriever: Optional[HybridRetriever] = None
+        self._reranker = None
         self._initialized = False
 
     def initialize(self, force_rebuild: bool = False) -> bool:
@@ -237,14 +244,35 @@ class RAGService:
             return True
         return False
 
+    def _get_reranker(self):
+        """获取（并缓存）二阶段重排器
+
+        未启用配置时返回 None（检索路径完全不变）；模型加载失败时同样退化
+        为 None，只警告一次，绝不阻断检索主流程。
+        """
+        if not self.reranker_enabled:
+            return None
+        if self._reranker is not None:
+            return self._reranker
+        try:
+            from src.rag.reranker import Reranker
+
+            self._reranker = Reranker(model_name=self.reranker_model, enabled=True)
+        except Exception as exc:
+            logger.warning("重排器创建失败，检索退化为无重排: %s", exc)
+            self._reranker = None
+        return self._reranker
+
     def _create_retriever(self, docs: list[RAGDocument] = None):
-        """创建混合检索器"""
+        """创建混合检索器（含可选的二阶段重排器 P3-C）"""
         self._retriever = HybridRetriever(
             embedder=self._embedder,
             store=self._store,
             keyword_weight=self.keyword_weight,
             semantic_weight=self.semantic_weight,
             diversity_max_per_chapter=self.diversity_max_per_chapter,
+            reranker=self._get_reranker(),
+            rerank_candidate_multiplier=self.rerank_candidate_multiplier,
         )
         # 关键词索引需要文档列表
         if docs:

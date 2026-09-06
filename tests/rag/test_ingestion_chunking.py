@@ -67,20 +67,14 @@ class TestOverlapImplemented:
 class TestHardCapAndHardSplit:
     """P2-B: 超长段硬切 + chunk_size+chunk_overlap 硬顶"""
 
-    def test_2831_char_paragraph_regressed(self):
-        # 复现审查实测：2831 字无换行单段，旧逻辑整段直通成一块
-        text = _para(2831)
-        chunks = _split_into_chunks(text, chunk_size=500, chunk_overlap=50)
-        assert len(chunks) >= 3, "2831字必须被切开"
-        for c in chunks:
-            assert len(c) <= 550, f"块长{len(c)}超过硬顶550（bge 512 token 截断风险）"
-
     def test_hard_cap_never_exceeded(self):
-        # 混合场景：长短段落交错，任何块不得超 chunk_size+chunk_overlap
+        # 混合场景：长短段落交错（含审查实测的 2831 字无换行单段复现），
+        # 任何块不得超 chunk_size+chunk_overlap
         text = "\n\n".join(
             [_para(120, 1), _para(700, 2), _para(80, 3), _para(2831, 4), _para(300, 5)]
         )
         chunks = _split_into_chunks(text, chunk_size=500, chunk_overlap=50)
+        assert len(chunks) >= 4, "2831字段落必须被切成多块"
         for c in chunks:
             assert len(c) <= 550, f"块长{len(c)}超硬顶"
 
@@ -140,21 +134,15 @@ class TestTfidfNeverCompatible:
 class TestJiebaUserdict:
     """P2-C: 金融自定义词典生效"""
 
-    def test_load_userdict_success(self):
-        from src.rag.userdict import load_userdict
-
-        assert load_userdict() is True
-
-    def test_domain_words_not_split(self):
+    def test_userdict_loads_and_words_whole(self):
+        """词典加载成功且领域词不被切碎（P2-C 的核心契约，合并原两项）"""
         import jieba
         from src.rag.userdict import load_userdict
 
-        load_userdict()
+        assert load_userdict() is True
         tokens = set(jieba.lcut("今天打板低吸，气宗剑宗笨总评分"))
-        assert "打板" in tokens
-        assert "低吸" in tokens
-        assert "气宗" in tokens
-        assert "剑宗" in tokens
+        for word in ("打板", "低吸", "气宗", "剑宗"):
+            assert word in tokens, f"{word}被切碎，金融词典未生效"
 
     def test_keyword_retriever_triggers_userdict(self):
         # KeywordRetriever.__init__ 应触发 load_userdict（幂等，不抛异常即可）

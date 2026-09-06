@@ -24,6 +24,8 @@ logging.getLogger("jieba").setLevel(logging.WARNING)
 from src.rag.models import RAGDocument, RetrievalResult
 from src.rag.embedding import Embedder
 from src.rag.store import VectorStore
+from src.rag.reranker import Reranker
+from src.rag.userdict import load_userdict
 from src.rag.userdict import load_userdict
 
 logger = logging.getLogger(__name__)
@@ -151,6 +153,8 @@ class HybridRetriever:
         semantic_weight: float = 0.6,
         rrf_k: int = 60,  # RRF常数，默认60
         diversity_max_per_chapter: int = 2,  # 同章节在最终结果中最多占几条（<=0 关闭）
+        reranker: Optional[Reranker] = None,  # 二阶段交叉编码重排器（None=不启用）
+        rerank_candidate_multiplier: int = 3,  # 重排候选池 = top_k * 该倍数
     ):
         """初始化
 
@@ -162,6 +166,8 @@ class HybridRetriever:
             rrf_k: RRF常数
             diversity_max_per_chapter: 同一 metadata.chapter 在截断后结果中
                 最多保留的块数（v0.8.8.9 多样性截断；<=0 表示关闭）
+            reranker: 二阶段重排器（v0.8.9.0 P3-C）；None 或不可用时退化为原召回序
+            rerank_candidate_multiplier: 重排候选池倍数（top_k * 该值）
         """
         self.embedder = embedder
         self.store = store
@@ -170,6 +176,8 @@ class HybridRetriever:
         self.semantic_weight = semantic_weight
         self.rrf_k = rrf_k
         self.diversity_max_per_chapter = diversity_max_per_chapter
+        self.reranker = reranker
+        self.rerank_candidate_multiplier = max(1, int(rerank_candidate_multiplier))
 
     def index_documents(self, docs: list[RAGDocument]) -> None:
         """建立关键词索引（语义索引由store管理）
@@ -209,13 +217,46 @@ class HybridRetriever:
         return self._filter_by_layer(raw, layer, top_k, query, method)
 
     def _dispatch(self, query: str, top_k: int, method: str) -> RetrievalResult:
-        """按 method 分派到具体检索实现"""
+        """按 method 分派到具体检索实现
+
+        P3-C：启用重排时先按 top_k*multiplier 放大候选池，召回后由交叉编码器
+        精排再截到 top_k（二阶段检索：双塔粗排 + 交叉编码精排）。
+        """
+        if self.reranker is not None and self.reranker.is_available():
+            candidate_k = max(top_k * self.rerank_candidate_multiplier, top_k)
+            result = self._dispatch_raw(query, candidate_k, method)
+            return self._rerank_result(query, result, top_k)
+        return self._dispatch_raw(query, top_k, method)
+
+    def _dispatch_raw(self, query: str, top_k: int, method: str) -> RetrievalResult:
+        """原始召回（不含重排）"""
         if method == "keyword":
             return self._keyword_retrieve(query, top_k)
         elif method == "semantic":
             return self._semantic_retrieve(query, top_k)
         else:
             return self._hybrid_retrieve(query, top_k)
+
+    def _rerank_result(
+        self, query: str, result: RetrievalResult, top_k: int
+    ) -> RetrievalResult:
+        """对召回结果做交叉编码精排（P3-C）
+
+        精排后再套一次多样性截断——重排会把同章节的块挤到头部，
+        不截断就会退化为修复前的"单章霸榜"。
+        """
+        docs = result.documents
+        if not docs:
+            return result
+        ranked = self.reranker.rerank(query, docs, len(docs))
+        ranked = self._apply_diversity(ranked, top_k)
+        return RetrievalResult(
+            query=result.query,
+            documents=[d for d, _ in ranked],
+            scores=[float(s) for _, s in ranked],
+            method=f"{result.method}+rerank",
+            total_found=result.total_found,
+        )
 
     def _apply_diversity(
         self,

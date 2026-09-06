@@ -23,6 +23,11 @@ rag:
   hybrid_weights:                              # 混合检索权重
     keyword: 0.4
     semantic: 0.6
+  reranker:                                    # 二阶段重排（v0.8.9.0 P3-C，双塔粗排后交叉编码精排）
+    enabled: false                             # 🔴默认关闭：开启会额外加载1.1GB重排模型，内存不足会导致系统重启（2026-09-06事故）。
+                                               # 需要时手动改true，并确认空闲内存≥4GB
+    model: "BAAI/bge-reranker-base"           # 交叉编码器，本地缓存缺失时会自动下载
+    candidate_multiplier: 3                    # 候选池 = top_k * 该倍数，再精排截到 top_k
   embedding:                                   # 嵌入配置
     provider: "sentence"                       # sentence(默认)/tfidf(降级)
     model: "BAAI/bge-small-zh-v1.5"           # 中文嵌入模型
