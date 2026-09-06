@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.9.0"  # v0.8.9.0=RAG知识库扩充+检索质量批+审查修复(僵尸索引/批内ID去重/动态快照解析)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.9.1"  # v0.8.9.1=网络防护层(节流+熔断+新浪批量行情+K线当日磁盘缓存,ISS-088)+多代码批量；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -1442,6 +1442,14 @@ def run_cli(mode: str, args: dict):
             print("  [!] 没有可分析的代码")
             return
         print(f"\n  批量深分析 {len(codes)} 只（每只约0.5~1分钟，含AI调用）：{'、'.join(codes)}")
+        # ISS-088：批量预取行情（新浪批量/东财全市场 1 次请求），逐只分析时
+        # get_realtime_quote 直接命中预取映射——N 只行情从 N 次请求压成 1 次
+        try:
+            from src.data.akshare_client import AKShareClient
+            got = AKShareClient.prefetch_realtime_quotes(codes)
+            print(f"  行情预取：{got}/{len(codes)} 只命中批量源（逐只分析零重复请求）")
+        except Exception as _e:
+            print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
         failed = []
         ok = 0
         for i, code in enumerate(codes, 1):

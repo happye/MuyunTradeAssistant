@@ -143,7 +143,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-078：横幅版本此前停在 v0.8.6.6，与 --version/start.py/AGENTS.md 打架
-        "[bold cyan]暮云思辨投资助手 v0.8.9.0[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.9.1[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -3222,8 +3222,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.9.0：RAG知识库扩充+检索质量批+审查修复；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.9.0 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
+        # v0.8.9.1：网络防护层(节流+熔断+批量行情+K线磁盘缓存)；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.9.1 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥)"
     )
     parser.add_argument(
         "--verbose",

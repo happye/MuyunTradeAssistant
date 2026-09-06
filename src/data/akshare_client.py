@@ -6,16 +6,19 @@
 """
 
 import contextlib
+import json
 import pandas as pd
 import akshare as ak
 import baostock as bs
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Optional
 import logging
 import time
 import random
 
 from src.data.models import StockData
+from src.data.net_guard import circuit_breaker, rate_limiter
 
 logger = logging.getLogger(__name__)
 
@@ -123,6 +126,21 @@ class AKShareClient:
     # 1次实时行情+3次K线，高频易触发反爬；REPL 的 l 同股连跑同样受益。
     _stock_data_cache: dict = {}   # code -> (timestamp, StockData)
     _STOCK_DATA_TTL = 120          # 秒；口径参考 market_cache 盘中快照 TTL=300s，个股取更保守值
+
+    # 批量行情预取映射（v0.8.9.1 ISS-088）：get_realtime_quotes 批量拉取后填充，
+    # 之后的单只 get_realtime_quote 先查这里（命中即零请求）。批量入口（l 多代码）
+    # 开头预取一次，把逐只循环的 N 次行情请求压成 1 次批量请求。
+    _QUOTE_PREFETCH: dict = {}     # code -> (timestamp, quote dict)
+    _QUOTE_PREFETCH_TTL = 120      # 秒，与 _STOCK_DATA_TTL 同口径
+
+    # 历史K线当日磁盘缓存（v0.8.9.1 ISS-088）：~/.muyun/kline_cache/
+    # {code}_{period}_{adjust}_{fetch_day}.json。同一天内重复拉同窗口 K 线
+    # （REPL 重启后连跑 l/多代码批量）零 baostock 请求。新鲜度语义：
+    # 当天 17:30 前的缓存全天有效（baostock 日线盘中不更新当日bar）；
+    # 17:30 后只认 18:00 后拉的缓存（盘后 baostock 更新当日bar，晚间的首次
+    # 调用会重拉一次，之后的当晚调用再走缓存）。仅 live 路径（calculate_indicators
+    # →get_historical_kline）使用；回测走 DataFeeder 独立路径不经过此处。
+    _KLINE_CACHE_DIR: Optional[str] = None
 
     @staticmethod
     def _get_random_ua():
@@ -240,6 +258,13 @@ class AKShareClient:
             dict: 实时行情数据，包含价格、涨跌、成交量等
         """
         prefix, code = cls._normalize_stock_code(stock_code)
+
+        # ISS-088：批量预取映射优先——批量入口（l 多代码/后续批量场景）预先
+        # 用一次批量请求填充本映射，逐只循环里的单只调用直接命中，零请求。
+        pre = AKShareClient._QUOTE_PREFETCH.get(str(stock_code))
+        if pre is not None and (time.time() - pre[0]) < AKShareClient._QUOTE_PREFETCH_TTL:
+            logger.debug(f"实时行情命中批量预取 {stock_code}")
+            return pre[1]
 
         # ETF/指数代码检测：AKShare的stock_zh_a_spot_em()只覆盖A股股票，
         # 不包含ETF(15xx/51xx)和指数(000xxx)，跳过避免浪费时间
@@ -385,6 +410,235 @@ class AKShareClient:
         logger.error(f"所有实时行情接口均失败 {stock_code}, 最后错误: {last_error}{hint}")
         return None
 
+    # ── 批量实时行情（v0.8.9.1 ISS-088）─────────────────────────────
+    # 背景：第三方数据封装均为单代码形态，批量场景（l 多代码）逐只请求是
+    # 反爬的主要诱因。新浪 list 接口原生支持一次传多只，东财全市场接口一次
+    # 调用覆盖全部 A 股——批量链路按"支持批量的源优先"组织：
+    #   新浪批量(1请求) → 东财全市场(1请求) → ETF专用(1请求) → 逐只旧链路兜底
+    # 每个源套熔断（连续3次失败熔断120s直接换源）+ 节流（同源最小间隔+抖动）。
+    # 部分失败合并结果：拿到的先返回，缺失的走下一层。
+    # ─────────────────────────────────────────────────────────────
+
+    _SINA_BATCH_SIZE = 60   # 新浪单次 list 上限（保守取 60 只/请求）
+
+    @classmethod
+    def _fetch_sina_batch(cls, codes: list) -> dict:
+        """新浪 list 批量行情：一次 HTTP 请求拉多只（原生多参接口）。
+
+        Args:
+            codes: 6位纯代码列表（不含市场前缀）
+
+        Returns:
+            {code: quote_dict}；请求失败/解析失败返回 {}（调用方走下一源）
+        """
+        if not codes:
+            return {}
+        rate_limiter.wait("sina")
+        if not circuit_breaker.allow("sina_batch"):
+            logger.debug("新浪批量行情熔断中，跳过该源")
+            return {}
+        try:
+            import requests as _requests
+            # 按 _normalize_stock_code 的市场前缀规则拼 list 参数
+            symbols = []
+            for c in codes:
+                prefix, code = cls._normalize_stock_code(c)
+                symbols.append(f"{prefix}{code}")
+            url = "https://hq.sinajs.cn/list=" + ",".join(symbols)
+            headers = {
+                "Referer": "https://finance.sina.com.cn",
+                "User-Agent": cls._get_random_ua(),
+            }
+            resp = _call_with_timeout(
+                lambda: _requests.get(url, headers=headers, timeout=10), timeout=15
+            )
+            if resp is None or resp.status_code != 200 or not resp.text:
+                circuit_breaker.record_failure("sina_batch")
+                return {}
+            circuit_breaker.record_success("sina_batch")
+            return cls._parse_sina_batch(resp.text)
+        except Exception as e:
+            circuit_breaker.record_failure("sina_batch")
+            logger.warning(f"新浪批量行情失败({len(codes)}只): {type(e).__name__}: {e}")
+            return {}
+
+    @staticmethod
+    def _parse_sina_batch(text: str) -> dict:
+        """解析新浪 list 响应。格式：var hq_str_sh600519="名称,今开,昨收,现价,最高,最低,...成交量(股),...";"""
+        out = {}
+        for line in text.splitlines():
+            line = line.strip()
+            if not line or "=" not in line or '"' not in line:
+                continue
+            try:
+                head, payload = line.split("=", 1)
+                symbol = head.replace("var hq_str_", "").strip()
+                fields = payload.strip().strip(";").strip('"').split(",")
+                if len(fields) < 32:   # A股标准字段数，不足视为空数据/无效
+                    continue
+                name, open_, preclose, price, high, low = fields[0], fields[1], fields[2], fields[3], fields[4], fields[5]
+                volume = fields[8]     # 成交量（股）
+                if not price or float(price) <= 0:
+                    continue
+                code = symbol[2:]      # 去掉 sh/sz/bj 前缀
+                preclose_f = float(preclose) if preclose else 0.0
+                price_f = float(price)
+                change_pct = round((price_f - preclose_f) / preclose_f * 100, 2) if preclose_f else 0.0
+                out[code] = {
+                    "stock_code": code,
+                    "stock_name": name,
+                    "price": price_f,
+                    "open": float(open_) if open_ else 0.0,
+                    "high": float(high) if high else 0.0,
+                    "low": float(low) if low else 0.0,
+                    "close_yesterday": preclose_f,
+                    "volume": int(float(volume)) if volume else 0,
+                    "change_pct": change_pct,
+                    "source": "sina_batch",
+                }
+            except (ValueError, IndexError):
+                continue
+        return out
+
+    @classmethod
+    def get_realtime_quotes(cls, codes: list, retry: int = 1) -> dict:
+        """批量实时行情（v0.8.9.1 ISS-088）：多源降级，支持批量的源一次请求拉全部。
+
+        降级链（每层套节流+熔断，部分失败合并结果）：
+          1. 新浪 list 批量（1 请求，最多 60 只/请求）
+          2. 东财全市场 stock_zh_a_spot_em（1 请求覆盖全部 A 股）
+          3. ETF 专用 fund_etf_spot_em（ETF 代码走这里，1 请求）
+          4. 逐只旧链路 get_realtime_quote（baostock 优先，仅兜底缺失的）
+        单只调用请继续用 get_realtime_quote（保持 baostock 优先的既有语义）。
+
+        Returns:
+            {code: quote_dict}——拿不到的 code 不在字典里（调用方自行判缺失）
+        """
+        # 规范化去重保序
+        norm = []
+        for c in codes or []:
+            _, code = cls._normalize_stock_code(str(c).strip())
+            if code and code not in norm:
+                norm.append(code)
+        if not norm:
+            return {}
+
+        results: dict = {}
+        a_stocks = [c for c in norm if not c.startswith(('15', '16', '51', '52', '56', '58'))]
+        etfs = [c for c in norm if c.startswith(('15', '16', '51', '52', '56', '58'))]
+
+        # 1. 新浪批量（A股；ETF 的 sina 前缀规则也适用，一起拉，缺失再分层补）
+        for i in range(0, len(norm), cls._SINA_BATCH_SIZE):
+            results.update(cls._fetch_sina_batch(norm[i:i + cls._SINA_BATCH_SIZE]))
+        if len(results) >= len(norm):
+            logger.info(f"批量行情(新浪): {len(results)}/{len(norm)} 只命中")
+            return results
+
+        # 2. 东财全市场（1 请求覆盖全部 A 股）
+        missing = [c for c in norm if c not in results]
+        if missing:
+            rate_limiter.wait("eastmoney")
+            if circuit_breaker.allow("em_all"):
+                try:
+                    import os as _os
+                    _os.environ["TQDM_DISABLE"] = "1"
+                    try:
+                        df = cls._retry_with_backoff(ak.stock_zh_a_spot_em, max_retries=retry, base_delay=3)
+                    finally:
+                        _os.environ.pop("TQDM_DISABLE", None)
+                    if df is not None and not df.empty:
+                        circuit_breaker.record_success("em_all")
+                        code_col = next((c for c in ['代码', 'code', 'symbol'] if c in df.columns), None)
+                        if code_col:
+                            sub = df[df[code_col].isin(missing)]
+                            for _, row in sub.iterrows():
+                                d = row.to_dict()
+                                results[str(d.get(code_col))] = {
+                                    "stock_code": str(d.get(code_col)),
+                                    "stock_name": str(d.get('名称', d.get(code_col))),
+                                    "price": float(d.get('最新价', 0) or 0),
+                                    "change_pct": float(d.get('涨跌幅', 0) or 0),
+                                    "volume": int(float(d.get('成交量', 0) or 0)),
+                                    "open": float(d.get('今开', 0) or 0),
+                                    "high": float(d.get('最高', 0) or 0),
+                                    "low": float(d.get('最低', 0) or 0),
+                                    "close_yesterday": float(d.get('昨收', 0) or 0),
+                                    "source": "em_all",
+                                }
+                    else:
+                        circuit_breaker.record_failure("em_all")
+                except Exception as e:
+                    circuit_breaker.record_failure("em_all")
+                    logger.warning(f"东财全市场批量行情失败: {type(e).__name__}: {e}")
+            else:
+                logger.debug("东财全市场熔断中，跳过该源")
+
+        # 3. ETF 专用（1 请求）
+        missing_etf = [c for c in etfs if c not in results]
+        if missing_etf and circuit_breaker.allow("etf_all"):
+            rate_limiter.wait("eastmoney")
+            try:
+                etf_df = cls._retry_with_backoff(ak.fund_etf_spot_em, max_retries=retry, base_delay=3)
+                if etf_df is not None and not etf_df.empty:
+                    circuit_breaker.record_success("etf_all")
+                    code_col = next((c for c in ['代码', 'code', 'symbol'] if c in etf_df.columns), None)
+                    if code_col:
+                        sub = etf_df[etf_df[code_col].isin(missing_etf)]
+                        for _, row in sub.iterrows():
+                            d = row.to_dict()
+                            results[str(d.get(code_col))] = {
+                                "stock_code": str(d.get(code_col)),
+                                "stock_name": str(d.get('名称', d.get(code_col))),
+                                "price": float(d.get('最新价', 0) or 0),
+                                "change_pct": float(d.get('涨跌幅', 0) or 0),
+                                "volume": int(float(d.get('成交量', 0) or 0)),
+                                "open": float(d.get('今开', 0) or 0),
+                                "high": float(d.get('最高', 0) or 0),
+                                "low": float(d.get('最低', 0) or 0),
+                                "close_yesterday": float(d.get('昨收', 0) or 0),
+                                "source": "etf_all",
+                            }
+                else:
+                    circuit_breaker.record_failure("etf_all")
+            except Exception as e:
+                circuit_breaker.record_failure("etf_all")
+                logger.warning(f"ETF 批量行情失败: {type(e).__name__}: {e}")
+
+        # 4. 逐只旧链路兜底（baostock 优先；熔断不挡兜底——最后一道总是尝试）
+        missing = [c for c in norm if c not in results]
+        for c in missing:
+            try:
+                q = cls.get_realtime_quote(c, retry=retry)
+                if q:
+                    results[c] = q
+            except Exception as e:
+                logger.warning(f"逐只兜底行情失败 {c}: {e}")
+
+        logger.info(
+            f"批量行情完成: {len(results)}/{len(norm)} 只命中"
+            + (f"（缺失: {', '.join(missing)}）" if missing else "")
+        )
+        return results
+
+    @classmethod
+    def prefetch_realtime_quotes(cls, codes: list) -> int:
+        """批量拉取并填充预取映射（供批量入口开头调用）。
+
+        之后的单只 get_realtime_quote 在 TTL 内直接命中预取（零请求）。
+
+        Returns:
+            成功预取的只数
+        """
+        try:
+            got = cls.get_realtime_quotes(codes)
+        except Exception as e:
+            logger.warning(f"行情预取失败（不影响主流程，逐只回退）: {type(e).__name__}: {e}")
+            return 0
+        now_ts = time.time()
+        for code, quote in got.items():
+            AKShareClient._QUOTE_PREFETCH[str(code)] = (now_ts, quote)
+        return len(got)
+
     @classmethod
     def get_historical_kline(
         cls,
@@ -395,7 +649,110 @@ class AKShareClient:
         end_date: Optional[str] = None,
         retry: int = 3
     ):
-        """获取历史K线数据（多数据源备用）
+        """获取历史K线数据（多数据源备用）——v0.8.9.1 起带当日磁盘缓存包装。
+
+        缓存语义（ISS-088）：同代码同周期同窗口在**同一天**内重复拉取直接读
+        ~/.muyun/kline_cache/ 磁盘缓存（零请求，跨 REPL 重启有效）。新鲜度：
+        17:30 前的缓存全天有效（baostock 日线盘中不更新当日 bar）；17:30 后
+        baostock 陆续更新当日 bar，故 17:30-18:00 灰区与"晚间拿白天缓存"一律
+        重拉一次，18:00 后拉的缓存当晚持续有效。仅 live 路径使用；回测走
+        DataFeeder 独立路径不经过本函数，行为零影响。
+        """
+        prefix, code = cls._normalize_stock_code(stock_code)
+        eff_end = end_date or datetime.now().strftime("%Y%m%d")
+        eff_start = start_date or (datetime.now() - timedelta(days=180)).strftime("%Y%m%d")
+        cache_key = f"{code}_{period}_{adjust}_{eff_start}_{eff_end}"
+
+        cached_df = cls._kline_disk_load(cache_key)
+        if cached_df is not None:
+            logger.info(f"历史K线当日缓存命中 {stock_code} {period}（{len(cached_df)}行，零请求）")
+            return cached_df
+
+        df = cls._get_historical_kline_uncached(
+            stock_code, period, adjust, start_date, end_date, retry
+        )
+        if df is not None and not df.empty:
+            cls._kline_disk_save(cache_key, df)
+        return df
+
+    @classmethod
+    def _kline_cache_dir(cls) -> Path:
+        home = Path.home()
+        d = home / ".muyun" / "kline_cache"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+        except (OSError, PermissionError):
+            d = Path(__file__).resolve().parents[2] / ".cache" / "kline"
+            d.mkdir(parents=True, exist_ok=True)
+            return d
+
+    @classmethod
+    def _kline_disk_load(cls, cache_key: str) -> Optional[pd.DataFrame]:
+        """读当日 K 线磁盘缓存。过期/损坏/灰区一律当未命中（返回 None）。"""
+        path = cls._kline_cache_dir() / f"{cache_key}.json"
+        if not path.exists():
+            return None
+        try:
+            with path.open(encoding="utf-8") as f:
+                entry = json.load(f)
+            now = datetime.now()
+            if entry.get("date") != now.strftime("%Y-%m-%d"):
+                return None
+            fetched_at = datetime.fromisoformat(entry["fetched_at"])
+            now_min = now.hour * 60 + now.minute
+            fetch_min = fetched_at.hour * 60 + fetched_at.minute
+            if fetch_min < 18 * 60 and now_min >= 17 * 60 + 30:
+                return None   # 缓存是 18:00 前拉的，而现在已进入盘后更新窗
+            df = pd.DataFrame(entry["data"], columns=entry["columns"])
+            for col, dtype in entry.get("dtypes", {}).items():
+                if col in df.columns:
+                    df[col] = df[col].astype(dtype)
+            return df
+        except Exception as e:
+            logger.warning(f"K线磁盘缓存读取失败，当未命中 {path.name}: {type(e).__name__}: {e}")
+            return None
+
+    @classmethod
+    def _kline_disk_save(cls, cache_key: str, df: pd.DataFrame) -> None:
+        """写当日 K 线磁盘缓存（tmp+原子替换；顺带清理同键旧日期文件）。"""
+        try:
+            cache_dir = cls._kline_cache_dir()
+            path = cache_dir / f"{cache_key}.json"
+            entry = {
+                "date": datetime.now().strftime("%Y-%m-%d"),
+                "fetched_at": datetime.now().isoformat(),
+                "columns": list(df.columns),
+                "dtypes": {c: str(t) for c, t in df.dtypes.items()},
+                "data": df.values.tolist(),
+            }
+            tmp = path.with_suffix(".json.tmp")
+            with tmp.open("w", encoding="utf-8") as f:
+                json.dump(entry, f, ensure_ascii=False)
+            import os as _os
+            _os.replace(tmp, path)
+            # 卫生：清掉同键前缀（code_period_adjust_*）的过期日期文件
+            stem_prefix = "_".join(cache_key.split("_")[:3])
+            for old in cache_dir.glob(f"{stem_prefix}_*.json"):
+                if old != path and entry["date"] not in old.name:
+                    try:
+                        old.unlink()
+                    except OSError:
+                        pass
+        except Exception as e:
+            logger.warning(f"K线磁盘缓存写入失败（不影响主流程）: {type(e).__name__}: {e}")
+
+    @classmethod
+    def _get_historical_kline_uncached(
+        cls,
+        stock_code: str,
+        period: str = "daily",
+        adjust: str = "qfq",
+        start_date: Optional[str] = None,
+        end_date: Optional[str] = None,
+        retry: int = 3
+    ):
+        """获取历史K线数据（多数据源备用）——v0.8.9.1 起由 get_historical_kline 缓存包装。
 
         优先使用AKShare，失败后自动切换到Baostock
 

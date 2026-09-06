@@ -1205,3 +1205,22 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Source: probe_finding
 - Related Files: start.py, src/chat/tools.py, src/chat/prompts.py, src/core/benzong/batch_scorer.py, tests/core/test_multi_code_parse.py
 - Tags: multi-code, batch, confirm-gate, tool-schema, anti-scraping
+
+## [LRN-20260907-001] insight
+**Date**: 2026-09-07
+**Priority**: medium
+**Status**: completed
+**Area**: anti-scraping
+
+### Summary
+反爬优化的优先级实证：减少请求数 > 打散请求节奏 > 快速跳过坏源。① 新浪 `hq.sinajs.cn/list=` 原生支持一次多只（Referer 必须带 finance.sina.com.cn，否则空响应），是项目里唯一零成本真批量源——一次请求 60 只，实测 1 请求 2 只全命中；② 东财全市场接口（stock_zh_a_spot_em）本来就是"1 请求覆盖全市场"，批量场景它天然是降级层；③ "支持批量的源拉全量、不支持批量的源（baostock）在原语内自动降级逐只"是多源批量原语的标准形态，部分失败按 code 合并；④ 预取映射（批量入口一次拉取填充，逐只调用先查映射 TTL 命中）是让既有单代码调用方透明受益批量的最小侵入方式。K 线磁盘缓存的新鲜度关键点：baostock 日线当日 bar 盘后才更新，白天缓存全天安全、17:30-18:00 是更新灰区需要重拉。
+
+### Suggested Action
+- 新批量入口一律：开头 prefetch_realtime_quotes(codes) + 逐只调用零改动
+- 数据源调用点接 net_guard 的 rate_limiter/circuit_breaker（key=源名），新源登记 interval
+- 磁盘缓存新鲜度凡涉及时效数据，用"时刻规则"（如 17:30/18:00 盘后线）而不是固定 TTL
+
+### Metadata
+- Source: probe_finding
+- Related Files: src/data/net_guard.py, src/data/akshare_client.py, start.py, tests/core/test_net_guard.py, tests/core/test_batch_quotes.py
+- Tags: anti-scraping, batch, circuit-breaker, rate-limit, disk-cache, sina
