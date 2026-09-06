@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-page-node-id="goLaSFEczZg9YVXEV3vPLR">
+<head data-page-node-id="oIR2ykLcEluK5wC1xBJ38b">
+<meta charset="UTF-8" data-page-node-id="9gssGm8EAwsieWjWDg6EdJ">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="Aiop3Szn0lFR8dtOpuKoW6">
+<title>蓝屏事故诊断报告：rt25cx21x64.sys — 2026-09-06</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: "Microsoft YaHei", "PingFang SC", sans-serif; background: #f5f6f8; color: #24292f; line-height: 1.75; padding: 24px; }
+  .wrap { max-width: 1060px; margin: 0 auto; }
+  h1 { font-size: 23px; margin-bottom: 4px; }
+  .meta { color: #6b7280; font-size: 13px; margin-bottom: 20px; }
+  .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px 24px; margin-bottom: 18px; }
+  h2 { font-size: 18px; margin-bottom: 12px; padding-bottom: 8px; border-bottom: 2px solid #eef0f3; }
+  .red { color: #d92d20; } .green { color: #067647; } .amber { color: #b54708; }
+  .verdict { border-left: 5px solid #b54708; background: #fffaeb; }
+  .verdict h2 { border-color: #fedf89; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; margin: 10px 0; }
+  th, td { border: 1px solid #e5e7eb; padding: 8px 12px; text-align: left; vertical-align: top; }
+  th { background: #f9fafb; font-weight: 600; white-space: nowrap; }
+  .tag { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600; margin-right: 4px; }
+  .tag-ok { background: #ecfdf3; color: #067647; border: 1px solid #abefc6; }
+  .tag-bad { background: #fef3f2; color: #d92d20; border: 1px solid #fecaca; }
+  .tag-mid { background: #fffaeb; color: #b54708; border: 1px solid #fedf89; }
+  code { background: #f3f4f6; border: 1px solid #e5e7eb; border-radius: 4px; padding: 1px 6px; font-family: Consolas, monospace; font-size: 13px; }
+  ul { padding-left: 22px; } li { margin: 5px 0; }
+  .small { font-size: 13px; color: #6b7280; }
+  ol { padding-left: 26px; } ol li { margin: 8px 0; }
+  .step { background: #f9fafb; border: 1px dashed #d1d5db; border-radius: 8px; padding: 10px 14px; margin: 8px 0; font-size: 14px; }
+</style>
+</head>
+<body data-page-node-id="VKWSdTrrLA68fncy7FWd7F">
+<div class="wrap" data-page-node-id="OsghrND3ErLm5ZQDsuKv7H">
+
+<h1 data-page-node-id="YZUciKleUBiWbQkODtckdE">蓝屏事故诊断报告：rt25cx21x64.sys</h1>
+<div class="meta" data-page-node-id="CSWTXnGp1hGSArweNXg2Me">今天上午 10:17 · 依据：你拍摄的蓝屏截图 + 本机驱动文件取证 + 微软官方社区同款案例 · 供你审核决策</div>
+
+<!-- 裁定 -->
+<div class="card verdict" data-page-node-id="4Uh7jw6bsgSOyT9hw55u3j">
+  <h2 data-page-node-id="mS8J9hCrC10BglGhKpyxiz">⚡ 大概率原因裁定（一句话版）</h2>
+  <p data-page-node-id="pKHNwgXtVqQdrS07ZRmAGC"><b data-page-node-id="OzaxYfOztzDzF0xow5RTSg">你机器上的 Realtek RTL8125 2.5G 有线网卡驱动（rt25cx21x64.sys）存在缺陷，在系统高负载/功耗波动时抛出未处理异常触发蓝屏</b>——这是<b class="red" data-page-node-id="deuzuDQzKdEL1h9DRI3BMT">驱动层问题，不是 CPU 缩肛</b>，也不是我之前说的"内存耗尽"（<b data-page-node-id="MFfuz6IL1UQz1ncLsgBdnO">该定论不成立，正式收回</b>：内存耗尽只会卡顿、杀进程，根本不会蓝屏；蓝屏是内核驱动的锅）。</p>
+  <p style="margin-top:8px" data-page-node-id="tzl7qlrtdZoUaGDCGu08va">你补充的第二个终止代码 <code data-page-node-id="MZQvkTykjJnalsiUx41hRG">KMODE_EXCEPTION_NOT_HANDLED (0x1E)</code> 进一步强化诊断：0x1E 与 0x7E 同属"内核异常未处理"家族（官方文档：0x1E 最常见异常码 = 0xC0000005 内存访问违规，元凶排行第一位的就是网络适配器驱动）。<b data-page-node-id="qLC3PRAKlezs2v7CDDn2zq">同一驱动在不同时机炸出不同异常码，正是竞态类驱动 bug 的典型指纹</b>；两次代码都不是 CPU 缩肛的特征（0x124 WHEA / CLOCK_WATCHDOG_TIMEOUT 均未出现）。</p>
+  <p style="margin-top:8px" data-page-node-id="ZQ2BuEBA1xTRppzOtP4Dft">我的改动（双模型加载+多个后台验证进程）扮演的角色是<b data-page-node-id="a7dkkTRj4Yb6b8Sov0L2GT">触发器</b>：CPU 满载 → 整机功耗/PCIe 链路波动 → 网卡驱动竞态 bug 被引爆。雷是驱动的，扳机有一部分是我按的。</p>
+</div>
+
+<!-- 证据链 -->
+<div class="card" data-page-node-id="mo7GYDIdYPUEvDRz0WI2vm">
+  <h2 data-page-node-id="H25GnIQh9BOJgeZV1AiF1s">证据链（每一条都可复核）</h2>
+  <table data-page-node-id="lz6EfX3OCLiLarSbKBJjHG">
+    <tr data-page-node-id="BpW9rMCYJdC2WteskZTPhT"><th data-page-node-id="PW50RTwi0sDcGF9HP2Kryh">#</th><th data-page-node-id="Di3FEdF2oATk6dcQ9cdZrJ">证据</th><th data-page-node-id="MmIWKUXaNuh0DcZRVCSMAG">指向</th></tr>
+    <tr data-page-node-id="Y35AUo4qlEgoNZ2WbPsUiV">
+      <td data-page-node-id="eOplT7KdoGvv00FEWHyGCG">1</td>
+      <td data-page-node-id="EDud2BOfaflTBiLjnrq9UN">蓝屏截图：终止代码 <code data-page-node-id="wgoYh42Vg3XC1C3WUo5TEu">SYSTEM_THREAD_EXCEPTION_NOT_HANDLED (0x7E)</code>，失败的操作 <code data-page-node-id="mveR9esHYj0DwWNTjUZcty">rt25cx21x64.sys</code></td>
+      <td data-page-node-id="oQDkAqLdGYIND0pDKBuVpi">异常由<b data-page-node-id="xVfjoNqX54M5o0mzlD4N1Q">这个驱动</b>的系统线程抛出——微软对 0x7E 的官方定义：某个内核驱动线程产生了未处理异常</td>
+    </tr>
+    <tr data-page-node-id="BZQP8ydt3FTEPdpAZWBS4U">
+      <td data-page-node-id="306fhf0PFgJZjnDttmjEJW">2</td>
+      <td data-page-node-id="wBo2sngGL8nNcNrq0Cgtu2">本机取证：该驱动 INF（<code data-page-node-id="Es2A5h4jJ30KeoWdAEA9Mb">DriverStore\FileRepository\rt25cx21x64.inf_amd64_...\rt25cx21x64.inf</code>）声明设备为 <code data-page-node-id="mcmTvYqcNZqYuU0FClFmN2">PCI\VEN_10EC&amp;DEV_8125</code>（<b data-page-node-id="F3XbwBkFjDkED4kUB373WA">Realtek RTL8125 2.5G 有线网卡</b>，ASUS 定制版本，DriverVer 2024-09-03 / 1125.021.0903.2024）</td>
+      <td data-page-node-id="WDgGsCDSDoC3KZKTzFb13w">锁定失败模块 = <b data-page-node-id="MIyU7ywyB1YBH3Ga51Nvq3">2.5G 有线网卡驱动</b>，与显卡/声卡/CPU/内存均无直接关系</td>
+    </tr>
+    <tr data-page-node-id="lb3YNbEn9xVd28fCw1Mr1G">
+      <td data-page-node-id="qYH9sBVjCwN0xThVDFHr7M">3</td>
+      <td data-page-node-id="JI5LZVBM7syDptOYSEjrfF">微软官方社区同款案例：RTL8125 驱动蓝屏，日志大量出现 <code data-page-node-id="iv4TW6393dhexkddyB0ZGk">rt25cx21x64</code> + <code data-page-node-id="Lh7wEBLA1DttmCylkvZoBa">NetAdapterCx</code>，并伴随 <b data-page-node-id="g1TccS3lyJxGxq9oD7eaBm">WHEA-Logger 事件 17（PCI Express 已更正的硬件错误）</b>；官方社区给出的修复方向 = 更新该网卡驱动 + 禁用网卡节能 + 卸载游戏加速器/VPN 类软件</td>
+      <td data-page-node-id="vJZPzoUQuTDHtMLdVVZkPT">该驱动是<b data-page-node-id="hL8amCYNTt2avZ2UpjSvmo">已知惯犯</b>；还可能叠加 PCIe 链路/供电层面的轻微异常</td>
+    </tr>
+    <tr data-page-node-id="4M6p6o4F006sOctCZDbPO8">
+      <td data-page-node-id="Vl8A7w29TnU0hpWGTeu24q">4</td>
+      <td data-page-node-id="pik1y66bcvpYmlkdVupEkq">时间相关性：三次蓝屏都发生在"跑模型"时（当时 reranker 被我设为自动加载，启动即双模型 CPU 满载）</td>
+      <td data-page-node-id="dgUCYSfAx8dXypnsnGqT5E">高负载 = 触发条件，不是根因。负载低的日常使用你从没蓝过</td>
+    </tr>
+  </table>
+</div>
+
+<!-- CPU 缩肛假设 -->
+<div class="card" data-page-node-id="FfRQLcGw8MjnYMQlDjwZil">
+  <h2 data-page-node-id="yO5cXKTGIr6k1CLUNWHwwc">关于你怀疑的 CPU 缩肛（缩缸/退化）</h2>
+  <table data-page-node-id="PlVUKPyDd6ROOb3W5am8xD">
+    <tr data-page-node-id="mp9iuuq1PAFi3FwVVOM0JR"><th data-page-node-id="9BO8tKT8flmsXT36SOvnd0">对比项</th><th data-page-node-id="DEE2DYXdJO8hIGfGeGnvKA">CPU 缩肛的典型表现</th><th data-page-node-id="sNeN4k1IKghNUhAildCjsV">你这次的蓝屏</th></tr>
+    <tr data-page-node-id="jSvmt7w6vYdL6ZIkOzj8nV"><td data-page-node-id="RfhR77K6eBIZAA6NxWcA0u">蓝屏代码</td><td data-page-node-id="tl7DCokuZ9im3wM6J6gWXz"><code data-page-node-id="g9sI5VUrkB7c3hO5kpLDJg">WHEA_UNCORRECTABLE_ERROR</code>、<code data-page-node-id="wokCwnODAPm1KpPEbt627Q">CLOCK_WATCHDOG_TIMEOUT</code>、应用随机崩溃（游戏/编译报 0xC0000005）</td><td data-page-node-id="U8aWOWGLXtvud5dtldNYC4"><code data-page-node-id="5gPGq9v9umxab6bzaumBCJ">0x7E</code> + <b data-page-node-id="SrUTr5wFFLCaVYHeUFGovx">明确指名网卡驱动文件</b>；另一次 <code data-page-node-id="C7XJP2ZN2KEpq8aOcR240Z">0x1E</code>——均非缩肛特征码</td></tr>
+    <tr data-page-node-id="3XdBKFuPG1wt6uoUwAhMWA"><td data-page-node-id="S69K3GtUU5bKaJo30rjYfW">失败模块</td><td data-page-node-id="u2YFk0yOSDzvStUWgPA6bX">通常无特定第三方驱动，或指向 CPU 内部微码/WHEA</td><td data-page-node-id="tgKRA7vFrBbK6JYGhR4ZBf"><code data-page-node-id="EjFpP68g0JcxUI7X4soyfB">rt25cx21x64.sys</code>（网卡驱动）</td></tr>
+    <tr data-page-node-id="dpCmBZ3WPJVlvUcDvf3Enq"><td data-page-node-id="wDBiUbLHIrIPgLRbje6tuK">你自己提供的旁证</td><td colspan="2" data-page-node-id="5YtXhrYNoLxFGNlIiotGhu">你说"之前打游戏也遇到，但<b data-page-node-id="uA6dtYqlM9bIspbpkDI8Kw">报错跟这次不一样</b>"——完全符合：那次可能真是 CPU/超频问题，这次是网卡驱动，两回事</td></tr>
+  </table>
+  <p data-page-node-id="fy17EVzEzWtCEfEbkDNVIN"><b class="amber" data-page-node-id="l1gUKFZUZJWS8GLuFdnwrl">结论：这次蓝屏不支持 CPU 缩肛假设。</b>但如果你已知这颗 CPU 有缩缸史，XTU 限频作为整机保险<b data-page-node-id="T4HjJtg1Z8rfGFgiGaGHiA">可以做</b>——只是要明确：它治标不治本次，本次的病根在网卡驱动。</p>
+</div>
+
+<!-- 0x1E 补充 -->
+<div class="card" data-page-node-id="HqZnxcwQSOmJiXvg6NmUad">
+  <h2 data-page-node-id="1jRjfNgNMZ4NDKEOlLxB1l">补充：第二个终止代码 KMODE_EXCEPTION_NOT_HANDLED (0x1E) 怎么解读</h2>
+  <table data-page-node-id="Fmh1BMSxLY1vttWRKWygCS">
+    <tr data-page-node-id="MrpWnDnZiMk9Fjiat6w9eO"><th data-page-node-id="rzEewQoE9ktss5Bt1Zt7mD">问题</th><th data-page-node-id="xTNOO5rMTwH0HFpnMxZ3VV">解读</th></tr>
+    <tr data-page-node-id="85INiyETTiXePPSyotPQoq"><td data-page-node-id="rZdThlB4FSvC2qGWkUCFbA">0x1E 和 0x7E 什么关系？</td><td data-page-node-id="1WgrZ6HRwcTCg3gHc5RN8E">同属"内核异常未处理"家族。微软官方文档：0x1E = 内核模式程序产生异常处理器未捕获，<b data-page-node-id="FuEDGYhxFefmxzkuMmJAKh">最常见异常码就是 0xC0000005（内存访问违规）</b>；官方处置指引："如果在蓝屏消息中点名了驱动，禁用该驱动或找厂商要更新"。0x7E 是系统线程版本的同类异常。</td></tr>
+    <tr data-page-node-id="mQq12CpxRTC2y2nnWhqD5c"><td data-page-node-id="iV4GarAJBSzyCy1zBZAm03">两次不同代码矛盾吗？</td><td data-page-node-id="DACR1bPE7ea8CJIkTPf1BD"><b class="green" data-page-node-id="CGR4sKSeQZteqkIXSbU8A9">不矛盾，反而是驱动竞态 bug 的典型指纹。</b>同一个有缺陷的驱动，在不同时机/不同内核路径下炸出不同异常码（0x7E/0x1E/0x3B 常见混发），官方文档与多个技术来源均确认"网络适配器驱动"排在 0x1E 元凶第一位。</td></tr>
+<tr><td>0x1E 那次画面上有没有"失败的操作: xxx.sys"？</td><td><b>已确认：没有其他字样。</b>这符合预期——0x1E 经常不点名文件（微软文档明确此时需靠 dump 分析定位），不影响主诊断：0x7E 那次已点名 rt25cx21x64.sys，同一驱动缺陷在不同时机表现为两种代码。</td></tr>
+<tr><td>触发条件是否锁定？</td><td><b style="color:#067647">已锁定。</b>你实测确认：只有继续执行跑模型类高负载任务时才触发，日常使用从不蓝屏，三次全部命中重负载窗口，时间相关性100%。→ 诊断定稿：<b>触发条件=高负载，直接原因=RTL8125 网卡驱动缺陷</b>。</td></tr>
+    <tr data-page-node-id="cXiJCSpi5c7oQH6tUKhiKV"><td data-page-node-id="l4p3mjrx4rklPrev6pQSUn">0x1E 的第二嫌疑人（内存条）要排除吗？</td><td data-page-node-id="ErKSejYFAzej2GhhWkEStt">暂不需要立刻动。理由：内存故障的蓝屏时机是<b data-page-node-id="nnzVHmySCvmaFl2IX5n1RY">随机</b>的，而你这三次精确绑定"跑模型"（高负载），时间相关性强烈指向负载触发的驱动缺陷。<b data-page-node-id="lYqdHAtRgIeqbYnysAy9pB">但若更新网卡驱动后仍蓝屏，MemTest86 过夜测试立即升级为必做项。</b></td></tr>
+  </table>
+</div>
+
+<!-- 方案 -->
+<div class="card" data-page-node-id="I1qyEHfpZdlfynEluLjmWH">
+  <h2 data-page-node-id="UCeABGnOmpREA2JHiFDnY1">修复方案（按优先级，等你审核后执行）</h2>
+  <ol data-page-node-id="Mpw1zd6vfc4PVZ3FmDo2Fi">
+    <li data-page-node-id="sG4xD8altUbl4lJcJPVKDX">
+      <b class="green" data-page-node-id="6yER8ba31EpDdWfFD8dVS0">方案一（治本，强烈推荐）：更新 Realtek 2.5G 网卡驱动</b>
+      <div class="step" data-page-node-id="gTi4vm61dmASdF6KdFShLj">
+        ① 打开华硕官网支持页 → 输入你的<b data-page-node-id="QUFOi8jrxGtUnXcBvHCnyN">主板型号</b> → 驱动下载 → 分类选 <b data-page-node-id="dntl2VMka8SkcUBcZnFcBl">LAN / 网络</b><br data-page-node-id="f9ZVEFrLoMZgRfLxNdwYna">
+        ② 下载最新的 Realtek 2.5G Ethernet 驱动（你现在的版本是 2024-09 的 <code data-page-node-id="60f4XTFaONmgN7iIQgE8Wa">1125.021.0903.2024</code>，找更新的）<br data-page-node-id="fO2RrWt9w12cuZiqyEAfEA">
+        ③ 设备管理器 → 网络适配器 → <b data-page-node-id="kuwe9MG0PqKqV53INGuxrx">Realtek Gaming 2.5GbE Family Controller</b> → 右键卸载设备 → <b data-page-node-id="O4dQBAgleM3f1jRvxYigAV">勾选"尝试删除此设备的驱动程序"</b> → 不重启<br data-page-node-id="vtOReGfAfEemzMyb5QHOQb">
+        ④ 安装刚下载的新驱动 → 重启
+      </div>
+      <span class="small" data-page-node-id="wtTVA8MJCSHVOI7nK5DAok">微软社区同款案例的官方建议路径；不推荐鲁大师/驱动精灵类第三方工具。</span>
+    </li>
+    <li data-page-node-id="HIBDEaax4K93CtJGkacaP5">
+      <b class="green" data-page-node-id="X6KtgfBoglCzF2bQLzTvLB">方案二（缓解，10 分钟立即可做，可与方案一叠加）</b>
+      <div class="step" data-page-node-id="mYNyuVQIcJAxLIcEv7IEk4">
+        ① 设备管理器 → 网卡属性 → <b data-page-node-id="gia9E3yGzeNkWe2EKBkOA9">电源管理</b> → 取消勾选"允许计算机关闭此设备以节约电源"<br data-page-node-id="uKOOr5NQeUVfg5vCHjO0y8">
+        ② 同窗口 <b data-page-node-id="7fCH64LlJMfDcMQYpu0FKR">高级</b> 选项卡 → 关闭 <b data-page-node-id="7h6sL7T1A8wkRZ3yIkApKx">节能以太网 (EEE / Green Ethernet)</b>、绿色以太网类选项<br data-page-node-id="jgz4N7fZlp7mlvGMxMus1p">
+        ③ （案例提及的冲突源）若装有游戏加速器/网络过滤类软件，考虑卸载——你的代理客户端（127.0.0.1:7890）一般不至于蓝屏，先不动，驱动更新无效再排查
+      </div>
+    </li>
+    <li data-page-node-id="AvgEjs8YT3Udogncr3TjcP">
+      <b class="amber" data-page-node-id="IKodEiY1TBsh15uwKCoSOA">方案三（保险，针对 CPU 担忧）：XTU 限频</b>
+      <div class="step" data-page-node-id="HVmImCvdFSaybpH44xvFsw">按你自己的计划用 Intel XTU 限制最大频率（如 P 核限 4.8-5.2GHz）+ 关闭主板自动超频——作为整机稳定性保险合理，<b data-page-node-id="Gj16cejqkXRpz3aY5FvCnt">但请记住它不解决本次蓝屏</b>，失败模块是网卡驱动。</div>
+    </li>
+    <li data-page-node-id="0KwUE6QqBttG2YLE2bgzm7">
+      <b data-page-node-id="gl10896smCPS22pNg8tYiK">验证与兜底（可选但建议）：确认元凶 + 排除内存</b>
+      <div class="step" data-page-node-id="W4SlWIMltW4aJxKGZ5XsR2">
+        ① <b data-page-node-id="afEMFQm0LQXI34ArdsZpEv">看 dump</b>：管理员 PowerShell 跑 <code data-page-node-id="QQx7a9ms4LmrCEBrl17Z7O">Get-ChildItem C:\Windows\Minidump | Sort LastWriteTime -Desc</code>，然后用免费工具 <b data-page-node-id="tXZBYtCvWGwKEht67APePO">BlueScreenView</b>（NirSoft）打开 dump，看 "Caused By Driver" 一列——若都是 rt25cx21x64.sys 结论锁死<br data-page-node-id="O3K7A6twwCbKVNCPIHSI1J">
+        ② <b data-page-node-id="pBFxIzJNRE090zRRXfAuSu">兜底排除内存</b>：若更新网卡驱动后仍蓝屏，立即用 <b data-page-node-id="YcjoBLE8osjK3VrT7CrW1V">MemTest86</b>（U 盘启动）过夜测试——0x1E 的第二嫌疑人是 RAM 故障，驱动更新无效时它升级为必做项<br data-page-node-id="Zihmik9aGERjS5DgYsZKAO">
+        ③ <b data-page-node-id="Ksy00zOSSdkPCAKwzwbWZI">XTU 限频</b>：按你原计划作为整机保险上（若 CPU 确有缩缸史），它降低重负载压力间接减少触发，但治不了本次的驱动病根
+      </div>
+    </li>
+  </ol>
+</div>
+
+<!-- 工作恢复 -->
+<div class="card" data-page-node-id="ChZDlC9WYBAcIBrHbihGCC">
+  <h2 data-page-node-id="hT0u3HPzZT6O2GTnMQt3nb">之前的工作怎么办（你说了"如果驱动问题可以继续不用回退"）</h2>
+  <ul data-page-node-id="HmiwssroYIItTd6fIAF0gl">
+    <li data-page-node-id="lRPqr4oKHatpBhIBBqF7tl"><b data-page-node-id="8y9XuM19JRuCBSBkvQXl18">reranker 默认关闭维持不变</b>——理由变了但结论不变：双模型满载在你这台机器上是已实证的触发条件，驱动修好之前不该默认开。想开随时可以，改 <code data-page-node-id="DUfxgDcfl7wRnpUAznCOyA">settings.yaml</code> 一行。</li>
+    <li data-page-node-id="LzPDfOWuEF7yf43yR9SOT0"><b data-page-node-id="DgHWgrXMhSyuBV7R9uK5yN">P3-B（bge-base A/B 对照）维持搁置</b>——同样理由，重建索引是 CPU 满载几分钟的重负载。驱动更新 + （可选）XTU 限频之后，你拍板了我再跑。</li>
+    <li data-page-node-id="O4SO0bxOVYR9xRmL9O7ZRd"><b data-page-node-id="hASootw3pOxILpxq1QOFIz">日常使用（start.py 单模型 bge-small）无需等待</b>——这个负载你用了几周没蓝过屏，本身不危险；但驱动不修，理论上任何重负载时刻都有触发概率，所以方案一建议尽快做。</li>
+    <li data-page-node-id="tdkSJRHDhCltyGFqGtcu10">commit <code data-page-node-id="9yqU828X1PrPNyPGYsqq4r">1fa215b</code> 已落地未推送——等你开代理后跑一次 <code data-page-node-id="AjR2F3kvAjbDjbpO9jTLJx">.venv/Scripts/python.exe .workbuddy/scripts/push_github.py</code> 即可。</li>
+  </ul>
+</div>
+
+<div class="small" style="text-align:center; margin: 18px 0 6px;" data-page-node-id="kMPaoovhSOMBahqFCzWKhx">
+  诊断时间：今天上午 10:17 · 置信度声明：网卡驱动缺陷为直接原因 = 高置信（截图+本机INF+微软同款案例三重印证）；高负载为触发条件 = 中高置信（时间相关性）；是否叠加 PCIe 硬件异常 = 待 Minidump/WHEA 日志确认
+</div>
+
+</div>
+</body>
+</html>

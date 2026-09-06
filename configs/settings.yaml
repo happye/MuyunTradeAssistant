@@ -24,13 +24,12 @@ rag:
     keyword: 0.4
     semantic: 0.6
   reranker:                                    # 二阶段重排（v0.8.9.0 P3-C，双塔粗排后交叉编码精排）
-    enabled: false                             # 🔴默认关闭：开启会额外加载1.1GB重排模型，内存不足会导致系统重启（2026-09-06事故）。
-                                               # 需要时手动改true，并确认空闲内存≥4GB
+    enabled: false                              # 默认关闭（2026-09-06同体系A/B实测负收益：ON 0.467/0.262/0.322 vs OFF 0.633/0.553/0.568，见报告§六）；开启需空闲内存≥4GB
     model: "BAAI/bge-reranker-base"           # 交叉编码器，本地缓存缺失时会自动下载
     candidate_multiplier: 3                    # 候选池 = top_k * 该倍数，再精排截到 top_k
   embedding:                                   # 嵌入配置
     provider: "sentence"                       # sentence(默认)/tfidf(降级)
-    model: "BAAI/bge-small-zh-v1.5"           # 中文嵌入模型
+    model: "C:/Users/Crux/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/snapshots/7999e1d3359715c523056ef9478215996d62a620"  # 本地路径加载（2026-09-06根治：offline下ST库按模型名加载会失败并静默降级TFIDF；本地路径零联网零重试）
 
 # 决策引擎配置
 decision:

@@ -1,4 +1,4 @@
 {
   "provider": "sentence",
-  "model": "BAAI/bge-small-zh-v1.5"
+  "model": "C:/Users/Crux/.cache/huggingface/hub/models--BAAI--bge-small-zh-v1.5/snapshots/7999e1d3359715c523056ef9478215996d62a620"
 }
