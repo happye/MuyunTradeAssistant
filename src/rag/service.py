@@ -127,6 +127,11 @@ class RAGService:
                 # 索引加载成功，检查是否需要增量重建
                 if self._check_knowledge_changed():
                     logger.info("检测到策略文件变化，自动重建索引...")
+                    # P2-A 修复（2026-09-06 审查）：重建必须从空 store 开始。
+                    # _try_load_index 已把旧索引装进 _store，而 store.add 只按
+                    # 相同 doc_id 替换——已删除/改名文件的旧块会作为僵尸向量残留、
+                    # 被 save 固化回磁盘（探针实证）。换新 store 后由下方全量 add。
+                    self._store = create_vector_store(prefer_faiss=True)
                 else:
                     # 无变化，直接使用缓存
                     self._create_retriever()

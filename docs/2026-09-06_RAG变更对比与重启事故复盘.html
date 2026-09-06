@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="zh-CN">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<html lang="zh-CN" data-page-node-id="8cbzD4RTSRGK7Hy6b595F6">
+<head data-page-node-id="5yECZ2NdJJHAi4GlJ4heVJ">
+<meta charset="UTF-8" data-page-node-id="AVxGlg2QciKzXaeYRUPEXW">
+<meta name="viewport" content="width=device-width, initial-scale=1.0" data-page-node-id="6xbxkPZ6vXdLkPcA41Spbh">
 <title>RAG 变更前后对比 &amp; 重启事故复盘 — 2026-09-06</title>
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -34,144 +34,144 @@
   .kbd { background: #1f2937; color: #f9fafb; border-radius: 6px; padding: 10px 14px; font-family: Consolas, monospace; font-size: 13px; margin: 8px 0; overflow-x: auto; }
 </style>
 </head>
-<body>
-<div class="wrap">
+<body data-page-node-id="3lbapTZqPBlhGIAle3zLV2">
+<div class="wrap" data-page-node-id="Vku0gOBrrTBcoMoL3XTCj8">
 
-<h1>RAG 变更前后对比 &amp; 电脑重启事故复盘</h1>
-<div class="meta">报告生成：今天上午 10:06 · 范围：昨晚 commit <code>106d50e</code> 之后至现在的全部改动 · 性质：自我追责 + 止血记录</div>
+<h1 data-page-node-id="zaZAvo2QMwznrKnVjmLXga">RAG 变更前后对比 &amp; 电脑重启事故复盘</h1>
+<div class="meta" data-page-node-id="yxjIWFivAlu9Zw5HGMnWJN">报告生成：今天上午 10:06 · 范围：昨晚 commit <code data-page-node-id="laBHo2XWDakEH9l2fpffcf">106d50e</code> 之后至现在的全部改动 · 性质：自我追责 + 止血记录</div>
 
 <!-- 事故定论 -->
-<div class="card incident">
-  <h2>🔴 事故定论：你的电脑为什么重启了三次</h2>
-  <p><b class="red">直接责任是我。</b>我在 <code>configs/settings.yaml</code> 里把新加的重排器写成了 <code>enabled: true</code>（默认开启），而你机器上的 RAG 服务在每次跑 <code>start.py</code> / 分析 / chat 时启动，都会自动加载重排模型。后果是进程内存需求从约 <b>1.2GB</b> 暴涨到约 <b>3.5–4GB</b>（见下方内存账本），叠加当时我后台还在跑的多个验证进程，内存耗尽触发 Windows 硬件级保护重启。</p>
-  <p style="margin-top:8px">你每次重启后重试，配置没变，于是「一跑就重启」稳定复现三次。<b>确切的保护机制（内存耗尽 / 温度 / 电源）我无法远程确诊</b>，但「一跑模型就重启」+ 双模型内存账本，指向内存耗尽的置信度极高。</p>
-  <p style="margin-top:8px"><b class="green">已止血</b>：<code>reranker.enabled</code> 已改回 <code>false</code>，残留 Python 进程已清零（<code>tasklist</code> 核实无残留）。<b>你现在跑 <code>start.py</code>，行为和昨晚 <code>106d50e</code> 完全一致，不会再加载重排模型。</b></p>
+<div class="card incident" data-page-node-id="XOCmnr9NHQTes9pFZCNsQM">
+  <h2 data-page-node-id="eorcFzeVQ5DqrviY6eL7hw">🔴 事故定论：你的电脑为什么重启了三次</h2>
+  <p data-page-node-id="FvHZ69EBoA2TD7EJ2l0nNB"><b class="red" data-page-node-id="IudIJv60P9BA2k8x1mGZl8">直接责任是我。</b>我在 <code data-page-node-id="e5T8a6Ufpf5pY95hGJeQcY">configs/settings.yaml</code> 里把新加的重排器写成了 <code data-page-node-id="qOhA7AFl0NWjur05rNo4ME">enabled: true</code>（默认开启），而你机器上的 RAG 服务在每次跑 <code data-page-node-id="Tz8OLO7NkaGv3Ezw8BjYJX">start.py</code> / 分析 / chat 时启动，都会自动加载重排模型。后果是进程内存需求从约 <b data-page-node-id="5O3U1AiqZ1EIDO38lKomiZ">1.2GB</b> 暴涨到约 <b data-page-node-id="DBhgTwMKEdXKHOHuH1QQn5">3.5–4GB</b>（见下方内存账本），叠加当时我后台还在跑的多个验证进程，内存耗尽触发 Windows 硬件级保护重启。</p>
+  <p style="margin-top:8px" data-page-node-id="9xpyagumuKNYRYBEp9UPi7">你每次重启后重试，配置没变，于是「一跑就重启」稳定复现三次。<b data-page-node-id="CCZfHkJiu7CKBhbCCBe6UR">确切的保护机制（内存耗尽 / 温度 / 电源）我无法远程确诊</b>，但「一跑模型就重启」+ 双模型内存账本，指向内存耗尽的置信度极高。</p>
+  <p style="margin-top:8px" data-page-node-id="or3IX0DnzZlUCDxYAmEObL"><b class="green" data-page-node-id="8ibIWAgVCX8HVX8Onmg0J1">已止血</b>：<code data-page-node-id="If5Cw2uu54Nz5WJMFZTPHi">reranker.enabled</code> 已改回 <code data-page-node-id="n5zuaHo0pcHSFJYLa4nCry">false</code>，残留 Python 进程已清零（<code data-page-node-id="LHT1F6gV6lBCxijNwOiMh1">tasklist</code> 核实无残留）。<b data-page-node-id="HdegDYnTQQHlWtwp6WPSGq">你现在跑 <code data-page-node-id="Yg2VActuzrIrmuims3Es3I">start.py</code>，行为和昨晚 <code data-page-node-id="teVhE6zNbxABAy8hR8fsHi">106d50e</code> 完全一致，不会再加载重排模型。</b></p>
 </div>
 
 <!-- 内存账本 -->
-<div class="card">
-  <h2>内存账本：你跑 start.py 时 RAG 的一次性内存开销</h2>
-  <table>
-    <tr><th>场景</th><th>加载的模型</th><th>进程内存估算</th></tr>
-    <tr>
-      <td><span class="tag tag-ok">改动前（106d50e，安全）</span></td>
-      <td>bge-small-zh-v1.5（约 95MB 权重）+ torch 运行时</td>
-      <td><b>约 1.2–1.5GB</b></td>
+<div class="card" data-page-node-id="Ao4z7685PnIvalBH6zcT6T">
+  <h2 data-page-node-id="9igA4CqgGAkUcFyHEHH2c1">内存账本：你跑 start.py 时 RAG 的一次性内存开销</h2>
+  <table data-page-node-id="HC2i7mjW5iVPo9c1xStavP">
+    <tr data-page-node-id="gbx90fbXZ4x3ePLuk3uzUR"><th data-page-node-id="iGFan51x30nHvNxWwO0zqN">场景</th><th data-page-node-id="WfReKa4CV5cSJ3Q6NXKlYE">加载的模型</th><th data-page-node-id="Uqzq9B24JKYVsP1O2IKfft">进程内存估算</th></tr>
+    <tr data-page-node-id="AlGEX2haYfKyZRY1vC8TT6">
+      <td data-page-node-id="2BMqHQjdIswBMHFDwIHGnD"><span class="tag tag-ok" data-page-node-id="hQmzybEub8O35OKST0yR0W">改动前（106d50e，安全）</span></td>
+      <td data-page-node-id="7JFMyZxDVI5zU1RJwJyCFr">bge-small-zh-v1.5（约 95MB 权重）+ torch 运行时</td>
+      <td data-page-node-id="JuR9cSFKPWvYh46U9DgYJL"><b data-page-node-id="og6XUWoAteIFNiq8qIE5BR">约 1.2–1.5GB</b></td>
     </tr>
-    <tr>
-      <td><span class="tag tag-bad">事故期间（我改 enabled:true）</span></td>
-      <td>bge-small（95MB）+ bge-reranker-base（<b>1.04GB</b> 权重）+ 双份推理开销 + torch 运行时</td>
-      <td><b>约 3.5–4GB</b></td>
+    <tr data-page-node-id="FdrIHds948GDiicMQCZGGQ">
+      <td data-page-node-id="OamODVklHDBEEvRkcj5f7h"><span class="tag tag-bad" data-page-node-id="L80UnZGR5AFAWQx4g8hjcJ">事故期间（我改 enabled:true）</span></td>
+      <td data-page-node-id="oAfN40RyhKbdQHSgBzOgG9">bge-small（95MB）+ bge-reranker-base（<b data-page-node-id="ny8y1HJFzqAGybU1Z1CLfB">1.04GB</b> 权重）+ 双份推理开销 + torch 运行时</td>
+      <td data-page-node-id="W5bSf8tNIqMrLIorbnvJy6"><b data-page-node-id="ocKsIGveQikSL8o9wVM3zx">约 3.5–4GB</b></td>
     </tr>
-    <tr>
-      <td><span class="tag tag-mid">我后台验证进程叠加时</span></td>
-      <td>上面那个，再加 2–3 个各自加载模型的 Python 进程</td>
-      <td><b>峰值可达 6GB+</b></td>
+    <tr data-page-node-id="lg7arz36jVu9GAvEkEl5Dn">
+      <td data-page-node-id="Yj97DoSf5W7tFiJc6TUPR4"><span class="tag tag-mid" data-page-node-id="FFKWhmV8JAmzBnyvc5931W">我后台验证进程叠加时</span></td>
+      <td data-page-node-id="JYkCBILXWlHWKBK9eBDuHv">上面那个，再加 2–3 个各自加载模型的 Python 进程</td>
+      <td data-page-node-id="IxiIRIct9CxZhzThiTHZDN"><b data-page-node-id="KADRJxkE4wB5efJ4kgLgvO">峰值可达 6GB+</b></td>
     </tr>
   </table>
-  <div class="bar-wrap"><div class="bar" style="width:26%; background:#067647;">改动前 ≈1.2–1.5GB</div></div>
-  <div class="bar-wrap"><div class="bar" style="width:66%; background:#d92d20;">事故时 ≈3.5–4GB</div></div>
-  <div class="bar-wrap"><div class="bar" style="width:96%; background:#7f1d1d;">叠加后台验证 ≈6GB+</div></div>
-  <p class="small">两个错误叠加：① 重排器默认开启（我的配置决策失误）；② 我在同一台机器上连续后台跑多个真实模型加载验证（NWkhla / akuzLR / Q5MjQ5 三个进程先后加载模型），没有考虑你的内存余量。</p>
+  <div class="bar-wrap" data-page-node-id="AcioKOTAnJeCM2grlFhEAn"><div class="bar" style="width:26%; background:#067647;" data-page-node-id="bgQmitA64dENtzFilgkOqV">改动前 ≈1.2–1.5GB</div></div>
+  <div class="bar-wrap" data-page-node-id="ZGdkYbvVPcOdMEXUYGWH0D"><div class="bar" style="width:66%; background:#d92d20;" data-page-node-id="xKN7ZakGS2sJc1KG7eCrxx">事故时 ≈3.5–4GB</div></div>
+  <div class="bar-wrap" data-page-node-id="kDV0C57b0tCscl5IYADn3o"><div class="bar" style="width:96%; background:#7f1d1d;" data-page-node-id="TxhoaTy0VWwBDFYQX1BghH">叠加后台验证 ≈6GB+</div></div>
+  <p class="small" data-page-node-id="0kLbwPc9h6qEh0S6wZxMnM">两个错误叠加：① 重排器默认开启（我的配置决策失误）；② 我在同一台机器上连续后台跑多个真实模型加载验证（NWkhla / akuzLR / Q5MjQ5 三个进程先后加载模型），没有考虑你的内存余量。</p>
 </div>
 
 <!-- 逐文件改动对比 -->
-<div class="card">
-  <h2>逐文件改动前后对比（106d50e → 现在）</h2>
-  <table>
-    <tr><th>文件</th><th>改动前</th><th>改动后</th><th>对你的影响</th></tr>
-    <tr>
-      <td><code>configs/settings.yaml</code></td>
-      <td>无 reranker 节</td>
-      <td>新增 <code>reranker</code> 节，<b class="red">enabled 曾为 true（事故根源）→ 现已回滚 false</b>，注释写明禁开原因与内存门槛</td>
-      <td><span class="tag tag-ok">已止血</span>不再自动加载重排模型</td>
+<div class="card" data-page-node-id="cpCE85QqE83at4iwe8PofD">
+  <h2 data-page-node-id="D6vG5MiMK3Cy9JhIEkAruq">逐文件改动前后对比（106d50e → 现在）</h2>
+  <table data-page-node-id="p1YExWLmLAgGdqyBzg1YuW">
+    <tr data-page-node-id="odNY60RPN0AQ7oqk3sMeBR"><th data-page-node-id="bzaW2CBdz45Geifegrbe7a">文件</th><th data-page-node-id="sOKALPEeV9Xy3ll2GL534i">改动前</th><th data-page-node-id="vhJ9GW1KyX4c1BHYAzuHsz">改动后</th><th data-page-node-id="PzqTisGG6GJUVPwypzBvou">对你的影响</th></tr>
+    <tr data-page-node-id="hEmHC4GeBZBxIiF2ISGtfZ">
+      <td data-page-node-id="FDwQklejckavNMzS5mdHeN"><code data-page-node-id="Itni3GKy1q6rbQaCLAPixa">configs/settings.yaml</code></td>
+      <td data-page-node-id="C1NmpkLynhQ0xkaT6QOhqd">无 reranker 节</td>
+      <td data-page-node-id="nB2dgoeEEL7DC9JTFBrNeK">新增 <code data-page-node-id="baFlW0jnNshCOR9UrH1lYL">reranker</code> 节，<b class="red" data-page-node-id="HEiVrD0tS5FlkYIxIeowcl">enabled 曾为 true（事故根源）→ 现已回滚 false</b>，注释写明禁开原因与内存门槛</td>
+      <td data-page-node-id="v8ie0E4tCKOqh49d9P0woD"><span class="tag tag-ok" data-page-node-id="kZsc6IqxDlpTSts8GKueZ1">已止血</span>不再自动加载重排模型</td>
     </tr>
-    <tr>
-      <td><code>src/rag/reranker.py</code></td>
-      <td>不存在</td>
-      <td>新建：交叉编码重排器，带 <code>is_available()</code> 可用性探测 + 加载失败单次降级（不抛异常、不阻断检索）</td>
-      <td><span class="tag tag-ok">零影响</span>enabled=false 时完全不创建、不加载、不占内存</td>
+    <tr data-page-node-id="a0pbnVFrpiWwkR5ifoLiYd">
+      <td data-page-node-id="Lbl7JhmsIP4FTeAem4CGDc"><code data-page-node-id="skp646mRp3FLStX0UlPRDp">src/rag/reranker.py</code></td>
+      <td data-page-node-id="bZ9JGyWhaSqWLAy0M8aQCF">不存在</td>
+      <td data-page-node-id="7d4RF8iIsiEzyqFzVF4bvh">新建：交叉编码重排器，带 <code data-page-node-id="w7C9oCTpqwnf8EIoS9BF9o">is_available()</code> 可用性探测 + 加载失败单次降级（不抛异常、不阻断检索）</td>
+      <td data-page-node-id="Q0mw5e3zGbaSjNhIhk0pDV"><span class="tag tag-ok" data-page-node-id="KPhaDREzWGbYHRNkA56rjy">零影响</span>enabled=false 时完全不创建、不加载、不占内存</td>
     </tr>
-    <tr>
-      <td><code>src/rag/retrieval.py</code></td>
-      <td><code>_dispatch</code> 直接三分派；检索后多样性截断</td>
-      <td>拆出 <code>_dispatch_raw</code>；新增 <code>_rerank_result</code>（候选池放大 → 交叉编码精排 → 再套多样性截断防单章霸榜）；<code>HybridRetriever</code> 新增 <code>reranker</code> / <code>rerank_candidate_multiplier</code> 参数（默认 None = 行为不变）</td>
-      <td><span class="tag tag-ok">零影响</span>reranker=None 时走原路径，回归测试锁死</td>
+    <tr data-page-node-id="jFXq9yMcri1JcCCbu0xIcw">
+      <td data-page-node-id="z3T0dJhHDmXYBlQMTktTPA"><code data-page-node-id="OmoM5bLnJl0NCKW93wL89G">src/rag/retrieval.py</code></td>
+      <td data-page-node-id="DfkPKs1HoWu3JppaK3qGPh"><code data-page-node-id="c5BtoDAMeoYe3AfJI3Iqtv">_dispatch</code> 直接三分派；检索后多样性截断</td>
+      <td data-page-node-id="INWb7b3wVSjJqeFbCH5xsY">拆出 <code data-page-node-id="jm3zqhp3FAEqlVpe6nL0av">_dispatch_raw</code>；新增 <code data-page-node-id="25gROwEa3RTmdvLxJKnYDU">_rerank_result</code>（候选池放大 → 交叉编码精排 → 再套多样性截断防单章霸榜）；<code data-page-node-id="sDlKFeJghvw2OtsC59ZPgz">HybridRetriever</code> 新增 <code data-page-node-id="bCIAXMBHy8Z0XtLjBLjU0E">reranker</code> / <code data-page-node-id="SHCh73KquLUS2QtdDMmHJC">rerank_candidate_multiplier</code> 参数（默认 None = 行为不变）</td>
+      <td data-page-node-id="3YbrngArtPItZCdAgXuYTp"><span class="tag tag-ok" data-page-node-id="9FFhWQK41pdTu4aR8m3X9K">零影响</span>reranker=None 时走原路径，回归测试锁死</td>
     </tr>
-    <tr>
-      <td><code>src/rag/service.py</code></td>
-      <td>不读 reranker 配置</td>
-      <td>读 <code>rag.reranker</code> 配置；<code>_get_reranker()</code> 惰性创建；<code>_create_retriever</code> 传入</td>
-      <td><span class="tag tag-ok">零影响</span>enabled=false 时 <code>_get_reranker()</code> 恒返 None</td>
+    <tr data-page-node-id="x4S6fFWuSw4Bf2j3AWKCfE">
+      <td data-page-node-id="oc2NppGzJJotaPD5EjRTyP"><code data-page-node-id="Oy5H5TFc0x76WyQ3jpl6tZ">src/rag/service.py</code></td>
+      <td data-page-node-id="yL9g11f9l60WqWmW8Smrf9">不读 reranker 配置</td>
+      <td data-page-node-id="78yjui3k5r8xIkzfUY92CU">读 <code data-page-node-id="zvARz6XmJ0kkffBBcS9GXL">rag.reranker</code> 配置；<code data-page-node-id="Enbh1zyS7QjkJaBrDg9xaU">_get_reranker()</code> 惰性创建；<code data-page-node-id="sFucyGfNKOwNFL6KF3tV21">_create_retriever</code> 传入</td>
+      <td data-page-node-id="OXdZG0mY2TFx5uqpBSg3RP"><span class="tag tag-ok" data-page-node-id="bJAAKCsGtpticUtwXbFr1d">零影响</span>enabled=false 时 <code data-page-node-id="zFCgdgQYL3o2rIkeFoJ4e7">_get_reranker()</code> 恒返 None</td>
     </tr>
-    <tr>
-      <td><code>tests/rag/test_ingestion_chunking.py</code></td>
-      <td>11 项（有 2 处语义重复）</td>
-      <td><b>精简为 9 项</b>：词典加载+生效合并为 1 项；「2831 字复现」并入混合场景硬顶测试（注释保留出处）；重排顺序断言改为动态构造（原静态假设候选池必含特定文档，测试设计错误已修）</td>
-      <td><span class="tag tag-ok">变干净</span>每项对应独立行为契约，你质疑的冗余已删</td>
+    <tr data-page-node-id="FKX6JVTblqiFI77Bp33sGS">
+      <td data-page-node-id="90woAhg5zTH2d62eyCQJfn"><code data-page-node-id="eQcufIpESNaO4ET2pQHBjs">tests/rag/test_ingestion_chunking.py</code></td>
+      <td data-page-node-id="5IB7uysLHi7oRZ5YajhwVi">11 项（有 2 处语义重复）</td>
+      <td data-page-node-id="wD2DMO83v2SlbKQ9Qq6Ovs"><b data-page-node-id="3BHyR9qIezoLSjSd6ktcCV">精简为 9 项</b>：词典加载+生效合并为 1 项；「2831 字复现」并入混合场景硬顶测试（注释保留出处）；重排顺序断言改为动态构造（原静态假设候选池必含特定文档，测试设计错误已修）</td>
+      <td data-page-node-id="8HUXOFuzwVxLLcNRXDF111"><span class="tag tag-ok" data-page-node-id="tDCWQDcnoGoXeIicBAb0kH">变干净</span>每项对应独立行为契约，你质疑的冗余已删</td>
     </tr>
-    <tr>
-      <td><code>tests/rag/test_reranker.py</code></td>
-      <td>不存在</td>
-      <td>新建 6 项：候选池放大 / 重排定序 / 重排后多样性仍生效 / 关闭时不改行为 / 模型不可用降级不抛异常 / 层过滤路径回归。<b>全部用假重排器（FakeReranker），不加载任何真实模型</b></td>
-      <td><span class="tag tag-ok">零成本</span>跑测试秒级，不吃内存</td>
+    <tr data-page-node-id="8zQGpwCnXrsjjTC5HmYai9">
+      <td data-page-node-id="tC2OCTlWQWCUs9sL95OdJT"><code data-page-node-id="1lDAFduP7JsGeGE6Nk8kT6">tests/rag/test_reranker.py</code></td>
+      <td data-page-node-id="pVSygpEyjJP58BBX2Ac1zV">不存在</td>
+      <td data-page-node-id="A5C42op8eqWLkA5IBwCSMN">新建 6 项：候选池放大 / 重排定序 / 重排后多样性仍生效 / 关闭时不改行为 / 模型不可用降级不抛异常 / 层过滤路径回归。<b data-page-node-id="eoDIbfBPytzivjYNIol4ZR">全部用假重排器（FakeReranker），不加载任何真实模型</b></td>
+      <td data-page-node-id="TLmbf2aBo2EmJPWolD5RCt"><span class="tag tag-ok" data-page-node-id="6BNO9HU10b4wY1bUnZ7LiM">零成本</span>跑测试秒级，不吃内存</td>
     </tr>
-    <tr>
-      <td><code>src/rag/embedding.py</code> / <code>embedding.model</code> 配置</td>
-      <td>bge-small-zh-v1.5</td>
-      <td><b>一字未动</b>。bge-base 只下载到了缓存，A/B 对照从未执行，从未切换</td>
-      <td><span class="tag tag-ok">零影响</span>你跑的始终是 bge-small</td>
+    <tr data-page-node-id="EAy0EVEcMQkUGDRmVplUCm">
+      <td data-page-node-id="bIjjUlydnaYMyHluQzJZcv"><code data-page-node-id="bj73fh9LE2DXkPsdyqviif">src/rag/embedding.py</code> / <code data-page-node-id="UCTXNh8FRTqG1ACZjXMsFP">embedding.model</code> 配置</td>
+      <td data-page-node-id="GR0JGnV3HeZ5wDiBHDb1eQ">bge-small-zh-v1.5</td>
+      <td data-page-node-id="XMTaRBHvmd3d1iZEKOlCwa"><b data-page-node-id="8s5kZ6paR2v0T1BSAnNFFr">一字未动</b>。bge-base 只下载到了缓存，A/B 对照从未执行，从未切换</td>
+      <td data-page-node-id="LipvEHXerttMzWXOBPLBN0"><span class="tag tag-ok" data-page-node-id="cgPCtV3GIg5JsDvc7uKJtC">零影响</span>你跑的始终是 bge-small</td>
     </tr>
   </table>
 </div>
 
 <!-- 磁盘与缓存 -->
-<div class="card">
-  <h2>磁盘占用交代（不影响运行，但占了你的硬盘）</h2>
-  <table>
-    <tr><th>位置</th><th>内容</th><th>大小</th><th>处置建议</th></tr>
-    <tr>
-      <td><code>C:\Users\Crux\.cache\huggingface\hub\models--BAAI--bge-base-zh-v1.5</code></td>
-      <td>bge-base 权重+分词器（我今早下载，用于 A/B，<b>从未在运行中生效</b>）</td>
-      <td>约 420MB</td>
-      <td><span class="tag tag-mid">可删可留</span>不做模型升级就删；想以后再 A/B 就留</td>
+<div class="card" data-page-node-id="faYPfSIRi6huzJFxwhrwl0">
+  <h2 data-page-node-id="roryXuiLWTJXb3z06tdJ2y">磁盘占用交代（不影响运行，但占了你的硬盘）</h2>
+  <table data-page-node-id="2oogc4CXPNAAHzEcjyFVc6">
+    <tr data-page-node-id="7gWbNQJfLHnzEBbaSFAK41"><th data-page-node-id="9QBXLyCgv69HclJ05mgp4S">位置</th><th data-page-node-id="tG5j9oiBGXZOlMSpYe19iZ">内容</th><th data-page-node-id="rkAlZ7N987apauJKRrDEb5">大小</th><th data-page-node-id="URgbqVGXJFzERNOH37HVOJ">处置建议</th></tr>
+    <tr data-page-node-id="HZbD6T0JlPIHIKFSb6yqOS">
+      <td data-page-node-id="HScYVxIbyZ5rfNmvsPK530"><code data-page-node-id="XCY3cgfwsdoKx9QGIWfLuj">C:\Users\Crux\.cache\huggingface\hub\models--BAAI--bge-base-zh-v1.5</code></td>
+      <td data-page-node-id="Ph9JwqV5L1Fi8UZmTmdcyN">bge-base 权重+分词器（我今早下载，用于 A/B，<b data-page-node-id="0x7x2RJHlBL899l5tviKXB">从未在运行中生效</b>）</td>
+      <td data-page-node-id="gVBPSetgZxKHvBD67NFe0G">约 420MB</td>
+      <td data-page-node-id="DezWBoesModA4VHiRifGBJ"><span class="tag tag-mid" data-page-node-id="rNizSui6m4zZZPBaM4Bc7m">可删可留</span>不做模型升级就删；想以后再 A/B 就留</td>
     </tr>
-    <tr>
-      <td><code>...\models--BAAI--bge-reranker-base</code></td>
-      <td>重排模型（<b>8月9日就存在，不是我下的</b>）</td>
-      <td>约 1.04GB</td>
-      <td><span class="tag tag-mid">建议保留</span>reranker 功能保留但默认关；彻底不要可删</td>
+    <tr data-page-node-id="NilBdzqFXfLqIhJvKY12Z5">
+      <td data-page-node-id="vnO3joVh60T78lvhz9gLcA"><code data-page-node-id="V9Ms5Hv39ZZtWBkIcy8UTO">...\models--BAAI--bge-reranker-base</code></td>
+      <td data-page-node-id="PJpLPEx8B4GLWhFj8VdHUH">重排模型（<b data-page-node-id="2rzcCFDFnFoKrvLsFD4E7B">8月9日就存在，不是我下的</b>）</td>
+      <td data-page-node-id="4BdpaLxrXufC9xu3rsNJLM">约 1.04GB</td>
+      <td data-page-node-id="37TIj3us3l5iDBacGHu0fk"><span class="tag tag-mid" data-page-node-id="RsCpfHyjl8ZbLMWU92Gyoe">建议保留</span>reranker 功能保留但默认关；彻底不要可删</td>
     </tr>
-    <tr>
-      <td><code>...\models--BAAI--bge-small-zh-v1.5</code></td>
-      <td>正在用的嵌入模型</td>
-      <td>约 95MB</td>
-      <td><span class="tag tag-ok">必须保留</span></td>
+    <tr data-page-node-id="HTsnUEHzar4T7CWcZ0AlYm">
+      <td data-page-node-id="Oq6Djp8sWrGCMv7XptC3Oj"><code data-page-node-id="f7rCbPWFwyl5BAmevItjoL">...\models--BAAI--bge-small-zh-v1.5</code></td>
+      <td data-page-node-id="AI8wY7H4WAV2ltyuDOi7bb">正在用的嵌入模型</td>
+      <td data-page-node-id="8o6xsGHb8b8a3qbAITZ94r">约 95MB</td>
+      <td data-page-node-id="Gpve49ZBK0VQFZYH2X90GV"><span class="tag tag-ok" data-page-node-id="8E9riZHCqInRjQnPB8wQOf">必须保留</span></td>
     </tr>
   </table>
 </div>
 
 <!-- 现在的状态 -->
-<div class="card">
-  <h2>你现在的状态（一句话版）</h2>
-  <ul>
-    <li><b>跑 <code>start.py</code>：安全。</b>与昨晚 <code>106d50e</code> 行为完全一致——bge-small 单模型、约 1.2GB 内存、检索结果不变、评分缓存不受影响（CACHE_VERSION 没动）。</li>
-    <li><b>P3-C 重排功能：代码保留、默认关闭。</b>以后想开：先确认空闲内存 ≥4GB，再把 <code>settings.yaml</code> 里 <code>reranker.enabled</code> 改 <code>true</code>。不满足条件时开了也不会炸（加载失败会降级为无重排），但<b>加载成功后常驻 1GB+ 内存</b>，内存不足仍可能触发你遇到的重启，所以门槛写在注释里了。</li>
-    <li><b>P3-B 模型升级（bge-base A/B 对照）：搁置。</b>不是功能没做完，是<b>你的机器跑不动这类实验</b>——重建索引是 CPU 满载 1–2 分钟 + 双模型内存峰值，在你这台机器上就是二次事故。模型文件我留在缓存里没删，要不要做、什么时候做（建议内存 ≥16GB 或换机器）由你拍板。</li>
+<div class="card" data-page-node-id="TI8FcR7LDuibFtmUNtwIGB">
+  <h2 data-page-node-id="zh4GjaunKM8fO4N5pSVQxe">你现在的状态（一句话版）</h2>
+  <ul data-page-node-id="wzbTYCvrrYjChpWFJMeeqB">
+    <li data-page-node-id="VP9qNOk1CGeULCGkMQaX7J"><b data-page-node-id="AnTVnoBvkSno1jFDSufk8G">跑 <code data-page-node-id="iZUVdpvismX43cQj90HI3F">start.py</code>：安全。</b>与昨晚 <code data-page-node-id="2IC8XgU2a2gVu6Uw5ME0Zo">106d50e</code> 行为完全一致——bge-small 单模型、约 1.2GB 内存、检索结果不变、评分缓存不受影响（CACHE_VERSION 没动）。</li>
+    <li data-page-node-id="FKzxqbr0BsUTUzsrP5u1Ac"><b data-page-node-id="RB4pjO4IhvczpJKxC5Hk6Y">P3-C 重排功能：代码保留、默认关闭。</b>以后想开：先确认空闲内存 ≥4GB，再把 <code data-page-node-id="IhGYG7gpuKwiir8416RGxK">settings.yaml</code> 里 <code data-page-node-id="VWEp4NPpuj6TDtqq4Z8Z3e">reranker.enabled</code> 改 <code data-page-node-id="rKehvWqXcfkSd01EhRxyZE">true</code>。不满足条件时开了也不会炸（加载失败会降级为无重排），但<b data-page-node-id="BHz4CHj38bTRT9CEXZugE0">加载成功后常驻 1GB+ 内存</b>，内存不足仍可能触发你遇到的重启，所以门槛写在注释里了。</li>
+    <li data-page-node-id="QCjc0Bevn9dyzYgTjMeLy1"><b data-page-node-id="nWUgsvGrpozZtM8Fh9atgW">P3-B 模型升级（bge-base A/B 对照）：搁置。</b>不是功能没做完，是<b data-page-node-id="Ui5ScOTHnljceDQwCr472w">你的机器跑不动这类实验</b>——重建索引是 CPU 满载 1–2 分钟 + 双模型内存峰值，在你这台机器上就是二次事故。模型文件我留在缓存里没删，要不要做、什么时候做（建议内存 ≥16GB 或换机器）由你拍板。</li>
   </ul>
 </div>
 
 <!-- 教训 -->
-<div class="card">
-  <h2>我的三条整改（写进项目记忆，不是道歉完就算了）</h2>
-  <ul>
-    <li><b>铁律：动配置前先算内存账。</b>任何会加载模型的开关，默认值必须是关，开启门槛（内存/显存）写进配置注释。这次我违反了。</li>
-    <li><b>铁律：重型模型验证不得与用户共用机器时段。</b>后台验证进程串行跑、跑完即清，不在用户可能操作 REPL 的时间窗口叠加模型进程。</li>
-    <li><b>「实验性增强」与「用户默认路径」必须隔离。</b>reranker 这类未经过 A/B 收益验证的功能，没资格出现在默认开启的配置里。</li>
+<div class="card" data-page-node-id="6taNWqFIKlVqFeORq1P8gf">
+  <h2 data-page-node-id="MieHwEPHaCpFQjeNP0i28N">我的三条整改（写进项目记忆，不是道歉完就算了）</h2>
+  <ul data-page-node-id="ChuYKhbo4dIfb6RMN6OXWc">
+    <li data-page-node-id="C0Ixw1676wBgAit4hyzZtT"><b data-page-node-id="XT3aKDHKWJWGzQGIrAuedj">铁律：动配置前先算内存账。</b>任何会加载模型的开关，默认值必须是关，开启门槛（内存/显存）写进配置注释。这次我违反了。</li>
+    <li data-page-node-id="iHhTQFeHt8kgWAZQdY4hXl"><b data-page-node-id="8GGAGkArfDXsfTC2VjkpTu">铁律：重型模型验证不得与用户共用机器时段。</b>后台验证进程串行跑、跑完即清，不在用户可能操作 REPL 的时间窗口叠加模型进程。</li>
+    <li data-page-node-id="vHxDWWiP6XHSahPAp4ja21"><b data-page-node-id="warAMmKFABeAKqJaoHxBda">「实验性增强」与「用户默认路径」必须隔离。</b>reranker 这类未经过 A/B 收益验证的功能，没资格出现在默认开启的配置里。</li>
   </ul>
 </div>
 
-<div class="small" style="text-align:center; margin: 18px 0 6px;">
+<div class="small" style="text-align:center; margin: 18px 0 6px;" data-page-node-id="Ak812EO6zpxooHcB1Mgr9H">
   交付时间：今天上午 10:06 · 回归基线：tests/rag 32 passed（全假模型 fixture，跑测试不吃内存） · 待你确认后再 commit
 </div>
 

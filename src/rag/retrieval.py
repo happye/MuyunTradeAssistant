@@ -26,7 +26,6 @@ from src.rag.embedding import Embedder
 from src.rag.store import VectorStore
 from src.rag.reranker import Reranker
 from src.rag.userdict import load_userdict
-from src.rag.userdict import load_userdict
 
 logger = logging.getLogger(__name__)
 

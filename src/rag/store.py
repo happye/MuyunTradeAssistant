@@ -96,6 +96,23 @@ class FAISSVectorStore(VectorStore):
         # 确保float32
         embeddings = embeddings.astype(np.float32)
 
+        # P2-B 修复（2026-09-06 审查）：批内 doc_id 去重。同批重复 id 时 FAISS 会存下
+        # 全部向量、查询返回重复条目、get_doc_by_id 错位（探针实证）。与下方
+        # _id_to_idx「最后写入者胜」的语义对齐：保留最后出现的块，并告警暴露上游
+        # doc_id 生成冲突（如两个文件解析出同系列同章号）。
+        if len({d.id for d in docs}) != len(docs):
+            last_idx: dict[str, int] = {}
+            for i, d in enumerate(docs):
+                last_idx[d.id] = i
+            dup_ids = [docs[i].id for i, d in enumerate(docs) if last_idx[d.id] != i]
+            logger.warning(
+                f"FAISS: 批内检测到{len(dup_ids)}个重复 doc_id，保留最后出现的块"
+                f"（样例: {sorted(set(dup_ids))[:3]}）——请检查知识文件名是否撞号"
+            )
+            keep = sorted(last_idx.values())
+            docs = [docs[i] for i in keep]
+            embeddings = embeddings[keep]
+
         if self._index is None:
             self._dimension = dim
             self._index = faiss.IndexFlatIP(dim)  # 内积索引

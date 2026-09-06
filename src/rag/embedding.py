@@ -13,6 +13,7 @@ import logging
 import os
 import time
 from abc import ABC, abstractmethod
+from pathlib import Path
 from typing import Optional
 
 import numpy as np
@@ -39,8 +40,37 @@ if not os.environ.get("HF_HUB_DOWNLOAD_TIMEOUT"):
 # BGE中文模型查询前缀（官方推荐，提升检索效果）
 BGE_QUERY_PREFIX = "为这个句子生成表示以检索相关文章："
 
-# HuggingFace镜像（中国大陆无法直连huggingface.co）
-HF_MIRROR = "https://hf-mirror.com"
+
+def _resolve_local_snapshot(model_name: str) -> Optional[str]:
+    """把 HF 模型名解析成本地缓存快照路径（无缓存返回 None）
+
+    背景（2026-09-06 蓝屏复盘）：按模型名加载时，断网/被墙环境下 ST 会走
+    hub 联网 -> 失败 -> 多源重试风暴。命中本地快照则 SentenceTransformer
+    直接从磁盘加载、零联网，重试路径根本不会进入。动态解析（而非把本机
+    绝对路径写死进 settings.yaml）保证换机器/迁移后依然成立。
+
+    Returns:
+        快照绝对路径（POSIX 分隔，与 embedder_metadata.json 既有字符串
+        格式一致，避免误判不兼容触发索引重建）；无本地缓存返回 None。
+    """
+    if os.path.isdir(model_name):
+        return model_name
+    if "/" not in model_name:
+        return None
+    repo_dir = "models--" + model_name.replace("/", "--")
+    hf_home = os.environ.get("HF_HOME") or os.path.join(
+        os.path.expanduser("~"), ".cache", "huggingface"
+    )
+    hub_cache = os.environ.get("HF_HUB_CACHE") or os.path.join(hf_home, "hub")
+    snap_root = os.path.join(hub_cache, repo_dir, "snapshots")
+    if not os.path.isdir(snap_root):
+        return None
+    # 同仓库多份快照时取含 config.json 的第一份（内容寻址，通常仅一份）
+    for name in sorted(os.listdir(snap_root)):
+        cand = os.path.join(snap_root, name)
+        if os.path.isfile(os.path.join(cand, "config.json")):
+            return Path(cand).as_posix()
+    return None
 
 
 class Embedder(ABC):
@@ -120,10 +150,16 @@ class SentenceEmbedder(Embedder):
 
             # 直接交给 Hugging Face Hub 处理缓存命中或在线下载。
             # 不设置全局 HF_HUB_OFFLINE，避免库导入时锁死联网状态。
+            # P2 修复（2026-09-06 审查）：先解析本地缓存快照，命中则零联网加载，
+            # 避免断网时按模型名走 hub -> 失败 -> 多源重试风暴（蓝屏复盘主嫌疑）。
+            resolved = _resolve_local_snapshot(self._model_name)
+            if resolved and resolved != self._model_name:
+                logger.info(f"嵌入模型本地快照命中，零联网加载: {resolved}")
+                self._model_name = resolved  # 元数据记录实际加载路径
             logger.info(f"加载嵌入模型: {self._model_name}...")
 
             try:
-                # 本地已有缓存时会直接命中；缺失时由下面的多源下载逻辑处理。
+                # 本地路径/已有缓存时直接命中；仅当真无缓存时才进入在线下载逻辑。
                 self._model = SentenceTransformer(self._model_name)
                 # 兼容新旧版本API
                 if hasattr(self._model, 'get_embedding_dimension'):

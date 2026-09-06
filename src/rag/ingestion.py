@@ -12,6 +12,7 @@
 
 import re
 import logging
+from collections import defaultdict
 from pathlib import Path
 from typing import Optional
 
@@ -420,6 +421,21 @@ def load_strategy_files(
             logger.error(f"处理文件失败 {txt_file.name}: {e}")
 
     logger.info(f"策略摄入完成: {len(documents)}个文档块")
+
+    # P2-B 上游诊断（2026-09-06 审查）：两个文件解析出同系列同章号（如「第10章上/下」）
+    # 会生成相同 doc_id，store.add 的批内去重会保留后者并静默遮蔽前者——
+    # 在摄入层把冲突文件名暴露出来，别等检索结果莫名缺内容才发现。
+    id_to_files: dict[str, set] = defaultdict(set)
+    for d in documents:
+        id_to_files[d.id].add(Path(d.source_file).name)
+    collisions = {k: v for k, v in id_to_files.items() if len(v) > 1}
+    if collisions:
+        sample = list(collisions.items())[:3]
+        logger.warning(
+            f"摄入检测到{len(collisions)}个 doc_id 被多个文件共用，后入库的文件会"
+            f"遮蔽先入库的（样例: {sample}）——请重命名知识文件避免同系列同章号"
+        )
+
     return documents
 
 
