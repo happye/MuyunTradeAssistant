@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.9.1"  # v0.8.9.1=网络防护层(节流+熔断+新浪批量行情+K线当日磁盘缓存,ISS-088)+多代码批量；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.9.2"  # v0.8.9.2=盘中实时价(新浪优先)+CLI分析路径接RAG(门控+失败记忆)+杂项加固(缓存清理/告警)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -636,6 +636,16 @@ def run_benzong_scoring(meta: str = "", manual: bool = False, refresh: bool = Fa
       bz 600519 --refresh → 强制刷新（跳过缓存）
       bz --manual         → 旧交互式手动打分（v0.8.6.1 兜底）
     """
+    # ISS-091：评分缓存 90 天自动清理（跨日键本就失效，这里防文件无限累积）
+    try:
+        from datetime import datetime as _dt, timedelta as _td
+        from src.core.benzong import cache as _bz_cache
+        _removed = _bz_cache.clear(before_date=(_dt.now() - _td(days=90)).strftime("%Y-%m-%d"))
+        if _removed:
+            print(f"  🧹 已清理 {_removed} 个 90 天前的笨总评分缓存文件")
+    except Exception:
+        pass
+
     # manual 模式走旧交互式
     if manual or not meta:
         return _run_benzong_manual(meta)

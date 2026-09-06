@@ -1691,6 +1691,30 @@ P3（已取消）:
 - **更新记录**:
   - 2026-09-05: 立项待办
 
+### ISS-089: 盘中实时价——单只行情链路新浪优先（原 baostock 优先=盘中用昨收，v0.8.9.2）
+- **状态**: ✅ 已解决（2026-09-07，用户按优化地图批准；回归 test_iss089_realtime_quote 2 项）
+- **优先级**: P1（分析输入数据质量：盘中跑 `l` 的"现价"实为昨收，技术面/AI 情绪全基于过期价格）
+- **证据**: `_fetch_baostock_realtime` docstring 自认"Baostock 不是真正的实时行情"（akshare_client.py:589-592）；`get_realtime_quote` 原 baostock 优先。ISS-088 的新浪批量源给真实盘中价但仅 live_multi 预取使用，单只链路未受益
+- **修复**: `get_realtime_quote` 头部新增策略0——`_fetch_sina_batch([code])`（单只=批量大小1，真实盘中价），命中即返回；失败自动落回 baostock/EM 既有降级链（含节流+熔断）。ETF 同样受益（sina list 原生支持）
+- **影响**: live 数据更真（盘中价格从昨收→实时）；回测零影响（不触网）
+
+### ISS-090: CLI 分析路径接 RAG（ISS-085 拍板落地，v0.8.9.2）
+- **状态**: ✅ 已解决（2026-09-07，用户拍板"修了吧"；回归 test_iss090_cli_rag 4 项）
+- **背景**: ISS-085 审查发现 CLI/REPL/scan 分析路径（cli/main.py 4 处 + scanner_engine）自 v0.8.1 起从未传 rag_service——AI Modifier/EventLayer 的策略知识增强只在 chat 生效。用户拍板接线
+- **落地**: ① `get_cli_rag_service()` 门控（`MUYUN_CLI_RAG=0` 关闭；首次启用打印"RAG知识增强：已启用（N 个知识块）"满足 §二·五 可感知）② `get_rag_service` 失败记忆（`_rag_service_failed`：一次失败会话内不再重试 18s 模型加载）③ cli/main.py 4 处 Orchestrator 传 `rag_service=_cli_rag()` ④ scanner_engine `_get_orchestrator` **懒接线**（深析真正发生时才触发模型加载，scan 启动不吃 18s）⑤ 测试账实同步：AGENTS tests 表修正（tests/ui 已不存在，web 实验性 UI 零测试=已知缺口）
+- **成本影响**: 无新增 AI 调用（增强是既有 AI 调用的 prompt 注入，+约 1000 tokens/次）；首首次分析多 ~18s 模型加载（会话内一次）
+- **A/B 说明**: 结构性验证+单测锁定；实盘效果差异可通过 MUYUN_CLI_RAG=0/1 对照观察（对照项=AI 情绪 reasoning 是否引用策略知识）
+
+### ISS-091: 杂项加固批——缓存自动清理/无价格告警/日期告警/新闻磁盘缓存（v0.8.9.2）
+- **状态**: ✅ 已解决（2026-09-07，优化地图小额打包批；回归 test_iss091_robustness 5 项）
+- **落地**:
+  1. benzong 评分缓存 90 天自动清理（`run_benzong_scoring` 入口，实测已积累 4819 文件）
+  2. exit_signal 日缓存 30 天自动清理（写入点顺带，实测 242 文件）
+  3. `add_position` 无开仓价显式告警（无价持仓的止损/止盈分级判定全失效——ISS-085 审查发现）
+  4. `plan_guard._days_since` 坏日期解析告警（原静默返回 0=时间止损静默失效）
+  5. 个股新闻当日磁盘缓存 `~/.muyun/news_cache/`（内存缓存跨进程失效，REPL 重启后同日重复分析重爬新闻）
+- **测试**: 每项对应断言（坏日期 caplog、无价格 caplog、旧文件清理、磁盘往返含"重启后命中不重抓"）
+
 ### ISS-088: 反爬四件套——节流/熔断/批量行情/K线当日磁盘缓存（v0.8.9.1）
 - **状态**: ✅ 已解决（2026-09-07，用户拍板四项全做，全 mock 单测+真实批量请求冒烟通过）
 - **背景**: 用户要求评估并落地更优反爬方案。可行性实测确认：① 第三方数据封装全部为单代码形态，无批量传参；② 串行循环本身无反爬问题（4 次请求 0.1-0.8s/只全成功）；③ 新浪 `hq.sinajs.cn/list=` 原生支持一次多只（项目此前未用）——四项优化围绕"减少请求次数+打散请求节奏+快速跳过被封源"展开

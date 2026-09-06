@@ -395,6 +395,21 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.9.2 (盘中实时价 + CLI 接 RAG + 杂项加固) - 2026-09-07
+
+- **盘中实时价（ISS-089）**：单只 `l` 行情链路改为新浪实时优先——此前 baostock
+  优先导致盘中分析的"现价"实为昨收，技术面/AI 情绪全基于过期价格；新浪失败
+  自动落回 baostock/EM 既有降级链
+- **CLI 分析路径接 RAG（ISS-090，ISS-085 拍板落地）**：`-l`/`l`/`la`/scan 深析
+  的 AI Modifier/EventLayer 现在带策略知识增强；`MUYUN_CLI_RAG=0` 可关闭；
+  首次启用打印可见提示；get_rag_service 失败记忆（一次失败会话内不重试加载）
+- **杂项加固（ISS-091）**：benzong 评分缓存 90 天自动清理、exit_signal 日缓存
+  30 天清理、add_position 无开仓价显式告警、plan_guard 日期解析失败告警、
+  个股新闻当日磁盘缓存 ~/.muyun/news_cache/
+- **测试账实同步**：AGENTS tests 表修正（tests/ui 已不存在；web 实验性 UI 零
+  测试为已知缺口）
+- 回归：test_iss089_realtime_quote 2 项 + test_iss090_cli_rag 4 项 + test_iss091_robustness 5 项；全量 **581 passed / 2 skipped**
+
 ### v0.8.9.1 (网络防护层：节流+熔断+批量行情+K线磁盘缓存) - 2026-09-07
 
 - **四件套反爬落地（ISS-088）**：① 新增 `src/data/net_guard.py`——按源节流

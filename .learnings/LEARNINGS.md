@@ -1224,3 +1224,21 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Source: probe_finding
 - Related Files: src/data/net_guard.py, src/data/akshare_client.py, start.py, tests/core/test_net_guard.py, tests/core/test_batch_quotes.py
 - Tags: anti-scraping, batch, circuit-breaker, rate-limit, disk-cache, sina
+
+## [LRN-20260907-002] insight
+**Date**: 2026-09-07
+**Priority**: medium
+**Status**: completed
+**Area**: python-decorator-insertion
+
+### Summary
+在"装饰器 + def"之间插入新方法时，原 def 的装饰器会被新代码块顶掉——本次在 news_client.py 的 `@classmethod` 与 `def get_stock_news` 之间插入磁盘缓存助手，导致 get_stock_news 丢失 @classmethod 变成实例方法，生产调用点 `cls.get_stock_news(...)` 直接 TypeError。同批测试当场抓住（test_news_disk_cache_roundtrip 报 missing positional argument）。
+
+### Suggested Action
+- 在装饰器和 def 之间插入代码前，grep 确认装饰器归属；插入后必须 ast.parse + 相关测试
+- 给"类方法间插入"写测试时优先走类级调用路径（cls.method），实例方法丢失会立刻暴露
+
+### Metadata
+- Source: session_mistake
+- Related Files: src/data/news_client.py, tests/core/test_iss091_robustness.py
+- Tags: decorator, classmethod, regression-test, insertion-bug

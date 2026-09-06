@@ -36,9 +36,22 @@ def _daily_cache_get(code: str, signal: str) -> Optional[object]:
 
 def _daily_cache_set(code: str, signal: str, value) -> None:
     today = datetime.now().strftime("%Y-%m-%d")
-    f = _holder_cache_dir() / f"{code}_{today}_{signal}.json"
+    d = _holder_cache_dir()
+    f = d / f"{code}_{today}_{signal}.json"
     try:
         f.write_text(json.dumps(value, ensure_ascii=False), encoding="utf-8")
+    except Exception:
+        pass
+    # ISS-091：日键文件跨日本就失效，顺带清理 30 天前的旧文件防无限累积
+    try:
+        import time as _time
+        _now = _time.time()
+        for old in d.glob("*.json"):
+            try:
+                if _now - old.stat().st_mtime > 30 * 86400:
+                    old.unlink()
+            except OSError:
+                continue
     except Exception:
         pass
 

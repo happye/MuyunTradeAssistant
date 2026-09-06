@@ -40,6 +40,42 @@ class NewsClient:
         cls._debug = debug
 
     @classmethod
+    # ISS-091：个股新闻当日磁盘缓存（~/.muyun/news_cache/{code}_{date}.json）
+    # 内存缓存跨进程即失效，REPL 重启后同日重复分析会重爬新闻——磁盘层补齐
+    @classmethod
+    def _news_disk_path(cls, stock_code: str):
+        from pathlib import Path
+        d = Path.home() / ".muyun" / "news_cache"
+        try:
+            d.mkdir(parents=True, exist_ok=True)
+        except (OSError, PermissionError):
+            return None
+        return d / f"{stock_code.strip().zfill(6)}_{date.today().isoformat()}.json"
+
+    @classmethod
+    def _news_disk_load(cls, stock_code: str):
+        f = cls._news_disk_path(stock_code)
+        if f is None or not f.exists():
+            return None
+        try:
+            import json
+            data = json.loads(f.read_text(encoding="utf-8"))
+            return data if isinstance(data, list) else None
+        except Exception:
+            return None
+
+    @classmethod
+    def _news_disk_save(cls, stock_code: str, news_list: list) -> None:
+        f = cls._news_disk_path(stock_code)
+        if f is None:
+            return
+        try:
+            import json
+            f.write_text(json.dumps(news_list, ensure_ascii=False), encoding="utf-8")
+        except Exception:
+            pass
+
+    @classmethod
     def get_stock_news(cls, stock_code: str, max_count: int = 10) -> list[dict]:
         """获取个股新闻
 
@@ -63,6 +99,13 @@ class NewsClient:
                 logger.info(f"个股新闻命中缓存: {stock_code} ({len(cached_news)}条)")
                 return cached_news[:max_count]
             logger.info(f"个股新闻缓存已跨天({cached_time})，重抓: {stock_code}")
+
+        # ISS-091：内存未命中（进程重启）→ 查当日磁盘缓存
+        disk_news = cls._news_disk_load(stock_code)
+        if disk_news is not None:
+            cls._stock_news_cache[stock_code] = (date.today().isoformat(), disk_news)
+            logger.info(f"个股新闻命中当日磁盘缓存: {stock_code} ({len(disk_news)}条)")
+            return disk_news[:max_count]
 
         try:
             # AKShare stock_news_em 接受6位代码
@@ -90,6 +133,7 @@ class NewsClient:
 
             # 写入缓存
             cls._stock_news_cache[stock_code] = (date.today().isoformat(), news_list)  # B11: 存日期字符串供跨天失效
+            cls._news_disk_save(stock_code, news_list)   # ISS-091: 当日磁盘缓存
             logger.info(f"个股新闻获取成功: {stock_code} ({len(news_list)}条)")
 
             if cls._debug:

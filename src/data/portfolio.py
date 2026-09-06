@@ -397,6 +397,12 @@ class PortfolioManager:
         ratio = _validate_ratio(ratio)
         if entry_price is not None:
             entry_price = _validate_price(entry_price)
+        else:
+            # ISS-091：无开仓价的持仓，止损/止盈分级判定（依赖未实现收益%）全部
+            # 失效，SELL 退化为可被 PlanGuard 压制的 weak_sell——建仓时必须警示
+            logger.warning(
+                f"add_position {stock_code}: 未提供开仓价——该持仓的止损/止盈分级判定"
+                f"将失效（仅剩 trade_plan.current_stop 兜底），强烈建议补录价格")
         today = datetime.now().strftime("%Y-%m-%d")
         record = PositionRecord(
             stock_code=stock_code,

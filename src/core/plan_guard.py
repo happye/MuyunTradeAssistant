@@ -41,6 +41,8 @@ def _days_since(start_date: str, today: Optional[str] = None) -> int:
         d2 = datetime.strptime(today, "%Y-%m-%d") if today else datetime.now()
         return (d2 - d1).days
     except (ValueError, TypeError):
+        # ISS-091：坏日期格式此前静默返回 0 = 时间止损永久失效且无人知晓
+        logger.warning(f"PlanGuard 日期解析失败，时间止损将按 0 天处理: start={start_date!r} today={today!r}")
         return 0
 
 
