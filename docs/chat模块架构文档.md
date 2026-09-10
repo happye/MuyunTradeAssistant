@@ -1,8 +1,8 @@
 # Chat 模块架构文档（Chat Agent）
 
-> 撰写：2026-08-23 ｜ 适用版本：v0.8.8.1（v0.8.8 命令桥 + v0.8.8.1 个股数据缓存） ｜ 取代 `2026-07-21_Chat功能说明.md`（v0.8.1 时代，已移入 [archive/](archive/2026-07-21_Chat功能说明.md)）
+> 撰写：2026-08-23（2026-09-11 更新） ｜ 适用版本：v0.8.9.3（v0.8.9.3 会话中断恢复 + v0.8.8 命令桥 + v0.8.8.1 个股数据缓存） ｜ 取代 `2026-07-21_Chat功能说明.md`（v0.8.1 时代，已移入 [archive/](archive/2026-07-21_Chat功能说明.md)）
 > 定位：让读者在 15 分钟内完整理解 chat 模块的**功能边界、架构分层、核心循环实现、可靠性设计、数据来源与已知局限**。
-> 源码共 5 文件 ~2100 行：`src/chat/{agent,tools,prompts,formatter,__main__}.py`
+> 源码共 6 文件 ~2300 行：`src/chat/{agent,tools,prompts,formatter,session_store,__main__}.py`
 
 ---
 
@@ -47,10 +47,11 @@
 
 | 文件 | 行数 | 职责 |
 |------|------|------|
-| `agent.py` | 661 | ChatAgent 类：AI 客户端、function calling 循环、流式/非流式调用、历史裁剪、回复后处理、REPL |
-| `prompts.py` | 312 | `CHAT_SYSTEM_PROMPT`（角色/命令桥规范/行业分析规范/知识库指南/输出规则）+ `TOOL_DEFINITIONS`（11 个工具 schema） |
-| `tools.py` | 857 | `init_engines/shutdown_engines` + 11 个工具函数（含 v0.8.8 命令桥：Tee捕获/input补丁/run_command/manage_portfolio）+ `TOOL_REGISTRY` 映射 |
+| `agent.py` | 858 | ChatAgent 类：AI 客户端、function calling 循环、流式/非流式调用、历史裁剪、回复后处理、会话持久化集成、REPL（含启动恢复提示） |
+| `prompts.py` | 384 | `CHAT_SYSTEM_PROMPT`（角色/命令桥规范/行业分析规范/文件读写规范/知识库指南/输出规则）+ `TOOL_DEFINITIONS`（14 个工具 schema） |
+| `tools.py` | 1074 | `init_engines/shutdown_engines` + 14 个工具函数（含 v0.8.8 命令桥 + v0.8.9.3 文件读写三件套）+ `TOOL_REGISTRY` 映射 |
 | `formatter.py` | 238 | 结构化数据 → 纯文本（供 AI 读 + 终端打印） |
+| `session_store.py` | 190 | 会话文件读写（v0.8.9.3 ISS-092）：current.json 原子写/peek/load/损坏隔离/归档留档/列表 |
 | `__main__.py` | 35 | 子进程入口 `python -m src.chat` |
 
 ## 三、核心循环：Function Calling 状态机（agent.py `_run_conversation`）
@@ -112,7 +113,7 @@ LLM 输出不总是干净的，回复返回给用户前过三道检查：
 - max_tokens 显式拉满到模型上限（384K），避免服务端小默认值静默截断长回答；API 拒绝时按 32768→8192→4096 逐级降级重试（只对"输出超限"类错误降级，避免 context 超限误触发）。
 - 客户端统一 `timeout=180, max_retries=2`（金融分析回答长，超时比常规 chat 宽）。
 
-## 七、十一个工具与数据来源全景
+## 七、十四个工具与数据来源全景
 
 | 工具 | 功能 | 底层引擎 | 数据来源 |
 |------|------|---------|---------|
@@ -127,6 +128,9 @@ LLM 输出不总是干净的，回复返回给用户前过三道检查：
 | `save_chain_graph` | 图谱自举（AI 把梳理的产业链结构沉淀为 YAML，下次复用） | industry_data.save_auto_chain | 写 `configs/industry_chains_auto.yaml`（schema 校验+长度上限） |
 | `run_command` | **v0.8.8 命令桥**：执行 REPL 任意原生命令 | start.parse_input + start.run_cli | 与 REPL 完全同一套调度代码（详见 §七·五） |
 | `manage_portfolio` | **v0.8.8 持仓修改**：建仓/清仓/字段改/计划/超配 | cli.main.manage_positions + PortfolioManager.update_position_fields | 读写 `portfolio.yaml`（原子写+.bak 备份） |
+| `read_file` | **v0.8.9.3 文件读**：读仓库内文本文件 | `_resolve_in_root` 沙箱 | 仓库根内任意文件（越界/密钥文件 `configs/settings.local.yaml`、`.env` 拒绝；二进制/超1MB 拒绝；utf-8/gbk 自适应） |
+| `write_file` | **v0.8.9.3 文件写**：写新文件（如对话总结成精华） | 同上 | 仅 `AI笔记/` 专属目录（可建子目录，已存在覆盖；逃逸拒绝；超1MB 拒绝） |
+| `list_files` | **v0.8.9.3 列目录**：找文件用 | 同上 | 仓库目录清单（`.git`/`.venv`/`__pycache__` 等隐藏，200 项截断） |
 
 **工具层的可靠性约定**（每个工具都遵守）：
 - 网络调用一律带超时：akshare 类 25-30s（daemon 线程硬超时，如 `_get_stock_data_with_timeout`），超时降级（如 analyze_stock 数据超时→退化为纯实时行情快照）。
@@ -197,7 +201,35 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 - **配对完整性保护**（`_trim_messages`）：裁剪不能切断 `assistant(tool_calls) → tool` 消息对——窗口开头若出现孤立 tool 消息（其 assistant 已被裁掉），API 直接 400。裁剪后丢弃开头连续的孤立 tool 消息。
 - `reset` 指令重置历史（保留 system）。
 
+## 十·五、会话持久化与中断恢复（v0.8.9.3，ISS-092）
+
+**问题**：`_messages` 只在内存——q 退出、进程崩溃、API 发送失败（额度墙 402）
+中断后，整段对话丢失；`分析报告/chat/*.md` 是给人看的报告，机器恢复不了。
+
+**机制**（`src/chat/session_store.py` + agent.py 集成）：
+
+- **逐消息原子落盘**：`chat()` 追加用户消息后、`_run_conversation()` 每次
+  append（assistant 回复 / assistant+tool_calls / 逐工具结果 / nudge / 最终
+  兜底）后，都把完整会话状态写 `~/.muyun/chat_sessions/current.json`
+  （tmp + os.replace 原子写，崩溃在任何点盘上都是完整可解析文件）。
+  发送失败（额度墙）时提问已在盘上——中断不丢上下文，`chat()` 的 except
+  分支置 `last_send_error`，REPL 打「会话已保存，下次启动恢复即可继续」。
+- **启动恢复**：REPL 启动时 `peek_saved_session()` 检测未归档会话（非 system
+  消息 ≥1）→ 提示「恢复上次对话？(y/N)」。y → 恢复：system 提示词换当前
+  版本（旧会话可能存着过时 prompt）、按当前 max_history 重新裁剪（tool/
+  tool_calls 配对保护照常生效）、created_at 沿用原会话；尾部是未获回复的
+  提问时提示重新提问。EOF/Ctrl+C 不恢复也不归档。n → 归档。
+- **归档不删**：拒绝恢复 / `reset` 重置 / 并发双开防覆盖，一律把 current.json
+  重命名为 `session_YYYYMMDD_HHMMSS.json` 留档（撞名加 `_2`）；损坏文件
+  （JSON 解析失败/结构非法）隔离 `corrupt_` 前缀同样留档不删。`sessions`
+  命令列出全部文件（条数/更新时间/当前标记）；找回 = 把归档改名
+  current.json 后重启 chat。
+- **防覆盖守卫**：agent 未拥有 current.json 时（`_owns_current_file=False`）
+  首次保存前，盘上旧文件先归档再写——覆盖并发双开 chat、未走恢复路径的
+  漏网场景，旧会话绝不静默丢失。
+
 ## 十一、配置项（configs/settings.yaml `chat:` 段）
+
 
 | 键 | 默认 | 说明 |
 |----|------|------|
@@ -207,10 +239,11 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 | `max_tokens` | 384000 | 输出上限（V4 拉满） |
 | `stream` | true | 流式输出（失败自动回退） |
 | `persist` | 代码缺省 false（当前 settings.yaml 设为 true） | 对话落盘到 `分析报告/chat/YYYY-MM-DD.md` |
+| `session_persist` | 代码缺省 true（settings.yaml 显式 true） | 会话逐消息落盘 `~/.muyun/chat_sessions/current.json`，启动可恢复（§十·五） |
 
 ## 十二、测试与已知局限
 
-**测试**（tests/chat/，纯 mock 无网络）：streaming（流式聚合/回退）、tool_failure（失败语义/轮次）、reply_finalize（伪 tool_calls/截断提示）、shutdown（资源释放/幂等）、history_trim（配对保护）、formatter。
+**测试**（tests/chat/，纯 mock 无网络）：streaming（流式聚合/回退）、tool_failure（失败语义/轮次）、reply_finalize（伪 tool_calls/截断提示）、shutdown（资源释放/幂等）、history_trim（配对保护）、formatter、session_store（落盘/恢复/损坏隔离/归档，ISS-092）、session_resume（发送失败落盘/恢复语义，ISS-092）、file_tools（沙箱逃逸/密钥拒绝/读写往返，ISS-092）。
 
 **已知局限（诚实清单）**：
 1. 工具结果 4000 字符截断仍是信息损失（保留首尾是缓解不是消除）。
@@ -218,6 +251,7 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 3. 多工具并发不存在的——工具串行执行，一次行业深度分析（图谱+商品+需求+主营抽样）可能耗时 1-2 分钟。
 4. 对话历史窗口 20 条，超长多轮推理的早期上下文会被裁掉（有配对保护但无摘要压缩）。
 5. 模型行为依赖提示词约束（禁止编数据），无程序级事实校验——提示词注入风险与所有 LLM Agent 同在。
+6. 并发双开 chat：会话文件最后写者胜（防覆盖守卫只在各会话首次保存时归档一次，无文件锁）；落盘失败只告警不中断对话（此时失去该次恢复能力）。
 
 ## 十三、演进时间线（供学习参考）
 
@@ -229,5 +263,6 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 | ISS-058~060 (08-15) | 伪 tool_calls 无回答根因修复（轮次语义重设计）/ 工具失败重试语义+流式进度 / shutdown_engines |
 | ISS-061 (08-15~17) | analyze_industry 产业链数据层 + 图谱自举 save_chain_graph（Agent 自我沉淀知识的自举设计）+ max_rounds 3→5 + 对话落盘 |
 | 08-16~17 | token 级流式输出（stream 优先+回退）/ chat 子进程化（-440MB）/ jieba 刷屏修复 |
+| v0.8.9.3 (ISS-092, 09-11) | 会话逐消息原子落盘 + 启动恢复提示（y/N）+ `sessions` 命令 + 归档/损坏隔离一律留档不删 |
 
 > **给 Agent 开发者的三个可复用要点**：① 失败语义用"结果前缀标记 + 失败轮不占配额 + 连续失败熔断"三层设计，比简单的 try/except 健壮得多；② 多入口复用引擎时，参数对账清单是防行为分歧的唯一手段；③ 内存大头（torch 模型）在 Python 进程内无法卸载，子进程化是唯一彻底方案。

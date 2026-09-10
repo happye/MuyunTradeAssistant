@@ -395,6 +395,29 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.9.3 (chat 会话中断恢复) - 2026-09-11
+
+- **会话持久化（ISS-092）**：chat 对话逐消息原子落盘
+  `~/.muyun/chat_sessions/current.json`——q 退出/进程崩溃/发送失败（额度墙）
+  中断后，下次启动 chat 检测到未归档会话提示恢复（y/N）；拒绝则归档为
+  `session_时间戳.json` 留档（绝不静默删除/覆盖）；`reset` 重置同样先归档
+- **`sessions` 命令**：列出全部会话文件（条数/更新时间/当前标记）；
+  归档找回归档文件改名为 current.json 重启即可
+- **恢复语义**：恢复时 system 提示词换当前版本、按当前 max_history 裁剪
+  （tool/tool_calls 配对保护防 API 400）；上次最后一条提问未获回复时提示
+  重新提问；管道 EOF/Ctrl+C 不恢复也不归档
+- **防覆盖**：并发双开 chat 或未走恢复路径时，首次保存前盘上旧会话先归档
+  （并发双开最后写者胜为已知局限）；损坏会话文件隔离 `corrupt_` 前缀留档不删
+- **本地文件读写工具（ISS-092）**：chat 新增 `read_file`/`write_file`/`list_files`
+  三工具——AI 可读仓库内任意文本文件（越界/密钥文件 `configs/settings.local.yaml`
+  拒绝、二进制拒绝），可写**仅限 `AI笔记/` 专属目录**（新目录，可建子目录；
+  "把当前对话总结成精华存下来"类需求的载体），可列目录找文件（.git/.venv 隐藏）
+- **配置**：`chat.session_persist`（默认 true，settings.yaml）
+- 回归：test_chat_session_store 14 项 + test_chat_session_resume 11 项 +
+  test_chat_file_tools 15 项；全量 **619 passed / 4 skipped**（含 2 项
+  data_sources 外源间歇抖动，非代码问题）；code-quality-guard 对抗审查
+  2×P1（恢复裁剪清空覆盖丢数据/测试重定向编码）+8×P2 全部修复
+
 ### v0.8.9.2 (盘中实时价 + CLI 接 RAG + 杂项加固) - 2026-09-07
 
 - **盘中实时价（ISS-089）**：单只 `l` 行情链路改为新浪实时优先——此前 baostock

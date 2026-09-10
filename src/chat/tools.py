@@ -9,6 +9,8 @@
 v0.8.1 新增：search_knowledge 工具（RAG策略知识检索）
 v0.8.8 新增：run_command（REPL 全命令桥，复用 start.parse_input+run_cli）
             manage_portfolio（持仓文件写操作，结构化参数）
+v0.8.9.3 新增：read_file/write_file/list_files（本地文件读写，沙箱限仓库内；
+            写仅限 AI笔记/ 专属目录，读拒绝密钥文件——ISS-092）
 """
 
 import builtins
@@ -18,6 +20,7 @@ import logging
 import os
 import re
 import sys
+from pathlib import Path
 from typing import Optional
 
 logger = logging.getLogger(__name__)
@@ -465,6 +468,9 @@ TOOL_REGISTRY = {
     "save_chain_graph": lambda name="", graph_yaml="": save_chain_graph(name, graph_yaml),  # ISS-061 v4 图谱自举（定义在文件尾）
     "run_command": lambda command="", confirm=False: run_command(command, confirm),  # v0.8.8 命令桥（定义在文件尾）
     "manage_portfolio": lambda **kw: manage_portfolio(**kw),  # v0.8.8 持仓修改（定义在文件尾）
+    "read_file": lambda path="": read_file(path),  # v0.8.9.3 本地文件读（沙箱，定义在文件尾）
+    "write_file": lambda path="", content="": write_file(path, content),  # v0.8.9.3 写 AI笔记/（定义在文件尾）
+    "list_files": lambda subdir="": list_files(subdir),  # v0.8.9.3 列目录（沙箱，定义在文件尾）
 }
 
 
@@ -945,3 +951,124 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
     finally:
         _reload_portfolio_manager()
     return _finalize_output(buf, note)
+
+
+# ── v0.8.9.3 ISS-092：本地文件读写工具（沙箱）──────────────────────
+# 需求：AI 可读仓库内文件、可把内容（如对话总结）写成新文件。
+# 安全边界：读=仓库根内任意文件（越界/密钥文件拒绝）；写=仅 AI笔记/ 专属目录
+# （AI 自己的写区，可建子目录）。越界路径一律 TOOL_ERROR_MARK 拒绝，不抛异常。
+
+_REPO_ROOT = Path(__file__).resolve().parents[2]   # 仓库根（本文件在 src/chat/ 下）
+_FILES_READ_ROOT = _REPO_ROOT                      # 读沙箱：仓库根内
+_FILES_WRITE_ROOT = _REPO_ROOT / "AI笔记"           # 写沙箱：AI笔记/（新目录）
+# 密钥文件：内容进入对话=发给 AI 服务商，绝不允许读
+_SECRET_FILES = {"configs/settings.local.yaml", ".env"}
+_MAX_FILE_IO_BYTES = 1_000_000   # 单文件读/写上限 1MB
+_LIST_SKIP_DIRS = {".git", ".venv", "__pycache__", ".pytest_cache",
+                   "node_modules", ".zcode", ".claude"}
+_LIST_MAX_ENTRIES = 200
+
+
+def _resolve_in_root(root: Path, rel_path: str) -> Path:
+    """把 AI 给的相对路径解析进 root 内，返回 resolve 后的绝对路径。
+
+    越界（../ 逃逸、绝对路径——Path 拼绝对路径会直接替换 root）抛 ValueError。
+    """
+    rel = (rel_path or "").strip().replace("\\", "/")
+    if not rel or rel.startswith("/"):
+        raise ValueError("路径为空或为绝对路径（只允许沙箱内相对路径）")
+    p = (root / rel).resolve()
+    if not p.is_relative_to(root.resolve()):
+        raise ValueError(f"路径越界：只允许 {root.name} 内的相对路径（{rel_path}）")
+    return p
+
+
+def read_file(path: str) -> str:
+    """读取仓库内的文本文件（沙箱：不能读仓库外的文件）。"""
+    try:
+        p = _resolve_in_root(_FILES_READ_ROOT, path)
+    except ValueError as e:
+        return f"{TOOL_ERROR_MARK}{e}"
+    rel_norm = p.relative_to(_FILES_READ_ROOT).as_posix()
+    if rel_norm in _SECRET_FILES or p.name == ".env":
+        return f"{TOOL_ERROR_MARK}该文件包含密钥（API Key），不允许读取: {path}"
+    if not p.exists():
+        return f"{TOOL_ERROR_MARK}文件不存在: {path}"
+    if not p.is_file():
+        return f"{TOOL_ERROR_MARK}不是普通文件（是目录?）: {path}"
+    if p.stat().st_size > _MAX_FILE_IO_BYTES:
+        return f"{TOOL_ERROR_MARK}文件超过 {_MAX_FILE_IO_BYTES // 1000}KB 上限，不读取: {path}"
+    raw = p.read_bytes()
+    if b"\x00" in raw[:8192]:
+        return f"{TOOL_ERROR_MARK}二进制文件不支持读取: {path}"
+    text = None
+    for enc in ("utf-8", "gbk"):
+        try:
+            text = raw.decode(enc)
+            break
+        except UnicodeDecodeError:
+            continue
+    if text is None:
+        return f"{TOOL_ERROR_MARK}无法按 utf-8/gbk 解码（疑似二进制）: {path}"
+    return f"【{path} | 共{len(text)}字】\n{text}"
+
+
+def write_file(path: str, content: str) -> str:
+    """把文本写入 AI笔记/ 专属目录（可带子目录自动创建；已存在则覆盖）。"""
+    try:
+        p = _resolve_in_root(_FILES_WRITE_ROOT, path)
+    except ValueError as e:
+        return f"{TOOL_ERROR_MARK}{e}"
+    if not isinstance(content, str):
+        return f"{TOOL_ERROR_MARK}content 必须是字符串"
+    if len(content.encode("utf-8")) > _MAX_FILE_IO_BYTES:
+        return f"{TOOL_ERROR_MARK}内容超过 {_MAX_FILE_IO_BYTES // 1000}KB 上限，未写入"
+    try:
+        p.parent.mkdir(parents=True, exist_ok=True)
+        existed = p.exists()
+        with open(p, "w", encoding="utf-8") as f:
+            f.write(content)
+    except OSError as e:
+        return f"{TOOL_ERROR_MARK}写入失败: {e}"
+    act = "覆盖" if existed else "新建"
+    return f"✅ 已{act} {p}（{len(content)}字）"
+
+
+def list_files(subdir: str = "") -> str:
+    """列出仓库（或其子目录）内的文件与目录，供 AI 找文件。subdir 空=仓库根。"""
+    sub = (subdir or "").strip()
+    try:
+        base = (_FILES_READ_ROOT.resolve() if not sub
+                else _resolve_in_root(_FILES_READ_ROOT, sub))
+    except ValueError as e:
+        return f"{TOOL_ERROR_MARK}{e}"
+    if not base.exists():
+        return f"{TOOL_ERROR_MARK}目录不存在: {subdir or '.'}"
+    if not base.is_dir():
+        return f"{TOOL_ERROR_MARK}不是目录: {subdir}"
+    try:
+        entries = sorted(
+            base.iterdir(), key=lambda e: (not e.is_dir(), e.name.lower()))
+    except OSError as e:
+        return f"{TOOL_ERROR_MARK}列目录失败: {e}"
+    lines = [f"【{subdir or '.'} 下】"]
+    n = 0
+    for e in entries:
+        if e.is_dir() and e.name in _LIST_SKIP_DIRS:
+            continue
+        n += 1
+        if n > _LIST_MAX_ENTRIES:
+            lines.append(f"...（超过 {_LIST_MAX_ENTRIES} 项已截断，请指定子目录缩小范围）")
+            n -= 1
+            break
+        if e.is_dir():
+            lines.append(f"  {e.name}/")
+        else:
+            try:
+                size = e.stat().st_size
+                size_h = f"{size // 1024}KB" if size >= 1024 else f"{size}B"
+            except OSError:
+                size_h = "?"
+            lines.append(f"  {e.name}  ({size_h})")
+    lines.append(f"（共 {n} 项；.git/.venv/__pycache__ 等噪音目录已隐藏）")
+    return "\n".join(lines)

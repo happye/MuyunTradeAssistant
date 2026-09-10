@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.9.2"  # v0.8.9.2=盘中实时价(新浪优先)+CLI分析路径接RAG(门控+失败记忆)+杂项加固(缓存清理/告警)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.9.3"  # v0.8.9.3=chat会话中断恢复(逐消息落盘+启动恢复+归档)+本地文件读写工具(沙箱)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

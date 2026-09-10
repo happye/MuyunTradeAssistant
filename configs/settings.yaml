@@ -196,4 +196,5 @@ chat:
   stream: true                     # 回答流式输出（正文增量打印；流式失败自动回退非流式）
   max_result_length: 4000          # 工具结果最大字符数（防token爆炸）
   max_tokens: 384000               # 单次回复最大输出token；DeepSeek-V4输出上限384K（官方文档），拉满避免长回答被截断
+  session_persist: true            # 会话逐消息落盘（ISS-092聊天中断恢复）：q退出/崩溃/发送失败中断后，下次启动chat可恢复继续；目录 ~/.muyun/chat_sessions/
 

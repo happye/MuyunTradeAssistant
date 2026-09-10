@@ -15,6 +15,13 @@ from types import SimpleNamespace
 # 确保项目根在 path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+# _run_conversation 会 print ⏳/🔧 等 emoji——中文 Windows 下 stdout 重定向
+# （管道/CI/日志）默认 cp936 编不出 emoji 抛 UnicodeEncodeError，被 chat() 的
+# except 误判成"发送失败"导致用例翻车。errors="replace" 保证任何输出环境下
+# 测试语义不受编码影响（ISS-092 审查 P1-2 同类点）
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(errors="replace")
+
 from src.chat.agent import ChatAgent
 from src.chat import tools as chat_tools
 

@@ -1242,3 +1242,41 @@ ISS-078 给 `ScannerEngine._load_rules` 接加载期校验时，把 `validate_fi
 - Source: session_mistake
 - Related Files: src/data/news_client.py, tests/core/test_iss091_robustness.py
 - Tags: decorator, classmethod, regression-test, insertion-bug
+
+## [LRN-20260911-001] lesson
+**Date**: 2026-09-11
+**Priority**: high
+**Status**: completed
+**Area**: requirement-interpretation
+
+### Summary
+ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发送消息失败时，每小时重试」指**授权任务的 agent 会话自身**失败后的自愈节奏（/loop 语境），不是要往 chat 里加"发送失败自动重试"功能——按功能实现了一半被用户纠正砍掉；②「本地读写文件机制」指的是**仿 manage_portfolio 的 AI 工具层扩展**（AI 可写新文件到新目录/读仓库内文件），不是会话状态持久化——按会话持久化实现完后用户中途澄清，两者都做了才收齐需求。"X 机制/X 功能"这类词在有多层架构（AI 工具层/进程层/文件层）的项目里天然歧义。
+
+### Suggested Action
+- 接到混合指令先分类：哪些是给 agent 自己的操作指令（重试/自愈/调度），哪些是给产品的功能需求；不确定的当场用一句话复述理解再动手
+- 「加 X 机制」先问清载体：是底层引擎能力、AI 可调用的工具（工具层）、还是 REPL 命令（交互层）——本项目三层都有先例（SessionStore=引擎层、write_file=工具层、sessions 命令=交互层）
+- 用户中途澄清需求时，先复述修正理解、对比已实现部分砍/留，再继续干——本次"中断恢复"保留、"重试器"砍掉即此法
+
+### Metadata
+- Source: user_correction
+- Related Files: src/chat/session_store.py, src/chat/tools.py, src/chat/agent.py, ISSUES.md ISS-092
+- Tags: requirement-ambiguity, agent-loop, tool-layer, scope-correction
+
+## [LRN-20260911-002] lesson
+**Date**: 2026-09-11
+**Priority**: high
+**Status**: completed
+**Area**: test-environment-fidelity
+
+### Summary
+新测试 test_chat_session_resume 在本地跑全绿后交付对抗审查，审查实证其在**输出重定向**（管道/CI/日志）下 6/10 失败：zh-CN Windows 的重定向 stdout 默认 cp936，`_run_conversation` 的 ⏳/🔧 emoji 抛 UnicodeEncodeError，被 `chat()` 的 except 捕获误判成"发送失败"。本地全绿是假象——我全程带 `PYTHONIOENCODING=utf-8` 跑测试，恰好掩盖了用户真实运行环境的默认编码。生产路径不炸是因为 start.py/__main__.py 启动时 setdefault 了该变量，但测试直跑不经过它们。
+
+### Suggested Action
+- 涉 print emoji/中文的测试文件顶部加 `sys.stdout.reconfigure(errors="replace")`（test_chat_session_resume / test_chat_tool_failure 已加；test_chat_streaming 直调 _call_api_stream 无 emoji 打印不受影响）
+- 验证测试环境要与用户真实运行方式一致：不带额外环境变量直跑一次 `python tests\xxx.py > log` 再交付
+- 生产代码已有防线（start.py:31 / __main__.py 的 PYTHONIOENCODING setdefault）不覆盖测试直跑路径——测试文件自带编码兜底才算闭环
+
+### Metadata
+- Source: adversarial_review
+- Related Files: tests/chat/test_chat_session_resume.py, tests/chat/test_chat_tool_failure.py, src/chat/agent.py, src/chat/__main__.py
+- Tags: encoding, cp936, unicode, redirected-output, test-fidelity

@@ -22,6 +22,7 @@ from typing import Optional
 from openai import OpenAI
 
 from src.chat.prompts import CHAT_SYSTEM_PROMPT, TOOL_DEFINITIONS
+from src.chat.session_store import SessionStore
 from src.chat.tools import (
     TOOL_REGISTRY, init_engines, shutdown_engines, TOOL_ERROR_MARK,
 )
@@ -38,6 +39,9 @@ DEFAULT_MAX_RESULT_LENGTH = 4000
 DEFAULT_MAX_TOKENS = 384000
 # chat对话落盘目录（ISS-061顺带消化交接文档待办#2：每天一个文件，追加）
 CHAT_REPORT_DIR = "./分析报告/chat"
+# 会话持久化默认开关（ISS-092 聊天中断恢复）：逐消息落盘 ~/.muyun/chat_sessions/，
+# q退出/崩溃/发送失败中断后，下次启动 chat 可恢复继续。settings.yaml chat.session_persist 可关
+DEFAULT_SESSION_PERSIST = True
 # 工具全部失败的连续轮次上限：失败轮不占 max_tool_rounds 轮次（失败信息回传AI，
 # AI自行重试），但连续全失败超过此次数则停止循环（防工具坏了无限重试）。
 DEFAULT_MAX_FAILED_ROUNDS = 3
@@ -70,6 +74,17 @@ class ChatAgent:
         self.stream = chat_cfg.get("stream", True)
         # 上一轮回答是否已流式打印到控制台（REPL据此避免重复打印）
         self._last_reply_printed = False
+
+        # 会话持久化（ISS-092 聊天中断恢复）：逐消息落盘，启动时可恢复
+        self.session_persist = chat_cfg.get("session_persist", DEFAULT_SESSION_PERSIST)
+        self._session_store = SessionStore() if self.session_persist else None
+        # 会话创建时间（首次落盘时定；resume 沿用原会话的，保持元数据连续）
+        self._session_created: Optional[str] = None
+        # current.json 归属权：resume/首次保存后本会话拥有该文件，可直接覆写；
+        # 未拥有时首次保存前盘上若有文件先归档（防并发双开/漏网路径静默覆盖旧会话）
+        self._owns_current_file = False
+        # 最近一次发送是否失败（额度墙/网络异常），REPL 据此提示"会话已保存可恢复"
+        self.last_send_error: Optional[str] = None
 
         # 初始化底层引擎
         init_engines(config)
@@ -278,9 +293,18 @@ class ChatAgent:
         # 裁剪历史（保留system消息 + 最近N条）
         self._messages = self._trim_messages(self._messages, self.max_history)
 
+        # 会话落盘（ISS-092）：发送失败/进程中断时提问已在磁盘上，
+        # 下次启动恢复会话后不丢上下文
+        self._persist_session()
+
         try:
-            return self._run_conversation()
+            reply = self._run_conversation()
+            self.last_send_error = None
+            return reply
         except Exception as e:
+            # 发送失败（额度墙/网络）：用户消息已入历史+落盘，
+            # 退出后下次启动 chat 可恢复继续（REPL 据 last_send_error 提示）
+            self.last_send_error = str(e)
             logger.error(f"Chat Agent对话异常: {e}")
             return f"对话处理出错: {e}"
 
@@ -395,6 +419,7 @@ class ChatAgent:
                     "role": "assistant",
                     "content": assistant_content
                 })
+                self._persist_session()
                 return assistant_content
 
             # 审查修复M1: tool_calls被max_tokens截断(finish_reason=length)时arguments多半残缺
@@ -405,6 +430,7 @@ class ChatAgent:
                 )
                 logger.warning("Chat Agent: tool_calls被max_tokens截断(finish_reason=length)，放弃执行")
                 self._messages.append({"role": "assistant", "content": _trunc_content})
+                self._persist_session()
                 self._last_reply_printed = streamed
                 return _trunc_content
 
@@ -427,6 +453,8 @@ class ChatAgent:
                     for tc in message.tool_calls
                 ],
             })
+            # 中途崩溃也能恢复到工具轮进行中的状态（ISS-092）
+            self._persist_session()
 
             round_had_success = False
             for tool_call in tool_calls:
@@ -459,6 +487,7 @@ class ChatAgent:
                     "tool_call_id": tool_call.id,
                     "content": tool_result,
                 })
+                self._persist_session()
 
             # 失败轮不占轮次上限（AI下轮可重试）；有任一成功则计一轮并清零失败计数
             if round_had_success:
@@ -487,6 +516,7 @@ class ChatAgent:
         print(f"  ⚠ {exit_note}，请 AI 直接作答...")
         logger.warning(f"Chat Agent: {exit_note}，要求模型直接回答")
         self._messages.append({"role": "user", "content": nudge})
+        self._persist_session()
         final_params = {
             "model": self._model,
             "messages": self._messages,
@@ -517,6 +547,7 @@ class ChatAgent:
         if self._last_reply_printed and suffix.strip():
             print(suffix.strip())
         self._messages.append({"role": "assistant", "content": final_content})
+        self._persist_session()
         return final_content
 
     @staticmethod
@@ -557,9 +588,123 @@ class ChatAgent:
             logger.error(f"工具执行异常 {func_name}: {e}")
             return f"{TOOL_ERROR_MARK}工具执行失败: {e}"
 
-    def reset_history(self):
-        """重置对话历史（保留system消息）"""
+    def reset_history(self) -> Optional[str]:
+        """重置对话历史（保留system消息）。
+
+        磁盘上的旧会话先归档留档（重命名，不删除），返回归档文件名供 REPL 提示。
+        """
+        store = getattr(self, "_session_store", None)
+        archived_name = None
+        if store is not None:
+            try:
+                path = store.archive_current()
+                if path is not None:
+                    archived_name = path.name
+                    logger.info(f"chat: 重置前旧会话归档 {archived_name}")
+            except OSError as e:
+                logger.warning(f"chat会话归档失败（不影响重置）: {e}")
         self._messages = [self._messages[0]]
+        self._session_created = None
+        self._owns_current_file = False
+        self._persist_session()
+        return archived_name
+
+    # ── 会话持久化与中断恢复（ISS-092）─────────────────────
+
+    def _persist_session(self):
+        """会话状态原子落盘 current.json。
+
+        - 无 store（session_persist=false / 测试用 object.__new__ 构造）时静默跳过。
+        - 首次保存前盘上若有非本会话文件，先归档再写（防并发双开 chat 或
+          未走恢复路径时静默覆盖旧会话）。
+        - 落盘失败只告警不打断对话（对话本身不受影响，仅失去中断恢复能力）。
+        """
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            return
+        try:
+            if not self._owns_current_file and store.current_exists():
+                archived = store.archive_current()
+                if archived is not None:
+                    logger.info(f"chat: 磁盘旧会话归档 {archived.name}（防覆盖）")
+            meta = store.save(self._messages, model=self._model,
+                              created_at=self._session_created)
+            self._owns_current_file = True
+            if self._session_created is None:
+                self._session_created = meta["created_at"]
+        except OSError as e:
+            logger.warning(f"chat会话落盘失败（不影响对话，但中断后无法恢复）: {e}")
+
+    def peek_saved_session(self) -> Optional[dict]:
+        """磁盘上是否有可恢复的会话（非system消息≥1）。
+
+        返回 {n_messages, updated_at, model} 或 None（未启用/无文件/仅system）。
+        """
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            return None
+        meta = store.peek()
+        if not meta or meta.get("n_messages", 0) < 1:
+            return None
+        return meta
+
+    def resume_saved_session(self) -> int:
+        """恢复磁盘会话到内存。返回恢复的对话消息数（不含system，0=未恢复）。
+
+        system 提示词换成当前版本（旧会话可能存着过时 prompt）；
+        恢复后 current.json 归本会话所有，后续保存直接覆写。
+        裁剪后对话为空（尾部连续 tool 消息被弹出/max_history 过小）时不接管
+        不落盘，原文件保留——防"恢复"变"静默清空"。
+        """
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            return 0
+        data = store.load()
+        if not data:
+            return 0
+        messages = data["messages"]
+        messages[0] = {"role": "system", "content": CHAT_SYSTEM_PROMPT}
+        trimmed = self._trim_messages(messages, self.max_history)
+        if len(trimmed) <= 1:
+            logger.warning(
+                f"chat: 磁盘会话({len(messages)}条)按当前 max_history="
+                f"{self.max_history} 裁剪后对话为空，未恢复（原文件保留，"
+                f"调大 max_history_messages 后可再试）")
+            return 0
+        self._messages = trimmed
+        self._session_created = data.get("created_at")
+        self._owns_current_file = True
+        self.last_send_error = None
+        self._persist_session()
+        return len(self._messages) - 1
+
+    def archive_saved_session(self) -> Optional[str]:
+        """归档磁盘当前会话（重命名留档，不删除）。返回归档文件名或 None。"""
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            return None
+        try:
+            path = store.archive_current()
+        except OSError as e:
+            logger.warning(f"chat会话归档失败: {e}")
+            return None
+        self._owns_current_file = False
+        return path.name if path else None
+
+    def list_sessions(self) -> list:
+        """列出全部会话文件（current + 归档），按修改时间倒序。"""
+        store = getattr(self, "_session_store", None)
+        if store is None:
+            return []
+        return store.list_sessions()
+
+    def has_unanswered_tail(self) -> bool:
+        """会话尾部是否有未获回复的提问（发送失败/中断的标志）。
+
+        尾部是 user 或 tool 消息 = 最后一轮没走完（提问后未获回答）。
+        """
+        msgs = self._messages
+        return len(msgs) > 1 and msgs[-1].get("role") != "assistant"
 
     def _persist_turn(self, question: str, reply: str):
         """对话落盘：分析报告/chat/YYYY-MM-DD.md（每天一个文件，追加）。失败不影响主流程。"""
@@ -575,6 +720,38 @@ class ChatAgent:
                 f.write(entry)
         except OSError as e:
             logger.warning(f"chat落盘失败（不影响主流程）: {e}")
+
+
+def _offer_session_resume(agent: "ChatAgent"):
+    """启动期中断恢复提示（ISS-092）：磁盘上有未归档会话 → 问是否恢复。
+
+    拒绝恢复则归档留档（session_时间戳.json，不删除）；EOF/Ctrl+C 当作拒绝
+    （管道模式下 input 必然 EOF，不能因此崩掉 chat 启动）。
+    """
+    meta = agent.peek_saved_session()
+    if not meta:
+        return
+    try:
+        ans = input(
+            f"  检测到上次会话（{meta['n_messages']}条消息，"
+            f"{meta.get('updated_at', '')} 更新）。恢复上次对话？(y/N): "
+        ).strip().lower()
+    except (EOFError, KeyboardInterrupt):
+        # 中止（管道 EOF / Ctrl+C）：不恢复也不归档，文件留在盘上下次再说
+        print()
+        return
+    if ans in ("y", "yes"):
+        n = agent.resume_saved_session()
+        if n > 0:
+            print(f"  ✅ 已恢复 {n} 条对话历史")
+            if agent.has_unanswered_tail():
+                print("  ⚠ 上次最后一条提问未获回复（可能中断于发送失败），请重新提问即可")
+        else:
+            print("  [!] 会话未能恢复（原因见上方告警；原文件未删除），已开新会话")
+    else:
+        archived = agent.archive_saved_session()
+        if archived:
+            print(f"  会话已归档: {archived}（在 ~/.muyun/chat_sessions/ 内可找回）")
 
 
 def run_chat_repl(config: dict):
@@ -602,6 +779,9 @@ def run_chat_repl(config: dict):
             print("  [!] 仍然可以尝试对话（部分功能可能不可用）")
             print()
 
+        # 中断恢复（ISS-092）：有未归档会话先问是否恢复
+        _offer_session_resume(agent)
+
         while True:
             try:
                 user_input = input("chat> ").strip()
@@ -625,28 +805,57 @@ def run_chat_repl(config: dict):
                 print("    - 查看持仓: '我的持仓' 或 '查看持仓'")
                 print("    - 获取新闻: '600519有什么新闻'")
                 print("    - 策略查询: '止损怎么设' 或 '套牢了怎么办' (v0.8.1)")
+                print("    - 列会话文件: 'sessions'（查看已保存/归档的对话，可找回）")
                 print("    - 重置对话: 'reset'")
                 print("    - 退出: 'q'")
                 print()
                 continue
 
             if user_input.lower() == "reset":
-                agent.reset_history()
+                archived = agent.reset_history()
                 print("  对话历史已重置")
+                if archived:
+                    print(f"  旧会话已归档: {archived}（在 ~/.muyun/chat_sessions/ 内可找回）")
+                continue
+
+            if user_input.lower() == "sessions":
+                sessions = agent.list_sessions()
+                if not sessions:
+                    if getattr(agent, "session_persist", True):
+                        print("  暂无会话文件（对话会自动保存到 ~/.muyun/chat_sessions/）")
+                    else:
+                        print("  会话持久化已关闭（settings.yaml chat.session_persist），对话不落盘")
+                else:
+                    print()
+                    print("  会话文件（~/.muyun/chat_sessions/，按时间倒序）：")
+                    for s in sessions:
+                        n = s.get("n_messages")
+                        n_text = (f"{n}条消息"
+                                  if isinstance(n, int) and n >= 0 else "（无法读取）")
+                        mark = "  ← 当前会话" if s.get("is_current") else ""
+                        print(f"    {s['name']:<42} {n_text:<8} "
+                              f"{s.get('updated_at', '')}{mark}")
+                    print("    （找回归档：先把现有 current.json 改名，再把归档文件改名为 current.json，重启 chat 即恢复）")
+                    print()
                 continue
 
             # 调用Chat Agent
             try:
                 reply = agent.chat(user_input)
-                # 流式输出时正文已实时打印，不重复；只打空行分隔
-                if getattr(agent, "_last_reply_printed", False):
-                    print()
+                if getattr(agent, "last_send_error", None) is not None:
+                    # 发送失败（额度墙/网络）：提问已落盘，恢复会话即可续上
+                    print(f"\n  ⚠ {reply}")
+                    print("  会话已保存——q 退出后，下次启动 chat 选恢复即可继续\n")
                 else:
-                    print()
-                    print(reply)
-                    print()
-                if agent.persist:
-                    agent._persist_turn(user_input, reply)
+                    # 流式输出时正文已实时打印，不重复；只打空行分隔
+                    if getattr(agent, "_last_reply_printed", False):
+                        print()
+                    else:
+                        print()
+                        print(reply)
+                        print()
+                    if agent.persist:
+                        agent._persist_turn(user_input, reply)
             except Exception as e:
                 print(f"\n  [错误] {e}\n")
     finally:

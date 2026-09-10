@@ -1715,6 +1715,27 @@ P3（已取消）:
   5. 个股新闻当日磁盘缓存 `~/.muyun/news_cache/`（内存缓存跨进程失效，REPL 重启后同日重复分析重爬新闻）
 - **测试**: 每项对应断言（坏日期 caplog、无价格 caplog、旧文件清理、磁盘往返含"重启后命中不重抓"）
 
+### ISS-092: chat 会话中断恢复 + 本地文件读写工具（v0.8.9.3）
+- **状态**: ✅ 已解决（2026-09-11，/loop 授权任务；code-quality-guard 对抗审查 2×P1+8×P2 全部修复；回归 test_chat_session_store 14 + test_chat_session_resume 11 + test_chat_file_tools 15；全量 619 passed / 4 skipped——含 2 项 data_sources 外源间歇抖动非代码问题）
+- **背景**: ① chat 的 `_messages` 只在内存——q 退出/进程崩溃/API 发送失败（额度墙 402）中断后整段对话丢失（`分析报告/chat/*.md` 是给人看的报告，机器恢复不了）。② 用户需求澄清（2026-09-11）：仿已有 manage_portfolio（改持仓文件）扩展——AI 可写新文件（例：把当前对话总结成精华写入本地）、可读仓库内所有文件但不能越权读仓库外。范围修正说明：「发送失败每小时重试」指授权此任务的 agent 会话自身失败后的自愈节奏，非 chat 功能（初版误读已砍）
+- **落地（中断恢复）**:
+  1. **`src/chat/session_store.py`（新模块，`SessionStore` 类，session_store.py:31）**：current.json 原子写（tmp+os.replace）/peek（非 system 计数）/load（JSON+结构校验，损坏重命名 corrupt_ 留档不删）/archive_current（session_时间戳.json，撞名加 `_2`）/list_sessions；目录 `~/.muyun/chat_sessions/`；内部 IO 锁防写交错
+  2. **agent.py 集成（agent.py:614 `_persist_session`）**：`chat()` 追加用户消息后落盘（发送失败时提问已在盘上）+ `_run_conversation()` 6 处 append 后落盘（工具轮进行中状态可恢复）+ 发送异常置 `last_send_error`；`_persist_session` 对 `object.__new__` 旧式测试构造 getattr 静默跳过（旧测试零改动全绿）
+  3. **恢复语义（agent.py:651 `resume_saved_session`）**：system 换当前版提示词、按 max_history 重新裁剪（配对保护防 API 400）、created_at 沿用原会话；`has_unanswered_tail`（agent.py:692）检测未答尾部供提示
+  4. **防静默丢数据**：拒绝恢复/`reset` 重置（agent.py:591，返回归档名）/未拥有文件首次保存（并发双开/漏网路径）一律先归档留档；损坏文件隔离不删
+  5. **REPL（agent.py:716 `_offer_session_resume`）**：启动 y/N 恢复提示（EOF/Ctrl+C 不恢复也不归档，管道模式安全）；`sessions` 命令列会话文件；发送失败打「会话已保存，下次启动恢复即可继续」
+  6. **配置**：`chat.session_persist`（settings.yaml，代码缺省 true）
+- **落地（本地文件读写，tools.py 文件尾 + prompts.py）**:
+  7. **`read_file(path)`**：读仓库根内文本文件；`_resolve_in_root` 沙箱（`../` 逃逸/绝对路径/越界一律 TOOL_ERROR_MARK 拒绝）；密钥文件（`configs/settings.local.yaml`/`.env`）拒绝（内容进对话=发给AI服务商）；二进制（\x00 探测）与 >1MB 拒绝；utf-8/gbk 自适应解码
+  8. **`write_file(path, content)`**：仅写 `AI笔记/` 专属目录（`_FILES_WRITE_ROOT`，可建子目录自动创建，已存在覆盖并如实提示）；逃逸拒绝；非字符串/>1MB 拒绝
+  9. **`list_files(subdir)`**：仓库目录清单（空=仓库根——初版空路径被沙箱校验误拒已修）；.git/.venv/__pycache__ 等噪音目录隐藏；200 项截断
+  10. **接线**：TOOL_REGISTRY 3 条 lambda 注册（tools.py:467）+ TOOL_DEFINITIONS 3 个 schema + 系统提示「文件读写规范」节（沙箱边界/密钥禁读/总结沉淀用法/输出防火墙）
+- **对抗审查（code-quality-guard）修复**: P1-1 恢复时裁剪清空（尾部连续 tool 消息+窗口过小）会静默覆盖 current.json 丢全部历史——改为裁空时不接管不落盘、原文件保留+回归测试；P1-2 新测试在 GBK 管道/重定向下 emoji 打印抛 UnicodeEncodeError 被误判发送失败 6/10 翻车——reconfigure(errors="replace")+tool_failure 同类点一并修；P2 批：损坏隔离 rename 异常包裹（Windows 文件占用不杀 chat）/list_sessions stat 容错/sessions 空表按 session_persist 开关分支文案/找回归档指引补"先改名现有 current.json"（Windows FileExistsError）/系统提示 write_file 路径示例去 AI笔记/ 前缀/main.py 版本串"事件版日历"错字/AGENTS 测试数 14→15/.gitignore 补 AI笔记/
+- **冒烟实测**: 恢复三路径全过（y 恢复+sessions 列表+EOF 退出 / n 归档落盘核实 / EOF 不动文件核实）；文件工具沙箱用真实仓库根锚点测试（CLAUDE.md 可读、settings.local.yaml 拒绝）
+- **与现有功能无冲突核查**: manage_portfolio（portfolio.yaml 结构化写，confirm 门）→文件不同不冲突；save_chain_graph（configs/industry_chains_auto.yaml schema 校验写）→不冲突；run_command 无通用写文件命令→不冗余；`分析报告/chat/*.md`（人读报告）与 `~/.muyun/chat_sessions/current.json`（机器恢复态）职责分离保留双份
+- **已知局限**: 并发双开 chat 最后写者胜（无文件锁）；落盘失败只告警不中断对话（此时失去该次恢复能力）；文件工具不做 confirm 门（写沙箱=AI 自己的 AI笔记/ 目录，非持仓/资金类文件）
+- **告警三处同步**: chat会话落盘失败/chat会话文件损坏已隔离/chat会话归档失败 → plain_errors.py WARNING_PATTERNS + 报错速查手册 §K
+
 ### ISS-088: 反爬四件套——节流/熔断/批量行情/K线当日磁盘缓存（v0.8.9.1）
 - **状态**: ✅ 已解决（2026-09-07，用户拍板四项全做，全 mock 单测+真实批量请求冒烟通过）
 - **背景**: 用户要求评估并落地更优反爬方案。可行性实测确认：① 第三方数据封装全部为单代码形态，无批量传参；② 串行循环本身无反爬问题（4 次请求 0.1-0.8s/只全成功）；③ 新浪 `hq.sinajs.cn/list=` 原生支持一次多只（项目此前未用）——四项优化围绕"减少请求次数+打散请求节奏+快速跳过被封源"展开

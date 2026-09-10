@@ -32,6 +32,9 @@ tests/issue_027_round2/
 # 笨总评分报告（时间+代码+名字，本地阅读用，不入库）
 分析报告/
 
+# AI 笔记（chat write_file 工具的专属写区，AI 产物本地留用，不入库）
+AI笔记/
+
 # 系统文件
 Thumbs.db
 .DS_Store
