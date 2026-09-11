@@ -40,9 +40,20 @@ _DEEPSEEK_PREFIX = "deepseek"
 # 它们不接受 thinking 参数，传了会被判参数非法，故显式排除。
 _NON_THINKING_LEGACY = ("deepseek-chat",)
 
+# ── 模型名常量（唯一出处；模型换代只改这里，别在调用点写字符串字面量）──
+
 # benzong/theme_locator 等处的"AI 未配置模型名"兜底值。
 # 原值为已改名的 deepseek-v4-flash（仍兼容但属旧名），统一为官方当前名。
 DEFAULT_DEEPSEEK_MODEL = "deepseek-flash"
+
+# Kimi 当前在售模型名兜底（官方 model 清单见 platform.moonshot.cn/docs/pricing/chat）
+DEFAULT_KIMI_MODEL = "kimi-k2.6"
+
+# 不接受 temperature/top_p 等采样参数的模型前缀（Kimi K2.x 系列）。
+# 原先 chat/agent._should_pass_temperature 与 core/ai_modifier._should_pass_temperature
+# **各硬编码一份**——模型换代时极易只改一处（同一类"散落字面量"正是本次模型改名事故的根因）。
+# 新增 Kimi 型号时先确认其采样参数支持情况，再决定是否加入本清单。
+NO_TEMPERATURE_MODELS = ("kimi-k2.6", "kimi-k2.5")
 
 
 def is_deepseek_thinking_model(model: Any) -> bool:
@@ -58,15 +69,27 @@ def is_deepseek_thinking_model(model: Any) -> bool:
     return not name.startswith(_NON_THINKING_LEGACY)
 
 
+# 官方换算比例（DeepSeek 官方「Token 用量计算」文档，2026-09-11 核对）：
+#   https://api-docs.deepseek.com/quick_start/token_usage
+#   「1 个英文字符 ≈ 0.3 个 token；1 个中文字符 ≈ 0.6 个 token」
+#   即 1 token ≈ 3.33 英文字符 ≈ 1.67 汉字。Kimi 官方口径一致（普通中文 1 token ≈ 1.5-2 汉字）。
+_TOKENS_PER_CJK = 0.6
+_TOKENS_PER_OTHER = 0.3
+# 结构开销系数：官方比例只描述"自然语言"，而真实请求还带 tools 的 JSON schema、role 标记、
+# 特殊 token。实测两条真实请求（prompt_tokens 4893 / 4898）对比按官方比例算出的 4366，
+# 真实值高约 12%。取 1.15 使估算略偏保守——护栏宁可早折叠，也不要在真超窗口时才被动报错。
+_STRUCTURE_OVERHEAD = 1.15
+
+
 def estimate_tokens(text: str) -> int:
     """粗估一段文本的 token 数（用于上下文护栏预算，非精确计费）。
 
-    系数来自 2026-09-11 实测校准：真实 API 返回 usage.prompt_tokens=4898，
-    对应 chat 的 system prompt(3988 字) + tools 定义(6634 字) + 短提问(19 字)。
-    取 CJK/1.2 + 非CJK/3.5 时估算 5187（**高估 5.9%**，偏保守）——
-    护栏宁可早触发折叠，也不要在真超窗口时才被动报错。
+    基准 = **官方换算比例**（中文 0.6 token/字、英文 0.3 token/字符）× 结构开销 1.15。
+    校准（2026-09-11 实测）：system prompt(3988字) + tools 定义(6634字) + 短提问(19字)
+    对应真实 usage.prompt_tokens = 4893/4898，本估算约 5025（+2.7%，偏保守方向）。
 
-    参考量级（官方）：Kimi 文档称中文 1 token ≈ 1.5-2 汉字。
+    历史教训：初版用 CJK/1.2（= 0.83 token/字），比官方 0.6 高估 39%——结果虽因
+    恰好抵消结构开销而看起来准，但"系数无出处"不可维护，故改为官方比例 + 显式开销项。
     注意：本估算**不含图片输入**（项目当前不发送图片）。
     """
     if not text:
@@ -78,7 +101,7 @@ def estimate_tokens(text: str) -> int:
                 or "\uff00" <= ch <= "\uffef"):  # 全角符号
             cjk += 1
     other = len(text) - cjk
-    return int(cjk / 1.2 + other / 3.5) + 4
+    return int((cjk * _TOKENS_PER_CJK + other * _TOKENS_PER_OTHER) * _STRUCTURE_OVERHEAD) + 4
 
 
 def estimate_messages_tokens(messages: list, tools: Any = None) -> int:

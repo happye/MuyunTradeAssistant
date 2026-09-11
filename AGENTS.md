@@ -117,9 +117,10 @@ docs/               # 详细文档
 | `tests/chat/` | chat 模块单测（纯 mock，无网络） | test_chat_streaming / tool_failure / reply_finalize / shutdown / history_trim / formatter |
 | `tests/benzong/` | 笨总评分体系（mock 为主） | test_benzong_scorer / auto_scorer / batch_scorer / mode_from_grade / video_report_tier1-3 / issue_033 气宗回测验证 |
 | `tests/backtest/` | 回测与策略层 | test_jumpA_backtest_5year（5年回测载体）/ strategy_layer_sell_split / issue_041 规则版AI版相关性 |
-| `tests/core/` | 核心引擎单测（技能/决策/持仓/TradePlan/信号） | test_conditions / trade_plan / fundamental_alert / top_signal 等；test_tech_context_e2e 为脚本式E2E（pytest 默认 skip，直跑） |
+| `tests/core/` | 核心引擎单测（技能/决策/持仓/TradePlan/信号/模型规格） | test_conditions / trade_plan / fundamental_alert / top_signal / test_ai_model_family（模型系判定+上下文窗口+token 估算）等；test_tech_context_e2e 为脚本式E2E（pytest 默认 skip，直跑） |
+| `tests/rag/` | RAG 摄取/检索/隔离/重排（mock 为主） | test_ingestion_chunking / rag_diversity / rag_series_isolation / reranker / index_freshness |
 | `tests/data_sources/` | 打第三方接口的脚本（真实网络） | test_all_api（全数据源连通性体检）/ test_source_check / test_industry_data / probe_iss053（数据可得性探针） |
-| ~~`tests/ui/`~~ | **已不存在（账实漂移，2026-09-07 核实）**：src/web/app.py（378 行实验性 flask UI）与 src/tui 当前零自动化测试——已知缺口，见 ISS-091 | 无 |
+| `tests/ui/` | web/tui 集成测试（mock 底层引擎，不接真引擎） | test_web（flask test client：threading 后台 + htmx 轮询）/ test_tui（textual pilot：@work worker 异步填表）。**2026-09-11 修正：此前误记为「已不存在」，实为 2 文件 16 用例、且自 `705df2c` 起一直在 HEAD 中**（`git ls-tree -r HEAD -- tests/ui` 可证） |
 | `tests/artifacts/` | 历史回测/issue 验证的输出产物（json/log，非脚本） | extended_backtest_2024* / issue_033_round* |
 | `tests/rag_eval/` | RAG 检索质量评估工具 | evaluator.py + relevance_labels |
 

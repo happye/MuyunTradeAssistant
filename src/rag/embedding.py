@@ -18,6 +18,8 @@ from typing import Optional
 
 import numpy as np
 
+from src.rag.models import DEFAULT_EMBEDDING_MODEL
+
 logger = logging.getLogger(__name__)
 
 # HuggingFace下载源：官方源优先，镜像仅作为备用
@@ -121,7 +123,7 @@ class SentenceEmbedder(Embedder):
         except ImportError:
             pass
 
-    def __init__(self, model_name: str = "BAAI/bge-small-zh-v1.5"):
+    def __init__(self, model_name: str = DEFAULT_EMBEDDING_MODEL):
         """初始化
 
         Args:
@@ -379,7 +381,7 @@ def create_embedder(provider: str = "sentence", model_name: str = "") -> Embedde
     """
     if provider == "sentence":
         try:
-            model = model_name or "BAAI/bge-small-zh-v1.5"
+            model = model_name or DEFAULT_EMBEDDING_MODEL
             return SentenceEmbedder(model_name=model)
         except Exception as e:
             logger.warning(f"SentenceEmbedder创建失败: {e}，降级为TF-IDF")

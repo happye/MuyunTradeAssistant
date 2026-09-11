@@ -1342,3 +1342,45 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_mistake
 - Related Files: src/core/ai_model.py, tests/core/test_ai_model_family.py, configs/settings.yaml
 - Tags: official-docs, measurement-vs-doc, token-estimation, calibration-anchor, honest-reporting
+
+## [LRN-20260911-006] lesson
+**Date**: 2026-09-11
+**Priority**: high
+**Status**: completed
+**Area**: empirical-coefficients
+
+### Summary
+**经验系数必须有官方出处，不能只有"拟合出来的数字"。** 上下文护栏的 token 估算器初版写成 `CJK/1.2 + 非CJK/3.5`，来源是"我拿一次实测值反推的"——用户要求自检后查出：官方（DeepSeek「Token 用量计算」）明确给出 **1 中文字符 ≈ 0.6 token、1 英文字符 ≈ 0.3 token**（即 1 token ≈ 1.67 汉字；Kimi 官方口径 1.5~2 汉字一致）。我的 1.2 = 0.83 token/字，**比官方高估 39%**。它之所以总偏差只有 +6.3%，是因为过高的中文系数"恰好"抵消了结构开销（tools schema/role 标记/特殊 token）——**结果对、理由错**，这种代码一旦别人动其中一个系数就会立刻失去校准。
+
+### Suggested Action
+- 估算/换算/阈值类常量：先查官方一手口径，写进注释并附链接；官方口径之外的部分**单独拆成一个显式命名的修正项**（本次 = `_STRUCTURE_OVERHEAD = 1.15`，附"实测真实请求比官方比例高约 12%"的依据），不要揉进主系数
+- 用真实 API 的 `usage` 做校准锚点，并把锚点数值写进测试注释（本项目 4893/4898），这样下次改动能立刻判断是否还准
+- 承接 LRN-005：**同一个"外部规格"要交叉验证多个官方来源**（DeepSeek 与 Kimi 的口径互证）
+
+### Metadata
+- Source: user_correction
+- Related Files: src/core/ai_model.py, tests/core/test_ai_model_family.py
+- Tags: token-estimation, official-coefficients, explicit-correction-term, calibration-anchor
+
+## [LRN-20260911-007] lesson
+**Date**: 2026-09-11
+**Priority**: medium
+**Status**: completed
+**Area**: verification-before-claiming
+
+### Summary
+**"先验证再修"必须包含验证自己的主张——我报告里的两条判断经复核被自己推翻：**
+1. 「无 pytest 配置 ⇒ 必须手打 `--ignore=tests/artifacts --ignore=tests/rag_eval`，漏打口径不一致」→ 实测**裸 `pytest` 与带 `--ignore` 收集数完全相同（652）**：`tests/artifacts` 里没有 .py、`tests/rag_eval/evaluator.py` 不叫 `test_*`，**根本没有东西需要 ignore**。原判断把影响说大了 ⇒ 按最小改动**不加 pytest.ini**。
+2. 「上下文溢出风险高（最坏 90K token 逼近窗口）」→ 见 LRN-005，按官方口径实测只有窗口的 4%。
+
+教训：**报告里凡是"如果不 X 就会 Y"的因果判断，都要先做一次对照实验**（A/B 实测差多少），否则会把自己的担心写成事实，推动用户做无用改动。
+
+### Suggested Action
+- 提"这条不修会出问题"之前，先跑一次"不修"的对照，把差异量级写进结论
+- 报告用词分级：**实测结论 / 官方要求 / 我的推断** 三类分开写，别混在一句里
+- 用户要求"先验证再修"时，同时把**已提出但未验证的主张**一起列出来复验（本次两条都属"我自己上轮说的"）
+
+### Metadata
+- Source: session_mistake
+- Related Files: AGENTS.md, docs/2026-09-11_测试体系架构梳理报告.md
+- Tags: self-verification, control-experiment, claim-grading, minimal-change

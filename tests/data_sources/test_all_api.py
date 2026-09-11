@@ -100,11 +100,12 @@ def test_proxy_bypass():
 # ========== AI 调用 ==========
 def test_deepseek():
     from src.cli.main import load_config
+    from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body
     from openai import OpenAI
     deepseek = load_config().get("ai", {}).get("deepseek", {})
     if not deepseek.get("api_key"):
         return False, "DeepSeek key 未配，跳过"
-    model = deepseek.get("model", "deepseek-v4-flash")
+    model = deepseek.get("model", DEFAULT_DEEPSEEK_MODEL)
     client = OpenAI(
         api_key=deepseek["api_key"],
         base_url=deepseek.get("base_url"),
@@ -115,20 +116,20 @@ def test_deepseek():
         model=model,
         messages=[{"role": "user", "content": "回复OK"}],
         max_tokens=5,
-        **({"extra_body": {"thinking": {"type": "disabled"}}}
-           if str(model).startswith("deepseek-v4") else {}),
+        **thinking_disabled_body(model),
     )
     return True, f"model={model} 回复={resp.choices[0].message.content[:20]}"
 
 
 def test_kimi():
     from src.cli.main import load_config
+    from src.core.ai_model import DEFAULT_KIMI_MODEL
     from openai import OpenAI
     kimi = load_config().get("ai", {}).get("kimi", {})
     if not kimi.get("api_key"):
         return False, "Kimi key 未配，跳过"
     client = OpenAI(api_key=kimi["api_key"], base_url=kimi.get("base_url"), timeout=30, max_retries=1)
-    resp = client.chat.completions.create(model=kimi.get("model", "moonshot-v1-8k"), messages=[{"role": "user", "content": "OK"}], max_tokens=5)
+    resp = client.chat.completions.create(model=kimi.get("model", DEFAULT_KIMI_MODEL), messages=[{"role": "user", "content": "OK"}], max_tokens=5)
     return True, f"Kimi 回复={resp.choices[0].message.content[:20]}"
 
 

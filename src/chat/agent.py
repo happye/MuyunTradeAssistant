@@ -27,7 +27,7 @@ from src.chat.tools import (
     TOOL_REGISTRY, init_engines, shutdown_engines, TOOL_ERROR_MARK,
 )
 from src.core.ai_model import (
-    CONTEXT_WINDOW_FALLBACK, estimate_messages_tokens,
+    CONTEXT_WINDOW_FALLBACK, NO_TEMPERATURE_MODELS, estimate_messages_tokens,
     is_deepseek_thinking_model, resolve_context_window, thinking_disabled_body,
 )
 
@@ -167,13 +167,12 @@ class ChatAgent:
 
     @staticmethod
     def _should_pass_temperature(model: str) -> bool:
-        """判断模型是否支持temperature参数
+        """判断模型是否支持 temperature 参数。
 
-        kimi-k2.6 和 kimi-k2.5 不支持 temperature/top_p 等参数。
-        与 AIModifier._should_pass_temperature() 逻辑一致。
+        不支持清单统一来自 src.core.ai_model.NO_TEMPERATURE_MODELS
+        （与 AIModifier._should_pass_temperature 共用同一份，防模型换代只改一处）。
         """
-        unsupported_models = ("kimi-k2.6", "kimi-k2.5")
-        return not model.startswith(unsupported_models)
+        return not model.startswith(NO_TEMPERATURE_MODELS)
 
     def _build_params(self, base_params: dict) -> tuple[dict, str]:
         """构造 create 参数（thinking/max_tokens 按模型分派）。返回 (params, max_tokens键名)。

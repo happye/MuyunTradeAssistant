@@ -4,6 +4,12 @@ from typing import Optional
 from pydantic import BaseModel, Field
 from enum import Enum
 
+# ── 模型名常量（唯一出处；embedding/reranker/service 三处共用，模型换代只改这里）──
+# 实际生效值仍以 configs/settings.yaml 的 rag.embedding.model / rag.reranker.model 为准，
+# 本常量只作"配置缺失时的兜底"，避免同一字面量散落多个文件后漏改。
+DEFAULT_EMBEDDING_MODEL = "BAAI/bge-small-zh-v1.5"   # 512 维，中文，约 100MB
+DEFAULT_RERANKER_MODEL = "BAAI/bge-reranker-base"    # 交叉编码器，约 1GB（默认关闭，见 settings 注释）
+
 
 class StrategyCategory(str, Enum):
     """策略分类"""

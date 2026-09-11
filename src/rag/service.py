@@ -20,7 +20,10 @@ import os
 from pathlib import Path
 from typing import Optional
 
-from src.rag.models import RAGDocument, RetrievalResult
+from src.rag.models import (
+    DEFAULT_EMBEDDING_MODEL, DEFAULT_RERANKER_MODEL,
+    RAGDocument, RetrievalResult,
+)
 from src.rag.ingestion import load_strategy_files
 from src.rag.embedding import create_embedder, Embedder
 from src.rag.store import create_vector_store, VectorStore
@@ -83,12 +86,12 @@ class RAGService:
         # v0.8.9.0 P3-C 二阶段重排：双塔粗排 + 交叉编码精排（模型不可用时自动退化）
         rerank_cfg = config.get("reranker", {}) or {}
         self.reranker_enabled = bool(rerank_cfg.get("enabled", False))
-        self.reranker_model = rerank_cfg.get("model", "BAAI/bge-reranker-base")
+        self.reranker_model = rerank_cfg.get("model", DEFAULT_RERANKER_MODEL)
         self.rerank_candidate_multiplier = int(rerank_cfg.get("candidate_multiplier", 3))
 
         embed_cfg = config.get("embedding", {})
         self.embedding_provider = embed_cfg.get("provider", "sentence")
-        self.embedding_model = embed_cfg.get("model", "BAAI/bge-small-zh-v1.5")
+        self.embedding_model = embed_cfg.get("model", DEFAULT_EMBEDDING_MODEL)
 
         # 延迟初始化的组件
         self._embedder: Optional[Embedder] = None

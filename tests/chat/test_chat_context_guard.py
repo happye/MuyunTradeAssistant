@@ -93,12 +93,21 @@ def test_guard_noop_when_under_budget(monkeypatch):
 
 def test_guard_folds_then_allows_when_back_under_budget(monkeypatch):
     monkeypatch.setattr(agent_mod, "TOOL_DEFINITIONS", [])
-    a = _mk_agent(window=800, ratio=0.85, keep=3, messages=_ten_tool_messages())
+    a = _mk_agent(window=10_000_000, keep=3, messages=_ten_tool_messages())
     before = agent_mod.estimate_messages_tokens(a._messages, [])
+
+    # 先用一份副本量出"折叠后"的估算值，把窗口设在 before 与 after 之间。
+    # 不写死具体 token 数：估算系数调整（如 2026-09-11 改为官方比例）不该把本用例弄红。
+    probe = _mk_agent(window=10_000_000, keep=3, messages=_ten_tool_messages())
+    assert probe._fold_old_tool_results(3) == 7
+    after = agent_mod.estimate_messages_tokens(probe._messages, [])
+    assert after < before, "折叠必须降低估算值"
+
+    a.context_window = int(after / a.context_budget_ratio) + 2   # budget 略高于 after
+    assert before > a.context_window * a.context_budget_ratio, "构造的用例应确实超预算"
 
     ok, detail = a._guard_before_call()
 
-    assert before > 800 * 0.85, "构造的用例应确实超预算"
     assert ok is True and detail == ""
     assert sum(1 for m in a._messages
                if m["content"].startswith(_FOLDED_MARK)) == 7

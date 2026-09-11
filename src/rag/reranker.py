@@ -16,6 +16,8 @@ query-doc 全交互，排序质量显著更高。
 import logging
 from typing import Sequence
 
+from src.rag.models import DEFAULT_RERANKER_MODEL
+
 logger = logging.getLogger(__name__)
 
 
@@ -30,7 +32,7 @@ class Reranker:
 
     def __init__(
         self,
-        model_name: str = "BAAI/bge-reranker-base",
+        model_name: str = DEFAULT_RERANKER_MODEL,
         enabled: bool = True,
         max_chars: int = 1024,
     ):

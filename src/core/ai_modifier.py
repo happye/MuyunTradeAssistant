@@ -33,7 +33,7 @@ from openai import OpenAI
 
 from src.data.models import AIModifierResult, StockData, MarketState
 from src.data.news_client import NewsClient
-from src.core.ai_model import thinking_disabled_body
+from src.core.ai_model import NO_TEMPERATURE_MODELS, thinking_disabled_body
 from src.core.tech_context import TechContextBuilder
 
 logger = logging.getLogger(__name__)
@@ -160,9 +160,10 @@ class AIModifier:
 
     @staticmethod
     def _should_pass_temperature(model: str) -> bool:
-        """判断模型是否支持temperature参数
+        """判断模型是否支持 temperature 参数。
 
-        kimi-k2.6 和 kimi-k2.5 不支持 temperature/top_p/n/presence_penalty/frequency_penalty
+        不支持清单统一来自 src.core.ai_model.NO_TEMPERATURE_MODELS
+        （与 ChatAgent._should_pass_temperature 共用同一份，防模型换代只改一处）。
         参考: https://platform.kimi.com/docs/api/chat
 
         Args:
@@ -171,9 +172,7 @@ class AIModifier:
         Returns:
             True 表示可以传 temperature 参数
         """
-        # kimi-k2.6 和 kimi-k2.5 不支持这些参数
-        unsupported_models = ("kimi-k2.6", "kimi-k2.5")
-        return not model.startswith(unsupported_models)
+        return not model.startswith(NO_TEMPERATURE_MODELS)
 
     def analyze(
         self,
