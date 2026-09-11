@@ -26,6 +26,7 @@ import pandas as pd
 from src.scanner.market_cache import MarketCache
 from src.scanner.scanner_filter import ScannerFilter
 from src.data.models import ScanCandidate
+from src.core.ai_model import thinking_disabled_body
 from src.core.orchestrator import Orchestrator
 from src.data.akshare_client import AKShareClient
 
@@ -770,7 +771,7 @@ class ScannerEngine:
                     {"role": "user", "content": user_prompt},
                 ],
                 response_format={"type": "json_object"},
-                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(self._match_model).startswith("deepseek-v4") else {}),
+                **thinking_disabled_body(self._match_model),
             )
             content = response.choices[0].message.content or "{}"
             parsed = json.loads(content)

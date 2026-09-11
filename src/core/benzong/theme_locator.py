@@ -25,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body
+
 logger = logging.getLogger(__name__)
 
 # 当日文件缓存（v0.8.7.9）：同主题词当天复用 AI 报股+Baostock 验证结果。
@@ -205,14 +207,14 @@ def locate_theme_stocks(
 
     try:
         resp = ai_client.chat.completions.create(
-            model=ai_model or "deepseek-v4-flash",
+            model=ai_model or DEFAULT_DEEPSEEK_MODEL,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
                 {"role": "user", "content": user_prompt},
             ],
             temperature=0.2,
             max_tokens=2400,
-            **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
+            **thinking_disabled_body(ai_model or DEFAULT_DEEPSEEK_MODEL),
         )
         text = resp.choices[0].message.content or ""
         # v0.8.7.6 审计修复 B13：截断时重试一次要求精简（对齐 dimensions 的截断纪律）——
@@ -220,14 +222,14 @@ def locate_theme_stocks(
         if getattr(resp.choices[0], "finish_reason", None) == "length":
             logger.warning("theme_locator: AI 输出被截断(finish_reason=length)，重试要求精简 why 字段")
             resp = ai_client.chat.completions.create(
-                model=ai_model or "deepseek-v4-flash",
+                model=ai_model or DEFAULT_DEEPSEEK_MODEL,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
                     {"role": "user", "content": user_prompt + "\n（注意：上次输出超长被截断。why 每条不超过20字，先保证 JSON 完整闭合）"},
                 ],
                 temperature=0.2,
                 max_tokens=2400,
-                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
+                **thinking_disabled_body(ai_model or DEFAULT_DEEPSEEK_MODEL),
             )
             text = resp.choices[0].message.content or ""
     except Exception as e:

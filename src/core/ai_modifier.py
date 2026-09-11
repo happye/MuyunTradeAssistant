@@ -33,6 +33,7 @@ from openai import OpenAI
 
 from src.data.models import AIModifierResult, StockData, MarketState
 from src.data.news_client import NewsClient
+from src.core.ai_model import thinking_disabled_body
 from src.core.tech_context import TechContextBuilder
 
 logger = logging.getLogger(__name__)
@@ -286,9 +287,8 @@ class AIModifier:
                 api_params["temperature"] = 0.1  # 低温度=更确定性输出
             api_params["max_completion_tokens"] = 800
             api_params["timeout"] = 30
-            # DeepSeek-V4 默认思考模式；保持非思考需 thinking.type=disabled（kimi 不支持，不传）
-            if model and model.startswith("deepseek-v4"):
-                api_params["extra_body"] = {"thinking": {"type": "disabled"}}
+            # DeepSeek 思考型模型默认思考模式，保持非思考需 thinking.type=disabled；kimi 等返回空 dict
+            api_params.update(thinking_disabled_body(model))
 
             if self.debug:
                 logger.debug(f"AI Modifier DEBUG: API参数={api_params}")

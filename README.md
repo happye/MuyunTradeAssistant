@@ -395,6 +395,26 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.9.4 (chat 轮次 20 轮 + 上下文护栏 + 模型系判定修复) - 2026-09-11
+
+- **工具轮次上限 10 → 20 轮**：`chat.max_tool_rounds: 5 → 10`（实际硬上限 = 该值 ×2），
+  并把 ×2 系数收敛成 `ChatAgent.hard_tool_round_limit` 单一出口；启动横幅与每轮进度
+  都显示「第 X/N 轮」，用户可感知。
+- **上下文护栏**（新增）：每轮请求前估算输入 token（system + tools + 全部消息），
+  超「provider 官方上下文窗口 × 0.85」即折叠最早的 tool 结果（保留最近 6 条，只改
+  content 不删消息以保持配对）；折叠后仍超窗口则停止调工具、要求模型直接作答。
+  窗口取官方值：DeepSeek `deepseek-flash` 1,000,000 / Kimi `kimi-k2.6` 262,144。
+- 🔴 **模型系判定修复（本次改名的隐性回归）**：DeepSeek 2026-09-10 发布 V4.1 Flash，
+  API 名改为 `deepseek-flash`。项目改名后，全库 **10 处** `startswith("deepseek-v4")`
+  判定全部失配 → 不再传 `thinking.type=disabled` → **全项目静默退回思考模式**
+  （官方默认 effort=high：更慢、更贵，且 `temperature` 不生效）。
+  修复：新增 `src/core/ai_model.py` 作单一事实源，判定改为「deepseek 前缀」而非版本号，
+  10 处调用点统一改走 `thinking_disabled_body(model)`；顺带清理 4 处过期模型名兜底
+  （含已下线的 `deepseek-chat`）。实测验证：修复后真实 API 响应不再返回 `reasoning_content`。
+- 新增回归：`tests/core/test_ai_model_family.py`（13 项，含「settings 里实际配置的模型名
+  必须被识别」「src 内不得再出现版本号式硬编码判定」两条防复发测试）、
+  `tests/chat/test_chat_context_guard.py`（8 项）、`tests/chat/test_chat_round_limit.py`（5 项）。
+
 ### v0.8.9.3 (chat 会话中断恢复) - 2026-09-11
 
 - **会话持久化（ISS-092）**：chat 对话逐消息原子落盘

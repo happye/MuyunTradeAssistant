@@ -100,8 +100,10 @@ ai:
   deepseek:
     api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 DEEPSEEK_API_KEY（ISS-042）
     base_url: "https://api.deepseek.com"
-    model: "deepseek-v4-flash"   # deepseek-chat 2026-07-24弃用->v4-flash；V4默认思考模式，非思考需调用处传thinking.type=disabled
-    model_pro: "deepseek-v4-flash"  # 深度分析也用flash非思考；v4-pro思考型更贵且偶有空content，不用
+    model: "deepseek-flash"       # 官方当前名=V4.1 Flash(2026-09-10发布)；思考模式默认开启(effort=high)，非思考由 src/core/ai_model.thinking_disabled_body 统一传 thinking.type=disabled
+    model_pro: "deepseek-flash"   # 深度分析也用flash非思考；v4-pro思考型更贵且偶有空content，不用
+    context_window: 1000000       # 官方：CONTEXT LENGTH 1M（api-docs.deepseek.com/quick_start/pricing，2026-09-11核）；用于 chat 上下文护栏
+    max_output_tokens: 384000     # 官方：MAX OUTPUT MAXIMUM 384K（同上）
   # v0.8.8.6：显式定义（benzong auto_scorer 此前静默读默认值 60s/2次，配置缺失易被误改无感知）
   request_timeout: 60
   max_retries: 2
@@ -110,6 +112,7 @@ ai:
     base_url: "https://api.moonshot.cn/v1"   # 官方文档确认（注意是.cn不是.ai）
     model: "kimi-k2.6"            # ISS-078：moonshot-v1 系列已全线下线（实测 404）；2026-09-03 探测在售: kimi-k3/kimi-k2.7-code(-highspeed)/kimi-k2.6
     model_pro: "kimi-k2.6"       # 思考型模型，content偶尔为空（reasoning_content兜底）
+    context_window: 262144       # 官方：262,144 tokens（platform.moonshot.cn/docs/pricing/chat，2026-09-11核）——比 DeepSeek 小得多，是上下文护栏的实际约束方
   modifier:
     sentiment_weight: 0.3    # 情绪调节权重（buy_score *= 1 - confidence * 0.3）
     risk_position_cap: 0.7   # 高风险时仓位上限打7折
@@ -190,11 +193,17 @@ entry_exit:
 chat:
   enabled: true                    # 是否启用Chat模式
   max_history_messages: 20         # 对话历史最大消息数（控制token消耗）
-  max_tool_rounds: 5               # 单次对话最大工具调用轮次（ISS-061行业分析需多轮：行业+持仓+个股分析+新闻）
+  max_tool_rounds: 10              # 单次对话工具调用轮次（实际硬上限=该值×2=20轮，见 agent.hard_tool_round_limit）；ISS-061行业分析需多轮：行业+持仓+个股分析+新闻
   max_failed_rounds: 3             # 工具全部失败的连续轮次上限（失败不占轮次，AI可重试）
   persist: true                    # chat对话落盘 分析报告/chat/（每天一个文件，追加）
   stream: true                     # 回答流式输出（正文增量打印；流式失败自动回退非流式）
   max_result_length: 4000          # 工具结果最大字符数（防token爆炸）
   max_tokens: 384000               # 单次回复最大输出token；DeepSeek-V4输出上限384K（官方文档），拉满避免长回答被截断
   session_persist: true            # 会话逐消息落盘（ISS-092聊天中断恢复）：q退出/崩溃/发送失败中断后，下次启动chat可恢复继续；目录 ~/.muyun/chat_sessions/
+  # 上下文护栏（2026-09-11）：工具轮次上限提到 20 轮后，单轮对话内工具结果累计量翻倍。
+  # 每轮调用前估算请求 token，超窗口×budget_ratio 就折叠最早的 tool 结果；折叠后仍超则停止调工具直接作答。
+  context_guard:
+    enabled: true
+    budget_ratio: 0.85             # 触发折叠的阈值（占 provider 上下文窗口比例，官方窗口见 ai.<provider>.context_window）
+    keep_recent_tool_results: 6    # 折叠时保留最近 N 条工具结果不折叠
 

@@ -24,6 +24,8 @@ import logging
 import re
 from typing import Optional
 
+from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body
+
 logger = logging.getLogger(__name__)
 
 
@@ -69,7 +71,7 @@ def _call_ai_for_score(ai_client, system_prompt: str, user_prompt: str,
 
     if model is None:
         logger.warning(
-            f"{dim_name}: ai_model 未透传，回退默认 deepseek-chat "
+            f"{dim_name}: ai_model 未透传，回退默认 {DEFAULT_DEEPSEEK_MODEL} "
             f"（kimi/moonshot provider 下会 404，请检查 auto_scorer ai_model 透传链路）"
         )
 
@@ -82,14 +84,14 @@ def _call_ai_for_score(ai_client, system_prompt: str, user_prompt: str,
                 # 重试：要求极简 reasoning 避免再截断
                 sys_p = system_prompt + "\n\n注意：reasoning 字段必须 ≤80字，避免输出被截断。"
             response = ai_client.chat.completions.create(
-                model=model or "deepseek-v4-flash",
+                model=model or DEFAULT_DEEPSEEK_MODEL,
                 messages=[
                     {"role": "system", "content": sys_p},
                     {"role": "user", "content": user_p},
                 ],
                 temperature=0.2,  # 评分类任务低温
                 max_tokens=max_tokens,
-                **({"extra_body": {"thinking": {"type": "disabled"}}} if str(model or "deepseek-v4-flash").startswith("deepseek-v4") else {}),
+                **thinking_disabled_body(model or DEFAULT_DEEPSEEK_MODEL),
             )
             text = response.choices[0].message.content or ""
             finish_reason = getattr(response.choices[0], "finish_reason", None)

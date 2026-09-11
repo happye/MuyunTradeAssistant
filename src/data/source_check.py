@@ -31,6 +31,8 @@ import time
 from pathlib import Path
 from typing import Optional
 
+from src.core.ai_model import thinking_disabled_body
+
 logger = logging.getLogger(__name__)
 
 
@@ -352,7 +354,7 @@ def check_all_sources(code: str = "600989") -> dict:
             model=model,
             messages=[{"role": "user", "content": "回复一个字：通"}],
             max_tokens=10, temperature=0,
-            **({"extra_body": {"thinking": {"type": "disabled"}}} if str(model).startswith("deepseek-v4") else {}),
+            **thinking_disabled_body(model),
         )
         txt = (resp.choices[0].message.content or "")[:20]
         return f"model={model} resp='{txt}'"

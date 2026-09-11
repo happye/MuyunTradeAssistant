@@ -23,6 +23,7 @@ from typing import Optional
 
 from src.core.benzong import cache, data_provider
 from src.core.benzong.scorer import BenzhongScore, score_one
+from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body
 from src.core.benzong.dimensions import _lazy_load_dimensions
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ def _build_ai_client(config: Optional[dict] = None):
         if base_url:
             client_kwargs["base_url"] = base_url
         client = OpenAI(**client_kwargs)
-        model = provider_cfg.get("model", "deepseek-chat")
+        model = provider_cfg.get("model", DEFAULT_DEEPSEEK_MODEL)
         return client, model
     except Exception as e:
         logger.warning(f"AI client 构造失败: {e}")
@@ -110,7 +111,7 @@ def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
             "0-1=技术突破初期, 1-10=产业化起步, 10-30=快速增长, 30+=成熟增速放缓.\n"
             '只输出 JSON: {"flagbearer_code":"600519" 或 null, "penetration_stage":"1-10"}'
         )
-        extra = {"extra_body": {"thinking": {"type": "disabled"}}} if str(ai_model).startswith("deepseek-v4") else {}
+        extra = thinking_disabled_body(ai_model)
         resp = ai_client.chat.completions.create(
             model=ai_model,
             messages=[{"role": "user", "content": prompt}],

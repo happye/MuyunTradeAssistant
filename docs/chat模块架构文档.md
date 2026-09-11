@@ -61,6 +61,10 @@
 ```
 用户输入 ──> [循环] ────────────────────────────────────────────┐
   │                                                            │
+  │  上下文护栏（_guard_before_call，v0.8.9.4）                  │
+  │    ├─ 估算 token > 窗口×0.85 → 折叠最早的 tool 结果(留最近6) │
+  │    └─ 折叠后仍 > 窗口 → 跳出循环，走"上下文版"nudge          │
+  │                                                            │
   │  调用AI（每轮都带 tools，tool_choice="auto"）                │
   │    ├─ 流式优先：正文增量打印 + tool_calls 按 index 聚合       │
   │    └─ 失败回退非流式                                         │
@@ -73,17 +77,18 @@
        │   连续全失败 ≥3 轮 → 跳出（防工具坏了无限重试）           │
        └─ 成功 → round_num += 1                                 │
                                                             │
-  轮次上限：hard_cap = max_tool_rounds(默认5) × 2             │
+  轮次上限：hard_cap = max_tool_rounds(默认10) × 2 = 20 轮     │
   超限跳出 → 追加 nudge 消息"基于已获取信息直接回答" ───────────┘
   最终兜底调用【不带 tools】→ 模型只能输出文本，不能再调工具
 ```
 
-**四个关键设计决策**（每个都对应一次真实事故）：
+**五个关键设计决策**（每个都对应一次真实事故）：
 
 1. **每轮都带 tools**（而不是上限后摘掉）：早期实现达到轮次上限后不带 tools 再调一次，模型还想调工具时会把 `<tool_calls>` 伪 XML 当正文输出并停止——用户看到一段假 XML 而非回答。改为上限内每轮带 tools + 超限后用 nudge 消息要求直接作答。
 2. **失败轮不占轮次上限**：一轮内所有工具都失败时（数据源挂了很常见），失败信息回传给模型让它自行重试换参数，不消耗轮次；但连续全失败达 `max_failed_rounds=3` 就停止，防止工具彻底坏了无限空转。成功与失败用结果前缀 `[工具失败]`（`TOOL_ERROR_MARK`）区分——一个字符串约定撑起整个失败语义。
 3. **截断的 tool_calls 不执行**：`finish_reason=length` 时工具参数 JSON 多半残缺，`json.loads` 失败后空参执行会让模型"装失忆"。检测到截断直接放弃本轮执行，提示用户简化问题重试。
 4. **超限后 nudge 而非硬停**：达到 hard_cap 后追加一条 user 消息"请基于以上已获取的信息直接给出完整回答"，再做最后一次**不带 tools** 的调用——既尊重轮次上限，又不浪费已获取的上下文。
+5. **上下文护栏：折叠而不是删除**（v0.8.9.4）：轮次上限提到 20 后，单轮内工具结果累计量翻倍（最坏 20×4000 字）。护栏每轮请求前估算输入 token，超「provider 官方窗口 × `budget_ratio`」时把**最早的** tool 结果 content 换成短桩——`tool` 消息必须与其 `assistant(tool_calls)` 严格配对，**删除会触发 API 400**，改 content 则配对完整、只损失细节（模型仍知道"这里查过、多少字"）。折叠幂等（`_FOLDED_MARK` 前缀判重），折叠后仍超窗口则跳出并走"上下文版"nudge。窗口是官方数值写进配置（DeepSeek 1,000,000 / Kimi 262,144），估算器实测偏高 6.3%（保守方向）。
 
 ## 四、回复后处理（`_reply_parts`）——模型输出的"安检"
 
@@ -234,16 +239,20 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 | 键 | 默认 | 说明 |
 |----|------|------|
 | `max_history_messages` | 20 | 对话窗口条数 |
-| `max_tool_rounds` | 5 | 工具轮次（硬上限 ×2） |
+| `max_tool_rounds` | 10 | 工具轮次（硬上限 ×2，即实际 20 轮）；代码缺省 10，settings.yaml 亦为 10 |
+| `max_failed_rounds` | 3 | 工具全失败的连续轮次上限（失败轮不占轮次） |
 | `max_result_length` | 4000 | 单工具结果喂给模型的最大字符数 |
-| `max_tokens` | 384000 | 输出上限（V4 拉满） |
+| `max_tokens` | 384000 | 输出上限（V4.1 Flash 官方最大 384K） |
+| `context_guard.enabled` | true | 上下文护栏开关（v0.8.9.4） |
+| `context_guard.budget_ratio` | 0.85 | 触发折叠的阈值（占 provider 官方窗口比例） |
+| `context_guard.keep_recent_tool_results` | 6 | 折叠时保留最近 N 条工具结果 |
 | `stream` | true | 流式输出（失败自动回退） |
 | `persist` | 代码缺省 false（当前 settings.yaml 设为 true） | 对话落盘到 `分析报告/chat/YYYY-MM-DD.md` |
 | `session_persist` | 代码缺省 true（settings.yaml 显式 true） | 会话逐消息落盘 `~/.muyun/chat_sessions/current.json`，启动可恢复（§十·五） |
 
 ## 十二、测试与已知局限
 
-**测试**（tests/chat/，纯 mock 无网络）：streaming（流式聚合/回退）、tool_failure（失败语义/轮次）、reply_finalize（伪 tool_calls/截断提示）、shutdown（资源释放/幂等）、history_trim（配对保护）、formatter、session_store（落盘/恢复/损坏隔离/归档，ISS-092）、session_resume（发送失败落盘/恢复语义，ISS-092）、file_tools（沙箱逃逸/密钥拒绝/读写往返，ISS-092）。
+**测试**（tests/chat/，纯 mock 无网络）：streaming（流式聚合/回退）、tool_failure（失败语义/轮次）、reply_finalize（伪 tool_calls/截断提示）、shutdown（资源释放/幂等）、history_trim（配对保护）、formatter、session_store（落盘/恢复/损坏隔离/归档，ISS-092）、session_resume（发送失败落盘/恢复语义，ISS-092）、file_tools（沙箱逃逸/密钥拒绝/读写往返，ISS-092）、round_limit（轮次×2 契约/循环严格停在硬上限，v0.8.9.4）、context_guard（折叠保配对/幂等/超窗口兜底/进度行，v0.8.9.4）。模型侧测试见 `tests/core/test_ai_model_family.py`。
 
 **已知局限（诚实清单）**：
 1. 工具结果 4000 字符截断仍是信息损失（保留首尾是缓解不是消除）。

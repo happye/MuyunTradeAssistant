@@ -26,12 +26,18 @@ from src.chat.session_store import SessionStore
 from src.chat.tools import (
     TOOL_REGISTRY, init_engines, shutdown_engines, TOOL_ERROR_MARK,
 )
+from src.core.ai_model import (
+    CONTEXT_WINDOW_FALLBACK, estimate_messages_tokens,
+    is_deepseek_thinking_model, resolve_context_window, thinking_disabled_body,
+)
 
 logger = logging.getLogger(__name__)
 
 # 默认配置
 DEFAULT_MAX_HISTORY = 20
-DEFAULT_MAX_TOOL_ROUNDS = 3
+# 工具轮次默认值：实际硬上限 = 该值 × 2（见 ChatAgent.hard_tool_round_limit）——10 ⇒ 20 轮。
+# 仅 settings.yaml chat.max_tool_rounds 缺失时兜底；2026-09-11 由 3 上调与配置基线对齐
+DEFAULT_MAX_TOOL_ROUNDS = 10
 DEFAULT_MAX_RESULT_LENGTH = 4000
 # max_tokens 默认值：DeepSeek-V4 单次输出上限 384K token（官方文档 api-docs.deepseek.com）。
 # 拉满使用——不自行设小的额度，避免长对话超额被静默截断、回答不完整损失用户。
@@ -45,10 +51,17 @@ DEFAULT_SESSION_PERSIST = True
 # 工具全部失败的连续轮次上限：失败轮不占 max_tool_rounds 轮次（失败信息回传AI，
 # AI自行重试），但连续全失败超过此次数则停止循环（防工具坏了无限重试）。
 DEFAULT_MAX_FAILED_ROUNDS = 3
+# 上下文护栏（2026-09-11）：轮次上限提到 20 后，单轮内工具结果累计量翻倍。
+# 预算口径 = provider 上下文窗口（官方值，见 ai.<provider>.context_window）× 该比例。
+DEFAULT_CONTEXT_BUDGET_RATIO = 0.85
+DEFAULT_KEEP_RECENT_TOOL_RESULTS = 6
 
 # 伪工具调用文本：模型在请求不带tools时（如硬上限后的兜底调用）还想调工具，
 # 会把 <tool_calls> 当正文输出并停止，用户看到的是一段假XML而非回答。剥离用。
 _FAKE_TOOL_CALL_RE = re.compile(r"<tool_calls>.*?(?:</tool_calls>|$)", re.DOTALL)
+
+# 被上下文护栏折叠过的工具结果前缀（幂等标记：二次折叠不重复处理）
+_FOLDED_MARK = "[早前工具结果已折叠]"
 
 
 class ChatAgent:
@@ -75,6 +88,17 @@ class ChatAgent:
         # 上一轮回答是否已流式打印到控制台（REPL据此避免重复打印）
         self._last_reply_printed = False
 
+        # 上下文护栏（2026-09-11）：窗口按 provider 官方值取（settings.yaml ai.<provider>.context_window）
+        guard_cfg = chat_cfg.get("context_guard", {}) or {}
+        self.context_guard_enabled = guard_cfg.get("enabled", True)
+        self.context_budget_ratio = guard_cfg.get("budget_ratio", DEFAULT_CONTEXT_BUDGET_RATIO)
+        self.keep_recent_tool_results = guard_cfg.get(
+            "keep_recent_tool_results", DEFAULT_KEEP_RECENT_TOOL_RESULTS)
+        self._provider = (config.get("ai", {}) or {}).get("provider", "deepseek")
+        self.context_window = resolve_context_window(config, self._provider)
+        # 本次对话最近一次护栏状态（供 REPL/测试查看）
+        self._last_context_estimate: Optional[int] = None
+
         # 会话持久化（ISS-092 聊天中断恢复）：逐消息落盘，启动时可恢复
         self.session_persist = chat_cfg.get("session_persist", DEFAULT_SESSION_PERSIST)
         self._session_store = SessionStore() if self.session_persist else None
@@ -98,6 +122,14 @@ class ChatAgent:
         self._messages: list[dict] = [
             {"role": "system", "content": CHAT_SYSTEM_PROMPT}
         ]
+
+    @property
+    def hard_tool_round_limit(self) -> int:
+        """工具轮次硬上限 = max_tool_rounds × 2。
+
+        循环 _run_conversation 与启动横幅共用同一出口，避免 ×2 系数散落多处后漂移。
+        """
+        return self.max_tool_rounds * 2
 
     def _init_ai_client(self):
         """初始化AI客户端（复用settings.yaml的ai配置）"""
@@ -144,12 +176,16 @@ class ChatAgent:
         return not model.startswith(unsupported_models)
 
     def _build_params(self, base_params: dict) -> tuple[dict, str]:
-        """构造 create 参数（thinking/max_tokens 按模型分派）。返回 (params, max_tokens键名)。"""
+        """构造 create 参数（thinking/max_tokens 按模型分派）。返回 (params, max_tokens键名)。
+
+        DeepSeek 思考型模型默认开思考（官方默认 effort=high），项目按非思考模式设计
+        （低延迟、低成本；且思考模式下 temperature 不生效），必须显式关闭。
+        判定统一走 src.core.ai_model——2026-09-11 模型改名 deepseek-flash 后，
+        原 `startswith("deepseek-v4")` 判定全线失配（详见该模块 docstring）。
+        """
         params = dict(base_params)
-        _is_ds = bool(self._model and self._model.startswith("deepseek-v4"))
-        if _is_ds:
-            # DeepSeek-V4 默认思考模式；保持非思考需 thinking.type=disabled
-            params["extra_body"] = {"thinking": {"type": "disabled"}}
+        if is_deepseek_thinking_model(self._model):
+            params.update(thinking_disabled_body(self._model))
             params["max_tokens"] = self.max_tokens
             _mt_key = "max_tokens"
         else:
@@ -358,6 +394,78 @@ class ChatAgent:
         base, suffix = cls._reply_parts(message, finish_reason)
         return base + suffix
 
+    # ── 上下文护栏（2026-09-11）─────────────────────────────
+
+    def _fold_old_tool_results(self, keep_recent: int) -> int:
+        """把最早的 tool 结果折叠成短桩，保留最近 keep_recent 条。返回折叠条数。
+
+        用"折叠"而不是"删除"：tool 消息必须与其 assistant(tool_calls) 严格配对，
+        删除会触发 API 400；改 content 则配对完整，只损失细节。
+        已是折叠桩的跳过，保证幂等。
+        """
+        idxs = [i for i, m in enumerate(self._messages) if m.get("role") == "tool"]
+        if len(idxs) <= keep_recent:
+            return 0
+        folded = 0
+        for i in idxs[:len(idxs) - max(keep_recent, 0)]:
+            content = self._messages[i].get("content") or ""
+            if content.startswith(_FOLDED_MARK):
+                continue
+            self._messages[i]["content"] = (
+                f"{_FOLDED_MARK} 原 {len(content)} 字已省略以控制上下文；"
+                f"若仍需该数据请重新调用对应工具。"
+            )
+            folded += 1
+        return folded
+
+    def _guard_config(self) -> tuple[bool, float, int, int]:
+        """读护栏配置 (启用, 预算比例, 保留最近N条, 窗口)。
+
+        用 getattr 而非直接取属性：测试/轻量用法会用 object.__new__ 跳过 __init__
+        （同 _persist_session 对 _session_store 的处理），此时退回模块默认值——
+        CONTEXT_WINDOW_FALLBACK 取已核实窗口里较小的那个，宁可保守。
+        """
+        return (
+            getattr(self, "context_guard_enabled", True),
+            getattr(self, "context_budget_ratio", DEFAULT_CONTEXT_BUDGET_RATIO),
+            getattr(self, "keep_recent_tool_results", DEFAULT_KEEP_RECENT_TOOL_RESULTS),
+            getattr(self, "context_window", CONTEXT_WINDOW_FALLBACK),
+        )
+
+    def _guard_before_call(self) -> tuple[bool, str]:
+        """请求前的上下文预算检查。返回 (是否可继续, 说明串)。
+
+        1. 估算本次请求输入 token（system + tools + 全部消息，见 ai_model.estimate_messages_tokens）；
+        2. 超过 窗口 × budget_ratio → 折叠最早的若干条工具结果（保留最近 N 条），并打印可见提示；
+        3. 折叠后仍超过窗口本身 → 返回 False，调用方跳出循环改走"要求直接作答"兜底。
+        """
+        enabled, ratio, keep_recent, window = self._guard_config()
+        if not enabled:
+            return True, ""
+        budget = int(window * ratio)
+        estimate = estimate_messages_tokens(self._messages, TOOL_DEFINITIONS)
+        self._last_context_estimate = estimate
+        if estimate <= budget:
+            return True, ""
+
+        folded = self._fold_old_tool_results(keep_recent)
+        estimate_after = estimate_messages_tokens(self._messages, TOOL_DEFINITIONS)
+        self._last_context_estimate = estimate_after
+        if folded:
+            print(f"  🧹 上下文估算 {estimate_after:,}/{window:,} tokens"
+                  f"（{100.0 * estimate_after / window:.0f}%），"
+                  f"已折叠最早的 {folded} 条工具结果以控制上下文")
+            logger.warning(
+                f"chat上下文预算触发折叠: {folded}条工具结果 "
+                f"(估算{estimate:,}->{estimate_after:,} tokens, 窗口{window})"
+            )
+        if estimate_after > window:
+            logger.warning(
+                f"chat上下文接近上限: 估算{estimate_after:,} tokens 超窗口{window}，停止调用工具"
+            )
+            return False, f"估算 {estimate_after:,} tokens 已超模型窗口 {window:,}"
+        return True, ""
+
     def _run_conversation(self) -> str:
         """执行一轮对话（含function calling循环）
 
@@ -371,14 +479,25 @@ class ChatAgent:
         - 原实现达到max_tool_rounds后最终调用不带tools，模型还想调工具时
           会把<tool_calls>伪XML当正文输出并停止 → 用户看到假工具调用、无真实回答。
           现改为：上限内每轮都带tools；超限后追加提示消息要求直接回答。
-        - 控制台流式进度：⏳等待AI / 模型叙述 / 🔧工具调用 / ✓✗结果。
+        - 上下文护栏（2026-09-11）：每轮请求前估算输入 token，超
+          「provider 上下文窗口 × budget_ratio」即折叠最早的 tool 结果；
+          折叠后仍超窗口则跳出并转入"要求直接作答"兜底。
+        - 控制台流式进度：⏳等待AI（带 第X/N 轮）/ 模型叙述 / 🔧工具调用 / ✓✗结果。
         """
-        hard_cap = self.max_tool_rounds * 2
+        hard_cap = self.hard_tool_round_limit
         round_num = 0
         consecutive_failures = 0
+        context_stopped = False
+        context_detail = ""
         while round_num < hard_cap and consecutive_failures < self.max_failed_rounds:
+            # 上下文护栏：超预算先折叠旧工具结果，折叠后仍超窗口则跳出
+            guard_ok, guard_detail = self._guard_before_call()
+            if not guard_ok:
+                context_stopped = True
+                context_detail = guard_detail
+                break
             # 调用AI（每轮都带tools：模型想调工具时走真tool_calls，而非输出伪XML文本）
-            print("⏳ 等待 AI 响应...")
+            print(f"⏳ 等待 AI 响应...（第 {round_num + 1}/{hard_cap} 轮）")
             api_params = {
                 "model": self._model,
                 "messages": self._messages,
@@ -501,7 +620,14 @@ class ChatAgent:
                 )
 
         # 循环结束：追加提示消息，要求直接回答（此调用不带tools，防止继续循环）
-        if round_num >= hard_cap:
+        if context_stopped:
+            exit_note = f"上下文接近模型窗口上限（{context_detail}）"
+            nudge = (
+                "（系统提示：本次对话的上下文已接近模型窗口上限，"
+                "请立即基于以上已获取的信息给出完整回答，不要再调用工具；"
+                "并如实说明哪些数据因上下文限制被省略或需要另行查询。）"
+            )
+        elif round_num >= hard_cap:
             exit_note = "工具调用轮次已达上限"
             nudge = (
                 "（系统提示：工具调用轮次已达上限，"
@@ -771,6 +897,13 @@ def run_chat_repl(config: dict):
         print("=" * 50)
         print("  暮云思辨投资助手 - Chat Agent Mode")
         print("  输入自然语言与AI对话，输入 q 退出")
+        print(f"  工具调用轮次上限：{agent.hard_tool_round_limit} 轮"
+              f"（settings.yaml chat.max_tool_rounds={agent.max_tool_rounds} ×2）")
+        if agent.context_guard_enabled:
+            print(f"  上下文护栏：{agent._provider} 窗口 {agent.context_window:,} tokens，"
+                  f"估算超 {agent.context_budget_ratio:.0%} 自动折叠早期工具结果")
+        else:
+            print("  上下文护栏：已关闭（settings.yaml chat.context_guard.enabled=false）")
         print("=" * 50)
         print()
 

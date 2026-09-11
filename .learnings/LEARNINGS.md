@@ -1280,3 +1280,23 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: adversarial_review
 - Related Files: tests/chat/test_chat_session_resume.py, tests/chat/test_chat_tool_failure.py, src/chat/agent.py, src/chat/__main__.py
 - Tags: encoding, cp936, unicode, redirected-output, test-fidelity
+
+## [LRN-20260911-003] lesson
+**Date**: 2026-09-11
+**Priority**: medium
+**Status**: completed
+**Area**: tooling-reliability
+
+### Summary
+同一文件的**两处 Edit 放在同一条消息里批量提交，其中一处返回 success 但改动并未落盘**（本次 `docs/AI系统说明.md` 的 373 行连续两次被吞，同批的 148/439 行正常）。工具回执不能当作落盘证据；不 grep/Read 回读就会带着"文档已同步"的假账交付——与项目"验证靠跑不靠读"是同一个病根。附带两条本机 pytest 踩坑：① `--basetemp` 指到仓库内路径（含中文「暮云思辨投资助手」）会让 faiss 写索引失败，2 个 H03 用例**假红**（`Error: 'f' failed: could not open ...`），看着像回归其实与改动无关；② 不给 `--basetemp` 时，pytest 收尾清理临时目录会触发沙箱批量删除保护（>50 项），进程被拦、汇总行打不出来。
+
+### Suggested Action
+- 改文档/配置**逐个 Edit**，同文件禁止同批多 Edit；每次改完**立即 Read 或 grep 回读**确认
+- 批量改动收尾做"**旧值 grep 归零 + 新值 grep 命中**"双向校验，再报"已同步"
+- 全量 pytest 固定写法：`./.venv/Scripts/python.exe -m pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval --basetemp="C:/Users/Crux/AppData/Local/Temp/muyun_pytest_tmp" -p no:cacheprovider`
+- 看到 `[safe-delete]...SAFE_DELETE_BULK_CONFIRM_REQUIRED` ≠ 测试失败：先看输出里有没有 F/E，再决定是否判定回归
+
+### Metadata
+- Source: session_mistake
+- Related Files: docs/AI系统说明.md, tests/chat/test_chat_round_limit.py, src/chat/agent.py, configs/settings.yaml
+- Tags: edit-race, verification, pytest-basetemp, faiss-chinese-path, safe-delete
