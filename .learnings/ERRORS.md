@@ -348,3 +348,39 @@ vs OFF 0.633/0.553/0.568，永不该默认开）；残留 Python 进程清零。
 - Reproducible: yes（reranker.enabled=true + 空闲内存 <4GB 跑 start.py 即复现）
 - Related Files: configs/settings.yaml, src/rag/reranker.py, src/rag/embedding.py
 - Tags: memory, model-loading, default-off, blue-screen, incident
+
+---
+
+## [ERR-20260911-001] push_github.py FETCH FAIL: TLS unexpected eof（瞬时，重试即过）
+
+**Logged**: 2026-09-11T22:20:00+08:00
+**Severity**: medium（推送流程中断，非代码问题）
+**Status**: resolved（重试成功）
+
+### Symptom
+`.venv/Scripts/python.exe .workbuddy/scripts/push_github.py` 走到 fetch 阶段失败：
+```
+验证 Code - Insiders acct=happye scopes=[read:user,user:email,repo,workflow] -> OK
+FETCH FAIL: fatal: unable to access 'https://github.com/happye/MuyunTradeAssistant.git/':
+  TLS connect error: error:0A000126:SSL routines::unexpected eof while reading
+```
+令牌解密/验证全 OK，仅网络层断。
+
+### Root Cause
+直连 github.com 的 TLS 握手被中断（瞬时）。注意 **不是代理配置问题**：
+`git config` 里 URL 级代理 `http.https://github.com.proxy = http://127.0.0.1:7890` 存在，
+且 7890 端口当时**可连接**；`push_github.py` 的 `git_with_token` 只注入凭据 helper、
+不碰代理配置。
+
+### Fix
+直接重跑同一脚本即成功（`b8a915f..59b31e9 main -> main`）。
+
+### Prevention
+- 看到 `TLS connect error / unexpected eof` ≠ 凭据或代理坏了：**先重试一次**，别急着改 git 配置
+- 30 秒诊断法（比改配置快）：python 分别测 ① 直连 `socket+ssl` 到 github.com:443；② 经 `127.0.0.1:7890` 访问 `https://api.github.com/rate_limit`。两条任一通 = 重试即可
+- 顺手可判仓库可见性：经代理**不带凭据**访问 `https://github.com/<owner>/<repo>`，返回 404 = 私有仓库（本项目即私有）
+
+### Metadata
+- Reproducible: no（瞬时网络抖动）
+- Related Files: .workbuddy/scripts/push_github.py
+- Tags: git-push, tls, transient, retry, proxy

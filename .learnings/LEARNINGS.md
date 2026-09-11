@@ -1300,3 +1300,45 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_mistake
 - Related Files: docs/AI系统说明.md, tests/chat/test_chat_round_limit.py, src/chat/agent.py, configs/settings.yaml
 - Tags: edit-race, verification, pytest-basetemp, faiss-chinese-path, safe-delete
+
+## [LRN-20260911-004] lesson
+**Date**: 2026-09-11
+**Priority**: high
+**Status**: completed
+**Area**: external-dependency-fragility
+
+### Summary
+上游模型改名（DeepSeek 2026-09-10 发布 V4.1 Flash，API 名 `deepseek-v4-flash` → `deepseek-flash`）时，项目里 **10 处 `str(model).startswith("deepseek-v4")` 判断全部静默失配**。这些判断不是"识别模型名"，而是"决定要不要显式关闭思考模式"——官方对思考型模型默认开思考（effort=high），失配即静默退回思考模式：更慢更贵、`temperature` 不报错但不生效、top_p 被抬到下限 0.95。**没有任何报错、没有测试变红、日志也不提示**，属于最难发现的一类回归（配置层"改一个字符串"引发的全链路行为漂移）。
+
+### Suggested Action
+- **判定"能力/族"用族前缀（`deepseek-`），判定"版本"才用版本号**；能力判断必须收敛到单一事实源（本项目 = `src/core/ai_model.py`），调用点只写 `**thinking_disabled_body(model)`
+- 新增任何"按模型名分支"的代码前先问：官方改名/发新模型时这行会不会静默失效？会 → 抽成共享判定函数
+- **给"配置里的值"写断言**：`test_settings_configured_model_is_detected` 直接读 settings.yaml 断言其模型被判为 DeepSeek 思考型——这类测试才防得住"改配置引起的回归"（纯单元测试用假模型名，永远测不出）
+- 扫同类点转测试：用 AST 检测 `startswith("deepseek-<数字>")`，而不是字符串匹配（后者会把 docstring 里引用旧写法的说明误判为违规）
+- 端到端验收用**可观测代理指标**：思考开/关无法直接观测，但响应有无 `reasoning_content` 可观测（实测：开=有、关=无）
+
+### Metadata
+- Source: adversarial_review
+- Related Files: src/core/ai_model.py, src/chat/agent.py, src/core/ai_modifier.py, src/core/event_layer.py, src/core/benzong/*, src/scanner/scanner_engine.py, src/data/source_check.py, tests/core/test_ai_model_family.py
+- Tags: model-rename, silent-regression, single-source-of-truth, config-assertion, capability-vs-version
+
+## [LRN-20260911-005] lesson
+**Date**: 2026-09-11
+**Priority**: medium
+**Status**: completed
+**Area**: doc-vs-measurement
+
+### Summary
+两处"文档 vs 实测"必须分开陈述，混起来会误导用户：
+1. **官方文档说会 400 的条款，实测未复现**：DeepSeek 思考模式文档明确写「带 tools 的请求若不回传 `reasoning_content`，API 返回 400」。真实 API 实测（思考开启 + tools + 第二轮丢掉 reasoning_content）**没有报 400**，带上/不带都成功。→ 结论只能写成"文档有此要求、单轮工具链实测未触发、长链条不确定"，**不能升级成"项目已坏"**。
+2. **上下文窗口风险被我高估了一个数量级**：上一轮用"中文 1 token/字"估算，得出"20 轮对话最坏 90K token 逼近上限"。查官方文档 + 实测 `usage.prompt_tokens` 后：DeepSeek `deepseek-flash` 窗口 **1M**（384K 最大输出）、Kimi k2.6 **262,144**；实测混合文本约 **2.17 字符/token**，20 轮最坏约 40K token ≈ 窗口的 4%。→ 护栏仍要做（Kimi 窗口小、且要防病态输入），但**性质是"防御性"不是"救火"**，报告里必须这么写。
+
+### Suggested Action
+- 涉外部规格（上下文长度/最大输出/参数名/报错签名）**先查官方文档再动手**，文档没写的**实测一次**，两者冲突时两个结论都写出来
+- 估算类代码用**真实 API 的 usage 值校准**（本项目：`system 3988字+tools 6634字+提问19字 = prompt_tokens 4898`），把校准锚点写进测试注释，避免下次又拍系数
+- 报告里区分「官方要求」/「实测行为」/「代码现状」三栏，不要把文档条款当成已发生的事故
+
+### Metadata
+- Source: session_mistake
+- Related Files: src/core/ai_model.py, tests/core/test_ai_model_family.py, configs/settings.yaml
+- Tags: official-docs, measurement-vs-doc, token-estimation, calibration-anchor, honest-reporting
