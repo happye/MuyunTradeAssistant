@@ -104,6 +104,11 @@ class PlainLanguageFilter(logging.Filter):
             raw = record.getMessage()
         except Exception:
             return True
+        # 已被人话层改写过（同一 record 流经多个挂本 filter 的 handler，或同 handler
+        # 挂了多个 filter）——再翻一次会嵌套成「⚠ …｜原始：⚠ …｜原始：…」并把
+        # 同一条告警重复计入汇总。原文已在首次改写时完整保留，直接透传。
+        if raw.startswith("⚠ "):
+            return True
         plain, tag = translate(raw)
         if plain is None:
             return True

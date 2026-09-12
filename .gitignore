@@ -57,6 +57,9 @@ tests/extended_backtest_2024_round3/
 # 历史回测/issue验证的输出产物（本地保留，不入库）
 tests/artifacts/
 
+# 回测矩阵的一份性结果 json（本地保留可复现，不入库）
+tests/backtest/_*.json
+
 # 用户自留备忘（文件名明确标注"无需commit"）
 勿删！自留备忘，无需commit.txt
 

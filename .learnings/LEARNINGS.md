@@ -1384,3 +1384,70 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_mistake
 - Related Files: AGENTS.md, docs/2026-09-11_测试体系架构梳理报告.md
 - Tags: self-verification, control-experiment, claim-grading, minimal-change
+
+
+## [LRN-20260911-008] lesson
+**Date**: 2026-09-11
+**Priority**: medium
+**Status**: completed
+**Area**: logging-filter-idempotency
+
+### Summary
+**logging.Filter 里改写 `record.msg` 必须做幂等守卫——生产不触发不代表不是缺陷。**
+
+病根：`PlainLanguageFilter.filter` 无条件把 `record.msg` 改写成「⚠ 人话｜原始：{raw}」。
+若同一条 record 流经**多个挂了本 filter 的 handler**（或同一 handler 挂多个 filter），
+第二个 filter 拿到的 `record.getMessage()` 已是成品，又翻一次 ⇒
+`⚠ …｜原始：⚠ …｜原始：…`（实测前缀数 2），同时 `_recent` 同一告警记两次
+（末尾「本次运行 N 条提示」结论数字虚高）。
+
+实测证据（探针四场景）：
+- 单 handler：前缀 1 次、`_recent` 1 条 ✅（生产 REPL 的形态，故一直没暴露）
+- 双 handler 各挂 filter：前缀 `[1, 2]`、`_recent` 2 条 ❌
+- 同 handler 挂双 filter：前缀 2 次 ❌
+
+修法：filter 开头 `if raw.startswith("⚠ "): return True`（原文已在首次改写时完整保留）。
+红绿灯验证：摘掉守卫 → 新测试红（`assert 2 == 1`）；装回 → 绿。
+
+### Suggested Action
+- **filter 里凡是要动 `record.*` 的，先问"重复经过会怎样"**；改写类 filter 一律加"已是成品则透传"守卫
+- 判断"生产不触发"要同时给出**触发条件清单**（这里是：新增 root handler / 子进程里再 install()）
+- 这类"生产不触发但逻辑有病"的项，价值在于**回归测试锁语义**，而不是等它出事故
+
+### Metadata
+- Source: session_finding
+- Related Files: src/cli/plain_errors.py, tests/core/test_plain_errors.py, AGENTS.md
+- Tags: logging-filter, idempotency, silent-defect, red-green-verification
+
+## [LRN-20260911-009] lesson
+**Date**: 2026-09-11
+**Priority**: low
+**Status**: completed
+**Area**: env-sandbox-pytest
+
+### Summary
+**全量 pytest 报「49 errors」时先看是不是沙箱的批量删除守卫，别急着归因到自己的改动。**
+
+本次全量回归出现 2 failed / 49 errors，报错全在 `_pytest/fixtures.py:1221 assert not self._finalizers` +
+`sitecustomize.py:851 _check_bulk_delete_guard`。真因：pytest 每个用例要 `rmtree` 自己的 tmpdir，
+累积到 85 个文件 > 沙箱阈值 50，守卫直接 `raise SystemExit(1)`，**在 fixture teardown 阶段炸掉，
+污染后续所有用例**。与本次代码改动零关系。
+
+识别特征（三条同时出现基本可确诊）：
+- `SystemExit: 1` + 载荷含 `SAFE_DELETE_BULK_CONFIRM_REQUIRED` 与 `"count":N,"threshold":50`
+- traceback 里出现 `_pytest/fixtures.py` 的 `assert not self._finalizers`
+- 失败集中在 setup/teardown 而非断言体
+
+规避：给 pytest 一个**专属且已存在的** TEMPROOT，并让每个用例的 tmpdir 落在其下
+（`PYTEST_DEBUG_TEMPROOT=<ASCII路径>`），跑完清理整个 root 而不是让它反复 rmtree。
+**路径必须纯 ASCII**（中文仓库路径会让 faiss 写索引失败——同 LRN-20260911-003）。
+
+### Suggested Action
+- 「一堆 errors 集中在 setup/teardown + Traceback 里没我的代码」⇒ 先怀疑环境守卫，不要回滚改动
+- 跑全量前先清一次专属 tmp root，别在同一个目录上叠加多轮
+- 报数字时注明**环境是否干净**，否则基线不可比
+
+### Metadata
+- Source: session_mistake
+- Related Files: tests/conftest.py, AGENTS.md
+- Tags: sandbox-guard, pytest-tmpdir, false-attribution, baseline-comparability
