@@ -1451,3 +1451,36 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_mistake
 - Related Files: tests/conftest.py, AGENTS.md
 - Tags: sandbox-guard, pytest-tmpdir, false-attribution, baseline-comparability
+
+
+## [LRN-20260911-010] lesson
+**Date**: 2026-09-11
+**Priority**: low
+**Status**: completed
+**Area**: git-push-verification
+
+### Summary
+**git push 输出「Everything up-to-date」不必然等于没推上去，也不必然等于推上去了——必须用远端 API 核对。**
+
+本次 push 脚本报 `PUSH rc=0 ... Everything up-to-date` + `RESULT: PUSH OK`，
+但这句话字面意思是「远端已是最新」，与「我刚 commit 了新东西」矛盾，无法判断到底成没成。
+
+根因：本仓库**没有任何 remote-tracking ref**（`git for-each-ref` 里无 `refs/remotes/`，
+`git log origin/main` 直接 fatal）。脚本内部先 `fetch origin`——若在此之前
+某次运行已经把提交推上去了，这次 fetch 就带回远端状态，"up-to-date" 说的其实是**实情**。
+但**本地 ref 缺失使人无法用 git 命令自证**，于是"成功"与"没干活"在输出上无法区分。
+
+可靠核对方式（不依赖 remote-tracking ref）：拿脚本解密的令牌调
+`GET /repos/{owner}/{repo}/commits?per_page=3`，比对 head sha。
+本次核对结果：远端 head = `f46c026` = 本地 head ✅（推送确实成功）
+
+### Suggested Action
+- **看到 "Everything up-to-date" 先别下结论**，调 API 比对 head sha（1 次请求即可）
+- 不要试图用 `git log origin/main` 来"核实"——本仓库压根没这个 ref，只会拿到 fatal
+- `scripts/push_github.py` 只返回 rc、不返回"推了几个 commit"，信息量不足以自证，建议将来补一行
+  `git rev-parse HEAD` vs 远端 sha 的显式对比输出
+
+### Metadata
+- Source: session_finding
+- Related Files: .workbuddy/scripts/push_github.py
+- Tags: git-push, remote-tracking-ref, api-verification, ambiguous-output
