@@ -157,23 +157,37 @@ def _metric_vol_mom(baseline: str) -> list[MetricValue]:
                 m.status, m.note = "MISSING", "沪深300日线序列缺失（轻量回填失败）"
             return [mv, mm]
         dates = [r["date"] for r in rows]
-        closes = pd.Series([r["close"] for r in rows], index=dates, dtype=float)
+        closes = pd.Series([r["close"] for r in rows], index=dates, dtype=float).sort_index()
+        # sort_index 防御：文件意外乱序时 index[-1] 必须仍是最新交易日
         vol = _vol20_series(closes)
         ma125 = closes.rolling(125).mean()
         if baseline not in closes.index:
-            for m in (mv, mm):
-                m.status, m.note = "MISSING", f"基准日 {baseline} 不在日线序列中"
-            return [mv, mm]
-        v_now, mom_now = float(vol[baseline]), float((closes[baseline] / ma125[baseline] - 1) * 100)
+            # 收盘后-17:30 窗口：baostock 当日日线尚未就绪 → 回退序列末日计算，
+            # 标 STALE（用了 T-1 收盘口径），不造假也不整成分缺失
+            asof = closes.index[-1]
+            if (datetime.now() - datetime.strptime(asof, "%Y-%m-%d")).days <= 7:
+                for m in (mv, mm):
+                    m.data_ts = asof
+                    m.status = "STALE"
+                    m.extra["prefix"] = f"当日日线未出(收盘后约17:30就绪)，暂按{asof}收盘口径；"
+            else:
+                for m in (mv, mm):
+                    m.status, m.note = "MISSING", f"基准日 {baseline} 不在日线序列中且序列过期"
+                return [mv, mm]
+        else:
+            asof = baseline
+        v_now, mom_now = float(vol[asof]), float((closes[asof] / ma125[asof] - 1) * 100)
         mv.raw, mm.raw = v_now, mom_now
         s_vol = percentile_panic(v_now, vol.dropna().tolist(), higher_is_panic=True)
         if s_vol is None:
-            mv.status, mv.note = "STALE", "波动分位样本不足，成分缺失（不猜分）"
+            mv.status, mv.note = "MISSING", "波动分位样本不足，成分缺失（不猜分）"
         else:
+            mv.note = mv.extra.get("prefix", "")
             mv.score = clamp_score(s_vol)
-            mv.note = f"20日波动率{v_now:.2f}%/日，近250日分位"
+            mv.note += f"20日波动率{v_now:.2f}%/日，近250日分位"
         mm.score = clamp_score(threshold_panic(mom_now, _MOM_STOPS))
-        mm.note = f"收盘价较MA125乖离{mom_now:+.1f}%（固定阈值口径）"
+        mm.note = mm.extra.get("prefix", "") + \
+            f"收盘价较MA125乖离{mom_now:+.1f}%（固定阈值口径）"
     except Exception as e:
         for m in (mv, mm):
             m.status, m.note = "MISSING", f"指数序列计算失败: {type(e).__name__}"

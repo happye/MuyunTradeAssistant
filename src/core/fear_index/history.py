@@ -475,7 +475,8 @@ def backfill_zt_pools(days: int = ZT_BACKFILL_DEFAULT_DAYS,
     filled = skipped = failed = 0
     total = len(days_list)
     consecutive_empty = 0
-    for i, d in enumerate(days_list, 1):
+    # 从新到旧遍历：先拿最近的数据，碰到接口保留边界立即停，不对更早日期白打请求
+    for i, d in enumerate(reversed(days_list), 1):
         ymd = d.replace("-", "")
         if (zt_dir / f"{ymd}.json").exists():
             skipped += 1
@@ -493,7 +494,7 @@ def backfill_zt_pools(days: int = ZT_BACKFILL_DEFAULT_DAYS,
         else:
             failed += 1
             consecutive_empty += 1
-            if consecutive_empty >= 15 and filled + skipped >= 15:
+            if consecutive_empty >= 15:
                 logger.info(
                     f"涨停池回填到达接口保留边界（连续{consecutive_empty}个交易日无数据），"
                     f"停止回填：共填{filled}天，接口仅保留近期约20-30个交易日")
@@ -533,24 +534,20 @@ def load_snapshots() -> dict:
 # ── 合成历史恐慌序列（point-in-time 滚动分位） ────────────
 
 def synthesize_history(days: int = 250, baseline: Optional[str] = None) -> list[dict]:
-    """合成最近 days 个交易日的恐慌总分序列。
+    """合成最近 days 个交易日的恐慌总分序列（每次全量重算，不缓存）。
+
+    不缓存的原因（对抗审查发现）：回填/快照随时在补历史，任何基于
+    baseline 的缓存判据都会把「成分还没回齐时算出的旧序列」长期留住
+    （zt 成分将在缓存里永远缺失）。pandas 向量化下 510 行 × 7 成分的
+    rolling rank 为毫秒级，无缓存必要。
 
     每个历史日的成分分位只用截至该日的数据（pandas rolling rank，point-in-time）；
     breadth 依赖每日快照（不可回填），缺快照的日期该成分缺失并重归一。
-    结果缓存 syn_history.json（版本+基准日不符自动重建）。
     返回升序 [{date, score, n_components}]。
     """
     baseline = baseline or recent_trade_date()
-    _ensure_dirs()
-    cache_path = BASE_DIR / "syn_history.json"
-    cached = _load_json(cache_path)
-    if (_valid_cache(cached) and cached.get("baseline") == baseline
-            and len(cached.get("points", [])) >= min(days, 30)):
-        return cached["points"][-days:]
 
     closes = _series_map(_load_series("hist_index_000300.json"), "close")
-    t_sh = _series_map(_load_series("hist_turnover_sh.json"), "amount")
-    t_sz = _series_map(_load_series("hist_turnover_sz.json"), "amount")
     marg = _series_map(_load_series("hist_margin.json"), "balance_yi")
     erp = _series_map(_load_series("hist_erp.json"), "erp_pct")
     if not closes:
@@ -563,9 +560,12 @@ def synthesize_history(days: int = 250, baseline: Optional[str] = None) -> list[
     vol20 = ret.rolling(20).std()                       # 20日已实现波动（%/日）
     ma125 = s_close.rolling(125).mean()
     mom = (s_close / ma125 - 1.0) * 100.0               # MA125 乖离率 %
+    # 成交额：沪+深**双源齐才算数**（交集语义）——单边缺时 None，绝不把单边当双边
+    sh_map = _series_map(_load_series("hist_turnover_sh.json"), "amount")
+    sz_map = _series_map(_load_series("hist_turnover_sz.json"), "amount")
     s_turn = pd.Series(
-        [(t_sh.get(d, 0.0) + t_sz.get(d, 0.0)) or None for d in dates],
-        index=dates, dtype=float)                        # 万亿（缺任一源记 None）
+        [sh_map[d] + sz_map[d] if d in sh_map and d in sz_map else None for d in dates],
+        index=dates, dtype=float)                        # 万亿
     s_marg = pd.Series([marg.get(d) for d in dates], index=dates, dtype=float)
     marg_chg = s_marg.pct_change(5) * 100.0             # 融资余额5日变化率 %
     s_erp = pd.Series([erp.get(d) for d in dates], index=dates, dtype=float)
@@ -623,12 +623,6 @@ def synthesize_history(days: int = 250, baseline: Optional[str] = None) -> list[
             continue
         points.append({"date": d, "score": round(float(clamp_score(sc)), 1),
                        "n_components": int(n_comp.get(d, 0))})
-    _atomic_write_json(cache_path, {
-        "version": FEAR_VERSION,
-        "built_at": datetime.now().isoformat(timespec="seconds"),
-        "baseline": baseline,
-        "points": points,
-    })
     return points
 
 

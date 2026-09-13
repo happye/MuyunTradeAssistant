@@ -1100,7 +1100,8 @@ def get_fear_index(scope: str = "", history: str = "5,10,22,66") -> str:
         if "error" in report:
             return f"恐慌指数不可用: {report['error']}"
         wins = tuple(
-            int(x) for x in (history or "").split(",") if x.strip().isdigit() and int(x) >= 2
+            min(int(x), 250) for x in (history or "").split(",")
+            if x.strip().isdigit() and int(x) >= 2
         ) or (5, 10, 22, 66)
         summary = get_fear_history_summary(windows=wins, make_chart=True)
 

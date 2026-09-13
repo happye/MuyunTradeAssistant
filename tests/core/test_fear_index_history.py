@@ -125,18 +125,19 @@ def test_synthesize_empty_without_index(fear_home, monkeypatch):
     assert fh.synthesize_history(days=250, baseline="2026-09-11") == []
 
 
-def test_synthesize_cache_reused(fear_home, monkeypatch):
+def test_synthesize_rebuilds_from_fresh_data(fear_home, monkeypatch):
+    """合成序列不缓存：底层序列变化后立即反映（缓存会把回填前的旧序列长期留住）。"""
     monkeypatch.setattr(fh, "recent_trade_date", lambda now=None: "2026-09-11")
     n = 260
     _seed_hist("hist_index_000300.json",
                [{"date": _d(n - i), "close": 4000.0 + i % 3} for i in range(n)])
     pts1 = fh.synthesize_history(days=250, baseline="2026-09-11")
     assert pts1
-    # 篡改序列数据 → 缓存命中仍返回旧值（版本+基准日一致即复用）
+    # 底层数据被替换（版本/基准日都没变）→ 合成结果必须跟随变化
     _seed_hist("hist_index_000300.json",
                [{"date": _d(n - i), "close": 9999.0} for i in range(n)])
     pts2 = fh.synthesize_history(days=250, baseline="2026-09-11")
-    assert pts1 == pts2
+    assert pts1 != pts2
 
 
 # ── report 组装（E2E mock，load 路径冒烟锁） ─────────────
