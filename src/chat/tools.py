@@ -483,6 +483,7 @@ TOOL_REGISTRY = {
     "read_file": lambda path="": read_file(path),  # v0.8.9.3 本地文件读（沙箱，定义在文件尾）
     "write_file": lambda path="", content="": write_file(path, content),  # v0.8.9.3 写 AI笔记/（定义在文件尾）
     "list_files": lambda subdir="": list_files(subdir),  # v0.8.9.3 列目录（沙箱，定义在文件尾）
+    "get_fear_index": lambda scope="", history="5,10,22,66": get_fear_index(scope, history),  # v0.8.10 恐慌指数（定义在文件尾）
 }
 
 
@@ -1084,3 +1085,54 @@ def list_files(subdir: str = "") -> str:
             lines.append(f"  {e.name}  ({size_h})")
     lines.append(f"（共 {n} 项；.git/.venv/__pycache__ 等噪音目录已隐藏）")
     return "\n".join(lines)
+
+
+def get_fear_index(scope: str = "", history: str = "5,10,22,66") -> str:
+    """获取市场恐慌指数（v0.8.10，纯客观计算）：总分+成分明细+多周期摘要。
+
+    只读查询、零 AI 费用，无需 confirm。返回文本中 MISSING 状态的成分
+    表示数据缺失（聚合时已剔除权重），agent 解读时严禁脑补。
+    """
+    try:
+        from src.core.fear_index import get_fear_history_summary, get_fear_report
+
+        report = get_fear_report(scope_text=scope)
+        if "error" in report:
+            return f"恐慌指数不可用: {report['error']}"
+        wins = tuple(
+            int(x) for x in (history or "").split(",") if x.strip().isdigit() and int(x) >= 2
+        ) or (5, 10, 22, 66)
+        summary = get_fear_history_summary(windows=wins, make_chart=True)
+
+        lines = [
+            f"市场恐慌指数: {report.get('score')}（{report.get('tier')}）"
+            f" 基准交易日: {report.get('as_of')}（0-100，越高越恐慌）",
+            "成分明细（原始值/恐慌分/状态/数据源）:",
+        ]
+        for c in report.get("components", []):
+            mark = "" if c.get("in_aggregate", True) else "（仅展示）"
+            sc = "--" if c.get("score") is None else f"{c['score']:.1f}"
+            raw = "--" if c.get("raw") is None else c["raw"]
+            lines.append(
+                f"- {c['label']}{mark}: 原始值={raw} 恐慌分={sc} "
+                f"状态={c.get('status')} 来源={c.get('source')} ｜ {c.get('note', '')}")
+        if summary.get("windows"):
+            lines.append("多周期回顾（交易日口径）:")
+            for w in summary["windows"]:
+                lines.append(
+                    f"- {w['label']}({w['start']}~{w['end']}): 均值{w['mean']} "
+                    f"最低{w['min']}/最高{w['max']} 当前{w['cur_rank']:.0f}%分位 "
+                    f"趋势{w['trend']} 样本{w['samples']}/{w['window']}")
+            lines.append(f"摘要: {summary.get('headline', '')}")
+        else:
+            lines.append("多周期回顾: 历史序列不足（首次使用可运行 fear backfill 回填）")
+        if summary.get("chart_path"):
+            lines.append(f"走势图已保存: {summary['chart_path']}")
+        if report.get("missing"):
+            lines.append(
+                f"注意: 以下成分数据缺失已剔除权重({','.join(report['missing'])})——"
+                f"解读时严禁编造这些维度的数值。")
+        return "\n".join(lines)
+    except Exception as e:
+        logger.error(f"get_fear_index失败: {e}")
+        return TOOL_ERROR_MARK + f"获取恐慌指数时出错: {e}"

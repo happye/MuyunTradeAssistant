@@ -1,0 +1,18 @@
+# 市场恐慌指数配置（v0.8.10）
+# 设计文档: docs/2026-09-13_市场恐慌指数_评估与实现方案.md
+# 改动聚合口径/权重逻辑后必须 bump src/core/fear_index/history.py 的 FEAR_VERSION，
+# 否则旧快照/合成序列缓存命中导致「改配置不生效」。
+
+weights:
+  # 成分权重（默认等权，CNN 框架惯例）。缺失成分自动剔除权重重归一。
+  # 可选成分: breadth / zt_heat / volatility / momentum / turnover / margin / erp
+  breadth: 1.0
+  zt_heat: 1.0
+  volatility: 1.0
+  momentum: 1.0
+  turnover: 1.0
+  margin: 1.0
+  erp: 1.0
+
+# 多周期回顾窗口（交易日），fear history 默认 5/10/22/66
+# windows: [5, 10, 22, 66]

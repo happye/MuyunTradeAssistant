@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.9.5"  # v0.8.9.5=全模块彻查修复批(成交量单位归一+baostock超时收尾+MC/重放同口径+DataFeeder向量化31×提速+清扫批,ISS-093)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.10"  # v0.8.10=市场恐慌指数(fear 全市场7成分+多周期回顾+走势图存本地+涨停池回填+chat工具)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -92,6 +92,9 @@ def show_help():
     print("│    concepts   [关键词]    概念板块                  │")
     print("│    events                 事件驱动预警              │")
     print("│    expect                 预期事件日历(事前透支)    │")
+    print("│    fear                   市场恐慌指数(越高越恐慌)  │")
+    print("│    fear history           多周期回顾+走势图存本地   │")
+    print("│    fear backfill [天数]   涨停池历史回填(断点续传)  │")
     print("│                                                    │")
     print("│  ★ 持仓                                            │")
     print("│    pos                    查看持仓列表              │")
@@ -148,6 +151,7 @@ def show_help():
     print("│    pos add 002192 融捷股份 35.20 0.20               │")
     print("│    pos add #1 35.20 0.20   扫描第1只直接建仓        │")
     print("│    expect 60               看60天预期事件日历        │")
+    print("│    fear history            看恐慌指数近三月走势图    │")
     print("└────────────────────────────────────────────────────┘")
     print()
 
@@ -366,6 +370,29 @@ def parse_input(user_input: str):
                 print(f"  [!] '{parts[1]}' 不是有效天数，已按默认 30 天处理（用法: expect 60）")
         return ("expect", {"days": days})
 
+    # ── 市场恐慌指数（v0.8.10）──
+    if cmd == "fear":
+        rest = parts[1:]
+        args = {"action": "overview", "scope": "", "refresh": False, "chart": True}
+        if rest and rest[0].lower() == "history":
+            args["action"] = "history"
+            if "--no-chart" in rest:
+                args["chart"] = False
+        elif rest and rest[0].lower() == "backfill":
+            args["action"] = "backfill"
+            if len(rest) >= 2:
+                try:
+                    args["days"] = max(5, min(500, int(rest[1])))
+                except ValueError:
+                    print(f"  [!] '{rest[1]}' 不是有效天数（用法: fear backfill 250）")
+                    return None
+        else:
+            # 非旗标参数当 scope（板块/概念/代码，当前版本返回未上线提示）
+            args["scope"] = " ".join(t for t in rest if not t.startswith("-"))
+        if "--refresh" in rest or "-r" in rest:
+            args["refresh"] = True
+        return ("fear", args)
+
     # ── 持仓管理 ──
     if cmd == "pos":
         if len(parts) < 2:
@@ -577,6 +604,7 @@ _COMMAND_HINTS = {
     "s": "scan market [主题] 全市场扫描（s 即 scan）",
     "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan 交易计划",
     "expect": "expect 未来事件日历+预期透支度",
+    "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1415,7 +1443,7 @@ def run_cli(mode: str, args: dict):
     from src.cli.main import (
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
-        console, scan_market, scan_events, show_expect,
+        console, scan_market, scan_events, show_expect, show_fear,
     )
 
     ai_overrides = {}
@@ -1663,6 +1691,9 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "expect":
         show_expect(days=args.get("days", 30))
+
+    elif mode == "fear":
+        show_fear(args)
 
     elif mode == "noai":
         _no_ai = not _no_ai

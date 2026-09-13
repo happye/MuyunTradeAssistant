@@ -151,8 +151,8 @@ def _cli_rag():
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        # ISS-093：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.9.5[/bold cyan]\n"
+        # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
+        "[bold cyan]暮云思辨投资助手 v0.8.10[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -2962,6 +2962,54 @@ def show_expect(days: int = 30):
     _render_expect(days=days, codes=codes)
 
 
+def show_fear(args: dict):
+    """市场恐慌指数（v0.8.10）：总览 / 多周期回顾 / 涨停池历史回填。
+
+    纯客观计算（AI 调用次数=0），成分级溯源 + 缺失显式降级，详见
+    docs/2026-09-13_市场恐慌指数_评估与实现方案.md。
+    """
+    from src.core.fear_index import display as fear_display
+    from src.core.fear_index import (
+        get_fear_history_summary, get_fear_report, run_backfill,
+    )
+    action = args.get("action", "overview")
+    refresh = args.get("refresh", False)
+
+    if action == "history":
+        summary = get_fear_history_summary(
+            make_chart=args.get("chart", True), refresh=refresh)
+        if "error" in summary:
+            console.print(f"  [yellow]⚠ {summary['error']}[/]")
+            return
+        fear_display.show_history(summary)
+        return
+
+    if action == "backfill":
+        days = args.get("days", 250)
+        console.print(f"  [dim]涨停池历史回填: 近 {days} 个交易日 × 3 池，"
+                      f"节流下约 {days * 3 * 0.5 / 60:.0f} 分钟，已落盘日期自动跳过（断点续传）[/]")
+        stats = run_backfill(days=days, progress=fear_display.print_backfill_progress)
+        if "error" in stats:
+            console.print(f"  [yellow]⚠ {stats['error']}[/]")
+            return
+        console.print(
+            f"  回填完成: 共{stats['total']}个交易日，"
+            f"新填 {stats['filled']}、已有 {stats['skipped']}、失败 {stats['failed']}"
+            f"（失败日期重跑本命令自动补）")
+        light = stats.get("light_history", {})
+        bad = [k for k, v in light.items() if v == "failed"]
+        if bad:
+            console.print(f"  [yellow]⚠ 轻量序列更新失败: {','.join(bad)}"
+                          f"（沿用旧序列，稍后重跑自动补）[/]")
+        return
+
+    report = get_fear_report(scope_text=args.get("scope", ""), refresh=refresh)
+    if "error" in report:
+        console.print(f"  [yellow]⚠ {report['error']}[/]")
+        return
+    fear_display.show_overview(report)
+
+
 def scan_events(ai_debug: bool = False):
     """事件驱动扫描 - 检测重大市场事件并预警"""
     from src.core.event_layer import EventLayer
@@ -3233,8 +3281,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.9.5：全模块彻查修复批（ISS-093）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.9.5 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+彻查修复批)"
+        # v0.8.10：市场恐慌指数（fear）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.10 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数)"
     )
     parser.add_argument(
         "--verbose",

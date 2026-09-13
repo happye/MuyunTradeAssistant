@@ -14,6 +14,7 @@ pytest==9.1.1
 pytest-asyncio==1.4.0       # async 测试（textual pilot）
 
 # ── 数据处理 ──
+matplotlib==3.11.2           # 恐慌指数走势图 (v0.8.10)
 numpy==2.4.4
 pandas==3.0.2
 

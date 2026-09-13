@@ -1526,3 +1526,39 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_finding
 - Related Files: .workbuddy/scripts/push_github.py
 - Tags: git-push, remote-tracking-ref, api-verification, ambiguous-output
+
+## [LRN-20260913-011] lesson
+**Date**: 2026-09-13
+**Priority**: high
+**Status**: completed
+**Area**: data-source-probing, fear-index
+
+### Summary
+**akshare「接口存在」≠「数据可用」：历史类接口的三个隐性约束，必须先探针数据密度再定口径。**
+
+恐慌指数（v0.8.10）实施中三个探针推翻设计假设的实测：
+1. **估值历史全是稀疏采样**：乐咕 `stock_index_pe_lg`/`stock_a_ttm_lyr`、中证
+   `stock_zh_index_value_csindex`（仅近20行）、股息率 `stock_a_gxl_lg`（参数不含沪深300）——
+   名字像日频，实际近3年只有 38-40 个采样点，250 日分位窗根本凑不齐。
+   → 解法：自算 point-in-time 口径（乐咕 PE 采样点反推盈利阶梯 ÷ baostock 日频真实 close
+   − 10Y 国债）。盈利本就是季度级慢变量，阶梯化无插值污染。
+2. **东财涨停池"历史"接口仅保留约 20-30 个交易日**：`stock_zt_pool_em(date=)` 对更早日期
+   一律返回**空 DataFrame（不报错）**，250 日回填 219 天静默失败。
+   → 解法：连续 15 个交易日空即判定保留边界提前停止 + min_samples 按成分特例放宽（15）
+   + 输出 note 如实标注口径。
+3. **akshare 对未来日期可能返回最新数据**（参数被静默忽略）：`trading_days()` 含未来 30 天，
+   回填列表未过滤 → 16 个未来日期的脏文件（内容实为当日数据，若不清理会永久污染序列）。
+   → 解法：回填列表过滤 `d <= baseline` + 上线前清脏文件。
+
+另：net_guard 熔断（连续3败→120s）在批量回填场景会把「接口数据边界」放大成「大面积失败」——
+先区分「数据真没有」和「被熔断拒绝」，再决定重试策略。
+
+### Suggested Action
+- 新数据源接入前先跑 tests/data_sources/probe_*.py：**数据密度（行数/日期跨度）比接口存在性更重要**
+- 「按日期查历史」的接口必须测三件事：远古日期（保留边界）、非交易日（空 vs 报错）、未来日期（是否静默返回最新数据）
+- 参数加到函数签名后，内部转发调用点要有测试锁（本次 percentile_panic 收了 min_samples 却没转发给 pct_rank，端到端才发现）
+
+### Metadata
+- Source: session_finding
+- Related Files: src/core/fear_index/history.py, src/core/fear_index/normalizer.py, tests/data_sources/probe_fear_data.py
+- Tags: akshare, data-density, point-in-time, probe-first, fear-index

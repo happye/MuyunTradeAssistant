@@ -344,6 +344,18 @@ def check_all_sources(code: str = "600989") -> dict:
 
     sources.append(_probe_t("新浪-市场宽度", _sina_breadth, timeout=25))
 
+    # --- v0.8.10 恐慌指数：东财涨停池（打板情绪成分的数据源） ---
+    def _fear_zt_pool():
+        from src.core.fear_index.history import fetch_zt_counts, recent_trade_date
+        d = recent_trade_date().replace("-", "")
+        counts = fetch_zt_counts(d)
+        if counts is None:
+            raise RuntimeError("涨停池空/失败（东财接口不可用或非交易时段）")
+        dt = counts.get("dt")
+        return f"涨停{counts['zt']}/跌停{dt if dt is not None else '?'}"
+
+    sources.append(_probe_t("恐慌指数-涨停池", _fear_zt_pool, timeout=95))
+
     # --- AI 接口（deepseek + kimi，轻量探针） ---
     def _ai_probe(provider: str):
         from src.cli.main import load_config

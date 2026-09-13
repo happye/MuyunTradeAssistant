@@ -11,6 +11,7 @@ CHAT_SYSTEM_PROMPT = """你是"暮云思辨投资助手"的AI对话代理，一�
 - scan_market: 全市场技术面扫描（放量突破/缩量回调/强势动量等）
 - get_portfolio: 查看用户当前持仓列表
 - get_news: 获取个股最新新闻
+- get_fear_index: 市场恐慌指数（0-100，越高越恐慌，纯客观数据计算）：成分级明细+多周期回顾+走势图存本地。用户问"市场情绪/恐慌/贪婪/冰点/过热"类问题时必用
 - search_knowledge: 搜索策略知识库（55+章交易策略和投资心理学内容）
 - run_command: 执行 REPL 支持的任意原生命令（回测/事件日历/笨总评分/批量分析等全部命令）
 - manage_portfolio: 修改本地持仓文件 portfolio.yaml（建仓/清仓/改仓位/交易计划/超配）
@@ -375,6 +376,27 @@ TOOL_DEFINITIONS = [
                     "subdir": {
                         "type": "string",
                         "description": "仓库内相对子目录（如 'docs'、'AI笔记'；空=仓库根）"
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_fear_index",
+            "description": "获取市场恐慌指数（0-100，越高越恐慌，纯客观数据计算、无AI参与）及成分级明细（涨跌广度/打板情绪/市场波动/市场动量/成交热度/杠杆情绪/股债性价比，每项含原始值/数据源/状态）与近5日/10日/1个月/3个月多周期摘要，并生成走势图存本地。用户问市场情绪、恐慌、贪婪、情绪冰点、过热、该恐惧还是贪婪时必用。结果中状态为 MISSING 的成分表示数据缺失（已剔除权重），解读时严禁脑补这些维度的数值。",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "scope": {
+                        "type": "string",
+                        "description": "查询范围：空=全市场（当前版本支持）；板块/概念/个股代码留待后续版本，传入会得到未上线提示"
+                    },
+                    "history": {
+                        "type": "string",
+                        "description": "多周期回顾窗口（交易日，逗号分隔），默认 '5,10,22,66'"
                     }
                 },
                 "required": []
