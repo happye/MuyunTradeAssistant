@@ -151,8 +151,8 @@ def _cli_rag():
 def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
-        # ISS-078：横幅版本此前停在 v0.8.6.6，与 --version/start.py/AGENTS.md 打架
-        "[bold cyan]暮云思辨投资助手 v0.8.9.4[/bold cyan]\n"
+        # ISS-093：横幅版本与 --version/start.py/AGENTS.md 统一
+        "[bold cyan]暮云思辨投资助手 v0.8.9.5[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -1008,6 +1008,7 @@ def run_backtest(
             skills_dir=skills_dir,
             signal_weights=weights,
             skill_types=skill_types,
+            entry_exit_config=entry_exit_config,  # v0.8.9.5 A-1：与基础回测同口径
         )
         in_sample = windows["in_sample"]
         out_of_sample = windows["out_of_sample"]
@@ -1102,6 +1103,7 @@ def run_batch_validation(
                 skills_dir=skills_dir,
                 signal_weights=weights,
                 skill_types=skill_types,
+                entry_exit_config=entry_exit_config,  # v0.8.9.5 A-1：与基础回测同口径
             )
             in_sample = windows["in_sample"]
             out_of_sample = windows["out_of_sample"]
@@ -3231,8 +3233,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.9.4：chat轮次20轮+上下文护栏(按官方窗口)+轮次进度+模型系判定修复；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.9.4 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏)"
+        # v0.8.9.5：全模块彻查修复批（ISS-093）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.9.5 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+彻查修复批)"
     )
     parser.add_argument(
         "--verbose",

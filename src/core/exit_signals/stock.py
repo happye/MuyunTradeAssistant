@@ -35,6 +35,7 @@ def _daily_cache_get(code: str, signal: str) -> Optional[object]:
 
 
 def _daily_cache_set(code: str, signal: str, value) -> None:
+    global _cleanup_done_day
     today = datetime.now().strftime("%Y-%m-%d")
     d = _holder_cache_dir()
     f = d / f"{code}_{today}_{signal}.json"
@@ -43,6 +44,9 @@ def _daily_cache_set(code: str, signal: str, value) -> None:
     except Exception:
         pass
     # ISS-091：日键文件跨日本就失效，顺带清理 30 天前的旧文件防无限累积
+    # v0.8.9.5：每进程每日只扫一次目录（原每次 set 全目录 glob）
+    if _cleanup_done_day == today:
+        return
     try:
         import time as _time
         _now = _time.time()
@@ -52,11 +56,16 @@ def _daily_cache_set(code: str, signal: str, value) -> None:
                     old.unlink()
             except OSError:
                 continue
+        _cleanup_done_day = today
     except Exception:
         pass
 
 
 _MISS = object()  # 哨兵：缓存未命中（区别于缓存的 None 值）
+
+# v0.8.9.5（彻查批 P3）：30 天旧文件清理改为每进程每日一次——原每次 set 都
+# 全目录 glob 扫描，la 批量 N 只持仓 = 2×N 次全目录扫描（量小无谓）
+_cleanup_done_day: str = ""
 
 # 融资余额全市场表的进程级 memo：(exchange, date_str) -> DataFrame|None（la 批量跨股共享一次下载）
 _MARGIN_TABLE_MEMO: dict = {}

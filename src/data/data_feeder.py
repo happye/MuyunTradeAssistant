@@ -7,6 +7,9 @@
   - 大盘趋势也基于截止日期的指数数据判断
 """
 
+import bisect as _bisect
+
+import numpy as np
 import pandas as pd
 import baostock as bs
 import logging
@@ -14,6 +17,8 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from src.data.models import StockData
+from src.data.akshare_client import _call_with_timeout
+from concurrent.futures import TimeoutError as _FuturesTimeout
 
 
 def _use_legacy_sma_indicators() -> bool:
@@ -66,6 +71,10 @@ class DataFeeder:
         self._index_df: Optional[pd.DataFrame] = None
         self._stock_name: str = self.stock_code
         self._dates: list[str] = []  # 交易日期列表
+        # v0.8.9.5（彻查批 P2-1）：向量化预计算缓存（见 _ensure_precomputed）
+        self._precomputed = False
+        self._date_pos: dict[str, int] = {}
+        self._tf: dict[str, dict] = {}
 
     def load(self) -> bool:
         """加载历史数据（个股K线 + 大盘指数）
@@ -100,9 +109,21 @@ class DataFeeder:
             with _quiet_baostock_print():
                 bs.logout()
 
+            # v0.8.9.5（P2-1）：显式按日期排序（旧逐bar切片隐式依赖 baostock 返回
+            # 的升序；显式排序让 bisect 定位与旧 cutoff.iloc[-1] 语义在有序输入下
+            # 完全一致，乱序输入则修正为"最新一行=最大日期"）
+            self._stock_df = self._stock_df.sort_values("date").reset_index(drop=True)
+            if self._index_df is not None and not self._index_df.empty:
+                self._index_df = self._index_df.sort_values("date").reset_index(drop=True)
+
             # 筛选回测区间内的交易日期
             mask = (self._stock_df['date'] >= self.start_date) & (self._stock_df['date'] <= self.end_date)
             self._dates = self._stock_df.loc[mask, 'date'].tolist()
+
+            # v0.8.9.5（P2-1）：一次性向量化预计算全部指标（O(n)，替代逐bar
+            # 对全量切片重算的 O(n²)；因果滤波全序列取行与截断重算数值一致，
+            # 等价性由 tests/backtest/test_datafeeder_vectorized_equiv.py 锁死）
+            self._ensure_precomputed()
 
             logger.info(f"DataFeeder加载完成: {self.stock_code}, {len(self._dates)}个交易日 "
                         f"({self._dates[0] if self._dates else 'N/A'} ~ {self._dates[-1] if self._dates else 'N/A'})")
@@ -179,118 +200,195 @@ class DataFeeder:
             return float(open_val)
         return None
 
-    def _build_stock_data(self, date: str) -> Optional[StockData]:
-        """构建指定日期的完整StockData
+    # ===== v0.8.9.5（P2-1）向量化预计算 =====
+    # 旧实现逐 bar 对 cutoff 切片重算全部指标 = O(n²)（实测 15.7ms/bar，
+    # 5年回测单股 18.8s 纯数据构建）。所有指标均为因果滤波（rolling/ewm 只依赖
+    # 过去数据），全序列一次算完再按行取值与逐 bar 截断重算数值完全一致
+    # （tests/backtest/test_datafeeder_vectorized_equiv.py 逐字段逐 bar 锁死）。
 
-        核心逻辑：
-        1. 截止该日期的所有历史K线
-        2. 重新计算均线/RSI/MACD/布林带/KDJ
-        3. 获取该日期的大盘趋势
+    def _ensure_precomputed(self):
+        """懒初始化预计算（load() 已调过则跳过；兼容测试直接注入 _stock_df 的用法）。
+
+        全部状态用 getattr 防御式读取：既有测试会用 object.__new__ 构造后直接
+        注入 _stock_df/_index_df（不经 __init__）。个股与指数各自独立预计算——
+        只注入其一的测试（如 d04 行为锁）也能得到正确结果。
         """
+        if getattr(self, "_precomputed", False):
+            return
+        sdf = getattr(self, "_stock_df", None)
+        if sdf is not None and not sdf.empty:
+            self._stock_df = sdf.sort_values("date").reset_index(drop=True)
+            self._precompute_stock_columns()
+            self._precompute_timeframe_buckets()
+            self._stock_precomputed = True
+        idf = getattr(self, "_index_df", None)
+        if idf is not None and not idf.empty:
+            self._index_df = idf.sort_values("date").reset_index(drop=True)
+            self._precompute_index_columns()
+        self._precomputed = True
+
+    def _precompute_stock_columns(self):
         df = self._stock_df
-        if df is None:
-            return None
+        close = df['close'].astype(float)
+        high = df['high'].astype(float) if 'high' in df.columns else None
+        low = df['low'].astype(float) if 'low' in df.columns else None
+        vol = df['volume'].astype(float)
+        legacy = _use_legacy_sma_indicators()
 
-        # 截止该日期的数据
-        cutoff = df[df['date'] <= date].copy()
-        if len(cutoff) < 5:
-            return None
+        # 均线（round 2，与 _safe_rolling 口径一致）
+        for w, name in ((5, 'MA5'), (10, 'MA10'), (20, 'MA20'), (60, 'MA60'), (120, 'MA120')):
+            df[name] = close.rolling(w).mean().round(2)
+        # 20日均量（旧实现 _safe_rolling(vol,20)，round 2）
+        df['AVGVOL20'] = vol.rolling(20).mean().round(2)
 
-        latest = cutoff.iloc[-1]
-        price = float(latest['close'])
-        volume = int(float(latest['volume']))
+        # RSI（Wilder/legacy 双口径，与 _calc_rsi 一致）
+        # 旧实现外层守卫 len(cutoff)>=24 才算全部三个 RSI（不足时三个全 None），
+        # 向量化按行取值必须复刻该统一边界（而非各自 period），否则次新股
+        # 前 24 根内 rsi_6/rsi_12 会提前生效（审查 P2 实测确认的分歧）
+        delta = close.diff()
+        gain = delta.where(delta > 0, 0.0)
+        loss = -delta.where(delta < 0, 0.0)
+        n = len(df)
+        for period, col in ((6, 'RSI6'), (12, 'RSI12'), (24, 'RSI24')):
+            if legacy:
+                ag = gain.rolling(window=period).mean()
+                al = loss.rolling(window=period).mean()
+            else:
+                ag = gain.ewm(alpha=1.0 / period, adjust=False).mean()
+                al = loss.ewm(alpha=1.0 / period, adjust=False).mean()
+            rsi = (100 - (100 / (1 + ag / al))).astype(float).round(2)
+            # 统一旧外层守卫：len<24 全 None；len>=24 时前 23 行 None（覆盖 period<24 的提前生效）
+            if n < 24:
+                rsi.iloc[:] = np.nan
+            else:
+                rsi.iloc[:23] = np.nan
+            df[col] = rsi
 
-        # 涨跌幅
-        change_pct = None
-        if len(cutoff) >= 2 and float(cutoff.iloc[-2]['close']) > 0:
-            prev_close = float(cutoff.iloc[-2]['close'])
-            change_pct = round((price - prev_close) / prev_close * 100, 2)
+        # MACD（round 3；len<26 → None）
+        ema_fast = close.ewm(span=12, adjust=False).mean()
+        ema_slow = close.ewm(span=26, adjust=False).mean()
+        dif = ema_fast - ema_slow
+        dea = dif.ewm(span=9, adjust=False).mean()
+        hist = (dif - dea) * 2
+        df['MACD_DIF'] = dif.round(3)
+        df['MACD_DEA'] = dea.round(3)
+        df['MACD_HIST'] = hist.round(3)
+        if n < 26:
+            df.loc[:, ['MACD_DIF', 'MACD_DEA', 'MACD_HIST']] = np.nan
+        else:
+            df.loc[df.index[:25], ['MACD_DIF', 'MACD_DEA', 'MACD_HIST']] = np.nan
 
-        # 计算均线
-        close = cutoff['close'].astype(float)
-        ma5 = self._safe_rolling(close, 5)
-        ma10 = self._safe_rolling(close, 10)
-        ma20 = self._safe_rolling(close, 20)
-        ma60 = self._safe_rolling(close, 60)
-        ma120 = self._safe_rolling(close, 120)
+        # 布林带（rolling 自带 NaN<20；ddof=1 与 _calc_boll 一致；round 2）
+        mid = close.rolling(20).mean()
+        std = close.rolling(20).std(ddof=1)
+        df['BOLL_U'] = (mid + 2 * std).round(2)
+        df['BOLL_M'] = mid.round(2)
+        df['BOLL_L'] = (mid - 2 * std).round(2)
 
-        # 成交量均值
-        vol = cutoff['volume'].astype(float)
-        avg_volume_20 = self._safe_rolling(vol, 20)
+        # KDJ（与 _calc_kdj 一致；len<9 → None）
+        if high is not None and low is not None:
+            low_list = low.rolling(window=9, min_periods=1).min()
+            high_list = high.rolling(window=9, min_periods=1).max()
+            rsv = ((close - low_list) / (high_list - low_list) * 100).fillna(50)
+            k = rsv.ewm(com=2, adjust=False).mean()
+            d = k.ewm(com=2, adjust=False).mean()
+            df['KDJ_K'] = k.round(2)
+            df['KDJ_D'] = d.round(2)
+            df['KDJ_J'] = (3 * k - 2 * d).round(2)
+            if n < 9:
+                df.loc[:, ['KDJ_K', 'KDJ_D', 'KDJ_J']] = np.nan
+            else:
+                df.loc[df.index[:8], ['KDJ_K', 'KDJ_D', 'KDJ_J']] = np.nan
 
-        # 60日高低（v0.8.7.7 C07 修复：守卫 >=20 → >=60 与字段名一致，
-        # 原 20-59 根K线时给的是伪"60日高点"，污染价格位置/突破判定）
-        recent_60 = cutoff.tail(60)
-        high_60d = float(recent_60['high'].astype(float).max()) if len(recent_60) >= 60 else None
-        low_60d = float(recent_60['low'].astype(float).min()) if len(recent_60) >= 60 else None
+            # ATR（与 _calc_atr 一致；len<14 → None；round 2）
+            prev_close = close.shift(1)
+            tr = pd.concat(
+                [high - low, (high - prev_close).abs(), (low - prev_close).abs()],
+                axis=1,
+            ).max(axis=1)
+            if legacy:
+                atr = tr.rolling(window=14).mean()
+            else:
+                atr = tr.ewm(alpha=1.0 / 14, adjust=False).mean()
+            atr = atr.astype(float).round(2)
+            if n < 14:
+                atr.iloc[:] = np.nan
+            elif not legacy:
+                atr.iloc[:13] = np.nan
+            df['ATR14'] = atr
 
-        # 120日高低（v0.8.7.7 C04 修复：守卫 >=60 → >=120 对齐 live 路径，
-        # 原 60-119 根K线时回测有值/live 为 None，回测突破信号无法迁移实盘）
-        recent_120 = cutoff.tail(120)
-        high_120d = float(recent_120['high'].astype(float).max()) if len(recent_120) >= 120 else None
-        low_120d = float(recent_120['low'].astype(float).min()) if len(recent_120) >= 120 else None
+            # 60/120 日高低点（rolling max/min 自带 NaN<窗口，与旧守卫一致）
+            df['HIGH60'] = high.rolling(60).max()
+            df['LOW60'] = low.rolling(60).min()
+            df['HIGH120'] = high.rolling(120).max()
+            df['LOW120'] = low.rolling(120).min()
 
-        # MACD
-        macd_dif, macd_dea, macd_hist = None, None, None
-        if len(cutoff) >= 26:
-            macd_dif, macd_dea, macd_hist = self._calc_macd(cutoff)
+        # 当日涨跌幅（旧口径：len>=2 且 prev>0；round 2）
+        prev_close = close.shift(1)
+        chg = ((close - prev_close) / prev_close * 100).round(2)
+        chg[prev_close <= 0] = np.nan
+        df['CHG_PCT'] = chg
 
-        # RSI
-        rsi_6, rsi_12, rsi_24 = None, None, None
-        if len(cutoff) >= 24:
-            rsi_6, rsi_12, rsi_24 = self._calc_rsi(cutoff)
+        # 日期→行号（bisect 定位，O(log n)）
+        self._date_pos = {d: i for i, d in enumerate(df['date'].tolist())}
+        self._dates_sorted = df['date'].tolist()
 
-        # 布林带
-        boll_upper, boll_mid, boll_lower = None, None, None
-        if len(cutoff) >= 20:
-            boll_upper, boll_mid, boll_lower = self._calc_boll(cutoff)
+    def _precompute_index_columns(self):
+        """指数侧预计算（_get_index_at_date 按行取值用；独立于个股——测试可能只注入指数）。"""
+        idx = self._index_df
+        iclose = idx['close'].astype(float)
+        idx['IDX_MA20'] = iclose.rolling(20).mean().round(2)
+        idx['IDX_MA60'] = iclose.rolling(60).mean().round(2)
+        idx['IDX_MA250'] = iclose.rolling(250).mean().round(2)
+        if 'high' in idx.columns:
+            idx['IDX_HIGH250'] = idx['high'].astype(float).rolling(250).max()
+        iprev = iclose.shift(1)
+        ichg = ((iclose - iprev) / iprev * 100).round(2)
+        ichg[iprev <= 0] = np.nan
+        idx['IDX_CHG'] = ichg
+        # 日期升序列表缓存（_get_index_at_date 每 bar bisect 用，避免现场建 list）
+        self._index_dates = idx['date'].tolist()
 
-        # KDJ
-        kdj_k, kdj_d, kdj_j = None, None, None
-        if len(cutoff) >= 9:
-            kdj_k, kdj_d, kdj_j = self._calc_kdj(cutoff)
-
-        # ATR
-        atr_14 = None
-        if len(cutoff) >= 14:
-            atr_14 = self._calc_atr(cutoff, period=14)
-
-        # 大盘趋势
-        index_trend, index_ma20, index_ma60, index_ma250, index_close, index_change_pct, index_high_250d = self._get_index_at_date(date)
-        weekly_snapshot = self._build_timeframe_snapshot(cutoff, freq="W-FRI")
-        monthly_snapshot = self._build_timeframe_snapshot(cutoff, freq="ME")
-
-        return StockData(
-            stock_code=self.stock_code,
-            stock_name=self._stock_name,
-            price=price,
-            open=float(latest['open']) if pd.notna(latest['open']) else None,
-            high=float(latest['high']) if pd.notna(latest['high']) else None,
-            low=float(latest['low']) if pd.notna(latest['low']) else None,
-            change_pct=change_pct,
-            volume=volume,
-            ma5=ma5, ma10=ma10, ma20=ma20, ma60=ma60, ma120=ma120,
-            avg_volume_20=avg_volume_20,
-            high_60d=high_60d, low_60d=low_60d,
-            high_120d=high_120d, low_120d=low_120d,
-            macd_dif=macd_dif, macd_dea=macd_dea, macd_hist=macd_hist,
-            rsi_6=rsi_6, rsi_12=rsi_12, rsi_24=rsi_24,
-            boll_upper=boll_upper, boll_mid=boll_mid, boll_lower=boll_lower,
-            kdj_k=kdj_k, kdj_d=kdj_d, kdj_j=kdj_j,
-            atr_14=atr_14,
-            index_trend=index_trend,
-            index_ma20=index_ma20,
-            index_ma60=index_ma60,
-            index_ma250=index_ma250,
-            index_close=index_close,
-            index_change_pct=index_change_pct,
-            index_high_250d=index_high_250d,
-            weekly=weekly_snapshot,
-            monthly=monthly_snapshot,
-        )
+    def _precompute_timeframe_buckets(self):
+        """周/月桶预计算（完整桶来自全量 resample；当前桶逐 bar 用行号切片）。"""
+        df = self._stock_df
+        if not hasattr(self, "_tf"):
+            self._tf = {}
+        dt = pd.to_datetime(df['date'])
+        for kind, freq in (("weekly", "W-FRI"), ("monthly", "ME")):
+            if kind == "weekly":
+                labels = dt + pd.to_timedelta((4 - dt.dt.weekday) % 7, unit="D")
+            else:
+                labels = dt.dt.to_period("M").dt.to_timestamp(how="end").dt.normalize()
+            df[f"_bucket_{kind}"] = labels
+            agg = (
+                df.set_index(dt)
+                .resample(freq)
+                .agg({'open': 'first', 'high': 'max', 'low': 'min',
+                      'close': 'last', 'volume': 'sum'})
+                .dropna(subset=['close'])
+            )
+            nn = agg['close'].notna()
+            changes = labels.ne(labels.shift())
+            first_idx = np.where(changes)[0]
+            bucket_first = np.zeros(len(df), dtype=int)
+            bucket_first[first_idx] = first_idx
+            bucket_first = np.maximum.accumulate(bucket_first)
+            self._tf[kind] = {
+                "row_labels": labels.values,          # 每行所属桶标签
+                "bucket_first": bucket_first,          # 每行所属桶首行号
+                "nonnull_labels": agg.index[nn].values,  # 非空桶标签（升序）
+                "nonnull_closes": agg['close'][nn].astype(float).values,
+            }
 
     def _build_timeframe_snapshot(self, cutoff: pd.DataFrame, freq: str) -> Optional[dict]:
-        """将截止当前交易日的日线聚合为周线或月线摘要。"""
+        """将截止当前交易日的日线聚合为周线或月线摘要。
+
+        v0.8.9.5（P2-1）：逐 bar 重算的参照实现——生产路径已改走
+        _timeframe_snapshot_at（预计算+当前桶切片，O(桶大小)/bar），本方法保留
+        作为 tests/backtest/test_datafeeder_vectorized_equiv.py 的旧口径基准，
+        不得删除（等价性回归依赖它）。
+        """
         if cutoff is None or cutoff.empty:
             return None
 
@@ -335,44 +433,161 @@ class DataFeeder:
             'trend': trend,
         }
 
+    def _timeframe_snapshot_at(self, pos: int, kind: str) -> Optional[dict]:
+        """pos 行的周/月快照——与旧 _build_timeframe_snapshot(cutoff) 数值等价。
+
+        完整桶（早于当前桶）用全量 resample 预计算结果；当前桶用 ≤pos 行现算。
+        """
+        tf = self._tf.get(kind)
+        if tf is None:
+            return None
+        df = self._stock_df
+        current_label = tf["row_labels"][pos]
+        first_row = int(tf["bucket_first"][pos])
+        sl = df.iloc[first_row:pos + 1]
+        # 当前桶 close 全 NaN 的防御守卫（生产 fetch 已 dropna close 不可达；
+        # 测试直接注入脏数据时不崩。注意与旧参照实现的取舍差异：旧实现
+        # dropna 后会返回上一完整桶的快照，本守卫返回 None——宁缺勿错）
+        close_col = sl['close'].dropna()
+        if close_col.empty:
+            return None
+        partial_close = float(close_col.iloc[-1])
+        k = int(np.searchsorted(tf["nonnull_labels"], current_label, side="left"))
+        closes = list(tf["nonnull_closes"][:k]) + [partial_close]
+
+        def _ma(window):
+            if len(closes) < window:
+                return None
+            return round(float(np.mean(closes[-window:])), 2)
+
+        ma5, ma10, ma20 = _ma(5), _ma(10), _ma(20)
+        close_val = round(partial_close, 2)
+
+        trend = 'NEUTRAL'
+        if ma20 is not None:
+            if close_val > ma20 and (ma5 is None or ma10 is None or ma5 >= ma10):
+                trend = 'BULLISH'
+            elif close_val < ma20 and (ma5 is None or ma10 is None or ma5 <= ma10):
+                trend = 'BEARISH'
+
+        return {
+            'close': close_val,
+            'ma5': ma5,
+            'ma10': ma10,
+            'ma20': ma20,
+            'trend': trend,
+        }
+
+    def _build_stock_data(self, date: str) -> Optional[StockData]:
+        """构建指定日期的完整StockData（v0.8.9.5 向量化版，数值与旧逐bar版等价）。
+
+        核心逻辑：
+        1. bisect 定位 ≤date 的最后一行（旧实现为 O(n) 布尔切片，此处 O(log n)）
+        2. 指标从预计算列按行取值（因果滤波，与截断重算等价）
+        3. 大盘趋势与周/月快照同样走预计算
+        """
+        # 注意：_ensure_precomputed 会替换 _stock_df 对象（排序+新增指标列），
+        # 引用必须在预计算之后获取
+        self._ensure_precomputed()
+        if not getattr(self, "_stock_precomputed", False):
+            return None
+        df = self._stock_df
+        if df is None:
+            return None
+
+        pos = _bisect.bisect_right(self._dates_sorted, date) - 1
+        if pos < 0 or pos >= len(df):
+            return None
+        cutoff_len = pos + 1
+        if cutoff_len < 5:
+            return None
+
+        row = df.iloc[pos]
+
+        def _num(col):
+            v = row[col] if col in df.columns else np.nan
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                return None
+            return fv if np.isfinite(fv) else None
+
+        price = float(row['close'])
+        volume = int(float(row['volume']))
+        change_pct = _num('CHG_PCT')
+
+        weekly_snapshot = self._timeframe_snapshot_at(pos, "weekly")
+        monthly_snapshot = self._timeframe_snapshot_at(pos, "monthly")
+        (index_trend, index_ma20, index_ma60, index_ma250, index_close,
+         index_change_pct, index_high_250d) = self._get_index_at_date(date)
+
+        return StockData(
+            stock_code=self.stock_code,
+            stock_name=self._stock_name,
+            price=price,
+            open=_num('open'),
+            high=_num('high'),
+            low=_num('low'),
+            change_pct=change_pct,
+            volume=volume,
+            ma5=_num('MA5'), ma10=_num('MA10'), ma20=_num('MA20'),
+            ma60=_num('MA60'), ma120=_num('MA120'),
+            avg_volume_20=_num('AVGVOL20'),
+            high_60d=_num('HIGH60'), low_60d=_num('LOW60'),
+            high_120d=_num('HIGH120'), low_120d=_num('LOW120'),
+            macd_dif=_num('MACD_DIF'), macd_dea=_num('MACD_DEA'), macd_hist=_num('MACD_HIST'),
+            rsi_6=_num('RSI6'), rsi_12=_num('RSI12'), rsi_24=_num('RSI24'),
+            boll_upper=_num('BOLL_U'), boll_mid=_num('BOLL_M'), boll_lower=_num('BOLL_L'),
+            kdj_k=_num('KDJ_K'), kdj_d=_num('KDJ_D'), kdj_j=_num('KDJ_J'),
+            atr_14=_num('ATR14'),
+            index_trend=index_trend,
+            index_ma20=index_ma20,
+            index_ma60=index_ma60,
+            index_ma250=index_ma250,
+            index_close=index_close,
+            index_change_pct=index_change_pct,
+            index_high_250d=index_high_250d,
+            weekly=weekly_snapshot,
+            monthly=monthly_snapshot,
+        )
+
     def _get_index_at_date(self, date: str) -> tuple:
-        """获取指定日期的大盘趋势数据
+        """获取指定日期的大盘趋势数据（v0.8.9.5 向量化版，数值与旧版等价）。
 
         Returns:
             (trend, ma20, ma60, ma250, close, change_pct, high_250d)
         """
-        if self._index_df is None or self._index_df.empty:
+        idx_df = self._index_df
+        if idx_df is None or idx_df.empty:
             return None, None, None, None, None, None, None
-
-        idx = self._index_df[self._index_df['date'] <= date]
-        if len(idx) < 20:
+        # 引用在预计算之后获取（_ensure_precomputed 会替换 _index_df 对象）
+        self._ensure_precomputed()
+        idx = self._index_df
+        # v0.8.9.5（审查 P3）：bisect 用预计算缓存的日期列表（原现场 list(idx['date'])
+        # 每 bar 重建 O(n)，与向量化初衷相悖；缓存列表同时消掉死属性 _index_date_pos）
+        pos = _bisect.bisect_right(getattr(self, "_index_dates", None) or list(idx['date']), date) - 1
+        if pos < 0 or pos + 1 < 20:
             return None, None, None, None, None, None, None
+        row = idx.iloc[pos]
 
-        close = idx['close'].astype(float)
-        ma20 = self._safe_rolling(close, 20)
-        ma60 = self._safe_rolling(close, 60)
-        ma250 = self._safe_rolling(close, 250)
-        latest_close = float(close.iloc[-1])
+        def _num(col):
+            if col not in idx.columns:
+                return None
+            v = row[col]
+            try:
+                fv = float(v)
+            except (TypeError, ValueError):
+                return None
+            return fv if np.isfinite(fv) else None
 
-        # 近250日最高价（用于计算回撤幅度）
-        high_250d = None
-        if 'high' in idx.columns:
-            recent_250 = idx.tail(250)
-            # v0.8.7.8 审计修复 D02（第四轮审查 ISS-072）：守卫 60 → 250，与字段名一致。
-            # 与 C04/C07（high_120d 守卫 60→120 / high_60d 守卫 20→60）同类，
-            # 第三轮修那两处时漏了这一处。用 60 日高点冒充 250 日高点会系统性
-            # 低估回撤 → decision_engine.py:55-56 少判 PANIC。live 侧同改（akshare_client）。
-            if len(recent_250) >= 250:
-                high_250d = float(recent_250['high'].astype(float).max())
+        ma20 = _num('IDX_MA20')
+        ma60 = _num('IDX_MA60')
+        ma250 = _num('IDX_MA250')
+        latest_close = float(row['close'])
+        change_pct = _num('IDX_CHG')
+        high_250d = _num('IDX_HIGH250')
 
-        # 涨跌幅
-        change_pct = None
-        if len(idx) >= 2:
-            prev = float(close.iloc[-2])
-            if prev > 0:
-                change_pct = round((latest_close - prev) / prev * 100, 2)
-
-        # 趋势判断
+        # 趋势判断（与旧版逐字一致：无 ma250 分支）
         trend = "NEUTRAL"
         if ma60 is not None:
             if ma20 > ma60 and latest_close > ma20:
@@ -406,9 +621,19 @@ class DataFeeder:
                 logger.error(f"个股K线查询失败: {rs.error_msg}")
                 return None
 
-            rows = []
-            while (rs.error_code == '0') and rs.next():
-                rows.append(rs.get_row_data())
+            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时——本函数是
+            # 回测唯一网络入口，socket 挂起会冻结整个回测（ISS-047 同类点收尾）
+            def _read_rows():
+                rows = []
+                while (rs.error_code == '0') and rs.next():
+                    rows.append(rs.get_row_data())
+                return rows
+
+            try:
+                rows = _call_with_timeout(_read_rows, timeout=30)
+            except _FuturesTimeout:
+                logger.warning(f"Baostock 读取个股K线超时 {self.stock_code}，回测数据加载失败")
+                return None
 
             if not rows:
                 return None
@@ -441,9 +666,18 @@ class DataFeeder:
                 frequency="d",
             )
 
-            rows = []
-            while (rs.error_code == '0') and rs.next():
-                rows.append(rs.get_row_data())
+            # v0.8.9.5（彻查批 P1-2）：同上，指数K线读取也包超时
+            def _read_rows():
+                rows = []
+                while (rs.error_code == '0') and rs.next():
+                    rows.append(rs.get_row_data())
+                return rows
+
+            try:
+                rows = _call_with_timeout(_read_rows, timeout=30)
+            except _FuturesTimeout:
+                logger.warning("Baostock 读取大盘指数K线超时，大盘趋势走降级")
+                return None
 
             if not rows:
                 return None

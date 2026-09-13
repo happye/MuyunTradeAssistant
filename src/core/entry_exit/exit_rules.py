@@ -191,6 +191,13 @@ def check_take_profit(
     tier2_pct = take_profit_cfg.get("tier2_pct", 20)
     tier2_trim = take_profit_cfg.get("tier2_trim", 0.4)
     trail_pct = take_profit_cfg.get("trail_pct", 0.3)
+    # v0.8.9.5（彻查批 P3）：trail_pct 配置单位归一——tier*_pct 用百分数（10=10%），
+    # trail_pct 历史上是小数（0.3=30%），同一配置表两种口径，用户照 tier 口径填
+    # `trail_pct: 10`（想表达 10% 回撤）会被算成 1000% 而静默永不触发。
+    # 归一规则：值 >1 视为百分数（与 tier*_pct 口径一致），<=1 保持小数口径，
+    # 旧配置（0.3）行为完全不变。
+    if trail_pct > 1:
+        trail_pct = trail_pct / 100
 
     if entry_price is None or entry_price <= 0:
         return None

@@ -217,11 +217,17 @@ def get_industry_info(code: str) -> Optional[dict]:
     try:
         import baostock as bs
         if _ensure_baostock_login():
+            from src.data.akshare_client import _call_with_timeout
             rs = bs.query_stock_industry(code=f"{prefix}.{code}")
             if rs.error_code == '0':
-                rows = []
-                while rs.next():
-                    rows.append(rs.get_row_data())
+                # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
+                def _read_rows():
+                    rws = []
+                    while rs.next():
+                        rws.append(rs.get_row_data())
+                    return rws
+
+                rows = _call_with_timeout(_read_rows, timeout=15)
                 if rows:
                     f = rs.fields
                     industry = rows[0][f.index('industry')]

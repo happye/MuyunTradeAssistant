@@ -309,9 +309,9 @@ class MarketCache:
         Returns:
             全市场行情DataFrame（列名标准化），空DataFrame表示获取失败
         """
-        # 禁用AKShare/efinance内部的tqdm进度条
-        import os
-        os.environ["TQDM_DISABLE"] = "1"
+        # v0.8.9.5（彻查批 P3）：原在此设置 TQDM_DISABLE 后从不清理（进程级泄漏）。
+        # 新浪源走 requests 无 tqdm，唯一需要禁进度条的是 efinance 兜底源，
+        # 已收敛进 _fetch_efinance_market 的 try/finally。
 
         if not force_refresh and MarketCache._shared_stock_df is not None and not self._is_expired(MarketCache._shared_stock_ts):
             logger.info(f"MarketCache: A股缓存命中({MarketCache._shared_stock_count}只)")
@@ -335,7 +335,6 @@ class MarketCache:
         if not force_refresh and (time.time() - MarketCache._shared_fail_ts) < MarketCache.FAIL_COOLDOWN_SECONDS:
             logger.warning("MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取")
             return pd.DataFrame()
-
         # 主数据源：新浪财经API（偶发返回空，重试2次；连续3次空才判源失效）
         import time as _t
         df = None
@@ -372,23 +371,6 @@ class MarketCache:
         MarketCache._shared_fail_ts = time.time()
         logger.warning("MarketCache: 全市场行情源均失败(新浪间歇失效+东财断连)，改用主题词/单股模式")
         return pd.DataFrame()
-
-    def _sina_source_dead(self) -> bool:
-        """检测新浪全市场源是否失效（接口返回HTML/非200=失效，非偶发空）。"""
-        try:
-            import requests as _requests
-            with self._without_proxy():
-                r = _requests.get(
-                    _get_sina_market_url(),
-                    params={"page": 1, "num": 5, "sort": "changepercent", "asc": 0, "node": "hs_a", "symbol": "", "_s_r_a": "init"},
-                    timeout=8, headers={"User-Agent": "Mozilla/5.0"},
-                )
-            # 返回HTML或非200=源失效（接口废弃/被封）
-            if r.status_code != 200 or "html" in (r.headers.get("content-type", "") + r.text[:50]).lower():
-                return True
-            return False
-        except Exception:
-            return False  # 网络异常不算源失效（可能偶发）
 
     def _fetch_sina_market(self) -> Optional[pd.DataFrame]:
         """通过新浪财经API获取全市场A股行情（并行分页）
@@ -547,8 +529,14 @@ class MarketCache:
             # 静音 efinance 内部 urllib3 分页重试刷屏（RemoteDisconnected 时它会重试4次刷屏）
             import logging as _log
             _log.getLogger("urllib3").setLevel(_log.CRITICAL)
-            with self._without_proxy():
-                df = ef.stock.get_realtime_quotes()
+            # v0.8.9.5：tqdm 禁用收敛到此（efinance 是本模块唯一走 tqdm 的源）
+            import os as _os
+            _os.environ["TQDM_DISABLE"] = "1"
+            try:
+                with self._without_proxy():
+                    df = ef.stock.get_realtime_quotes()
+            finally:
+                _os.environ.pop("TQDM_DISABLE", None)
             if df is not None and not df.empty:
                 return self._normalize_efinance_columns(df)
         except Exception as e:

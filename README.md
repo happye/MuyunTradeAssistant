@@ -395,6 +395,29 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.9.5 (全模块彻查修复批: 数据口径/超时/同口径/向量化) - 2026-09-13
+
+- 🔴 **成交量单位归一（P1-1）**：东财系接口（`stock_zh_a_spot_em`/`fund_etf_spot_em`）成交量
+  单位是"手"，新浪/baostock 是"股"——降级链混源时 EM 源 volume 比 20 日均量小 100 倍，
+  量比类技能条件失效、执行层流动性过滤把所有交易误判为"流动性不足"。新增
+  `AKShareClient._em_volume_to_shares` 归一全部 3 处 EM 分支；顺带修 `000001.SZ`
+  后缀式代码解析（此前 K线/行情全链路查不到）与批量预取键不匹配。
+- 🔴 **baostock 读取超时收尾（P1-2）**：全库最后 8 处未包线程级硬超时的 `rs.next()`
+  读取点补齐（回测 DataFeeder K线×2 是回测唯一网络入口，此前 socket 挂起=整个回测
+  冻结）；同类点清零，新增 4 条人话告警（速查手册 F2 节）。
+- 🔴 **Monte Carlo/重放一致性检查器同口径（P1-3/A-1）**：MC 临时引擎补传
+  signal_weights/skill_types/enabled_skills/entry_exit_config（原漏传=MC 分布与基础
+  回测不可比）；重放一致性检查补 entry_exit_config+has_position 还原。
+- 🟠 **DataFeeder 向量化 31×提速（P2-1）**：逐 bar 全量重算指标的 O(n²) 实现改为
+  全序列预计算+按行取值，5 年回测数据构建 18.8s→0.6s；数值等价性由
+  `tests/backtest/test_datafeeder_vectorized_equiv.py` 逐 bar 锁死（4 种子×
+  Wilder/legacy 双口径×1193 bar 全字段 0 分歧），回测行为零变化。
+- 清扫批：trail_pct 配置单位归一（>1 视为百分数，旧口径不变）/event_layer sentiment
+  白名单+kimi temperature 守卫/死代码×4 处/TQDM_DISABLE 泄漏×3/scanner 深析持仓
+  透传/web·TUI 持仓回写（与 chat·CLI 行为平价）/web 引擎初始化加锁/Pydantic
+  ConfigDict 迁移。
+- 测试 +18；明细见 ISSUES.md ISS-093。
+
 ### v0.8.9.4 (chat 轮次 20 轮 + 上下文护栏 + 模型系判定修复) - 2026-09-11
 
 - **工具轮次上限 10 → 20 轮**：`chat.max_tool_rounds: 5 → 10`（实际硬上限 = 该值 ×2），

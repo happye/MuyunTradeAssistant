@@ -6,6 +6,48 @@ Corrections, insights, and knowledge gaps captured during development.
 
 ---
 
+## [LRN-20260913-001] correction
+
+**Logged**: 2026-09-13T02:30:00+08:00
+**Priority**: high
+**Status**: done
+**Area**: backtest/consistency
+
+### Summary
+**凡"重建 Orchestrator/引擎"的旁路（MC、重放一致性检查、未来的并行对照），构造参数必须与主路径同源透传，不能凭记忆重抄清单。** v0.8.9.5 彻查发现同族病根两处：`run_monte_carlo` 临时引擎漏传 signal_weights/skill_types/enabled_skills/entry_exit_config（skills_dir 还被硬编码）→ MC 分布与基础回测不可比；`build_replay_consistency_check` 重放 Orchestrator 漏 entry_exit_config 且 has_position 恒 False → 凡买卖点触发日必假不一致。这正是 ISS-032"缺传=买卖点整体失效"的第三次复发。
+
+### Suggested Action（已落地 v0.8.9.5 / ISS-093）
+1. 主引擎 `__init__` 把全部构造配置存为实例属性，旁路引擎从 `self._xxx` 透传（backtest_engine 已落地）。
+2. 新增旁路调用点时，grep 主构造点的 kwargs 清单逐一对照；有 entry_exit_config 的主路径，旁路必须有。
+3. 重放类检查器按日志还原图状态（position_ratio_before→has_position）；无法还原的状态（TradePlan）在 docstring 诚实声明 gap，不许装作口径一致。
+
+### Metadata
+- Source: full_module_audit (全模块彻查批 ISS-093)
+- Related Files: `src/core/backtest_engine.py`, `src/core/backtest_validator.py`, `src/cli/main.py`
+
+---
+
+## [LRN-20260913-002] best_practice
+
+**Logged**: 2026-09-13T02:30:00+08:00
+**Priority**: medium
+**Status**: done
+**Area**: pandas/refactoring
+
+### Summary
+**方法内对 `self._df` 做"替换式改造"（sort/reset_index/加列后重新赋值）时，所有引用必须在改造之后获取。** DataFeeder 向量化首跑等价性测试即抓到真分歧：`_build_stock_data` 在 `_ensure_precomputed()` 之前 `df = self._stock_df`，而预计算 `self._stock_df = df.sort_values(...)`（加指标列）替换了对象——局部引用还指向旧对象，`CHG_PCT` 等新列全部读成 None（等价性测试 date=2024-05-24 change_pct None 分歧，实测复现）。这类 bug 纯读代码很难发现（列存在性依赖调用时序），是"先验证再合入"纪律的直接收益案例。
+
+### Suggested Action（已落地 v0.8.9.5 / ISS-093）
+1. 替换式预计算统一收敛到一个 `_ensure_precomputed()` 入口，调用点注释"引用必须在预计算之后获取"。
+2. 数值等价性重构必须配逐 bar 逐字段对照测试（旧口径静态方法保留为参照基准），绿灯才许合入——本次 1193 bar×全字段×双口径 0 分歧是合入依据。
+
+### Metadata
+- Source: self_discovery (等价性回归测试红灯)
+- Related Files: `src/data/data_feeder.py`, `tests/backtest/test_datafeeder_vectorized_equiv.py`
+
+
+---
+
 ## [LRN-20260831-001] best_practice
 
 **Logged**: 2026-08-31T00:10:00+08:00

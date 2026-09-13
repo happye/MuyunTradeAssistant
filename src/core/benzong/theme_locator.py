@@ -118,7 +118,7 @@ def _verify_code(code: str, ai_name: str) -> Optional[dict]:
     名称对不上 = AI 可能给错了代码（张冠李戴），丢弃。
     """
     try:
-        from src.data.akshare_client import _ensure_baostock_login
+        from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout
         import baostock as bs
         if not _ensure_baostock_login():
             return None
@@ -126,9 +126,14 @@ def _verify_code(code: str, ai_name: str) -> Optional[dict]:
         rs = bs.query_stock_basic(code=f"{prefix}.{code}")
         if rs.error_code != "0":
             return None
-        rows = []
-        while rs.next():
-            rows.append(rs.get_row_data())
+        # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
+        def _read_rows():
+            rws = []
+            while rs.next():
+                rws.append(rs.get_row_data())
+            return rws
+
+        rows = _call_with_timeout(_read_rows, timeout=15)
         if not rows:
             return None
         f = rs.fields

@@ -5,6 +5,7 @@ _init_engines 在 work 函数内（不阻塞请求，progress 立即显示）。
 """
 
 import logging
+import threading
 from pathlib import Path
 
 from flask import Flask, render_template, request
@@ -19,27 +20,31 @@ app.secret_key = "muyun-dev"
 _scanner = None
 _orchestrator = None
 _portfolio = None
+# v0.8.9.5（彻查批 A-3）：init 加锁——原 check-then-init 无锁，docstring 声称
+# "线程安全"与实测不符，两个并发请求可同时通过检查并双重 init_engines
+_init_lock = threading.Lock()
 
 
 def _init_engines() -> bool:
-    """lazy 初始化引擎（线程安全：多线程调时只 init 一次，后续 return True）"""
+    """lazy 初始化引擎（加锁后线程安全：多线程调时只 init 一次，后续 return True）"""
     global _scanner, _orchestrator, _portfolio
-    if _scanner is not None:
-        return True
-    try:
-        from src.chat.tools import _orchestrator as orch, _scanner_engine, init_engines
-        from src.cli.main import load_config
-        from src.data.portfolio import PortfolioManager
+    with _init_lock:
+        if _scanner is not None:
+            return True
+        try:
+            from src.chat.tools import _orchestrator as orch, _scanner_engine, init_engines
+            from src.cli.main import load_config
+            from src.data.portfolio import PortfolioManager
 
-        config = load_config()
-        init_engines(config)
-        _scanner = _scanner_engine
-        _orchestrator = orch
-        _portfolio = PortfolioManager()
-        return True
-    except Exception as e:
-        logger.error(f"web 引擎初始化失败: {e}")
-        return False
+            config = load_config()
+            init_engines(config)
+            _scanner = _scanner_engine
+            _orchestrator = orch
+            _portfolio = PortfolioManager()
+            return True
+        except Exception as e:
+            logger.error(f"web 引擎初始化失败: {e}")
+            return False
 
 
 def _scan_work(rule="healthy_pullback", theme=None):
@@ -109,6 +114,15 @@ def _analyze_work(code):
         high_since_entry=pos.high_since_entry if pos else None,
         trade_plan=pos.trade_plan if pos else None,
     )
+    # v0.8.9.5（彻查批 A-4）：持仓股回写策略状态（chat H1/CLI 同款行为平价）——
+    # 原 web 分析只读不写，持仓股策略状态不推进，与 chat/CLI 对同一持仓股决策分歧
+    if has_position and pos is not None:
+        try:
+            _portfolio.update_from_strategy_decision(
+                pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data
+            )
+        except Exception as e:
+            logger.warning(f"web 回写策略状态失败({pos.stock_code}): {e}")
     return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai}
 
 

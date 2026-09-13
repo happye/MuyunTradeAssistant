@@ -208,6 +208,26 @@ class AKShareClient:
                     return None
         return None
 
+    @staticmethod
+    def _extract_pure_code(code: str) -> str:
+        """从混合格式代码中提取 6 位纯数字代码。
+
+        支持：600519 / 000001.SZ / SH.600519 / sz000001 等带前缀或后缀格式。
+        取点号分隔段中第一个纯数字段（v0.8.9.5：原 zfill 直拼对 "000001.SZ"
+        会产出 "000001.SZ" 本身并误判市场前缀，行情/K线全链路查不到）。
+        """
+        code = str(code or "").strip()
+        if "." in code:
+            for part in code.split("."):
+                part = part.strip()
+                if part.isdigit():
+                    code = part
+                    break
+        # sz000001 / sh600519 式交易所前缀（非点号分隔）
+        if len(code) > 6 and code[:2].lower() in ("sh", "sz", "bj") and code[2:].isdigit():
+            code = code[2:]
+        return code.zfill(6) if code.isdigit() else code
+
     @classmethod
     def _normalize_stock_code(cls, code: str) -> tuple[str, str]:
         """标准化股票代码，返回(市场前缀, 纯代码)
@@ -221,8 +241,9 @@ class AKShareClient:
         - 560100 -> (sh, 560100)  上海ETF
         - 920001 -> (bj, 920001)  北交所
         - 830001 -> (bj, 830001)  北交所
+        - 000001.SZ / SH.600519 -> 剥离后缀/前缀后同上（v0.8.9.5）
         """
-        code = code.strip().zfill(6)
+        code = cls._extract_pure_code(code)
         if code.startswith(('920', '8', '4')):
             # 北交所/股转：920xxx（新代码段）、8xxxxx/4xxxxx（老代码段，含430xxx）
             # v0.8.7.5 审计修复 A26：原漏 430xxx → 被判 sh 查询失败
@@ -261,7 +282,9 @@ class AKShareClient:
 
         # ISS-088：批量预取映射优先——批量入口（l 多代码/后续批量场景）预先
         # 用一次批量请求填充本映射，逐只循环里的单只调用直接命中，零请求。
-        pre = AKShareClient._QUOTE_PREFETCH.get(str(stock_code))
+        # v0.8.9.5：预取键是纯 6 位码，查询侧先规范化——"000001.SZ"式带后缀
+        # 输入此前查不到预取（静默退化为逐只请求）。
+        pre = AKShareClient._QUOTE_PREFETCH.get(cls._extract_pure_code(stock_code))
         if pre is not None and (time.time() - pre[0]) < AKShareClient._QUOTE_PREFETCH_TTL:
             logger.debug(f"实时行情命中批量预取 {stock_code}")
             return pre[1]
@@ -313,7 +336,8 @@ class AKShareClient:
                                 "stock_name": data.get(name_col, code) if name_col else code,
                                 "price": float(data.get(price_col, 0)) if price_col else 0,
                                 "change_pct": float(data.get(change_col, 0)) if change_col else 0,
-                                "volume": int(float(data.get(volume_col, 0))) if volume_col else 0,
+                                # 东财 ETF 接口成交量单位是手，×100 归一到股（P1-1）
+                                "volume": cls._em_volume_to_shares(data.get(volume_col, 0)),
                                 "open": float(data.get('今开', 0)),
                                 "high": float(data.get('最高', 0)),
                                 "low": float(data.get('最低', 0)),
@@ -395,7 +419,8 @@ class AKShareClient:
                     "stock_name": data.get(name_col, code) if name_col else code,
                     "price": float(data.get(price_col, 0)) if price_col else 0,
                     "change_pct": float(data.get(change_col, 0)) if change_col else 0,
-                    "volume": int(data.get(volume_col, 0)) if volume_col else 0,
+                    # 东财全市场接口成交量单位是手，×100 归一到股（P1-1）
+                    "volume": cls._em_volume_to_shares(data.get(volume_col, 0)),
                     "open": float(data.get('今开', data.get('开盘', 0))),
                     "high": float(data.get('最高', data.get('high', 0))),
                     "low": float(data.get('最低', data.get('low', 0))),
@@ -430,6 +455,22 @@ class AKShareClient:
     # ─────────────────────────────────────────────────────────────
 
     _SINA_BATCH_SIZE = 60   # 新浪单次 list 上限（保守取 60 只/请求）
+
+    # v0.8.9.5（彻查批 P1-1）成交量单位归一：东财系接口（stock_zh_a_spot_em /
+    # fund_etf_spot_em，字段 f5）成交量单位是**手**，而新浪 list（fields[8]）与
+    # baostock K线均是**股**。降级链混源时若不换算，EM 源的 volume 比
+    # avg_volume_20（股）小 100 倍——量比类技能条件失效、执行层流动性过滤把
+    # 所有交易误判为"流动性不足"。所有 EM 分支的成交量统一 ×100 回股口径。
+    @staticmethod
+    def _em_volume_to_shares(raw) -> int:
+        """东财系接口成交量（手）→ 股（×100）。脏值（None/负/非数字/NaN）归 0。"""
+        try:
+            v = float(raw)
+        except (TypeError, ValueError):
+            return 0
+        if v <= 0 or v != v:  # v != v 判 NaN（float("nan") 可解析但不可 int）
+            return 0
+        return int(v * 100)
 
     @classmethod
     def _fetch_sina_batch(cls, codes: list) -> dict:
@@ -568,7 +609,8 @@ class AKShareClient:
                                     "stock_name": str(d.get('名称', d.get(code_col))),
                                     "price": float(d.get('最新价', 0) or 0),
                                     "change_pct": float(d.get('涨跌幅', 0) or 0),
-                                    "volume": int(float(d.get('成交量', 0) or 0)),
+                                    # 东财全市场接口成交量单位是手，×100 归一到股（P1-1）
+                                    "volume": cls._em_volume_to_shares(d.get('成交量', 0)),
                                     "open": float(d.get('今开', 0) or 0),
                                     "high": float(d.get('最高', 0) or 0),
                                     "low": float(d.get('最低', 0) or 0),
@@ -601,7 +643,8 @@ class AKShareClient:
                                 "stock_name": str(d.get('名称', d.get(code_col))),
                                 "price": float(d.get('最新价', 0) or 0),
                                 "change_pct": float(d.get('涨跌幅', 0) or 0),
-                                "volume": int(float(d.get('成交量', 0) or 0)),
+                                # 东财基金接口成交量单位是手，×100 归一到股（P1-1）
+                                "volume": cls._em_volume_to_shares(d.get('成交量', 0)),
                                 "open": float(d.get('今开', 0) or 0),
                                 "high": float(d.get('最高', 0) or 0),
                                 "low": float(d.get('最低', 0) or 0),
@@ -987,9 +1030,19 @@ class AKShareClient:
                 logger.warning(f"Baostock实时行情查询失败 {stock_code}: {rs.error_msg}")
                 return None
 
-            data_list = []
-            while rs.next():
-                data_list.append(rs.get_row_data())
+            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时——本文件其余
+            # baostock 读取点（K线/大盘/股名）均有保护，唯独此处漏网（ISS-047 同类点）
+            def _read_all():
+                data_list = []
+                while rs.next():
+                    data_list.append(rs.get_row_data())
+                return data_list
+
+            try:
+                data_list = _call_with_timeout(_read_all, timeout=30)
+            except FuturesTimeout:
+                logger.warning(f"Baostock 读取实时行情超时 {stock_code}，走降级")
+                return None
 
             if not data_list:
                 return None
@@ -1158,28 +1211,31 @@ class AKShareClient:
             StockData: 包含所有技术指标的股票数据，可能部分指标为None
         """
         # 禁用AKShare内部的tqdm进度条，避免在CLI中产生混淆
+        # v0.8.9.5：只在网络获取窗口内禁用，finally 恢复（原设置后不清理=进程级泄漏）
         import os as _os
         _os.environ["TQDM_DISABLE"] = "1"
+        try:
+            # 首先尝试获取实时行情
+            quote = cls.get_realtime_quote(stock_code)
 
-        # 首先尝试获取实时行情
-        quote = cls.get_realtime_quote(stock_code)
-
-        # 尝试获取历史K线计算技术指标
-        df = None
-        weekly_df = None
-        monthly_df = None
-        try:
-            df = cls.get_historical_kline(stock_code, period="daily", adjust="qfq")
-        except Exception as e:
-            logger.warning(f"获取历史K线异常 {stock_code}: {e}")
-        try:
-            weekly_df = cls.get_historical_kline(stock_code, period="weekly", adjust="qfq")
-        except Exception as e:
-            logger.warning(f"获取周线K线异常 {stock_code}: {e}")
-        try:
-            monthly_df = cls.get_historical_kline(stock_code, period="monthly", adjust="qfq")
-        except Exception as e:
-            logger.warning(f"获取月线K线异常 {stock_code}: {e}")
+            # 尝试获取历史K线计算技术指标
+            df = None
+            weekly_df = None
+            monthly_df = None
+            try:
+                df = cls.get_historical_kline(stock_code, period="daily", adjust="qfq")
+            except Exception as e:
+                logger.warning(f"获取历史K线异常 {stock_code}: {e}")
+            try:
+                weekly_df = cls.get_historical_kline(stock_code, period="weekly", adjust="qfq")
+            except Exception as e:
+                logger.warning(f"获取周线K线异常 {stock_code}: {e}")
+            try:
+                monthly_df = cls.get_historical_kline(stock_code, period="monthly", adjust="qfq")
+            except Exception as e:
+                logger.warning(f"获取月线K线异常 {stock_code}: {e}")
+        finally:
+            _os.environ.pop("TQDM_DISABLE", None)
 
         # 如果历史K线获取失败
         if df is None or df.empty:

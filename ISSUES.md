@@ -1977,3 +1977,22 @@ P3（已取消）:
 - **更新记录**:
   - 2026-09-02: 开发完成+验证通过，commit 落地于本 commit
 
+
+---
+
+### ISS-093: 全模块彻查修复批——成交量单位归一/baostock 超时收尾/MC与重放同口径/DataFeeder 向量化（v0.8.9.5）
+- **状态**: ✅ 已解决（2026-09-13，用户授权"修复→审核→推送"；来源=全模块逐行彻查报告 16 项发现）
+- **优先级**: P1~P3 混合批（详见分项）
+- **审计方法**: 63 个 src 模块 + 4 入口全部逐行细读；发现的每个问题均先验证（akshare 库源码核实单位/数值等价探针/全库 grep 同类点）再修复
+- **修复清单**:
+  1. 🔴 **P1-1 成交量单位归一**：东财系接口（`stock_zh_a_spot_em`/`fund_etf_spot_em`，f5 字段）成交量单位是**手**，新浪 list 与 baostock 均是**股**——降级链混源时 EM 源 volume 比 `avg_volume_20` 小 100 倍（量比技能条件失效、执行层流动性过滤误判全部交易"流动性不足"）。修法：`AKShareClient._em_volume_to_shares`（含 NaN/负值/脏值防护）应用于全部 3 处 EM 分支；顺带修 `_normalize_stock_code`/chat `_normalize_code` 对 `000001.SZ` 后缀式的解析（原产出 "000001.SZ" 被误判市场/"SZ".zfill(6) 垃圾键）与 `_QUOTE_PREFETCH` 后缀输入查不到预取
+  2. 🔴 **P1-2 baostock `rs.next()` 读取超时收尾**：全库 14 处中最后 8 处未包线程级硬超时的读取点全部补齐（data_feeder 个股+指数 K线/akshare 实时降级/event_layer 沪深300/scanner 60d 富集/source_check 行业探针/benzong data_provider 行业+theme_locator 验证）——data_feeder 是回测唯一网络入口，挂起=整个回测冻结（ISS-047 同类点清零，AGENTS 同类点清单更新）
+  3. 🔴 **P1-3 Monte Carlo 同口径**：`run_monte_carlo` 临时引擎原漏传 `signal_weights/skill_types/enabled_skills/entry_exit_config` 且 `skills_dir` 硬编码——MC 分布与基础回测不可比（ISS-032"缺传=买卖点整体失效"病根在 MC 分支复发）。修法：__init__ 保存构造配置，MC 全量透传
+  4. 🟠 **P2-1 DataFeeder 向量化（31×提速）**：逐 bar 全量切片重算指标 = O(n²)（实测 15.7ms/bar，5年回测 18.8s 纯数据构建）。所有指标为因果滤波，改为 load() 时全序列一次预计算 + 按行取值 + 当前周/月桶切片——**实测 0.50ms/bar（18.8s→0.6s，31×）**。数值等价性由 `tests/backtest/test_datafeeder_vectorized_equiv.py` 锁死（4 组随机种子含缺口/停牌/跨周月边界 × Wilder/legacy 双口径，1193 bar × 全字段逐 bar 比对 = 0 分歧；旧 `_build_timeframe_snapshot`/`_calc_*` 保留作参照基准不得删）
+  5. 🟡 **A-1 重放一致性检查器保真**：`build_replay_consistency_check` 补 `entry_exit_config` 透传（cli/main 两处调用点同步）+ 按日志 `position_ratio_before` 还原 `has_position`；已知剩余 gap（TradePlan/PlanGuard 状态未重构）已在 docstring 诚实声明；grep 确认该检查零测试覆盖的现状记入本条
+  6. 🟡 **P3/A 清扫批**：① `check_take_profit` 的 `trail_pct` 配置单位归一（>1 视为百分数，旧 0.3 口径不变——原 tier*_pct 百分数 vs trail_pct 小数两口径并存，用户照 tier 口径填会静默永不触发）② event_layer AI 分类 sentiment 白名单（原中文"利空"静默按中性）+ kimi temperature 守卫（`_ai_classify_event`/`_ai_classify_portfolio_news`/benzong `_annotate_sector_meta` 三处对齐 NO_TEMPERATURE_MODELS 清单）③ 死代码清除：orchestrator 不可达 elif、market_cache `_sina_source_dead`（37 行零调用）、backtest_reporter `_render_layer_comparison_text_report`（35 行零调用）、start.py parse_input 重复解析块 ④ `TQDM_DISABLE` env 泄漏收敛（akshare_client 网络窗口 finally 恢复/market_cache 收敛进 efinance 源/source_check 单出口 pop）⑤ scanner deep_analyze 持仓循环外提 + 补 `high_since_entry`/`trade_plan` 透传（手动选持仓代码时 Chandelier/PlanGuard 失效，chat H1 同类缺口）⑥ `stock.py` 日缓存 30 天清理改每进程每日一次（原每次 set 全目录 glob）⑦ web `_init_engines` 加锁（原 docstring 声称线程安全实则有 check-then-init 竞态）+ `_tasks` 过期清理 ⑧ **A-4 web/TUI 持仓回写**：web/tui 分析路径补 `update_from_strategy_decision`（chat H1/CLI 同款行为平价，原 web/TUI 对持仓股分析后策略状态不推进）⑨ `models.py` class-based Config → `ConfigDict`（消 Pydantic V3 移除风险）
+- **测试**: 新增 19 项——test_v0895_correctness_batch（P1-1×6/P1-3×1/A-1×1/load 冒烟×1，冒烟=审查 P0 复发锁：真实 load 链路曾调到拆分后的不存在方法被 except 吞掉，测试全绿但真回测全挂——正是铁律 3「验证靠跑」防的盲区）+ test_v0895_p3_batch（trail_pct×3/event_layer×3/web tasks×1）+ test_datafeeder_vectorized_equiv（等价性×2，pytest/直跑双模）；全量 668 passed / 4 skipped
+- **告警人话化三处同步**: plain_errors 4 条新 pattern（Baostock 读取超时四兄弟）+ 本手册 F2 节 + 触发代码本身
+- **用户可感知（§二·五）**: 版本号 5 处统一 v0.8.9.5；回测耗时从分钟级显著下降（-b 输出同结果更快）；EM 降级路径量比类信号恢复真实比例；kimi 用户的事件分类/AI 标注不再传非法参数
+- **更新记录**:
+  - 2026-09-13: 彻查报告交付 + 用户批准修复批；全部修复 + 等价性门通过，commit 落地于本 commit

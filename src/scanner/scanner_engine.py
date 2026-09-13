@@ -345,6 +345,15 @@ class ScannerEngine:
         orchestrator = self._get_orchestrator()
         pm = PortfolioManager()
 
+        # v0.8.9.5（彻查批 P3）：持仓一次性读出建索引（原在循环内逐只
+        # list_positions()，30 只候选 × N 次全量解析 portfolio.yaml）
+        positions_by_code = {}
+        try:
+            for pos in pm.list_positions():
+                positions_by_code[pos.stock_code] = pos
+        except Exception as e:
+            logger.warning(f"持仓读取失败，本次深度分析按空仓处理: {e}")
+
         for i, code in enumerate(stock_codes):
             if progress_callback:
                 progress_callback("deep_analyze", i + 1, total, f"分析 {code}")
@@ -388,16 +397,17 @@ class ScannerEngine:
                 strategy_state = None
                 has_position = False
                 entry_price = None
-                positions = pm.list_positions()
-                for pos in positions:
-                    if pos.stock_code == code:
-                        current_ratio = pos.current_ratio
-                        strategy_state = pm.to_strategy_state(code)
-                        has_position = pos.current_ratio > 0
-                        entry_price = pos.entry_price
-                        break
+                pos = positions_by_code.get(code)
+                if pos is not None:
+                    current_ratio = pos.current_ratio
+                    strategy_state = pm.to_strategy_state(code)
+                    has_position = pos.current_ratio > 0
+                    entry_price = pos.entry_price
 
                 # 调用Orchestrator七层分析（含买卖点 Layer 3.75）
+                # v0.8.9.5（彻查批 P3）：补 high_since_entry/trade_plan 透传——手动选股
+                # 可输入持仓代码（初筛虽排除持仓，交互选择不拦），此前漏传使 Chandelier
+                # 止损与大顶信号在持仓股上失效（chat H1 同类缺口）
                 decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                     data=stock_data,
                     current_position_ratio=current_ratio,
@@ -405,6 +415,8 @@ class ScannerEngine:
                     ai_enabled=ai_enabled,
                     has_position=has_position,
                     entry_price=entry_price,
+                    high_since_entry=getattr(pos, "high_since_entry", None) if pos else None,
+                    trade_plan=getattr(pos, "trade_plan", None) if pos else None,
                 )
 
                 result.update({
@@ -938,7 +950,7 @@ class ScannerEngine:
             return candidates
 
         try:
-            from src.data.akshare_client import _ensure_baostock_login
+            from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout
             import baostock as bs
             from datetime import datetime, timedelta
             import pandas as pd
@@ -964,9 +976,20 @@ class ScannerEngine:
                     if rs.error_code != "0":
                         continue
 
-                    rows = []
-                    while (rs.error_code == "0") and rs.next():
-                        rows.append(rs.get_row_data())
+                    # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时
+                    def _read_rows():
+                        rws = []
+                        while (rs.error_code == "0") and rs.next():
+                            rws.append(rs.get_row_data())
+                        return rws
+
+                    try:
+                        rows = _call_with_timeout(_read_rows, timeout=15)
+                    except Exception as e:
+                        # v0.8.9.5（审查 P3）：超时/异常留 debug 痕迹——原全静默 continue，
+                        # baostock 整体故障时富集静默全空无从排查
+                        logger.debug(f"60d enrich {code} 读取失败: {type(e).__name__}")
+                        continue
 
                     if len(rows) < 20:
                         continue

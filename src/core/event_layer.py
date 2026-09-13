@@ -35,7 +35,7 @@ import yaml
 import pandas as pd
 from openai import OpenAI
 
-from src.core.ai_model import thinking_disabled_body
+from src.core.ai_model import thinking_disabled_body, NO_TEMPERATURE_MODELS
 from src.data.models import MarketEvent, AIModifierResult, MarketState
 
 logger = logging.getLogger(__name__)
@@ -654,7 +654,8 @@ class EventLayer:
         if cached is not None and (time.time() - cached_ts) < EventLayer._INDEX_CACHE_TTL:
             return cached
         try:
-            from src.data.akshare_client import AKShareClient
+            from src.data.akshare_client import AKShareClient, _call_with_timeout
+            from concurrent.futures import TimeoutError as _FuturesTimeout
             AKShareClient._ensure_baostock_login()
             import baostock as bs
             rs = bs.query_history_k_data_plus(
@@ -663,10 +664,19 @@ class EventLayer:
                 start_date=((datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")),
                 end_date=(datetime.now().strftime("%Y-%m-%d")),
             )
-            last_row = None
-            if rs.error_code == '0':
+
+            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
+            def _read_rows():
+                last_row = None
                 while rs.next():
                     last_row = rs.get_row_data()  # 取最后一行（最近交易日）
+                return last_row
+
+            try:
+                last_row = _call_with_timeout(_read_rows, timeout=30)
+            except _FuturesTimeout:
+                logger.warning("Baostock 读取沪深300行情超时，市场规则事件本轮跳过")
+                return None
             if last_row:
                 result = {
                     "index_change_pct": float(last_row[2]) if len(last_row) > 2 else 0.0,
@@ -678,6 +688,10 @@ class EventLayer:
             logger.debug(f"获取沪深300数据失败: {e}")
 
         return None
+
+    # v0.8.9.5（彻查批 P3）：sentiment 白名单——AI 返回中文（"利空"）或异常值时
+    # 归 neutral，避免 to_ai_modifier_result 的 =="bearish" 全 miss 后静默按中性降权
+    _VALID_SENTIMENTS = ("bullish", "bearish", "neutral")
 
     def _ai_classify_event(self, title: str, summary: str) -> Optional[MarketEvent]:
         """AI二次分类宏观事件（v0.8.1增加RAG策略知识增强）
@@ -706,7 +720,8 @@ class EventLayer:
                     {"role": "system", "content": EVENT_CLASSIFY_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
+                # v0.8.9.5（彻查批 P3）：kimi-k2.x 不支持 temperature，走统一判定清单
+                **({"temperature": 0.1} if not str(self._ai_model or "").startswith(NO_TEMPERATURE_MODELS) else {}),
                 max_completion_tokens=300,
                 timeout=15,
                 **thinking_disabled_body(self._ai_model),
@@ -724,6 +739,10 @@ class EventLayer:
                 json_str = content.split("```")[1].split("```")[0].strip()
 
             data = json.loads(json_str)
+
+            # v0.8.9.5（彻查批 P3）：sentiment 白名单归一（AI 返回中文/异常值→neutral）
+            if data.get("sentiment") not in self._VALID_SENTIMENTS:
+                data["sentiment"] = "neutral"
 
             if not data.get("is_significant", False):
                 return None
@@ -803,7 +822,8 @@ class EventLayer:
                     {"role": "system", "content": EVENT_CLASSIFY_PROMPT},
                     {"role": "user", "content": user_prompt},
                 ],
-                temperature=0.1,
+                # v0.8.9.5（彻查批 P3）：kimi-k2.x 不支持 temperature，走统一判定清单
+                **({"temperature": 0.1} if not str(self._ai_model or "").startswith(NO_TEMPERATURE_MODELS) else {}),
                 max_completion_tokens=300,
                 timeout=15,
                 **thinking_disabled_body(self._ai_model),
@@ -820,6 +840,10 @@ class EventLayer:
                 json_str = content.split("```")[1].split("```")[0].strip()
 
             data = json.loads(json_str)
+
+            # v0.8.9.5（彻查批 P3）：sentiment 白名单归一（AI 返回中文/异常值→neutral）
+            if data.get("sentiment") not in self._VALID_SENTIMENTS:
+                data["sentiment"] = "neutral"
 
             if not data.get("is_significant", False):
                 return None

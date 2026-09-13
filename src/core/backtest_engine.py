@@ -224,6 +224,15 @@ class BacktestEngine:
             )
         self.execution_mode = execution_mode
         self.layer_mode = layer_mode
+        # v0.8.9.5（彻查批 P1-3）：保存构造配置——Monte Carlo 临时引擎必须与基础
+        # 回测同口径透传（原漏传 signal_weights/skill_types/enabled_skills/
+        # entry_exit_config 且 skills_dir 硬编码，MC 分布与基础回测不可比，
+        # ISS-032「缺传=买卖点整体失效」病根在 MC 分支复发）
+        self._enabled_skills = enabled_skills
+        self._signal_weights = signal_weights
+        self._skill_types = skill_types
+        self._entry_exit_config = entry_exit_config
+        self.skills_dir = skills_dir
 
         # v0.8.7.5 审计修复 A18：min_hold_days/cooldown_days 只在 legacy_compatible 生效
         # （framework_strict 交由策略层状态机统一约束，设计如此）。调用方显式传非默认值时
@@ -766,6 +775,7 @@ class BacktestEngine:
             )
 
             # 创建临时回测引擎
+            # v0.8.9.5（彻查批 P1-3）：与基础回测同口径透传全部构造配置
             temp_engine = BacktestEngine(
                 stock_code=self.stock_code,
                 start_date=self.start_date,
@@ -777,7 +787,11 @@ class BacktestEngine:
                 slippage_pct=self.slippage_pct * slippage_multiplier,
                 execution_mode=self.execution_mode,
                 layer_mode=self.layer_mode,
-                skills_dir="./src/skills",
+                skills_dir=self.skills_dir,
+                enabled_skills=self._enabled_skills,
+                signal_weights=self._signal_weights,
+                skill_types=self._skill_types,
+                entry_exit_config=self._entry_exit_config,
                 execution_constraint=perturbed_constraint,
                 enable_trade_plan=self.enable_trade_plan,
                 qizong_codes=self._qizong_codes,

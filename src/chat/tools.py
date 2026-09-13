@@ -33,9 +33,21 @@ TOOL_ERROR_MARK = "[工具失败] "
 def _normalize_code(code) -> str:
     """股票代码规范化（v0.8.7.8 裁决修复 H05）：
     去交易所前缀（sh./SZ.）+ 去空白 + 补零到 6 位。持仓匹配与
-    portfolio._load 的键规范化（G04）配套，带前缀/空格输入不再被当非持仓。"""
+    portfolio._load 的键规范化（G04）配套，带前缀/空格输入不再被当非持仓。
+    v0.8.9.5：补 "000001.SZ" 式后缀格式——原 split(".")[-1] 对后缀式会取到
+    "SZ" 并 zfill 成 "0000SZ"（垃圾键）；改为取点号分隔段中的纯数字段。"""
     c = str(code or "").strip()
-    return c.split(".")[-1].zfill(6) if c else ""
+    if not c:
+        return ""
+    if "." in c:
+        for part in c.split("."):
+            part = part.strip()
+            if part.isdigit():
+                c = part
+                break
+    if len(c) > 6 and c[:2].lower() in ("sh", "sz", "bj") and c[2:].isdigit():
+        c = c[2:]
+    return c.zfill(6) if c.isdigit() else c
 
 # 模块级引擎实例（由ChatAgent启动时通过init_engines()初始化）
 _orchestrator = None

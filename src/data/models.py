@@ -1,7 +1,7 @@
 """数据模型定义 - Pydantic"""
 
 from typing import Optional, Literal
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from enum import Enum
 
 
@@ -243,8 +243,8 @@ class StockData(BaseModel):
     # live 路径由 calculate_indicators 填充；回测 DataFeeder._build_stock_data 不填 -> None -> 跳过减持子信号（回测公告非 point-in-time，诚实声明）
     recent_announcements: Optional[list] = Field(default=None, description="近期公告列表[{title,date,content,source}]（live 填充，回测缺省 None）")
 
-    class Config:
-        extra = "allow"  # 允许额外字段
+    # v0.8.9.5：class-based Config 在 Pydantic V2 已弃用（V3 移除），改 ConfigDict
+    model_config = ConfigDict(extra="allow")  # 允许额外字段
 
 
 class StrategyState(BaseModel):

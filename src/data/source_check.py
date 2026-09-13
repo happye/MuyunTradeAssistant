@@ -208,18 +208,25 @@ def check_all_sources(code: str = "600989") -> dict:
     sources = []
 
     # --- Baostock 系列 ---
+    # v0.8.9.5（彻查批 P1-2）：行业分类探针换 _probe_t（带线程级硬超时）——
+    # 原用无超时的 _probe，bs.next() 卡住会拖垮整个体检（ISS-047 同类点）
     def _bs_industry():
-        from src.data.akshare_client import _ensure_baostock_login, AKShareClient
+        from src.data.akshare_client import _ensure_baostock_login, AKShareClient, _call_with_timeout
         import baostock as bs
         if not _ensure_baostock_login():
             raise RuntimeError("Baostock 登录失败")
         prefix, _ = AKShareClient._normalize_stock_code(code)
+
+        def _read_rows():
+            rws = []
+            while rs.next():
+                rws.append(rs.get_row_data())
+            return rws
+
         rs = bs.query_stock_industry(code=f"{prefix}.{code}")
         if rs.error_code != '0':
             raise RuntimeError(rs.error_msg)
-        rows = []
-        while rs.next():
-            rows.append(rs.get_row_data())
+        rows = _call_with_timeout(_read_rows, timeout=15)
         if not rows:
             raise RuntimeError("行业查询返回空")
         f = rs.fields
@@ -242,7 +249,7 @@ def check_all_sources(code: str = "600989") -> dict:
             raise RuntimeError("大盘趋势返回空")
         return f"沪深300 {info['trend']} close={info['close']}"
 
-    sources.append(_probe("Baostock-行业分类", _bs_industry))
+    sources.append(_probe_t("Baostock-行业分类", _bs_industry, timeout=20))
     sources.append(_probe("Baostock-历史K线", _bs_kline))
     sources.append(_probe("Baostock-大盘趋势", _bs_index))
 
@@ -392,6 +399,9 @@ def check_all_sources(code: str = "600989") -> dict:
     sources.append(_probe("日历-财报披露", _cal_disclosure))
 
     ok_count = sum(1 for s in sources if s["ok"])
+    # v0.8.9.5（彻查批 P3）：退出前清理 TQDM_DISABLE（原设置后不清理=进程级泄漏；
+    # 本函数单出口，在此 pop 即可覆盖全部路径）
+    os.environ.pop("TQDM_DISABLE", None)
     return {
         "sources": sources,
         "summary": {"total": len(sources), "ok": ok_count, "fail": len(sources) - ok_count},

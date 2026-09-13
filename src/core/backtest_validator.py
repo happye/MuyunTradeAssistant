@@ -144,8 +144,20 @@ def build_replay_consistency_check(
     skills_dir: str,
     signal_weights: dict[str, float] | None = None,
     skill_types: dict[str, str] | None = None,
+    entry_exit_config: dict | None = None,
 ) -> dict[str, Any]:
-    """重放同一历史快照，检查回测路径与准实时分析路径是否一致。"""
+    """重放同一历史快照，检查回测路径与准实时分析路径是否一致。
+
+    v0.8.9.5（彻查批 A-1）重放保真增强：
+    - 透传 entry_exit_config（基础回测带买卖点计算器，重放不带则凡买卖点触发日
+      decision/position_action/score 必然不一致——与 MC 漏参同族的"Orchestrator
+      重建丢配置"病根）
+    - 按日志 position_ratio_before 还原 has_position（回测持仓日走 Layer 3.75/3.85
+      卖出检查，重放恒空仓则这些分支永不进入）
+    已知剩余 gap（诚实声明，不在本次范围）：TradePlan/PlanGuard 状态未重构——
+    建仓日生成的 plan（mode/current_stop）依赖账户 avg_cost 与建仓日 bar 数据，
+    重放无账户状态，PlanGuard 压制日仍可能出现假不一致。
+    """
     diagnostics = result.diagnostics or {}
     daily_decisions = diagnostics.get("daily_decisions") or []
     execution_logs = diagnostics.get("execution_logs") or []
@@ -178,7 +190,10 @@ def build_replay_consistency_check(
             "execution_chain_samples": [],
         }
 
-    orchestrator = Orchestrator(skills_dir, None, signal_weights, skill_types)
+    orchestrator = Orchestrator(
+        skills_dir, None, signal_weights, skill_types,
+        entry_exit_config=entry_exit_config,
+    )
     expected_by_date = {entry["date"]: entry for entry in daily_decisions}
     strategy_state = StrategyState()
     mismatches: list[dict[str, Any]] = []
@@ -195,6 +210,7 @@ def build_replay_consistency_check(
             current_position_ratio=current_position_ratio,
             strategy_state=strategy_state,
             ai_enabled=False,
+            has_position=current_position_ratio > 0,  # A-1：按日志还原持仓状态
             # ISS-078：回测重放路径必须带 is_backtest=True（跳过 fundamental_alert 当前
             # 数据/置 top_signal live=False），否则属 AGENTS 点名的"回测调用点漏传"同类雷。
             # 当前被 has_position=False + 构造无 ai/event_config 掩盖，加参数消雷。

@@ -202,6 +202,14 @@ class MuyunTUI(App):
             high_since_entry=pos.high_since_entry if pos else None,
             trade_plan=pos.trade_plan if pos else None,
         )
+        # v0.8.9.5（彻查批 A-4）：持仓股回写策略状态（chat H1/CLI/web 同款行为平价）
+        if has_position and pos is not None:
+            try:
+                self._portfolio.update_from_strategy_decision(
+                    pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data
+                )
+            except Exception as e:
+                logger.warning(f"TUI 回写策略状态失败({pos.stock_code}): {e}")
         return stock_data, dr, sd, ee, ai
 
     @work

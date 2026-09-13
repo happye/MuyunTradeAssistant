@@ -73,18 +73,48 @@ def test_high_250d_guard_matches_field_name():
 
     影响链：index_high_250d → decision_engine.py:55-56 drawdown → PANIC 判定。
     用 60 日高点冒充 250 日高点会系统性低估回撤 → 少判 PANIC。
+
+    v0.8.9.5（P2-1 向量化）：回测侧守卫由 `len(recent_250) >= 250` 改为
+    `rolling(250).max()`（窗口不足 250 根时为 NaN→None，语义等价），
+    断言同步改为锁定 250 窗口存在性。
     """
     root = Path(__file__).resolve().parents[2]
 
     feeder_src = (root / "src/data/data_feeder.py").read_text(encoding="utf-8")
-    guard_lines = [l.strip() for l in feeder_src.splitlines()
-                   if "recent_250" in l and ">=" in l and "len(" in l]
-    assert guard_lines, "未找到 high_250d 守卫行（代码可能已重构）"
-    assert all(">= 250" in g for g in guard_lines), (
-        f"data_feeder high_250d 守卫应为 >=250，实际: {guard_lines}"
+    rolling_250 = [l.strip() for l in feeder_src.splitlines()
+                   if "IDX_HIGH250" in l and "rolling(250)" in l]
+    legacy_guard = [l.strip() for l in feeder_src.splitlines()
+                    if "recent_250" in l and ">= 250" in l]
+    assert rolling_250 or legacy_guard, (
+        "未找到 high_250d 的 250 窗口守卫（rolling(250) 或 len>=250），"
+        "代码可能已重构且守卫语义丢失"
+    )
+    assert all("rolling(250)" in g for g in rolling_250), (
+        f"data_feeder high_250d 应为 rolling(250) 窗口，实际: {rolling_250}"
     )
 
-    # live 侧：赋值行 `high_250d = float(df['high'].tail(250).max())` 的守卫在其上方 1-3 行
+    # 行为等价锁：不足 250 根必须为 None（等价于旧 len>=250 守卫），
+    # 恰好 250 根给出真值——防止未来把窗口改小测试发现不了
+    feeder = DataFeeder.__new__(DataFeeder)
+    feeder.stock_code = "600519"
+    feeder.start_date = "2024-01-01"
+    feeder.end_date = "2024-12-31"
+    n = 300
+    idx_df = pd.DataFrame({
+        "date": pd.bdate_range("2024-01-01", periods=n).strftime("%Y-%m-%d"),
+        "close": np.arange(1, n + 1, dtype=float),
+        "high": np.arange(1, n + 1, dtype=float),
+        "preclose": np.arange(1, n + 1, dtype=float),
+    })
+    feeder._index_df = idx_df
+    trend, ma20, ma60, ma250, close, chg, high_250d = feeder._get_index_at_date(str(idx_df['date'].iloc[299]))
+    assert high_250d == pytest.approx(300.0), "满 250 窗口应给出真 250 日高点"
+    feeder._index_df = idx_df.iloc[:249].copy()
+    feeder._precomputed = False
+    vals = feeder._get_index_at_date(str(idx_df['date'].iloc[248]))
+    assert vals[6] is None, "不足 250 根时 high_250d 必须为 None（防 60 日高点冒充年线高点）"
+
+    # live 侧（未改动）：赋值行 `high_250d = float(df['high'].tail(250).max())` 的守卫在其上方 1-3 行
     aks_lines = (root / "src/data/akshare_client.py").read_text(encoding="utf-8").splitlines()
     live_guards = []
     for i, line in enumerate(aks_lines):

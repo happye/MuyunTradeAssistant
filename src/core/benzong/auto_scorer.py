@@ -23,7 +23,7 @@ from typing import Optional
 
 from src.core.benzong import cache, data_provider
 from src.core.benzong.scorer import BenzhongScore, score_one
-from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body
+from src.core.ai_model import DEFAULT_DEEPSEEK_MODEL, thinking_disabled_body, NO_TEMPERATURE_MODELS
 from src.core.benzong.dimensions import _lazy_load_dimensions
 
 logger = logging.getLogger(__name__)
@@ -112,10 +112,13 @@ def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
             '只输出 JSON: {"flagbearer_code":"600519" 或 null, "penetration_stage":"1-10"}'
         )
         extra = thinking_disabled_body(ai_model)
+        # v0.8.9.5（彻查批 P3）：kimi-k2.x 不支持 temperature，走统一判定清单
+        temp_kwargs = {} if str(ai_model or "").startswith(NO_TEMPERATURE_MODELS) else {"temperature": 0.1}
         resp = ai_client.chat.completions.create(
             model=ai_model,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.1, max_completion_tokens=120, timeout=20,
+            max_completion_tokens=120, timeout=20,
+            **temp_kwargs,
             **extra,
         )
         content = (resp.choices[0].message.content or "").strip()

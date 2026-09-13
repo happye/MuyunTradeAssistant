@@ -364,8 +364,8 @@ class Orchestrator:
                         logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value}")
                 elif action in ("ENTRY", "ADD"):
                     logger.debug(f"[EntryExit] Entry blocked: decision={current_decision.value} != BUY")
-                elif action in ("EXIT", "STOP", "TRIM"):
-                    logger.debug(f"[EntryExit] Exit blocked: decision={current_decision.value} != SELL")
+                # v0.8.9.5（彻查批 P3）：删除不可达的 `elif action in ("EXIT","STOP","TRIM")`
+                # 日志分支——该集合已被上方 elif（L335）整体捕获，永不进入
 
         # Layer 3.84: 基本面恶化硬退出（ISS-053）--仅持仓检查，独立 fundamental_alert 通道
         # 被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL。fail-open（异常跳过不假退出）但记 WARNING。

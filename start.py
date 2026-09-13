@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.9.4"  # v0.8.9.4=chat轮次20轮+上下文护栏+轮次进度+模型系判定修复(deepseek-flash改名致thinking失配)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.9.5"  # v0.8.9.5=全模块彻查修复批(成交量单位归一+baostock超时收尾+MC/重放同口径+DataFeeder向量化31×提速+清扫批,ISS-093)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -246,25 +246,8 @@ def parse_input(user_input: str):
     cmd = parts[0].lower()
 
     # ── 基础命令 ──
-    if cmd in ("q", "quit", "exit"):
-        return ("quit", {})
-    if cmd in ("h", "help", "?"):
-        return ("help", {})
-
-    # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
-    if cmd in ("la", "lall"):
-        return ("live_all", {})
-
-    if cmd in ("ba", "bzall"):
-        return ("benzong_all", {})
-
-    if not text:
-        return None
-
-    parts = text.split()
-    cmd = parts[0].lower()
-
-    # ── 基础命令 ──
+    # v0.8.9.5（彻查批 P3）：原此处有一段与下方完全重复的 q/help/la/ba 解析块
+    # （复制粘贴残留，第二份永不生效），已删除
     if cmd in ("q", "quit", "exit"):
         return ("quit", {})
     if cmd in ("h", "help", "?"):
