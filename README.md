@@ -419,6 +419,12 @@ volume_ratio:
 - 测试 +33（`tests/core/test_fear_index_engine.py` 口径锁死 20 +
   `test_fear_index_history.py` 隔离 tmp 的历史层/组装 13）；
   设计文档 `docs/2026-09-13_市场恐慌指数_评估与实现方案.md`。
+- **对抗审查批（86b6161）**：逐模块攻击面+故障注入修复 5 处（合成序列单边成交额静默
+  当双边→交集语义 / syn_history 缓存陈旧致回填成分永远缺失→删缓存 / 收盘后-17:30
+  窗口 vol·mom MISSING→回退 STALE / 序列文件乱序取错末日→sort_index 防御 / chat
+  history 参数 cap+backfill 新→旧遍历）；+12 故障注入用例（`test_fear_index_adversarial.py`，
+  fear 单测 45 全过）。三源交叉验证：成交额新浪 vs baostock 偏差 0.76%（≈北交所口径差），
+  收盘价/涨跌停双源自洽。
 - 板块/概念/个股下钻（scope 引擎已就绪）留待 P2/P3，当前返回明确未上线提示。
 
 ### v0.8.9.5 (全模块彻查修复批: 数据口径/超时/同口径/向量化) - 2026-09-13
