@@ -1,8 +1,9 @@
 """会话状态管理 - 让命令间能"接住"上次 scan 结果（体验重构方向 A，Step 1）
 
 职责：
-- save_last_scan(items, source): 存最近 scan 结果到 ~/.muyun/last_scan.json
+- save_last_scan(items, source): 存最近 scan 结果到 ~/.muyun/last_scan.json，并追加历史到 scan_history.jsonl
 - get_last_scan() / resolve_index(n): 读最近 scan / 取第 n 只（供 #N 快捷，Step 2 用）
+- append_scan_history() / get_scan_history(days): 扫描历史追加/读取（v0.8.11，scan review 复盘用）
 - persist_scan_report(items, source): scan 结果落盘 markdown 到 分析报告/scan/
 
 设计原则：
@@ -15,7 +16,7 @@
 import json
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
@@ -24,6 +25,10 @@ logger = logging.getLogger(__name__)
 # 状态目录（跨会话，不污染仓库；与 benzong_cache 同级）
 _STATE_DIR = Path.home() / ".muyun"
 _LAST_SCAN_FILE = _STATE_DIR / "last_scan.json"
+# 扫描历史（v0.8.11，scan review 复盘用）：JSONL 追加式，一行一条扫描记录。
+# 与 last_scan.json（只存最近一次）互补——历史供 scan review 验证选股涨跌表现。
+_SCAN_HISTORY_FILE = _STATE_DIR / "scan_history.jsonl"
+_HISTORY_MAX_DAYS = 90  # 复盘窗口上限；append 时顺手清理更旧行，文件不膨胀
 # 当日已深分析记录（v0.8.7.9，l all 去重用）：文件只存当天 {日期: {code: {time, source}}}，
 # 写入时自动覆盖旧日期 → 文件不膨胀；语义对齐笨总六维当日缓存（跨天自动失效）。
 _DEEP_ANALYZED_FILE = _STATE_DIR / "deep_analyzed.json"
@@ -36,7 +41,11 @@ _STALE_MINUTES = 30
 
 
 def save_last_scan(items: list[dict], source: str) -> bool:
-    """存最近 scan 结果列表。source 为来源命令（如 "bz scan AI,半导体"）。
+    """存最近 scan 结果列表，并追加一条结构化历史（scan review 复盘用）。
+
+    本函数是全部扫描路径（scan market / bz scan / chat 工具）的唯一收口，
+    在此追加历史可零 call-site 改动覆盖所有扫描类型。
+    source 为来源命令（如 "bz scan AI,半导体"）。
 
     Returns: True 写入成功
     """
@@ -51,10 +60,91 @@ def save_last_scan(items: list[dict], source: str) -> bool:
         _LAST_SCAN_FILE.write_text(
             json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
         )
+        # 历史追加失败不影响 last_scan 写入（append 内部已兜底不抛异常）
+        append_scan_history(items, source)
         return True
     except OSError as e:
         logger.warning(f"save_last_scan 失败: {e}")
         return False
+
+
+def append_scan_history(items: list[dict], source: str) -> bool:
+    """追加一条扫描历史（JSONL，一行一条，scan review 复盘用）。
+
+    写入时顺手清理超过 _HISTORY_MAX_DAYS 的旧行（原子重写，损坏行一并丢弃）。
+    失败不抛异常（返回 False，不阻塞扫描主流程）。
+    """
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        now = datetime.now()
+        rec = {
+            "timestamp": now.isoformat(timespec="seconds"),
+            "source": source,
+            "count": len(items),
+            "items": items,
+        }
+        old_rows, _ = _read_scan_history_rows()
+        kept = [r for r in old_rows if _history_row_keep(r, now)]
+        kept.append(rec)
+        tmp = _SCAN_HISTORY_FILE.with_suffix(".jsonl.tmp")
+        tmp.write_text(
+            "\n".join(json.dumps(r, ensure_ascii=False) for r in kept) + "\n",
+            encoding="utf-8",
+        )
+        tmp.replace(_SCAN_HISTORY_FILE)
+        return True
+    except OSError as e:
+        logger.warning(f"append_scan_history 失败: {e}")
+        return False
+
+
+def _read_scan_history_rows() -> tuple[list[dict], int]:
+    """读历史原始行。返回 (可解析行列表, 损坏行数)。文件不存在返回空。"""
+    try:
+        if not _SCAN_HISTORY_FILE.exists():
+            return [], 0
+        rows, corrupt = [], 0
+        for line in _SCAN_HISTORY_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                corrupt += 1
+                continue
+            if isinstance(r, dict):
+                rows.append(r)
+            else:
+                corrupt += 1
+        return rows, corrupt
+    except OSError as e:
+        logger.debug(f"scan_history.jsonl 读取失败: {e}")
+        return [], 0
+
+
+def _history_row_keep(row: dict, now: datetime) -> bool:
+    """prune 判定：timestamp 可解析且距今不超过 _HISTORY_MAX_DAYS。"""
+    try:
+        ts = datetime.fromisoformat(row.get("timestamp", ""))
+    except (ValueError, TypeError):
+        return False
+    return (now - ts).days <= _HISTORY_MAX_DAYS
+
+
+def get_scan_history(days: Optional[int] = None) -> list[dict]:
+    """读扫描历史。按 timestamp 倒序；days 非空时只保留最近 N 天。
+
+    损坏行跳过（debug 日志计数，不阻塞）。
+    """
+    rows, corrupt = _read_scan_history_rows()
+    if corrupt:
+        logger.debug(f"scan_history.jsonl 有 {corrupt} 行损坏已跳过")
+    rows.sort(key=lambda r: r.get("timestamp", ""), reverse=True)
+    if days is not None:
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+        rows = [r for r in rows if (r.get("timestamp") or "") >= cutoff]
+    return rows
 
 
 def get_last_scan() -> Optional[dict]:

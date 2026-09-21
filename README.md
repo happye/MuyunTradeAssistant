@@ -395,6 +395,28 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.11 (扫描复盘: scan review 命令) - 2026-09-22
+
+- 🆕 **扫描历史落盘**：`save_last_scan` 收口（scan market / bz scan / chat 三路共用）
+  同步追加 `~/.muyun/scan_history.jsonl`（JSONL 一行一条，>90 天写入时自动清理，
+  损坏行跳过）——历史记录跨会话保留，此前只存最近一次（last_scan.json 逐次覆盖）。
+- 🆕 **`scan review [天数]` 命令**（别名 `scan 复盘`，默认 7 天，clamp 1-90）：核对近 N 天
+  扫描历史每只票「扫描价→现价」累计涨跌 + **沪深300 同窗基准超额** + 涨跌胜率汇总
+  （N涨N跌/平均/中位/跑赢基准占比），报告落盘 `分析报告/scan/review_*.md`。
+  当天扫描不进统计（待满 1 个交易日）；停牌/退市股显式标「无行情」剔除；快照价缺失
+  （bz scan 系）自动用扫描日 K 线收盘兜底（≤扫描日最后一根 bar，周末自动落上一交易日）。
+- **反爬预算**（零 AI 调用）：批量实时行情 1 轮（60只/请求，全部票合并去重）+
+  K 线仅对缺价票逐只兜底（`~/.muyun/kline_cache/` 当日磁盘缓存，同日重复复盘零请求）+
+  沪深300 日线 1 次（`~/.muyun/scan_review_index.json` 当日缓存，复用 fear 的
+  `_bs_index_kline` 节流+硬超时纪律）。口径统一不复权（快照价与 baostock 日线同口径）。
+- chat 经命令桥自动可用（`scan review 7`，零 AI 不进 confirm 硬门）；新告警 1 条
+  人话化三处同步（append_scan_history 失败）。
+- 测试 +19（`tests/core/test_scan_review.py`：parse 分流 / 历史层往返+prune / 收口行为
+  锁死 / 已知输入精确断言 / 缺行情剔除 / 今日记录排除 / 指数当日缓存零请求 / 基准降级）。
+- 教训两条（详见 AGENTS.md）：宽 except 会把 datetime 别名笔误静默吞成 None（靠精确
+  数字断言抓出）；给写文件的既有函数加副作用必须扫测试隔离同类点（test_session_state
+  漏重定向新历史文件，曾向真实 ~/.muyun 写入测试垃圾行，已修+清除）。
+
 ### v0.8.10 (市场恐慌指数: fear 命令 + chat 工具) - 2026-09-13
 
 - 🆕 **市场恐慌指数 `src/core/fear_index/`**（纯客观计算，**AI 调用次数=0**）：0-100 越高越恐慌，

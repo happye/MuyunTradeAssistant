@@ -1562,3 +1562,36 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_finding
 - Related Files: src/core/fear_index/history.py, src/core/fear_index/normalizer.py, tests/data_sources/probe_fear_data.py
 - Tags: akshare, data-density, point-in-time, probe-first, fear-index
+
+## [LRN-20260922-012] lesson
+**Date**: 2026-09-22
+**Priority**: high
+**Status**: completed
+**Area**: error-handling, test-isolation, scan-review
+
+### Summary
+**scan review（v0.8.11）实施中的两条实证教训：宽 except 吞笔误类异常 + 给写文件的函数加副作用必须扫测试隔离同类点。**
+
+1. **宽 except 会把 NameError 静默吞成业务 None**：`_review_base_from_kline` 里
+   `datetime.now()` 用了裸名（同函数只导入了 `datetime as _dt` 别名），NameError 被
+   `except Exception → logger.debug → df_cache[code] = None` 整条链静默吃掉，
+   表现为「K线兜底悄悄失效」而非崩溃。单测 mock 全部正确，靠**精确数字断言**（+100.00
+   缺失）才定位。这正是项目铁律清单里 `except+debug+continue` 静默 fail-open 模式的
+   变体：兜底性 except 对「笔误类异常」是无差别掩体。
+2. **给既有写盘函数加副作用后，测试隔离重定向会漏新文件**：`save_last_scan` 增加
+   追加 scan_history.jsonl 的副作用后，`tests/core/test_session_state.py` 的 4 个测试
+   只 monkeypatch 了 `_LAST_SCAN_FILE`——全量 pytest 期间向真实 `~/.muyun/`
+   写入 8 条测试垃圾行（此前它们也写真实 last_scan.json，属既有泄漏被放大）。
+   靠真实运行验证时发现历史文件「凭空已有 8 条今日记录」才倒查出来。
+
+### Suggested Action
+- 复用 `except Exception → logger.debug` 兜底的函数，落笔前先 grep 本函数内新用的
+  顶层名是否真的在作用域里；或兜底 except 收窄到预期异常类型
+- 新增任何写盘路径后：grep 全部调用方测试是否 monkeypatch 了新路径的模块常量；
+  写完跑一次真实运行核对目标文件内容与预期一致（读代码+单测都发现不了测试越界写）
+- 验证类临时脚本若要模拟历史时间戳，注意 append 类函数固定盖 now()——须直写文件
+
+### Metadata
+- Source: session_finding
+- Related Files: src/cli/main.py, src/cli/session_state.py, tests/core/test_session_state.py, tests/core/test_scan_review.py
+- Tags: broad-except, silent-fail-open, test-isolation, monkeypatch-redirect, scan-review

@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.10[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.11[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -2548,6 +2548,306 @@ def scan_market(
         _display_scan_deep_results(analyzed_results)
 
 
+# ── 扫描复盘（v0.8.11，scan review）──────────────────────────────────
+
+# 沪深300 基准日线缓存（当日有效；复盘请求预算 = 指数 1 次/天）
+_REVIEW_INDEX_CACHE = Path.home() / ".muyun" / "scan_review_index.json"
+# 复盘报告目录（与 scan 报告同目录；模块级常量便于测试重定向）
+_REVIEW_REPORT_DIR = Path(__file__).resolve().parents[2] / "分析报告" / "scan"
+
+
+def _review_index_bars(start_date: str) -> list[dict]:
+    """沪深300 日线 [{date: 'YYYY-MM-DD', close: float}]（升序），覆盖 start_date-10 天至今。
+
+    复权口径：baostock adjustflag=3 不复权，与个股快照价/K线兜底同口径。
+    当日缓存 ~/.muyun/scan_review_index.json（同日且窗口覆盖时零请求——反爬预算：
+    指数 1 请求/天）。失败返回 []（基准列显示 -，不阻断复盘）。
+    """
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    fetch_start = (_dt.strptime(start_date, "%Y-%m-%d") - _td(days=10)).strftime("%Y-%m-%d")
+    today = _dt.now().strftime("%Y-%m-%d")
+    try:
+        if _REVIEW_INDEX_CACHE.exists():
+            payload = json.loads(_REVIEW_INDEX_CACHE.read_text(encoding="utf-8"))
+            rows = payload.get("rows") or []
+            if (payload.get("fetched_date") == today
+                    and payload.get("start_date", "") <= fetch_start and rows):
+                return [r for r in rows if r.get("date", "") >= fetch_start]
+    except (OSError, json.JSONDecodeError, ValueError):
+        pass
+    try:
+        from src.core.fear_index.history import _bs_index_kline
+        raw = _bs_index_kline("sh.000300", "date,close", fetch_start, today)
+        rows = [{"date": r[0], "close": float(r[1])}
+                for r in raw if r and len(r) >= 2 and r[0] >= fetch_start]
+        if rows:
+            try:
+                tmp = _REVIEW_INDEX_CACHE.with_suffix(".json.tmp")
+                tmp.write_text(json.dumps(
+                    {"fetched_date": today, "start_date": fetch_start, "rows": rows},
+                    ensure_ascii=False), encoding="utf-8")
+                tmp.replace(_REVIEW_INDEX_CACHE)
+            except OSError:
+                pass
+        return rows
+    except Exception as e:
+        logger.debug(f"沪深300 基准获取失败: {e}")
+        return []
+
+
+def _review_base_from_kline(code: str, scan_date: str, df_cache: dict):
+    """K线兜底：取 ≤ scan_date 的最后一根日线收盘（不复权，与扫描快照价同口径）。
+
+    供缺落盘价的 items（bz scan 系）用；周末/节假日扫描自动落到上一交易日。
+    df_cache 缓存 {code: DataFrame|None}——None 表示已试过且无数据（停牌/退市/
+    新股），同日重复复盘直接命中磁盘缓存零请求。窗口内分红除权影响极小，注释备查。
+    """
+    from datetime import datetime as _dt
+    from datetime import timedelta as _td
+
+    if code not in df_cache:
+        try:
+            from src.data.akshare_client import AKShareClient
+            start = (_dt.strptime(scan_date, "%Y-%m-%d") - _td(days=10)).strftime("%Y%m%d")
+            end = _dt.now().strftime("%Y%m%d")
+            df = AKShareClient.get_historical_kline(
+                code, period="daily", adjust=None,
+                start_date=start, end_date=end, retry=1)
+            df_cache[code] = df if df is not None and not df.empty else None
+        except Exception as e:
+            logger.debug(f"复盘K线兜底失败 {code}: {e}")
+            df_cache[code] = None
+    df = df_cache.get(code)
+    if df is None:
+        return None
+    date_col = "日期" if "日期" in df.columns else "date"
+    close_col = "收盘" if "收盘" in df.columns else "close"
+    if date_col not in df.columns or close_col not in df.columns:
+        return None
+    try:
+        bars = df[df[date_col].astype(str).str[:10] <= scan_date]
+        if bars.empty:
+            return None
+        v = bars.iloc[-1][close_col]
+        return float(v) if v else None
+    except (ValueError, TypeError, KeyError):
+        return None
+
+
+def scan_review(days: int = 7):
+    """扫描复盘（v0.8.11）：核对近 N 天扫描历史每只票「扫描价→现价」的累计涨跌，
+    验证 bz scan / scan market 选股的准确性。
+
+    反爬预算：批量实时行情 1 轮（≤60只/请求，全部票合并去重）+ K线仅对缺落盘价
+    的票兜底（kline_cache 当日磁盘缓存，同日重复复盘零请求）+ 沪深300 日线 1 次
+    （当日缓存）。当天扫描不进统计（未满 1 个交易日，无参考意义）。
+    """
+    from datetime import datetime as _dt
+    from statistics import median
+    from src.cli import session_state
+    from src.data.akshare_client import AKShareClient
+
+    days = max(1, min(90, int(days or 7)))
+    records = session_state.get_scan_history(days=days)
+    today_str = _dt.now().strftime("%Y-%m-%d")
+    pending = [r for r in records if (r.get("timestamp") or "")[:10] >= today_str]
+    records = [r for r in records if (r.get("timestamp") or "")[:10] < today_str]
+
+    console.print(f"\n[bold cyan]📋 扫描复盘（近 {days} 天）[/bold cyan]")
+    if pending:
+        console.print(f"  [dim]另有 {len(pending)} 条今日扫描，待满 1 个交易日后可复盘[/dim]")
+    if not records:
+        console.print("  [yellow]还没有可复盘的扫描历史[/yellow]"
+                      "（扫描历史从 v0.8.11 开始累积；跑 bz scan <主题> 或 scan market [规则]，隔天再来 scan review）")
+        return
+
+    # 收集可评估记录的去重 codes（保持首现顺序）与缺价票标记（K线兜底用）
+    codes: list = []
+    has_kline_need = set()
+    for rec in records:
+        for it in rec.get("items") or []:
+            code = (it or {}).get("code")
+            if not code:
+                continue
+            if code not in codes:
+                codes.append(code)
+            price = it.get("price")
+            if not (isinstance(price, (int, float)) and price > 0):
+                has_kline_need.add(code)
+
+    # 1) 批量实时行情（唯一必须联网的一步；收盘后即为今日收盘价）
+    quotes: dict = {}
+    if codes:
+        try:
+            quotes = AKShareClient.get_realtime_quotes(codes)
+        except Exception as e:
+            logger.debug(f"复盘批量行情失败: {e}")
+    if not quotes:
+        console.print("  [yellow]行情获取失败（数据源慢或不可用），本次无法复盘涨跌，稍后重试[/yellow]")
+        return
+
+    # 2) 基准：沪深300 同窗日线（当日缓存；窗口含 10 天缓冲，兼容周末扫描日）
+    earliest = min((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp"))
+    bench_rows = _review_index_bars(earliest)
+    bench_last = bench_rows[-1]["close"] if bench_rows else None
+
+    def _bench_chg(scan_date: str):
+        if not bench_rows or bench_last is None:
+            return None
+        base = None
+        for r in bench_rows:
+            if r["date"] <= scan_date:
+                base = r["close"]
+            else:
+                break
+        if not base:
+            return None
+        return (bench_last - base) / base * 100
+
+    # 3) 逐条记录评估（旧→新，收在最近的扫描上）
+    df_cache: dict = {}   # {code: DataFrame|None}——K线兜底缓存，同码跨记录复用一次拉取
+    all_chgs: list = []
+    all_excess: list = []
+    total_missing = 0
+    md = [f"# 扫描复盘 - 近 {days} 天", "",
+          f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
+          + (f"｜基准沪深300 截至 {bench_rows[-1]['date']}" if bench_rows else "｜基准缺失"), ""]
+
+    for rec in reversed(records):
+        ts = (rec.get("timestamp") or "")[:16].replace("T", " ")
+        src = rec.get("source") or "?"
+        scan_date = (rec.get("timestamp") or "")[:10]
+        items = [it for it in (rec.get("items") or [])
+                 if isinstance(it, dict) and it.get("code")]
+        bench_chg = _bench_chg(scan_date)
+
+        rows = []
+        for it in items:
+            code = it["code"]
+            price = it.get("price")
+            if isinstance(price, (int, float)) and price > 0:
+                base = float(price)
+            else:
+                base = _review_base_from_kline(code, scan_date, df_cache)
+            q = quotes.get(code) or {}
+            try:
+                latest = float(q.get("price")) if q.get("price") else None
+            except (TypeError, ValueError):
+                latest = None
+            chg = excess = None
+            if base and latest:
+                chg = (latest - base) / base * 100
+                if bench_chg is not None:
+                    excess = chg - bench_chg
+            rows.append({"code": code, "name": str(it.get("name") or "")[:10],
+                         "base": base, "latest": latest, "chg": chg, "excess": excess})
+
+        chgs = [r["chg"] for r in rows if r["chg"] is not None]
+        excesses = [r["excess"] for r in rows if r["excess"] is not None]
+        missing = len(rows) - len(chgs)
+        total_missing += missing
+        all_chgs.extend(chgs)
+        all_excess.extend(excesses)
+
+        # 表格（涨红跌绿；按涨跌降序，无行情垫底）
+        table = Table(title=f"{src}（{ts}，{len(items)} 只）", show_lines=False)
+        table.add_column("代码", style="cyan", width=8)
+        table.add_column("名称", width=10, overflow="fold")
+        table.add_column("扫描价", justify="right", width=8)
+        table.add_column("现价", justify="right", width=8)
+        table.add_column("涨跌%", justify="right", width=8)
+        table.add_column("超额%", justify="right", width=8)
+        for r in sorted(rows, key=lambda x: (x["chg"] is None, -(x["chg"] or 0))):
+            if r["chg"] is None:
+                chg_s = "[dim]-[/dim]"
+            else:
+                st = "red" if r["chg"] > 0 else "green" if r["chg"] < 0 else "white"
+                chg_s = f"[{st}]{r['chg']:+.2f}[/{st}]"
+            if r["excess"] is None:
+                ex_s = "-"
+            else:
+                st = "red" if r["excess"] > 0 else "green" if r["excess"] < 0 else "white"
+                ex_s = f"[{st}]{r['excess']:+.2f}[/{st}]"
+            table.add_row(
+                r["code"], r["name"] or "-",
+                f"{r['base']:.2f}" if r["base"] else "-",
+                f"{r['latest']:.2f}" if r["latest"] else "无行情",
+                chg_s, ex_s)
+        console.print(table)
+
+        if chgs:
+            ups = sum(1 for c in chgs if c > 0)
+            beat = (f"{sum(1 for e in excesses if e > 0)}/{len(excesses)}"
+                    if excesses else "-")
+            bench_s = f"{bench_chg:+.2f}%" if bench_chg is not None else "-"
+            sub = (f"  小计: {ups}涨{len(chgs) - ups}跌"
+                   f" 平均 {sum(chgs) / len(chgs):+.2f}% 中位 {median(chgs):+.2f}%"
+                   f" ｜ 同期沪深300 {bench_s} ｜ 跑赢基准 {beat}")
+            if missing:
+                sub += f" ｜ [dim]{missing} 只无行情未计入[/dim]"
+            console.print(sub)
+            md.append(f"## {src}（{ts}，{len(items)} 只）")
+            md.append("")
+            md.append("| 代码 | 名称 | 扫描价 | 现价 | 涨跌% | 超额% |")
+            md.append("|---|---|---|---|---|---|")
+            for r in rows:
+                base_v = f"{r['base']:.2f}" if r["base"] else "-"
+                latest_v = f"{r['latest']:.2f}" if r["latest"] else "无行情"
+                chg_v = f"{r['chg']:+.2f}" if r["chg"] is not None else "-"
+                ex_v = f"{r['excess']:+.2f}" if r["excess"] is not None else "-"
+                md.append(f"| {r['code']} | {r['name'] or '-'} | "
+                          f"{base_v} | {latest_v} | {chg_v} | {ex_v} |")
+            if missing:
+                md.append(f"")
+                md.append(f"（{missing} 只无行情，未计入小计）")
+            md.append("")
+
+    # 汇总
+    console.print(f"\n[bold]汇总（{len(records)} 条扫描，{len(all_chgs)} 只次有行情"
+                  + (f"，{total_missing} 只次无行情未计入" if total_missing else "") + "）[/bold]")
+    if all_chgs:
+        ups = sum(1 for c in all_chgs if c > 0)
+        ratio = ups / len(all_chgs) * 100
+        avg = sum(all_chgs) / len(all_chgs)
+        verdict = "整体跑赢基准" if all_excess and sum(all_excess) > 0 else (
+            "整体略输基准" if all_excess else "")
+        ex_s = (f"，平均超额 {sum(all_excess) / len(all_excess):+.2f}pp（{verdict}）"
+                if all_excess else "")
+        console.print(f"  {ups} 涨 {len(all_chgs) - ups} 跌（上涨占比 {ratio:.0f}%），"
+                      f"平均 {avg:+.2f}%{ex_s}")
+        console.print(f"  [dim]上涨占比与平均超额是扫描质量的直接标尺：多次复盘持续为正，"
+                      f"说明该规则的选股在随后几日有真实优势[/dim]")
+        md.append(f"## 汇总")
+        md.append("")
+        md.append(f"- {len(records)} 条扫描，{len(all_chgs)} 只次有行情，"
+                  f"{ups} 涨 {len(all_chgs) - ups} 跌（上涨占比 {ratio:.0f}%），平均 {avg:+.2f}%{ex_s}")
+    else:
+        console.print("  [yellow]所有标的均无行情数据，无法统计[/yellow]")
+        md.append("## 汇总")
+        md.append("")
+        md.append("- 所有标的均无行情数据，无法统计")
+
+    # 落盘 markdown（复用 scan 报告目录，方便回看）
+    try:
+        _REVIEW_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        path = _REVIEW_REPORT_DIR / f"review_{_dt.now().strftime('%Y-%m-%d_%H-%M')}.md"
+        path.write_text("\n".join(md), encoding="utf-8")
+        console.print(f"  [dim]📝 复盘报告已存：{path}[/dim]")
+    except OSError as e:
+        logger.debug(f"复盘报告落盘失败: {e}")
+
+    # 请求开销透明行（反爬设计：批量 1 轮 + K线仅缺价票且当日缓存 + 指数 1 次/天）
+    kline_cnt = sum(1 for v in df_cache.values() if v is not None)
+    cost = f"  [dim]本次请求：行情批量 1 轮（60只/请求）"
+    if kline_cnt:
+        cost += f" + K线兜底 {kline_cnt} 只（已入磁盘缓存，同日重复复盘零请求）"
+    if bench_rows:
+        cost += f" + 沪深300 日线 1 次（当日缓存）"
+    console.print(cost + "[/dim]")
+
+
 def _scan_progress_callback(step: str, current: int, total: int, message: str):
     """扫描进度回调"""
     if step == "deep_analyze":
@@ -3281,8 +3581,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.10：市场恐慌指数（fear）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.10 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数)"
+        # v0.8.11：扫描复盘（scan review）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.11 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘)"
     )
     parser.add_argument(
         "--verbose",

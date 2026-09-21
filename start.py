@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.10"  # v0.8.10=市场恐慌指数(fear 全市场7成分+多周期回顾+走势图存本地+涨停池回填+chat工具)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.11"  # v0.8.11=扫描复盘(scan review 近N天扫描涨跌验证+scan_history历史落盘+沪深300基准)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -80,6 +80,7 @@ def show_help():
     print("│                           取最近一次扫描的第N只      │")
     print("│    scan market [规则]     全市场扫描                │")
     print("│    scan market deep       全市场深度分析            │")
+    print("│    scan review [天数]     复盘近N天扫描涨跌         │")
     print("│    可用规则:                                        │")
     print("│      healthy_pullback/ 健康回调   ★默认，缩量小跌    │")
     print("│      steady_advance  / 温和上涨   温和放量上涨       │")
@@ -343,6 +344,15 @@ def parse_input(user_input: str):
                 if len(rest) > 1:
                     args["market_query"] = " ".join(rest[1:]).strip()
             return ("scan_market", args)
+        # scan review [天数]：复盘近N天扫描历史的涨跌（验证选股，v0.8.11）
+        if len(parts) >= 2 and parts[1].lower() in ("review", "复盘"):
+            days = 7
+            if len(parts) >= 3:
+                try:
+                    days = max(1, min(90, int(parts[2])))
+                except ValueError:
+                    print(f"  [!] '{parts[2]}' 不是有效天数，已按默认 7 天处理（用法: scan review 14）")
+            return ("scan_review", {"days": days})
         return ("scan", {})
 
     # ── 扫描规则列表 ──
@@ -1444,6 +1454,7 @@ def run_cli(mode: str, args: dict):
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
+        scan_review,
     )
 
     ai_overrides = {}
@@ -1694,6 +1705,10 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "fear":
         show_fear(args)
+
+    elif mode == "scan_review":
+        # v0.8.11：扫描复盘——近N天扫描历史的涨跌验证（零AI调用，仅行情数据）
+        scan_review(days=args.get("days", 7))
 
     elif mode == "noai":
         _no_ai = not _no_ai
