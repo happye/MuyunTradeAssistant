@@ -68,9 +68,11 @@ def save_last_scan(items: list[dict], source: str) -> bool:
         return False
 
 
-def append_scan_history(items: list[dict], source: str) -> bool:
+def append_scan_history(items: list[dict], source: str,
+                        timestamp: Optional[str] = None) -> bool:
     """追加一条扫描历史（JSONL，一行一条，scan review 复盘用）。
 
+    timestamp 默认 now；旧报告导入（scan review import）传原报告时间戳回填历史。
     写入时顺手清理超过 _HISTORY_MAX_DAYS 的旧行（原子重写，损坏行一并丢弃）。
     失败不抛异常（返回 False，不阻塞扫描主流程）。
     """
@@ -78,7 +80,7 @@ def append_scan_history(items: list[dict], source: str) -> bool:
         _STATE_DIR.mkdir(parents=True, exist_ok=True)
         now = datetime.now()
         rec = {
-            "timestamp": now.isoformat(timespec="seconds"),
+            "timestamp": timestamp or now.isoformat(timespec="seconds"),
             "source": source,
             "count": len(items),
             "items": items,

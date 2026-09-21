@@ -2636,13 +2636,64 @@ def _review_base_from_kline(code: str, scan_date: str, df_cache: dict):
         return None
 
 
-def scan_review(days: int = 7):
-    """扫描复盘（v0.8.11）：核对近 N 天扫描历史每只票「扫描价→现价」的累计涨跌，
-    验证 bz scan / scan market 选股的准确性。
+_SPARK_CHARS = "▁▂▃▄▅▆▇"
 
-    反爬预算：批量实时行情 1 轮（≤60只/请求，全部票合并去重）+ K线仅对缺落盘价
-    的票兜底（kline_cache 当日磁盘缓存，同日重复复盘零请求）+ 沪深300 日线 1 次
-    （当日缓存）。当天扫描不进统计（未满 1 个交易日，无参考意义）。
+
+def _sparkline(values: list, max_points: int = 10) -> str:
+    """数值序列 → Unicode 迷你走势（8 档 min-max 归一化）。
+
+    超过 max_points 均匀降采样（保首尾端点，形状不变）——30 天窗口的完整逐日
+    数值在复盘报告里，控制台曲线只保留形状。少于 2 个有效点返回 —。
+    """
+    vals = [v for v in values if v is not None]
+    if len(vals) < 2:
+        return "—"
+    if len(vals) > max_points:
+        idx = [round(i * (len(vals) - 1) / (max_points - 1)) for i in range(max_points)]
+        vals = [vals[i] for i in idx]
+    lo, hi = min(vals), max(vals)
+    if hi - lo < 1e-9:
+        return _SPARK_CHARS[3] * len(vals)   # 全平
+    return "".join(_SPARK_CHARS[min(6, int((v - lo) / (hi - lo) * 7))] for v in vals)
+
+
+def _review_path(code: str, scan_date: str, base, latest, df_cache: dict, today_str: str):
+    """扫描日→今的收盘路径 [(标签, 价)]：锚点(扫描日基准价) + 其后逐 bar 收盘 + 实时价收尾。
+
+    锚点优先用落盘快照价（扫描时刻真实价格）；K线序列从 df_cache 取（须已预热）。
+    末 bar 非今日时把实时价接为最后一点（baostock 当日 bar 17:30 后才就绪，盘中也有走势）。
+    """
+    df = df_cache.get(code)
+    if df is None:
+        return []
+    date_col = "日期" if "日期" in df.columns else "date"
+    close_col = "收盘" if "收盘" in df.columns else "close"
+    if date_col not in df.columns or close_col not in df.columns:
+        return []
+    try:
+        sub = df[df[date_col].astype(str).str[:10] > scan_date]
+        pts = []
+        if base:
+            pts.append(("扫描日", float(base)))
+        for _, r in sub.iterrows():
+            c = r[close_col]
+            if c:
+                pts.append((str(r[date_col])[:10], float(c)))
+        last_date = str(sub.iloc[-1][date_col])[:10] if not sub.empty else None
+        if latest and (last_date is None or last_date < today_str):
+            pts.append(("现价", float(latest)))
+        return pts
+    except (ValueError, TypeError, KeyError):
+        return []
+
+
+def scan_review(days: int = 7):
+    """扫描复盘（v0.8.11）：核对近 N 天扫描历史每只票「扫描价→现价」的累计涨跌与
+    逐日走势（迷你曲线 + 报告存全量数值），验证 bz scan / scan market 选股的准确性。
+
+    反爬预算：批量实时行情 1 轮（≤60只/请求，全部票合并去重）+ 逐票日线各 1 次
+    （覆盖全窗口；A股历史无批量接口，逐票一次拉齐即下限；kline_cache 当日磁盘缓存，
+    同日重复复盘零请求）+ 沪深300 日线 1 次（当日缓存）。当天扫描不进统计。
     """
     from datetime import datetime as _dt
     from statistics import median
@@ -2663,21 +2714,22 @@ def scan_review(days: int = 7):
                       "（扫描历史从 v0.8.11 开始累积；跑 bz scan <主题> 或 scan market [规则]，隔天再来 scan review）")
         return
 
-    # 收集可评估记录的去重 codes（保持首现顺序）与缺价票标记（K线兜底用）
+    # 收集可评估记录的去重 codes（保持首现顺序）与每票最早扫描日（日线窗口锚点）
     codes: list = []
-    has_kline_need = set()
+    code_first_scan: dict = {}
     for rec in records:
+        scan_date = (rec.get("timestamp") or "")[:10]
         for it in rec.get("items") or []:
             code = (it or {}).get("code")
             if not code:
                 continue
             if code not in codes:
                 codes.append(code)
-            price = it.get("price")
-            if not (isinstance(price, (int, float)) and price > 0):
-                has_kline_need.add(code)
+            prev = code_first_scan.get(code)
+            if scan_date and (prev is None or scan_date < prev):
+                code_first_scan[code] = scan_date
 
-    # 1) 批量实时行情（唯一必须联网的一步；收盘后即为今日收盘价）
+    # 1) 批量实时行情（收盘后即为今日收盘价）
     quotes: dict = {}
     if codes:
         try:
@@ -2693,9 +2745,16 @@ def scan_review(days: int = 7):
     bench_rows = _review_index_bars(earliest)
     bench_last = bench_rows[-1]["close"] if bench_rows else None
 
-    def _bench_chg(scan_date: str):
+    # 3) 全部票的日线序列预热（走势列 + 缺价兜底共用；kline_cache 当日缓存
+    #    → 同日重复复盘零请求；旧→新遍历保证窗口从最早扫描日起一次拉齐）
+    df_cache: dict = {}   # {code: DataFrame|None}
+    for code in codes:
+        _review_base_from_kline(code, code_first_scan.get(code) or earliest, df_cache)
+
+    def _bench_point(scan_date: str):
+        """(基准锚点收盘, 同窗涨跌%)；基准缺失返回 (None, None)。"""
         if not bench_rows or bench_last is None:
-            return None
+            return None, None
         base = None
         for r in bench_rows:
             if r["date"] <= scan_date:
@@ -2703,17 +2762,21 @@ def scan_review(days: int = 7):
             else:
                 break
         if not base:
-            return None
-        return (bench_last - base) / base * 100
+            return None, None
+        return base, (bench_last - base) / base * 100
 
-    # 3) 逐条记录评估（旧→新，收在最近的扫描上）
-    df_cache: dict = {}   # {code: DataFrame|None}——K线兜底缓存，同码跨记录复用一次拉取
+    # 4) 逐条记录评估（旧→新，收在最近的扫描上）
     all_chgs: list = []
     all_excess: list = []
+    all_bench: list = []
     total_missing = 0
     md = [f"# 扫描复盘 - 近 {days} 天", "",
           f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
           + (f"｜基准沪深300 截至 {bench_rows[-1]['date']}" if bench_rows else "｜基准缺失"), ""]
+
+    # 5) 走势曲线聚合：各票按「扫描日后第 k 个点」对齐取累计涨幅均值；基准同窗对照
+    cohort_curve: dict = {}   # k -> [各票相对锚点的累计%]
+    bench_curve: dict = {}
 
     for rec in reversed(records):
         ts = (rec.get("timestamp") or "")[:16].replace("T", " ")
@@ -2721,7 +2784,9 @@ def scan_review(days: int = 7):
         scan_date = (rec.get("timestamp") or "")[:10]
         items = [it for it in (rec.get("items") or [])
                  if isinstance(it, dict) and it.get("code")]
-        bench_chg = _bench_chg(scan_date)
+        bench_base, bench_chg = _bench_point(scan_date)
+        if bench_chg is not None:
+            all_bench.append(bench_chg)
 
         rows = []
         for it in items:
@@ -2741,8 +2806,24 @@ def scan_review(days: int = 7):
                 chg = (latest - base) / base * 100
                 if bench_chg is not None:
                     excess = chg - bench_chg
+            path = _review_path(code, scan_date, base, latest, df_cache, today_str)
             rows.append({"code": code, "name": str(it.get("name") or "")[:10],
-                         "base": base, "latest": latest, "chg": chg, "excess": excess})
+                         "base": base, "latest": latest, "chg": chg, "excess": excess,
+                         "path": path})
+            # 走势曲线聚合（锚点=k0）
+            if path:
+                base0 = path[0][1]
+                if base0:
+                    for k, (_, v) in enumerate(path):
+                        cohort_curve.setdefault(k, []).append((v / base0 - 1) * 100)
+        if bench_base:
+            bench_curve.setdefault(0, []).append(0.0)
+            k = 0
+            for rb in bench_rows:
+                if rb["date"] <= scan_date:
+                    continue
+                k += 1
+                bench_curve.setdefault(k, []).append((rb["close"] / bench_base - 1) * 100)
 
         chgs = [r["chg"] for r in rows if r["chg"] is not None]
         excesses = [r["excess"] for r in rows if r["excess"] is not None]
@@ -2759,6 +2840,7 @@ def scan_review(days: int = 7):
         table.add_column("现价", justify="right", width=8)
         table.add_column("涨跌%", justify="right", width=8)
         table.add_column("超额%", justify="right", width=8)
+        table.add_column("走势", justify="center", width=10)
         for r in sorted(rows, key=lambda x: (x["chg"] is None, -(x["chg"] or 0))):
             if r["chg"] is None:
                 chg_s = "[dim]-[/dim]"
@@ -2770,11 +2852,18 @@ def scan_review(days: int = 7):
             else:
                 st = "red" if r["excess"] > 0 else "green" if r["excess"] < 0 else "white"
                 ex_s = f"[{st}]{r['excess']:+.2f}[/{st}]"
+            # 走势迷你曲线：涨红跌绿，无行情但有点位则淡显
+            sp = _sparkline([v for _, v in r["path"]])
+            if r["chg"] is not None:
+                st = "red" if r["chg"] > 0 else "green" if r["chg"] < 0 else "white"
+                sp = f"[{st}]{sp}[/{st}]"
+            elif r["path"]:
+                sp = f"[dim]{sp}[/dim]"
             table.add_row(
                 r["code"], r["name"] or "-",
                 f"{r['base']:.2f}" if r["base"] else "-",
                 f"{r['latest']:.2f}" if r["latest"] else "无行情",
-                chg_s, ex_s)
+                chg_s, ex_s, sp)
         console.print(table)
 
         if chgs:
@@ -2799,6 +2888,16 @@ def scan_review(days: int = 7):
                 ex_v = f"{r['excess']:+.2f}" if r["excess"] is not None else "-"
                 md.append(f"| {r['code']} | {r['name'] or '-'} | "
                           f"{base_v} | {latest_v} | {chg_v} | {ex_v} |")
+            # 逐日走势全量数值（控制台只放迷你曲线，数字落报告）
+            path_rows = [r for r in rows if len(r["path"]) >= 2]
+            if path_rows:
+                md.append("")
+                md.append("### 逐日走势")
+                md.append("")
+                for r in path_rows:
+                    seq = " → ".join(f"{lbl} {v:.2f}" for lbl, v in r["path"])
+                    cum = f"{r['chg']:+.2f}%" if r["chg"] is not None else "累计-"
+                    md.append(f"- {r['code']} {r['name'] or '-'}：{seq}（累计 {cum}）")
             if missing:
                 md.append(f"")
                 md.append(f"（{missing} 只无行情，未计入小计）")
@@ -2817,12 +2916,30 @@ def scan_review(days: int = 7):
                 if all_excess else "")
         console.print(f"  {ups} 涨 {len(all_chgs) - ups} 跌（上涨占比 {ratio:.0f}%），"
                       f"平均 {avg:+.2f}%{ex_s}")
+
+        # 整体走势曲线（各票按扫描日后第 k 个交易日对齐的累计涨幅均值 vs 基准同窗）
+        def _curve_spark(curve: dict) -> str:
+            ks = sorted(curve)
+            return _sparkline([sum(curve[k]) / len(curve[k]) for k in ks]) if ks else "—"
+        if len(cohort_curve) > 1:
+            c_st = "red" if avg > 0 else "green" if avg < 0 else "white"
+            bench_all = sum(all_bench) / len(all_bench) if all_bench else None
+            bench_part = (f" ｜ 沪深300 [dim]{_curve_spark(bench_curve)}[/dim]"
+                          f"[dim] {bench_all:+.2f}%[/dim]" if bench_all is not None else "")
+            console.print(f"  整体走势（扫描日→今，按交易日）：扫描组 [{c_st}]"
+                          f"{_curve_spark(cohort_curve)}[/][{c_st}] {avg:+.2f}%[/]"
+                          + bench_part)
         console.print(f"  [dim]上涨占比与平均超额是扫描质量的直接标尺：多次复盘持续为正，"
                       f"说明该规则的选股在随后几日有真实优势[/dim]")
         md.append(f"## 汇总")
         md.append("")
         md.append(f"- {len(records)} 条扫描，{len(all_chgs)} 只次有行情，"
                   f"{ups} 涨 {len(all_chgs) - ups} 跌（上涨占比 {ratio:.0f}%），平均 {avg:+.2f}%{ex_s}")
+        if len(cohort_curve) > 1:
+            ks = sorted(cohort_curve)
+            curve_s = " → ".join(
+                f"k{k}:{sum(cohort_curve[k]) / len(cohort_curve[k]):+.2f}%" for k in ks)
+            md.append(f"- 整体走势（按交易日对齐的累计涨幅均值）：{curve_s}")
     else:
         console.print("  [yellow]所有标的均无行情数据，无法统计[/yellow]")
         md.append("## 汇总")
@@ -2838,14 +2955,103 @@ def scan_review(days: int = 7):
     except OSError as e:
         logger.debug(f"复盘报告落盘失败: {e}")
 
-    # 请求开销透明行（反爬设计：批量 1 轮 + K线仅缺价票且当日缓存 + 指数 1 次/天）
+    # 请求开销透明行（反爬设计：批量 1 轮 + 逐票日线当日缓存 + 指数 1 次/天）
     kline_cnt = sum(1 for v in df_cache.values() if v is not None)
     cost = f"  [dim]本次请求：行情批量 1 轮（60只/请求）"
     if kline_cnt:
-        cost += f" + K线兜底 {kline_cnt} 只（已入磁盘缓存，同日重复复盘零请求）"
+        cost += f" + 逐票日线 {kline_cnt} 只（已入磁盘缓存，同日重复复盘零请求）"
     if bench_rows:
         cost += f" + 沪深300 日线 1 次（当日缓存）"
     console.print(cost + "[/dim]")
+
+
+def scan_review_import():
+    """把 v0.8.7~v0.8.10 落盘的旧扫描报告（分析报告/scan/*.md）导入 scan_history.jsonl。
+
+    报告格式（persist_scan_report 产出）：首行「# 扫描结果 - {来源}」带原始来源；
+    文件名前缀 YYYY-MM-DD_HH-MM 即扫描时间；「## 明细」段逐项「- 字段: 值」。
+    同 (时间, 来源) 已在历史中的自动跳过（可重复执行）。review_*.md 复盘报告不是扫描记录，跳过。
+    """
+    import re as _re
+    from src.cli import session_state
+
+    if not _REVIEW_REPORT_DIR.exists():
+        console.print("  [yellow]没有历史扫描报告目录（分析报告/scan/），无从导入[/yellow]")
+        return
+    files = sorted(p for p in _REVIEW_REPORT_DIR.glob("*.md")
+                   if not p.name.startswith("review_"))
+    if not files:
+        console.print("  [yellow]没有可导入的旧扫描报告[/yellow]（review_*.md 是复盘报告，自动跳过）")
+        return
+
+    known_src = {(r.get("timestamp") or "")[:16]: (r.get("source") or "")
+                 for r in session_state.get_scan_history()}
+    head_re = _re.compile(r"^### (\d+)\. (\S+) (.*)$")
+    kv_re = _re.compile(r"^- ([A-Za-z_][A-Za-z_0-9]*): (.*)$")
+    title_re = _re.compile(r"^# 扫描结果 - (.+)$")
+
+    imported = skipped_files = skipped_recs = bad_files = 0
+    for p in files:
+        # 文件名时间戳：YYYY-MM-DD_HH-MM_<安全化来源>.md
+        m = _re.match(r"^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_", p.name)
+        try:
+            lines = p.read_text(encoding="utf-8").splitlines()
+        except (OSError, UnicodeDecodeError):
+            bad_files += 1
+            continue
+        src_line = next((title_re.match(l) for l in lines if title_re.match(l)), None)
+        if m is None or src_line is None:
+            bad_files += 1
+            continue
+        timestamp = f"{m.group(1)}T{m.group(2).replace('-', ':')}:00"
+        source = src_line.group(1).strip()
+        if known_src.get(timestamp[:16]) == source:
+            skipped_recs += 1
+            continue
+
+        # 解析「## 明细」段：### 序号. 代码 名称 + 若干「- 字段: 值」
+        items, cur = [], None
+        in_detail = False
+        for line in lines:
+            if line.strip() == "## 明细":
+                in_detail = True
+                continue
+            if not in_detail:
+                continue
+            hm = head_re.match(line.strip())
+            if hm:
+                cur = {"code": hm.group(2), "name": hm.group(3).strip()}
+                items.append(cur)
+                continue
+            if cur is None:
+                continue
+            kv = kv_re.match(line.strip())
+            if kv:
+                key, raw = kv.group(1), kv.group(2).strip()
+                if key in ("code", "name"):
+                    continue
+                try:
+                    cur[key] = float(raw) if raw not in ("None", "") else None
+                except ValueError:
+                    cur[key] = raw
+            elif not line.strip():
+                cur = None
+        if not items:
+            bad_files += 1
+            continue
+        if session_state.append_scan_history(items, source, timestamp=timestamp):
+            imported += 1
+        else:
+            skipped_files += 1
+
+    console.print(f"\n[bold cyan]📥 旧扫描报告导入[/bold cyan]")
+    console.print(f"  导入 {imported} 条，已存在跳过 {skipped_recs} 条"
+                  + (f"，无法解析 {bad_files} 个" if bad_files else "")
+                  + (f"，写入失败 {skipped_files} 条" if skipped_files else ""))
+    if imported:
+        console.print(f"  [green]✓ 完成。跑 scan review 即可复盘这些历史扫描[/green]")
+    else:
+        console.print("  [dim]没有新增记录（全部已导入或无法解析）[/dim]")
 
 
 def _scan_progress_callback(step: str, current: int, total: int, message: str):

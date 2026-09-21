@@ -210,7 +210,9 @@ def test_scan_review_known_numbers(monkeypatch, tmp_path, capsys):
     assert "2涨0跌" in out or "2 涨 0 跌" in out
     assert "+55.00" in out       # 平均 (10+100)/2
     assert "跑赢基准 2/2" in out
-    assert "K线兜底 1 只" in out.replace("\n", "")  # 请求开销透明行（rich 换行容错）
+    assert "逐票日线 2 只" in out.replace("\n", "")  # 全部票预热日线（走势列），当日缓存
+    assert "▁" in out or "▂" in out or "▃" in out or "▄" in out or "▅" in out \
+        or "▆" in out or "▇" in out or "—" in out  # 走势列迷你曲线存在
     # 报告落盘且内容含关键数字
     reports = list((tmp_path / "报告").glob("review_*.md"))
     assert len(reports) == 1
@@ -291,3 +293,97 @@ def test_scan_review_bench_missing_degrades(monkeypatch, tmp_path, capsys):
     assert "+10.00" in out        # 涨跌照常
     assert "同期沪深300 -" in out  # 基准降级为 -
     assert "跑赢基准 -" in out
+
+
+# ── 走势迷你曲线与逐日路径 ───────────────────────────────
+
+def test_sparkline_known_values():
+    assert cli_main._sparkline([1.0, 2.0, 3.0, 4.0]) == "▁▃▅▇"
+    assert cli_main._sparkline([5.0]) == "—"          # 少于2点
+    assert cli_main._sparkline([]) == "—"
+    assert cli_main._sparkline([3.0, 3.0, 3.0]) == "▄▄▄"  # 全平
+    # 单调升：首低尾高，末字符应为最高档
+    sp = cli_main._sparkline([1.0, 2.0, 3.0])
+    assert sp[0] == "▁" and sp[-1] == "▇"
+
+
+def test_review_path_anchors_and_realtime_tail(monkeypatch):
+    """路径 = 锚点(扫描价) + 其后逐bar收盘 + 实时价收尾（末bar非今日时）。"""
+    df = pd.DataFrame({"日期": ["2026-09-20", "2026-09-21", "2026-09-22"],
+                       "收盘": ["10.0", "10.5", "10.8"]})
+    cache = {"600519": df}
+    # 扫描日 09-19：锚点 9.9（快照价），其后 3 根 bar，末 bar=今日 → 不接实时价
+    pts = cli_main._review_path("600519", "2026-09-19", 9.9, 11.0, cache, "2026-09-22")
+    assert [lbl for lbl, _ in pts] == ["扫描日", "2026-09-20", "2026-09-21", "2026-09-22"]
+    assert pts[0][1] == 9.9 and pts[-1][1] == 10.8
+    # 末 bar 昨日 → 实时价接尾
+    pts2 = cli_main._review_path("600519", "2026-09-19", 9.9, 11.0, cache, "2026-09-23")
+    assert pts2[-1] == ("现价", 11.0)
+    # 无 K线（停牌）→ 空路径
+    assert cli_main._review_path("000001", "2026-09-19", 5.0, None, cache, "2026-09-22") == []
+
+
+# ── 旧扫描报告导入（scan review import）──────────────────
+
+def _make_legacy_report(tmp_path, date_str="2026-09-10_10-00"):
+    """用 persist_scan_report 本尊生成旧格式报告（保证格式保真），再回填历史文件名。"""
+    monkey_items = [{"code": "600519", "name": "贵州茅台", "price": 1257.12,
+                     "change_pct": 1.2, "turnover_rate": 0.8},
+                    {"code": "000001", "name": "平安银行", "price": 11.7,
+                     "change_pct": -0.5, "turnover_rate": 0.6}]
+    old_report_dir = session_state._REPORT_DIR
+    session_state._REPORT_DIR = tmp_path / "scan"
+    try:
+        path = session_state.persist_scan_report(
+            monkey_items, "scan market 健康回调",
+            columns=[("price", "价"), ("change_pct", "涨跌%"), ("turnover_rate", "换手%")])
+    finally:
+        session_state._REPORT_DIR = old_report_dir
+    assert path
+    target = tmp_path / "scan" / f"{date_str}_scan_market_健康回调.md"
+    Path(path).rename(target)
+    return target
+
+
+def test_import_legacy_reports(monkeypatch, tmp_path):
+    _redirect_state(monkeypatch, tmp_path)
+    _make_legacy_report(tmp_path)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", tmp_path / "scan")
+
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    rows = session_state.get_scan_history()
+    assert len(rows) == 1
+    rec = rows[0]
+    assert rec["timestamp"] == "2026-09-10T10:00:00"   # 文件名时间戳回填
+    assert rec["source"] == "scan market 健康回调"       # 标题行原始来源
+    assert rec["count"] == 2
+    by_code = {it["code"]: it for it in rec["items"]}
+    assert by_code["600519"]["price"] == 1257.12        # 明细段字段数值化
+    assert by_code["000001"]["change_pct"] == -0.5
+
+
+def test_import_is_idempotent(monkeypatch, tmp_path, capsys):
+    _redirect_state(monkeypatch, tmp_path)
+    _make_legacy_report(tmp_path)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", tmp_path / "scan")
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    scan_review_import()   # 第二次：同(时间,来源)自动跳过
+    out = capsys.readouterr().out
+    assert "导入 0 条" in out or "已存在跳过 1 条" in out
+    assert len(session_state.get_scan_history()) == 1
+
+
+def test_parse_scan_review_import():
+    assert start.parse_input("scan review import") == ("scan_review_import", {})
+    assert start.parse_input("scan 复盘 导入") == ("scan_review_import", {})
+    assert start.parse_input("scan review 14") == ("scan_review", {"days": 14})  # 不受影响
+
+
+def test_sparkline_downsamples_long_paths():
+    """30 天窗口 30+ 点 → 降采样到 10 点（保端点），不再被列宽截断。"""
+    vals = [100.0 + i for i in range(30)]
+    sp = cli_main._sparkline(vals)
+    assert len(sp) == 10
+    assert sp[0] == "▁" and sp[-1] == "▇"   # 单调升：首尾端点保留

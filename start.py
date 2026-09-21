@@ -81,6 +81,7 @@ def show_help():
     print("│    scan market [规则]     全市场扫描                │")
     print("│    scan market deep       全市场深度分析            │")
     print("│    scan review [天数]     复盘近N天扫描涨跌         │")
+    print("│    scan review import     导入旧扫描报告(一次性)    │")
     print("│    可用规则:                                        │")
     print("│      healthy_pullback/ 健康回调   ★默认，缩量小跌    │")
     print("│      steady_advance  / 温和上涨   温和放量上涨       │")
@@ -346,12 +347,16 @@ def parse_input(user_input: str):
             return ("scan_market", args)
         # scan review [天数]：复盘近N天扫描历史的涨跌（验证选股，v0.8.11）
         if len(parts) >= 2 and parts[1].lower() in ("review", "复盘"):
+            rest = parts[2:]
+            # scan review import：导入 v0.8.7~v0.8.10 的旧扫描报告（一次性）
+            if rest and rest[0].lower() in ("import", "导入"):
+                return ("scan_review_import", {})
             days = 7
-            if len(parts) >= 3:
+            if rest:
                 try:
-                    days = max(1, min(90, int(parts[2])))
+                    days = max(1, min(90, int(rest[0])))
                 except ValueError:
-                    print(f"  [!] '{parts[2]}' 不是有效天数，已按默认 7 天处理（用法: scan review 14）")
+                    print(f"  [!] '{rest[0]}' 不是有效天数，已按默认 7 天处理（用法: scan review 14）")
             return ("scan_review", {"days": days})
         return ("scan", {})
 
@@ -1454,7 +1459,7 @@ def run_cli(mode: str, args: dict):
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
-        scan_review,
+        scan_review, scan_review_import,
     )
 
     ai_overrides = {}
@@ -1709,6 +1714,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "scan_review":
         # v0.8.11：扫描复盘——近N天扫描历史的涨跌验证（零AI调用，仅行情数据）
         scan_review(days=args.get("days", 7))
+
+    elif mode == "scan_review_import":
+        # v0.8.11：旧扫描报告（分析报告/scan/*.md）一次性导入历史
+        scan_review_import()
 
     elif mode == "noai":
         _no_ai = not _no_ai
