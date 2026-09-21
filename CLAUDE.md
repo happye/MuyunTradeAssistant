@@ -59,6 +59,8 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 | CLI single-stock analysis | `uv run python -m src.cli.main -l 600519` |
 | Benzong scoring | `bz 600519` / `bz scan 氮化镓,钽电容` / `bz --check` |
 | Expectation event calendar | REPL `expect` / `expect 60` (pre-event expectation overdraft + environment thermometer, v0.8.7) |
+| Fear index | REPL `fear` / `fear history` / `fear backfill` (objective 0-100 panic gauge, zero AI, v0.8.10) |
+| Scan review (validate scan picks) | REPL `scan review [days]` / `scan review import` (per-stock change vs CSI300 + sparkline path, zero AI, v0.8.11) |
 | Web UI preview | `preview_start` → "web" (`uv run python -m src.web.app`, :5000, autoPort) |
 | Tests (script-style, not pytest) | `.\.venv\Scripts\python.exe tests\test_xxx.py` |
 | Install dependencies | `uv sync` |
