@@ -1996,3 +1996,18 @@ P3（已取消）:
 - **用户可感知（§二·五）**: 版本号 5 处统一 v0.8.9.5；回测耗时从分钟级显著下降（-b 输出同结果更快）；EM 降级路径量比类信号恢复真实比例；kimi 用户的事件分类/AI 标注不再传非法参数
 - **更新记录**:
   - 2026-09-13: 彻查报告交付 + 用户批准修复批；全部修复 + 等价性门通过，commit 落地于本 commit
+
+---
+
+### ISS-094: scan review/观察池对抗审查修复批——import 数据丢失/持仓误入池/prune 移除（v0.8.12.1）
+- **状态**: ✅ 已解决（2026-09-23；来源=code-quality-guard 对 54c0475..4942332 五提交的对抗审查，13 项发现）
+- **修复清单**:
+  1. 🔴 **P0-1 import 数据静默丢失**：`append_scan_history` 原每次写入全量重写并 prune >90 天旧行，`scan_review_import` 逐文件调用它 → 导入 >90 天旧报告被同批/后续 append 静默删除（审查实证：导入 140/120/100 天 3 条最终只剩 1 条，且 UI 谎报成功条数）。修法：append 改纯追加（open("a")），**prune 整体移除**（`_history_row_keep` 删除）——prune 与「导入旧历史」的产品目的结构性冲突；体量 ~百行/年有界，展示窗口由查询侧（days 参数）控制
+  2. 🔴 **P0-2 测试隔离修复未入库**：test_session_state.py 的 4 处 `_SCAN_HISTORY_FILE` 重定向只存在于工作区（本会话早前修污染事故时遗漏提交），文档/LEARNINGS 却声称已修——HEAD 上全量 pytest 仍会污染真实 ~/.muyun。随本 commit 入库
+  3. 🟠 **P1-1 观察池持仓误入池**：`_watch_pool_touch` docstring/文档声称「无持仓」但未实现持仓检查——持仓股 HOLD 分析被写入池。修法：签名加 `pos` + `current_ratio>0` 短路，analyze_live 与 chat tools 两路传参
+  4. 🟠 **P1-2 测试 mock 错被测对象**：持仓用例用 `exit_triggered` 模拟（走的是触发器检查分支），真实「有持仓+HOLD+无触发」缺陷路径永远测不到。修法：随 P1-1 补真实 current_ratio stub 用例（含空仓记录不挡入池）
+  5. 🟡 **P2 批**：成本行按 60只/请求向上取整如实报轮数（原「1 轮」在 >60 只时失实）；`min(..., default=)` 防记录全无 timestamp 崩溃；`_sparkline`/`_review_path` NaN 防御（`v == v`）；in_pool 文案入池价缺失显示「当时未取到价」而非「当时 None」；chat 观察池钩子静默 except 补 debug 日志；test_scan_review 隔离补 `_WATCH_FILE`；CLAUDE.md 命令表重复行清除
+- **已知剩余（本轮不修）**: P2-5——scan review md 报告的记录段包在 `if chgs:` 内，全部无行情的记录报告整段缺失（汇总计数对不上），待下次报告层重构一并处理
+- **验证**: 新增 import 旧记录存活回归（140 天记录 + 两次后续 append 存活）+ 持仓不入池断言；全量 755 passed / 2 skipped（5 失败为既有失败，54c0475 基线即有）
+- **更新记录**:
+  - 2026-09-23: 审查 → 修复 → 复审全绿，commit 落地于本 commit

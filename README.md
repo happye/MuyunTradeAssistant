@@ -395,6 +395,23 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.12.1 (对抗审查修复批) - 2026-09-23
+
+- 🐛 **P0-1 scan review import 数据静默丢失**：`append_scan_history` 原每次写入
+  全量重写并 prune >90 天旧行，import 逐文件调用它 → 导入 >90 天旧报告会被同批/
+  后续 append 静默删除（实测：导入 140/120/100 天 3 条最终只剩 1 条）。修法=append
+  改纯追加（open("a")），prune 整体移除——它与「导入旧历史」的产品目的结构性冲突；
+  体量 ~百行/年有界，展示窗口由查询侧（days 参数）控制。
+- 🐛 **P0-2 test_session_state 隔离修复入库**：此前该修复只在工作区未提交，HEAD 上
+  全量 pytest 仍会污染真实 `~/.muyun/scan_history.jsonl`（文档已声称已修=失实）。
+- 🐛 **P1-1 观察池持仓误入池**：`_watch_pool_touch` 未查持仓，持仓股 HOLD 分析会被
+  入池；签名加 `pos` + `current_ratio>0` 短路，CLI/chat 两路传参。
+- 🟠 成本行按 60只/请求向上取整如实报轮数；`min(..., default=)` 防全无 timestamp 崩溃；
+  NaN 防御（`_sparkline`/`_review_path`）；in_pool 文案入池价缺失不再显示「当时 None」；
+  chat 钩子补 debug 日志；test_scan_review 隔离补 `_WATCH_FILE`。
+- 测试 +1（旧记录存活回归；持仓不入池断言并入既有用例）；全量 755 passed / 2 skipped
+  （5 失败为既有失败）。
+
 ### v0.8.12 (观察池: watch 命令) - 2026-09-23
 
 - 🆕 **观察池落地**：`~/.muyun/watchlist.jsonl` 事件流（add/remove，重放得在池）。
@@ -417,8 +434,8 @@ volume_ratio:
 ### v0.8.11 (扫描复盘: scan review 命令) - 2026-09-22
 
 - 🆕 **扫描历史落盘**：`save_last_scan` 收口（scan market / bz scan / chat 三路共用）
-  同步追加 `~/.muyun/scan_history.jsonl`（JSONL 一行一条，>90 天写入时自动清理，
-  损坏行跳过）——历史记录跨会话保留，此前只存最近一次（last_scan.json 逐次覆盖）。
+  同步追加 `~/.muyun/scan_history.jsonl`（JSONL 一行一条；v0.8.12.1 起全量保留不
+  prune，损坏行读取时跳过）——历史记录跨会话保留，此前只存最近一次（last_scan.json 逐次覆盖）。
 - 🆕 **`scan review [天数]` 命令**（别名 `scan 复盘`，默认 7 天，clamp 1-90）：核对近 N 天
   扫描历史每只票「扫描价→现价」累计涨跌 + **逐日走势**（表格迷你曲线列 ▁▂▃▄▅▆▇，
   超 10 点均匀降采样保端点，报告内存逐日全量数值）+ **沪深300 同窗基准超额** +

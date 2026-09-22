@@ -62,7 +62,6 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 | Fear index | REPL `fear` / `fear history` / `fear backfill` (objective 0-100 panic gauge, zero AI, v0.8.10) |
 | Scan review (validate scan picks) | REPL `scan review [days]` / `scan review import` (per-stock change vs CSI300 + sparkline path, zero AI, v0.8.11) |
 | Watch pool | REPL `watch` / `watch add <code|#N>` / `watch rm` (auto-collects WATCH picks on analysis; review-style tracking since entry, v0.8.12) |
-| Watch pool | REPL `watch` / `watch add <code|#N>` / `watch rm` (auto-collects WATCH picks on analysis; review-style tracking since entry, v0.8.12) |
 | Web UI preview | `preview_start` → "web" (`uv run python -m src.web.app`, :5000, autoPort) |
 | Tests (script-style, not pytest) | `.\.venv\Scripts\python.exe tests\test_xxx.py` |
 | Install dependencies | `uv sync` |

@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.12"  # v0.8.12=观察池(WATCH自动入池+watch命令复用review引擎看入池以来涨跌)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.12.1"  # v0.8.12.1=对抗审查修复批(import prune数据丢失/观察池持仓误入池/prune移除)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

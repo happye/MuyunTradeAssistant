@@ -1,7 +1,8 @@
 """session_state 模块测试（体验重构 Step 1）
 
 覆盖：save/get 往返、resolve_index 正常/越界/无scan、persist 落盘、count、过期提示。
-用 tmp_path monkeypatch 避免污染真实 ~/.muyun/last_scan.json。
+用 tmp_path monkeypatch 避免污染真实 ~/.muyun/last_scan.json 与 scan_history.jsonl
+（v0.8.11 起 save_last_scan 同时追加历史，重定向必须两者都盖）。
 """
 
 from datetime import datetime, timedelta
@@ -12,6 +13,7 @@ from src.cli import session_state
 
 def test_save_and_get(monkeypatch, tmp_path):
     monkeypatch.setattr(session_state, "_LAST_SCAN_FILE", tmp_path / "last_scan.json")
+    monkeypatch.setattr(session_state, "_SCAN_HISTORY_FILE", tmp_path / "scan_history.jsonl")
     items = [
         {"code": "002230", "name": "科大讯飞", "score": 82, "grade": "B", "confidence": 0.8},
         {"code": "688256", "name": "寒武纪", "score": 78, "grade": "B", "confidence": 0.75},
@@ -28,6 +30,7 @@ def test_save_and_get(monkeypatch, tmp_path):
 
 def test_resolve_index_normal(monkeypatch, tmp_path):
     monkeypatch.setattr(session_state, "_LAST_SCAN_FILE", tmp_path / "last_scan.json")
+    monkeypatch.setattr(session_state, "_SCAN_HISTORY_FILE", tmp_path / "scan_history.jsonl")
     items = [{"code": "A", "name": "a"}, {"code": "B", "name": "b"}, {"code": "C", "name": "c"}]
     session_state.save_last_scan(items, "test")
     r = session_state.resolve_index(1)
@@ -42,6 +45,7 @@ def test_resolve_index_normal(monkeypatch, tmp_path):
 
 def test_resolve_index_out_of_range(monkeypatch, tmp_path):
     monkeypatch.setattr(session_state, "_LAST_SCAN_FILE", tmp_path / "last_scan.json")
+    monkeypatch.setattr(session_state, "_SCAN_HISTORY_FILE", tmp_path / "scan_history.jsonl")
     session_state.save_last_scan([{"code": "X"}], "test")
     assert session_state.resolve_index(0) is None   # 1-based，0 越界
     assert session_state.resolve_index(2) is None   # 超出
@@ -99,6 +103,7 @@ def test_persist_report_custom_columns(monkeypatch, tmp_path):
 
 def test_count(monkeypatch, tmp_path):
     monkeypatch.setattr(session_state, "_LAST_SCAN_FILE", tmp_path / "last_scan.json")
+    monkeypatch.setattr(session_state, "_SCAN_HISTORY_FILE", tmp_path / "scan_history.jsonl")
     assert session_state.last_scan_count() == 0
     session_state.save_last_scan([{"code": str(i)} for i in range(5)], "test")
     assert session_state.last_scan_count() == 5

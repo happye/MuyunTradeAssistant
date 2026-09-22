@@ -139,9 +139,17 @@ def test_touch_ignores_buy_sell_and_positions(monkeypatch, tmp_path):
     ee = type("E", (), {"entry_exit": {"exit_triggered": True}})()
     assert cli_main._watch_pool_touch(_FakeDecision("HOLD"), ee, _FakeSD()) is None
 
+    # 对抗审查 P1-1 回归：有持仓 + HOLD + 无买卖点触发 → 不入池（此前缺陷：会被入池）
+    held_pos = type("P", (), {"current_ratio": 0.3})()
+    assert cli_main._watch_pool_touch(_FakeDecision("HOLD"), None, _FakeSD(), pos=held_pos) is None
+    # 空仓记录（current_ratio=0）不挡入池
+    empty_pos = type("P", (), {"current_ratio": 0.0})()
+    info = cli_main._watch_pool_touch(_FakeDecision("WATCH"), None, _FakeSD(), pos=empty_pos)
+    assert info and info["status"] == "added"
+
     # 无价数据 → 不入池
     assert cli_main._watch_pool_touch(_FakeDecision("WATCH"), None, _FakeSD(price=None)) is None
-    assert session_state.get_watch_active() == []
+    assert len(session_state.get_watch_active()) == 1   # 只有空仓 WATCH 那一条
 
 
 # ── 人话摘要两态文案 ─────────────────────────────────────

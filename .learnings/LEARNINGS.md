@@ -1595,3 +1595,33 @@ ISS-092 同一段任务指令里混着两类语义，两轮返工：①「当发
 - Source: session_finding
 - Related Files: src/cli/main.py, src/cli/session_state.py, tests/core/test_session_state.py, tests/core/test_scan_review.py
 - Tags: broad-except, silent-fail-open, test-isolation, monkeypatch-redirect, scan-review
+
+## [LRN-20260923-013] best_practice
+**Logged**: 2026-09-23T01:30:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: backend, tests
+
+### Summary
+**对抗审查抓住三类「文档/测试声称 ⟷ 代码事实」的静默漂移：primitive 带重写副作用、修复未入库、测试 mock 错被测条件。**
+
+scan review/观察池五提交的 code-quality-guard 对抗审查（13 项发现）里最值钱的三条：
+
+1. **P0-1 primitive 携带重写副作用**：`append_scan_history` 每次写入「读全文件→prune>90天→重写」，而 import 逐文件调它 → 导入 >90 天旧报告被同批/后续 append 静默删除且 UI 报成功。结构病：**单条写入原语不该拥有全量重写/清理权**——原语只做纯追加，批量/清理策略归上层调用方；且「导入旧数据」类功能与任何基于时间窗的自动清理结构性冲突，设计时要显式对表。
+2. **P0-2 修复未入库**：测试隔离的修复只改在工作区，声称「已修+已清除」的文档/LEARNINGS 却先提交了——任何人 clone 后复跑全量测试复现污染。纪律：**声称修复的 commit 必须包含修复 diff 本身**，docs 与 fix 永远同 commit。
+3. **P1-1/P1-2 声称⟷实现⟷测试三层漂移**：docstring 写「无持仓」代码没查持仓；测试用 `exit_triggered` mock「有持仓」场景——恰好 mock 掉了被测条件本身，真实缺陷路径（持仓+HOLD+无触发）永远跑不到。**测试的每个「不入池理由」都要有一条直接路径用例**，mock 条件 ≠ 被测条件。
+
+### Suggested Action
+- 新写「带清理语义的写入函数」前先枚举全部调用方的时间尺度（本次/当天/任意历史）——有「导入历史」类调用方就禁用时间窗清理
+- commit 拆分时检查：docs 声称的每个修复是否真在同一 diff 里（`git show --stat` 对文档与代码文件逐一对）
+- 测试里 mock 的条件字段必须与被测代码实际读取的字段同名（读 code 不读 test-double 的别名）
+
+### Metadata
+- Source: code-quality-guard adversarial review
+- Related Files: src/cli/session_state.py, src/cli/main.py, tests/core/test_session_state.py, tests/core/test_watch_pool.py
+- Tags: side-effect-primitive, silent-data-loss, test-isolation, claim-impl-drift, adversarial-review
+- See Also: LRN-20260922-012（宽 except 吞笔误/写盘副作用测试隔离——同日同Feature连续两轮，属同族模式）
+- Pattern-Key: harden.side_effect_primitive
+- Recurrence-Count: 2
+- First-Seen: 2026-09-22
+- Last-Seen: 2026-09-23

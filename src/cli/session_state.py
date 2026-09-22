@@ -28,8 +28,8 @@ _STATE_DIR = Path.home() / ".muyun"
 _LAST_SCAN_FILE = _STATE_DIR / "last_scan.json"
 # 扫描历史（v0.8.11，scan review 复盘用）：JSONL 追加式，一行一条扫描记录。
 # 与 last_scan.json（只存最近一次）互补——历史供 scan review 验证选股涨跌表现。
+# v0.8.12.1 起全量保留不 prune（导入旧记录不能被静默删），窗口由查询侧控制。
 _SCAN_HISTORY_FILE = _STATE_DIR / "scan_history.jsonl"
-_HISTORY_MAX_DAYS = 90  # 复盘窗口上限；append 时顺手清理更旧行，文件不膨胀
 # 当日已深分析记录（v0.8.7.9，l all 去重用）：文件只存当天 {日期: {code: {time, source}}}，
 # 写入时自动覆盖旧日期 → 文件不膨胀；语义对齐笨总六维当日缓存（跨天自动失效）。
 _DEEP_ANALYZED_FILE = _STATE_DIR / "deep_analyzed.json"
@@ -74,27 +74,21 @@ def append_scan_history(items: list[dict], source: str,
     """追加一条扫描历史（JSONL，一行一条，scan review 复盘用）。
 
     timestamp 默认 now；旧报告导入（scan review import）传原报告时间戳回填历史。
-    写入时顺手清理超过 _HISTORY_MAX_DAYS 的旧行（原子重写，损坏行一并丢弃）。
+    纯追加不重写不 prune：导入的旧记录（可能 >90 天）不能被后续扫描静默删除
+    （对抗审查 P0-1 实证过 prune 会同轮互删）；体量有界（~百行/年），展示窗口
+    由查询侧（scan review 的 days 参数）控制，与存储解耦。
     失败不抛异常（返回 False，不阻塞扫描主流程）。
     """
     try:
         _STATE_DIR.mkdir(parents=True, exist_ok=True)
-        now = datetime.now()
         rec = {
-            "timestamp": timestamp or now.isoformat(timespec="seconds"),
+            "timestamp": timestamp or datetime.now().isoformat(timespec="seconds"),
             "source": source,
             "count": len(items),
             "items": items,
         }
-        old_rows, _ = _read_scan_history_rows()
-        kept = [r for r in old_rows if _history_row_keep(r, now)]
-        kept.append(rec)
-        tmp = _SCAN_HISTORY_FILE.with_suffix(".jsonl.tmp")
-        tmp.write_text(
-            "\n".join(json.dumps(r, ensure_ascii=False) for r in kept) + "\n",
-            encoding="utf-8",
-        )
-        tmp.replace(_SCAN_HISTORY_FILE)
+        with _SCAN_HISTORY_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
         return True
     except OSError as e:
         logger.warning(f"append_scan_history 失败: {e}")
@@ -124,15 +118,6 @@ def _read_scan_history_rows() -> tuple[list[dict], int]:
     except OSError as e:
         logger.debug(f"scan_history.jsonl 读取失败: {e}")
         return [], 0
-
-
-def _history_row_keep(row: dict, now: datetime) -> bool:
-    """prune 判定：timestamp 可解析且距今不超过 _HISTORY_MAX_DAYS。"""
-    try:
-        ts = datetime.fromisoformat(row.get("timestamp", ""))
-    except (ValueError, TypeError):
-        return False
-    return (now - ts).days <= _HISTORY_MAX_DAYS
 
 
 def get_scan_history(days: Optional[int] = None) -> list[dict]:

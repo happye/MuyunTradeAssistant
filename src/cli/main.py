@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.12[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.12.1[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -895,7 +895,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         )
         # v0.8.12: 观察池——WATCH 语义无持仓自动入池（失败不影响分析）
         try:
-            _watch_info = _watch_pool_touch(result, strategy_decision, stock_data)
+            _watch_info = _watch_pool_touch(result, strategy_decision, stock_data, pos)
         except Exception as e:
             logger.debug(f"观察池钩子异常(不影响主流程): {e}")
             _watch_info = None
@@ -1541,7 +1541,7 @@ def _plain_stage(sd) -> str:
     return _STAGE_PLAIN.get(key, "数据不足，无法判断阶段")
 
 
-def _watch_pool_touch(result, strategy_decision, sd):
+def _watch_pool_touch(result, strategy_decision, sd, pos=None):
     """WATCH 语义且无持仓时把股票放入观察池（v0.8.12，兑现摘要「放进观察池」的承诺）。
 
     条件与人话摘要的观望分支一致：无持仓、决策非 BUY/SELL、无 entry/exit 触发。
@@ -1550,6 +1550,8 @@ def _watch_pool_touch(result, strategy_decision, sd):
     """
     try:
         from src.cli import session_state
+        if pos is not None and getattr(pos, "current_ratio", 0) > 0:
+            return None   # 持仓股走「继续持有」分支，不入观察池
         if result is None or sd is None or not sd.price:
             return None
         ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
@@ -1622,10 +1624,13 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
             e_ts = (entry.get("timestamp") or "")[:10]
             e_item = entry.get("item") or {}
             e_price = e_item.get("price")
-            chg_txt = ""
             if e_price and sd is not None and sd.price:
                 chg_txt = f"，现 {(sd.price - e_price) / e_price * 100:+.1f}%"
-            lines.append(("dim", f"已在观察池（{e_ts} 加入，当时 {e_price}{chg_txt}，watch 查看）。等信号出现再动手。"))
+                price_txt = f"当时 {e_price}"
+            else:
+                chg_txt = ""
+                price_txt = "当时未取到价"
+            lines.append(("dim", f"已在观察池（{e_ts} 加入，{price_txt}{chg_txt}，watch 查看）。等信号出现再动手。"))
         else:
             lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
 
@@ -2697,8 +2702,9 @@ def _sparkline(values: list, max_points: int = 10) -> str:
 
     超过 max_points 均匀降采样（保首尾端点，形状不变）——30 天窗口的完整逐日
     数值在复盘报告里，控制台曲线只保留形状。少于 2 个有效点返回 —。
+    NaN/None 视为无效点（停牌行数据源可能给 NaN）。
     """
-    vals = [v for v in values if v is not None]
+    vals = [v for v in values if v is not None and v == v]
     if len(vals) < 2:
         return "—"
     if len(vals) > max_points:
@@ -2754,7 +2760,7 @@ def _review_path(code: str, scan_date: str, base, latest, df_cache: dict, today_
             pts.append(("扫描日", float(base)))
         for _, r in sub.iterrows():
             c = r[close_col]
-            if c:
+            if c and c == c:   # NaN != NaN：停牌行收盘价可能为 NaN
                 pts.append((str(r[date_col])[:10], float(c)))
         last_date = str(sub.iloc[-1][date_col])[:10] if not sub.empty else None
         if latest and (last_date is None or last_date < today_str):
@@ -2838,7 +2844,8 @@ def scan_review(days: int = 7):
         return
 
     # 2) 基准：沪深300 同窗日线（当日缓存；窗口含 10 天缓冲，兼容周末扫描日）
-    earliest = min((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp"))
+    earliest = min(((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp")),
+                   default=today_str)
     bench_rows = _review_index_bars(earliest)
     bench_last = bench_rows[-1]["close"] if bench_rows else None
 
@@ -3057,9 +3064,10 @@ def scan_review(days: int = 7):
     except OSError as e:
         logger.debug(f"复盘报告落盘失败: {e}")
 
-    # 请求开销透明行（反爬设计：批量 1 轮 + 逐票日线当日缓存 + 指数 1 次/天）
+    # 请求开销透明行（反爬设计：批量按 60只/请求向上取整 + 逐票日线当日缓存 + 指数 1 次/天）
     kline_cnt = sum(1 for v in df_cache.values() if v is not None)
-    cost = f"  [dim]本次请求：行情批量 1 轮（60只/请求）"
+    batch_rounds = -(-len(codes) // 60) if codes else 0   # ceil，>60 只时如实报多轮
+    cost = f"  [dim]本次请求：行情批量 {batch_rounds} 轮（60只/请求）"
     if kline_cnt:
         cost += f" + 逐票日线 {kline_cnt} 只（已入磁盘缓存，同日重复复盘零请求）"
     if bench_rows:
@@ -3240,7 +3248,8 @@ def watch_pool(args: dict):
         console.print("  [yellow]行情获取失败（数据源慢或不可用），稍后重试[/yellow]")
         return
 
-    earliest = min((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp"))
+    earliest = min(((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp")),
+                   default=_dt.now().strftime("%Y-%m-%d"))
     bench_rows = _review_index_bars(earliest)
     bench_last = bench_rows[-1]["close"] if bench_rows else None
 
@@ -3376,7 +3385,8 @@ def watch_pool(args: dict):
             logger.debug(f"观察池报告落盘失败: {e}")
 
     kline_cnt = sum(1 for v in df_cache.values() if v is not None)
-    cost = f"  [dim]本次请求：行情批量 1 轮（60只/请求）"
+    batch_rounds = -(-len(codes) // 60) if codes else 0
+    cost = f"  [dim]本次请求：行情批量 {batch_rounds} 轮（60只/请求）"
     if kline_cnt:
         cost += f" + 逐票日线 {kline_cnt} 只（当日缓存，重复查看零请求）"
     if bench_rows:
@@ -4117,8 +4127,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.12：观察池（watch）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.12 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        # v0.8.12.1：对抗审查修复批；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.12.1 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

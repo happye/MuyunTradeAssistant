@@ -99,11 +99,15 @@ def test_get_scan_history_skips_corrupt_lines(monkeypatch, tmp_path):
     assert len(rows) == 1 and rows[0]["source"] == "好"
 
 
-def test_append_prunes_rows_older_than_90_days(monkeypatch, tmp_path):
+def test_append_keeps_rows_beyond_90_days(monkeypatch, tmp_path):
+    """v0.8.12.1 起 append 不再 prune（对抗审查 P0-1：prune 会把导入的旧记录静默删掉）。
+
+    存储全量保留；展示窗口由查询侧（get_scan_history 的 days / scan review 的 clamp）控制。
+    """
     _redirect_state(monkeypatch, tmp_path)
     now = datetime.now()
-    old = {"timestamp": (now - timedelta(days=100)).isoformat(timespec="seconds"),
-           "source": "陈年", "count": 1, "items": []}
+    old = {"timestamp": (now - timedelta(days=140)).isoformat(timespec="seconds"),
+           "source": "陈年导入", "count": 1, "items": []}
     keep = {"timestamp": (now - timedelta(days=10)).isoformat(timespec="seconds"),
             "source": "保留", "count": 1, "items": []}
     (tmp_path / "scan_history.jsonl").write_text(
@@ -112,7 +116,29 @@ def test_append_prunes_rows_older_than_90_days(monkeypatch, tmp_path):
     session_state.append_scan_history([{"code": "600519"}], "新扫描")
     rows = session_state.get_scan_history()
     sources = [r["source"] for r in rows]
-    assert "陈年" not in sources and "保留" in sources and "新扫描" in sources
+    assert "陈年导入" in sources and "保留" in sources and "新扫描" in sources
+
+
+def test_import_old_records_survive_subsequent_appends(monkeypatch, tmp_path):
+    """P0-1 回归锁死：导入 >90 天的旧报告后，后续扫描追加不得删掉它们。"""
+    _redirect_state(monkeypatch, tmp_path)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", tmp_path / "报告")
+    old_dt = (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d_%H-%M")
+    report_dir = tmp_path / "报告"
+    report_dir.mkdir(parents=True, exist_ok=True)
+    (report_dir / f"{old_dt}_bz_scan_陈年主题.md").write_text(
+        "# 扫描结果 - bz scan 陈年主题\n\n> 时间：占位\n> 共 1 只\n\n"
+        "## 明细\n\n### 1. 600519 贵州茅台\n- price: 100.0\n\n",
+        encoding="utf-8")
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    # 之后再正常扫描追加两次
+    session_state.append_scan_history([{"code": "000001"}], "scan market 新")
+    session_state.append_scan_history([{"code": "300750"}], "bz scan 新")
+    rows = session_state.get_scan_history()
+    sources = [r["source"] for r in rows]
+    assert "bz scan 陈年主题" in sources, "导入的 >90 天记录被后续 append 静默删除（P0-1 复发）"
+    assert len(rows) == 3
 
 
 def test_save_last_scan_also_appends_history(monkeypatch, tmp_path):
@@ -174,6 +200,7 @@ def _patch_net_and_state(monkeypatch, tmp_path, records, quotes, kline_df=None, 
         return [r for r in records if (r.get("timestamp") or "")[:10] >= cutoff]
 
     monkeypatch.setattr(session_state, "get_scan_history", _fake_history)
+    monkeypatch.setattr(session_state, "_WATCH_FILE", tmp_path / "watchlist.jsonl")  # 池列读取不触碰真实文件
     monkeypatch.setattr("src.data.akshare_client.AKShareClient.get_realtime_quotes",
                         lambda codes, retry=1: quotes)
     if kline_df is not None:

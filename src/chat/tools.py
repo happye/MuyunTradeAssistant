@@ -331,9 +331,9 @@ def _analyze_stock_single(stock_code: str) -> str:
         # v0.8.12: 观察池——WATCH 语义无持仓自动入池（与 CLI l 同一钩子；失败不影响分析）
         try:
             from src.cli.main import _watch_pool_touch
-            _watch_pool_touch(decision_result, strategy_decision, stock_data)
-        except Exception:
-            pass
+            _watch_pool_touch(decision_result, strategy_decision, stock_data, pos)
+        except Exception as e:
+            logger.debug(f"chat 观察池入池失败(不影响分析): {e}")
 
         from src.chat.formatter import format_analysis_result
         result = format_analysis_result(
