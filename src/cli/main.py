@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.11[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.12[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -893,9 +893,15 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
                     high_since_entry=pos.high_since_entry if pos else None,
             trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
         )
+        # v0.8.12: 观察池——WATCH 语义无持仓自动入池（失败不影响分析）
+        try:
+            _watch_info = _watch_pool_touch(result, strategy_decision, stock_data)
+        except Exception as e:
+            logger.debug(f"观察池钩子异常(不影响主流程): {e}")
+            _watch_info = None
         # v0.8.7.1: 人话摘要面板（白话结论在最前；渲染失败不影响主流程）
         try:
-            _print_plain_summary(result, strategy_decision, stock_data, pos)
+            _print_plain_summary(result, strategy_decision, stock_data, pos, watch_info=_watch_info)
         except Exception as e:
             logger.debug(f"人话摘要渲染失败(不影响主流程): {e}")
 
@@ -1535,7 +1541,40 @@ def _plain_stage(sd) -> str:
     return _STAGE_PLAIN.get(key, "数据不足，无法判断阶段")
 
 
-def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
+def _watch_pool_touch(result, strategy_decision, sd):
+    """WATCH 语义且无持仓时把股票放入观察池（v0.8.12，兑现摘要「放进观察池」的承诺）。
+
+    条件与人话摘要的观望分支一致：无持仓、决策非 BUY/SELL、无 entry/exit 触发。
+    在池则不重复入库（返回 in_pool 供摘要改口「已在观察池」）。
+    入池价取当前分析价；任何异常只 debug，绝不影响分析主流程。
+    """
+    try:
+        from src.cli import session_state
+        if result is None or sd is None or not sd.price:
+            return None
+        ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
+        if ee.get("exit_triggered") or ee.get("entry_triggered"):
+            return None
+        decision = result.decision.value
+        if decision in ("BUY", "SELL"):
+            return None
+        code = normalize_stock_code(sd.stock_code.split(".")[0]) if sd.stock_code else ""
+        if not code:
+            return None
+        entry = session_state.watch_entry_of(code)
+        if entry is not None:
+            return {"status": "in_pool", "entry": entry}
+        item = {"code": code, "name": str(sd.stock_name or "")[:10], "price": sd.price,
+                "reason": "分析决策观望"}
+        if not session_state.append_watch_event("add", [item], "自动：分析决策观望"):
+            return None
+        return {"status": "added", "item": item}
+    except Exception as e:
+        logger.debug(f"观察池入池失败(不影响分析): {e}")
+        return None
+
+
+def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None) -> None:
     """l 输出顶部的白话结论面板：该做什么/为什么/什么阶段/笨总怎么看。
 
     纯展示层翻译，不改任何决策逻辑；渲染失败静默降级（调用方包 try）。
@@ -1574,7 +1613,21 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None) -> None:
     elif decision == "SELL":
         lines.append(("yellow", "综合判断偏空：今天不碰，继续观察。"))
     else:
-        lines.append(("dim", "今天不是买点：放进观察池，等信号出现再动手。"))
+        # 观察池（v0.8.12）：watch_info 由 _watch_pool_touch 在分析后生成，措辞与事实一致
+        if watch_info and watch_info.get("status") == "added":
+            it = watch_info.get("item") or {}
+            lines.append(("dim", f"已放进观察池（入池价 {it.get('price')}，watch 可查看）。等信号出现再动手。"))
+        elif watch_info and watch_info.get("status") == "in_pool":
+            entry = watch_info.get("entry") or {}
+            e_ts = (entry.get("timestamp") or "")[:10]
+            e_item = entry.get("item") or {}
+            e_price = e_item.get("price")
+            chg_txt = ""
+            if e_price and sd is not None and sd.price:
+                chg_txt = f"，现 {(sd.price - e_price) / e_price * 100:+.1f}%"
+            lines.append(("dim", f"已在观察池（{e_ts} 加入，当时 {e_price}{chg_txt}，watch 查看）。等信号出现再动手。"))
+        else:
+            lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
 
     # 2) 股票现在处于什么阶段
     lines.append((None, f"当前阶段：{_plain_stage(sd)}"))
@@ -2657,6 +2710,30 @@ def _sparkline(values: list, max_points: int = 10) -> str:
     return "".join(_SPARK_CHARS[min(6, int((v - lo) / (hi - lo) * 7))] for v in vals)
 
 
+def _offset_curve(paths: list) -> dict:
+    """多条收盘路径按「锚点后第 k 个点」对齐取累计涨幅均值：{k: 均值%}（锚点=k0=0）。
+
+    锚点缺失（base0 空）的路径整条跳过——与逐票缺价剔除的口径一致。
+    """
+    buckets: dict = {}
+    for pts in paths:
+        if not pts:
+            continue
+        base0 = pts[0][1]
+        if not base0:
+            continue
+        for k, (_, v) in enumerate(pts):
+            buckets.setdefault(k, []).append((v / base0 - 1) * 100)
+    return {k: sum(v) / len(v) for k, v in buckets.items()}
+
+
+def _curve_spark(curve: dict) -> str:
+    """均值曲线 → 迷你走势。空曲线返回 —。"""
+    if not curve:
+        return "—"
+    return _sparkline([curve[k] for k in sorted(curve)])
+
+
 def _review_path(code: str, scan_date: str, base, latest, df_cache: dict, today_str: str):
     """扫描日→今的收盘路径 [(标签, 价)]：锚点(扫描日基准价) + 其后逐 bar 收盘 + 实时价收尾。
 
@@ -2785,18 +2862,23 @@ def scan_review(days: int = 7):
             return None, None
         return base, (bench_last - base) / base * 100
 
-    # 4) 逐条记录评估（旧→新，收在最近的扫描上）
+    # 4) 逐条记录评估（旧→新，收在最近的扫描上）；路径收集后循环外统一算整体走势曲线
+    # 观察池交叉标注：在池股在「池」列打标（观察池与复盘互相看见）
+    try:
+        pool_codes = {it.get("code") for rec in session_state.get_watch_active()
+                      for it in (rec.get("items") or []) if it.get("code")}
+    except Exception as e:
+        logger.debug(f"观察池读取失败(不影响复盘): {e}")
+        pool_codes = set()
     all_chgs: list = []
     all_excess: list = []
     all_bench: list = []
+    all_paths: list = []
+    bench_paths: list = []
     total_missing = 0
     md = [f"# 扫描复盘 - {scope_label}", "",
           f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
           + (f"｜基准沪深300 截至 {bench_rows[-1]['date']}" if bench_rows else "｜基准缺失"), ""]
-
-    # 5) 走势曲线聚合：各票按「扫描日后第 k 个点」对齐取累计涨幅均值；基准同窗对照
-    cohort_curve: dict = {}   # k -> [各票相对锚点的累计%]
-    bench_curve: dict = {}
 
     for rec in reversed(records):
         ts = (rec.get("timestamp") or "")[:16].replace("T", " ")
@@ -2837,20 +2919,12 @@ def scan_review(days: int = 7):
             rows.append({"code": code, "name": str(it.get("name") or "")[:10],
                          "base": base, "latest": latest, "chg": chg, "excess": excess,
                          "path": path})
-            # 走势曲线聚合（锚点=k0）
-            if path:
-                base0 = path[0][1]
-                if base0:
-                    for k, (_, v) in enumerate(path):
-                        cohort_curve.setdefault(k, []).append((v / base0 - 1) * 100)
+        # 路径收集（曲线在循环后用 _offset_curve 统一聚合）；基准同窗路径同构
+        all_paths.extend(r["path"] for r in rows)
         if bench_base:
-            bench_curve.setdefault(0, []).append(0.0)
-            k = 0
-            for rb in bench_rows:
-                if rb["date"] <= scan_date:
-                    continue
-                k += 1
-                bench_curve.setdefault(k, []).append((rb["close"] / bench_base - 1) * 100)
+            bench_paths.append([("锚", bench_base)]
+                               + [(rb["date"], rb["close"]) for rb in bench_rows
+                                  if rb["date"] > scan_date])
 
         chgs = [r["chg"] for r in rows if r["chg"] is not None]
         excesses = [r["excess"] for r in rows if r["excess"] is not None]
@@ -2867,6 +2941,7 @@ def scan_review(days: int = 7):
         table.add_column("现价", justify="right", width=8)
         table.add_column("涨跌%", justify="right", width=8)
         table.add_column("超额%", justify="right", width=8)
+        table.add_column("池", justify="center", width=4)
         table.add_column("走势", justify="center", width=10)
         for r in sorted(rows, key=lambda x: (x["chg"] is None, -(x["chg"] or 0))):
             if r["chg"] is None:
@@ -2890,7 +2965,9 @@ def scan_review(days: int = 7):
                 r["code"], r["name"] or "-",
                 f"{r['base']:.2f}" if r["base"] else "-",
                 f"{r['latest']:.2f}" if r["latest"] else "无行情",
-                chg_s, ex_s, sp)
+                chg_s, ex_s,
+                "[cyan]✓[/cyan]" if r["code"] in pool_codes else "",
+                sp)
         console.print(table)
 
         if chgs:
@@ -2931,6 +3008,8 @@ def scan_review(days: int = 7):
             md.append("")
 
     # 汇总
+    cohort_curve = _offset_curve(all_paths)     # 整体走势：观察池命令复用同一实现
+    bench_curve = _offset_curve(bench_paths)
     console.print(f"\n[bold]汇总（{len(records)} 条扫描，{len(all_chgs)} 只次有行情"
                   + (f"，{total_missing} 只次无行情未计入" if total_missing else "") + "）[/bold]")
     if all_chgs:
@@ -2945,9 +3024,6 @@ def scan_review(days: int = 7):
                       f"平均 {avg:+.2f}%{ex_s}")
 
         # 整体走势曲线（各票按扫描日后第 k 个交易日对齐的累计涨幅均值 vs 基准同窗）
-        def _curve_spark(curve: dict) -> str:
-            ks = sorted(curve)
-            return _sparkline([sum(curve[k]) / len(curve[k]) for k in ks]) if ks else "—"
         if len(cohort_curve) > 1:
             c_st = "red" if avg > 0 else "green" if avg < 0 else "white"
             bench_all = sum(all_bench) / len(all_bench) if all_bench else None
@@ -2963,10 +3039,9 @@ def scan_review(days: int = 7):
         md.append(f"- {len(records)} 条扫描，{len(all_chgs)} 只次有行情，"
                   f"{ups} 涨 {len(all_chgs) - ups} 跌（上涨占比 {ratio:.0f}%），平均 {avg:+.2f}%{ex_s}")
         if len(cohort_curve) > 1:
-            ks = sorted(cohort_curve)
-            curve_s = " → ".join(
-                f"k{k}:{sum(cohort_curve[k]) / len(cohort_curve[k]):+.2f}%" for k in ks)
+            curve_s = " → ".join(f"k{k}:{cohort_curve[k]:+.2f}%" for k in sorted(cohort_curve))
             md.append(f"- 整体走势（{earliest}→{today_str}，按交易日对齐的累计涨幅均值）：{curve_s}")
+        md.append("")
     else:
         console.print("  [yellow]所有标的均无行情数据，无法统计[/yellow]")
         md.append("## 汇总")
@@ -3079,6 +3154,234 @@ def scan_review_import():
         console.print(f"  [green]✓ 完成。跑 scan review 即可复盘这些历史扫描[/green]")
     else:
         console.print("  [dim]没有新增记录（全部已导入或无法解析）[/dim]")
+
+
+def watch_pool(args: dict):
+    """观察池（v0.8.12）：WATCH 语义自动入池 + watch add/rm 手动管理。
+
+    watch（默认 list）：复用 scan review 引擎看每只在池股「入池价→现价」的涨跌与
+    逐日走势（入池价缺失走 K 线兜底，同窗沪深300 基准对比+汇总）——观察池即复盘。
+    """
+    from datetime import datetime as _dt
+    from statistics import median
+    from src.cli import session_state
+    from src.data.akshare_client import AKShareClient
+
+    action = (args.get("action") or "list").lower()
+
+    if action == "add":
+        code = normalize_stock_code(str(args.get("code") or ""))
+        if not code or not code.isdigit():
+            console.print("  [yellow]用法: watch add <代码|#N> [名称] [价格][/yellow]")
+            return
+        if session_state.watch_entry_of(code):
+            console.print(f"  [yellow]{code} 已在观察池（不重复入池；watch 查看）[/yellow]")
+            return
+        name = str(args.get("name") or "")
+        price = args.get("price")
+        if price is None:
+            try:
+                q = AKShareClient.get_realtime_quote(code) or {}
+                price = q.get("price") or None
+            except Exception as e:
+                logger.debug(f"观察池入池价获取失败 {code}: {e}")
+                price = None
+        item = {"code": code, "name": name[:10], "price": price, "reason": "手动加入"}
+        if session_state.append_watch_event("add", [item], f"watch add {code}"):
+            price_s = f"{price:.2f}" if price else "未取到（展示时走K线兜底）"
+            console.print(f"  [green]✓ {code} {name} 已入观察池（入池价 {price_s}）[/green]")
+        else:
+            console.print("  [yellow]观察池写入失败（磁盘问题），未入池[/yellow]")
+        return
+
+    if action == "rm":
+        code = normalize_stock_code(str(args.get("code") or ""))
+        entry = session_state.watch_entry_of(code) if code else None
+        if not entry:
+            console.print(f"  [yellow]{code or '？'} 不在观察池[/yellow]")
+            return
+        if session_state.append_watch_event("remove", [{"code": code}], f"watch rm {code}"):
+            console.print(f"  [green]✓ {code} 已移出观察池[/green]")
+        else:
+            console.print("  [yellow]观察池写入失败（磁盘问题），未移出[/yellow]")
+        return
+
+    # ── list：复盘引擎看在池股「入池以来」的表现 ──
+    records = session_state.get_watch_active()
+    pool_n = sum(len(rec.get("items") or []) for rec in records)
+    console.print(f"\n[bold cyan]👁 观察池（{pool_n} 只在池）[/bold cyan]")
+    if not records:
+        console.print("  [yellow]观察池是空的[/yellow]"
+                      "（分析出 WATCH 的票会自动入池；也可 watch add <代码|#N> 手动加入）")
+        return
+
+    # 收集 codes 与每票入池日（日线窗口锚点）；入池价缺失走 K 线兜底
+    codes: list = []
+    code_first: dict = {}
+    for rec in records:
+        entry_date = (rec.get("timestamp") or "")[:10]
+        for it in rec.get("items") or []:
+            code = (it or {}).get("code")
+            if not code:
+                continue
+            if code not in codes:
+                codes.append(code)
+            prev = code_first.get(code)
+            if entry_date and (prev is None or entry_date < prev):
+                code_first[code] = entry_date
+
+    quotes: dict = {}
+    if codes:
+        try:
+            quotes = AKShareClient.get_realtime_quotes(codes)
+        except Exception as e:
+            logger.debug(f"观察池批量行情失败: {e}")
+    if not quotes:
+        console.print("  [yellow]行情获取失败（数据源慢或不可用），稍后重试[/yellow]")
+        return
+
+    earliest = min((r.get("timestamp") or "")[:10] for r in records if r.get("timestamp"))
+    bench_rows = _review_index_bars(earliest)
+    bench_last = bench_rows[-1]["close"] if bench_rows else None
+
+    def _bench_point(entry_date: str):
+        if not bench_rows or bench_last is None:
+            return None, None
+        base = None
+        for rb in bench_rows:
+            if rb["date"] <= entry_date:
+                base = rb["close"]
+            else:
+                break
+        if not base:
+            return None, None
+        return base, (bench_last - base) / base * 100
+
+    # 逐票日线预热（走势 + 缺价兜底共用；kline_cache 当日缓存 → 重复查看零请求）
+    df_cache: dict = {}
+    for code in codes:
+        _review_base_from_kline(code, code_first.get(code) or earliest, df_cache)
+
+    rows = []
+    all_paths: list = []
+    bench_paths: list = []
+    today_str = _dt.now().strftime("%Y-%m-%d")
+    for rec in records:
+        entry_ts = (rec.get("timestamp") or "")[:16].replace("T", " ")
+        entry_date = (rec.get("timestamp") or "")[:10]
+        # 紧凑入池标注：09-23·3天（完整日期在报告里）
+        try:
+            _n_days = (_dt.now() - _dt.strptime(entry_date, "%Y-%m-%d")).days
+            entry_short = f"{entry_date[5:10]}·{'今天' if _n_days <= 0 else f'{_n_days}天'}"
+        except ValueError:
+            entry_short = entry_date[5:10]
+        bench_base, bench_chg = _bench_point(entry_date)
+        for it in rec.get("items") or []:
+            code = it.get("code")
+            if not code:
+                continue
+            price = it.get("price")
+            base = float(price) if isinstance(price, (int, float)) and price > 0 \
+                else _review_base_from_kline(code, entry_date, df_cache)
+            q = quotes.get(code) or {}
+            try:
+                latest = float(q.get("price")) if q.get("price") else None
+            except (TypeError, ValueError):
+                latest = None
+            chg = excess = None
+            if base and latest:
+                chg = (latest - base) / base * 100
+                if bench_chg is not None:
+                    excess = chg - bench_chg
+            path = _review_path(code, entry_date, base, latest, df_cache, today_str)
+            all_paths.append(path)
+            if bench_base:
+                bench_paths.append([("锚", bench_base)]
+                                   + [(rb["date"], rb["close"]) for rb in bench_rows
+                                      if rb["date"] > entry_date])
+            rows.append({"code": code, "name": str(it.get("name") or "")[:10],
+                         "entry": entry_ts, "entry_short": entry_short, "source": rec.get("source") or "?",
+                         "base": base, "latest": latest, "chg": chg, "excess": excess,
+                         "path": path})
+
+    table = Table(title=f"观察池（{earliest}→{today_str}）", show_lines=False)
+    table.add_column("代码", style="cyan", width=8)
+    table.add_column("名称", width=10, overflow="fold")
+    table.add_column("入池", width=10)
+    table.add_column("入池价", justify="right", width=8)
+    table.add_column("现价", justify="right", width=8)
+    table.add_column("涨跌%", justify="right", width=8)
+    table.add_column("超额%", justify="right", width=8)
+    table.add_column("走势", justify="center", width=10)
+    for r in sorted(rows, key=lambda x: (x["chg"] is None, -(x["chg"] or 0))):
+        if r["chg"] is None:
+            chg_s = "[dim]-[/dim]"
+        else:
+            st = "red" if r["chg"] > 0 else "green" if r["chg"] < 0 else "white"
+            chg_s = f"[{st}]{r['chg']:+.2f}[/{st}]"
+        if r["excess"] is None:
+            ex_s = "-"
+        else:
+            st = "red" if r["excess"] > 0 else "green" if r["excess"] < 0 else "white"
+            ex_s = f"[{st}]{r['excess']:+.2f}[/{st}]"
+        table.add_row(
+            r["code"], r["name"] or "-",
+            r["entry_short"],
+            f"{r['base']:.2f}" if r["base"] else "-",
+            f"{r['latest']:.2f}" if r["latest"] else "无行情",
+            chg_s, ex_s,
+            _sparkline([v for _, v in r["path"]]))
+    console.print(table)
+
+    chgs = [r["chg"] for r in rows if r["chg"] is not None]
+    excesses = [r["excess"] for r in rows if r["excess"] is not None]
+    missing = len(rows) - len(chgs)
+    if chgs:
+        ups = sum(1 for c in chgs if c > 0)
+        beat = (f"{sum(1 for e in excesses if e > 0)}/{len(excesses)}"
+                if excesses else "-")
+        avg = sum(chgs) / len(chgs)
+        sub = (f"  小计: {ups}涨{len(chgs) - ups}跌"
+               f" 平均 {avg:+.2f}% 中位 {median(chgs):+.2f}% ｜ 跑赢基准 {beat}")
+        if missing:
+            sub += f" ｜ [dim]{missing} 只无行情未计入[/dim]"
+        console.print(sub)
+        cohort_curve = _offset_curve(all_paths)
+        bench_curve = _offset_curve(bench_paths)
+        if len(cohort_curve) > 1:
+            c_st = "red" if avg > 0 else "green" if avg < 0 else "white"
+            console.print(f"  整体走势（{earliest}→{today_str}，按交易日对齐）：扫描组 [{c_st}]"
+                          f"{_curve_spark(cohort_curve)}[/][{c_st}] {avg:+.2f}%[/]"
+                          + (f" ｜ 沪深300 [dim]{_curve_spark(bench_curve)}[/dim]" if bench_curve else ""))
+        console.print(f"  [dim]观察池即复盘：入池价是锚点，涨跌为负的票想想当初为什么看它；"
+                      f"watch rm <代码> 移出不再跟踪[/dim]")
+        # 落盘报告（与复盘报告同目录，watch_ 前缀）
+        try:
+            _REVIEW_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+            path = _REVIEW_REPORT_DIR / f"watch_{_dt.now().strftime('%Y-%m-%d_%H-%M')}.md"
+            md = [f"# 观察池 - {pool_n} 只在池", "",
+                  f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}", "",
+                  "| 代码 | 名称 | 入池日 | 入池价 | 现价 | 涨跌% | 超额% |",
+                  "|---|---|---|---|---|---|---|"]
+            for r in rows:
+                base_v = f"{r['base']:.2f}" if r["base"] else "-"
+                latest_v = f"{r['latest']:.2f}" if r["latest"] else "无行情"
+                chg_v = f"{r['chg']:+.2f}" if r["chg"] is not None else "-"
+                ex_v = f"{r['excess']:+.2f}" if r["excess"] is not None else "-"
+                md.append(f"| {r['code']} | {r['name'] or '-'} | {r['entry'][:10]} | "
+                          f"{base_v} | {latest_v} | {chg_v} | {ex_v} |")
+            path.write_text("\n".join(md), encoding="utf-8")
+            console.print(f"  [dim]📝 观察池报告已存：{path}[/dim]")
+        except OSError as e:
+            logger.debug(f"观察池报告落盘失败: {e}")
+
+    kline_cnt = sum(1 for v in df_cache.values() if v is not None)
+    cost = f"  [dim]本次请求：行情批量 1 轮（60只/请求）"
+    if kline_cnt:
+        cost += f" + 逐票日线 {kline_cnt} 只（当日缓存，重复查看零请求）"
+    if bench_rows:
+        cost += f" + 沪深300 日线 1 次（当日缓存）"
+    console.print(cost + "[/dim]")
 
 
 def _scan_progress_callback(step: str, current: int, total: int, message: str):
@@ -3814,8 +4117,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.11：扫描复盘（scan review）；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.11 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘)"
+        # v0.8.12：观察池（watch）；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.12 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

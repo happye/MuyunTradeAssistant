@@ -4,6 +4,7 @@
 - save_last_scan(items, source): 存最近 scan 结果到 ~/.muyun/last_scan.json，并追加历史到 scan_history.jsonl
 - get_last_scan() / resolve_index(n): 读最近 scan / 取第 n 只（供 #N 快捷，Step 2 用）
 - append_scan_history() / get_scan_history(days): 扫描历史追加/读取（v0.8.11，scan review 复盘用）
+- append_watch_event() / get_watch_active() / watch_entry_of(): 观察池事件流（v0.8.12，watch 命令用）
 - persist_scan_report(items, source): scan 结果落盘 markdown 到 分析报告/scan/
 
 设计原则：
@@ -233,6 +234,92 @@ def mark_deep_analyzed(codes: list, source: str = "") -> bool:
     except OSError as e:
         logger.warning(f"mark_deep_analyzed 失败: {e}")
         return False
+
+
+# ── 观察池（v0.8.12）────────────────────────────────────────
+
+# 观察池事件流（JSONL，一行一事件）：add=入池（记入池价锚点），remove=出池。
+# 在池 = add 减去后续 remove 的事件重放。规模靠入池去重 + 手动 rm 控制，不做时间 prune。
+_WATCH_FILE = _STATE_DIR / "watchlist.jsonl"
+
+
+def append_watch_event(action: str, items: list[dict], source: str) -> bool:
+    """追加观察池事件。action 仅限 add/remove；失败返回 False（调用方决定措辞）。"""
+    if action not in ("add", "remove") or not items:
+        return False
+    try:
+        _STATE_DIR.mkdir(parents=True, exist_ok=True)
+        rec = {
+            "timestamp": datetime.now().isoformat(timespec="seconds"),
+            "action": action,
+            "source": source,
+            "items": items,
+        }
+        with _WATCH_FILE.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        return True
+    except OSError as e:
+        logger.debug(f"watchlist.jsonl 写入失败: {e}")
+        return False
+
+
+def get_watch_events() -> list[dict]:
+    """读观察池全部事件（按时间升序）。损坏行跳过。"""
+    try:
+        if not _WATCH_FILE.exists():
+            return []
+        rows = []
+        for line in _WATCH_FILE.read_text(encoding="utf-8").splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(r, dict):
+                rows.append(r)
+        rows.sort(key=lambda r: r.get("timestamp", ""))
+        return rows
+    except OSError as e:
+        logger.debug(f"watchlist.jsonl 读取失败: {e}")
+        return []
+
+
+def get_watch_active() -> list[dict]:
+    """重放事件得「在池记录」：remove 抵消对应 code 的 add。
+
+    返回结构与 scan 记录同构 [{timestamp(入池时间), source, items:[{code,...}]}]，
+    供 watch 命令直接复用 scan review 的复盘引擎。
+    """
+    active: dict = {}   # code -> 在池记录
+    for ev in get_watch_events():
+        action = ev.get("action")
+        for it in ev.get("items") or []:
+            code = (it or {}).get("code")
+            if not code:
+                continue
+            if action == "add":
+                rec = active.get(code)
+                if rec is None:
+                    rec = {"timestamp": ev.get("timestamp", ""),
+                           "source": ev.get("source", ""), "items": []}
+                    active[code] = rec
+                rec["items"] = [it]   # 同 code 防御性取最新 add 的 item
+            elif action == "remove":
+                active.pop(code, None)
+    return sorted(active.values(), key=lambda r: r.get("timestamp", ""))
+
+
+def watch_entry_of(code: str) -> Optional[dict]:
+    """某股票的在池信息 {timestamp(入池时间), source, item}；不在池返回 None。"""
+    code = str(code).strip()
+    for rec in get_watch_active():
+        for it in rec.get("items") or []:
+            if (it or {}).get("code") == code:
+                return {"timestamp": rec.get("timestamp", ""),
+                        "source": rec.get("source", ""), "item": it}
+    return None
 
 
 def persist_scan_report(items: list[dict], source: str,

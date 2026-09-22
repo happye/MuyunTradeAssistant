@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.11"  # v0.8.11=扫描复盘(scan review 近N天扫描涨跌验证+scan_history历史落盘+沪深300基准)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.12"  # v0.8.12=观察池(WATCH自动入池+watch命令复用review引擎看入池以来涨跌)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -99,6 +99,12 @@ def show_help():
     print("│    fear history           多周期回顾+走势图存本地   │")
     print("│                           (--no-chart 跳过绘图)     │")
     print("│    fear backfill [天数]   涨停池历史回填(断点续传)  │")
+    print("│                                                    │")
+    print("│  ★ 观察池 (v0.8.12)                                 │")
+    print("│    watch                 看观察池(入池价→现价+走势) │")
+    print("│    watch add <代码|#N>   手动入池(缺省拉实时价)     │")
+    print("│    watch rm <代码>       移出观察池                 │")
+    print("│    分析出 WATCH 的票自动入池，scan review 标 ✓      │")
     print("│                                                    │")
     print("│  ★ 持仓                                            │")
     print("│    pos                    查看持仓列表              │")
@@ -410,6 +416,39 @@ def parse_input(user_input: str):
         if "--refresh" in rest or "-r" in rest:
             args["refresh"] = True
         return ("fear", args)
+
+    # ── 观察池（v0.8.12）──
+    if cmd in ("watch", "观察池"):
+        args = {"action": "list", "code": "", "name": "", "price": None}
+        rest = parts[1:]
+        if rest and rest[0].lower() in ("add", "加入"):
+            args["action"] = "add"
+            if len(rest) >= 2:
+                arg = rest[1]
+                if arg.startswith("#"):
+                    resolved = _resolve_index_arg(arg)
+                    if not resolved:
+                        return None
+                    args["code"], args["name"] = resolved
+                else:
+                    args["code"] = arg
+            if len(rest) >= 3:
+                try:
+                    args["price"] = float(rest[2])
+                except ValueError:
+                    args["name"] = rest[2]
+            if len(rest) >= 4:
+                try:
+                    args["price"] = float(rest[3])
+                except ValueError:
+                    pass
+            return ("watch_pool", args)
+        if rest and rest[0].lower() in ("rm", "remove", "del", "移出"):
+            args["action"] = "rm"
+            if len(rest) >= 2:
+                args["code"] = rest[1]
+            return ("watch_pool", args)
+        return ("watch_pool", args)
 
     # ── 持仓管理 ──
     if cmd == "pos":
@@ -1462,7 +1501,7 @@ def run_cli(mode: str, args: dict):
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
-        scan_review, scan_review_import,
+        scan_review, scan_review_import, watch_pool,
     )
 
     ai_overrides = {}
@@ -1721,6 +1760,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "scan_review_import":
         # v0.8.11：旧扫描报告（分析报告/scan/*.md）一次性导入历史
         scan_review_import()
+
+    elif mode == "watch_pool":
+        # v0.8.12：观察池——WATCH 自动入池，watch 复盘引擎看入池以来表现
+        watch_pool(args)
 
     elif mode == "noai":
         _no_ai = not _no_ai
