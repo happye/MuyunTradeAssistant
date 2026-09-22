@@ -2701,17 +2701,37 @@ def scan_review(days: int = 7):
     from src.data.akshare_client import AKShareClient
 
     days = max(1, min(90, int(days or 7)))
-    records = session_state.get_scan_history(days=days)
     today_str = _dt.now().strftime("%Y-%m-%d")
+    records = session_state.get_scan_history(days=days)
     pending = [r for r in records if (r.get("timestamp") or "")[:10] >= today_str]
     records = [r for r in records if (r.get("timestamp") or "")[:10] < today_str]
 
-    console.print(f"\n[bold cyan]📋 扫描复盘（近 {days} 天）[/bold cyan]")
+    # 近 N 天没有可评估记录但历史里有更早的 → 自动扩大到全部历史（导入的旧记录往往
+    # 超出默认窗口，不该让用户对着空输出猜；代价只是复盘更多票，成本行会如实汇报）
+    auto_widened = False
+    if not records:
+        _all = [r for r in session_state.get_scan_history()
+                if (r.get("timestamp") or "")[:10] < today_str]
+        if _all:
+            records = _all
+            auto_widened = True
+
+    scope_label = f"近 {days} 天"
+    if auto_widened:
+        earliest_all = min((r.get("timestamp") or "")[:10]
+                           for r in records if r.get("timestamp"))
+        scope_label = f"全部历史，最早 {earliest_all}"
+        console.print(f"\n[bold cyan]📋 扫描复盘（{scope_label}）[/bold cyan]")
+        console.print(f"  [dim]近 {days} 天没有可复盘的扫描，已自动扩大到全部 {len(records)} 条历史"
+                      f"（想收紧窗口用天数参数，如 scan review 30）[/dim]")
+    else:
+        console.print(f"\n[bold cyan]📋 扫描复盘（{scope_label}）[/bold cyan]")
     if pending:
         console.print(f"  [dim]另有 {len(pending)} 条今日扫描，待满 1 个交易日后可复盘[/dim]")
     if not records:
         console.print("  [yellow]还没有可复盘的扫描历史[/yellow]"
-                      "（扫描历史从 v0.8.11 开始累积；跑 bz scan <主题> 或 scan market [规则]，隔天再来 scan review）")
+                      "（扫描历史从 v0.8.11 开始累积，旧报告可先 scan review import 导入；"
+                      "跑 bz scan <主题> 或 scan market [规则]，隔天再来 scan review）")
         return
 
     # 收集可评估记录的去重 codes（保持首现顺序）与每票最早扫描日（日线窗口锚点）
@@ -2770,7 +2790,7 @@ def scan_review(days: int = 7):
     all_excess: list = []
     all_bench: list = []
     total_missing = 0
-    md = [f"# 扫描复盘 - 近 {days} 天", "",
+    md = [f"# 扫描复盘 - {scope_label}", "",
           f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
           + (f"｜基准沪深300 截至 {bench_rows[-1]['date']}" if bench_rows else "｜基准缺失"), ""]
 
@@ -2782,8 +2802,15 @@ def scan_review(days: int = 7):
         ts = (rec.get("timestamp") or "")[:16].replace("T", " ")
         src = rec.get("source") or "?"
         scan_date = (rec.get("timestamp") or "")[:10]
+        # 落盘时间 + 距今天数：看走势时先知道"被选中多久了"
+        try:
+            _n_days = (_dt.now() - _dt.strptime(scan_date, "%Y-%m-%d")).days
+            days_tag = f"，距今 {_n_days} 天" if _n_days > 0 else ""
+        except ValueError:
+            days_tag = ""
         items = [it for it in (rec.get("items") or [])
                  if isinstance(it, dict) and it.get("code")]
+        rec_title = f"{src}（{ts} 落盘{days_tag}，{len(items)} 只）"
         bench_base, bench_chg = _bench_point(scan_date)
         if bench_chg is not None:
             all_bench.append(bench_chg)
@@ -2833,7 +2860,7 @@ def scan_review(days: int = 7):
         all_excess.extend(excesses)
 
         # 表格（涨红跌绿；按涨跌降序，无行情垫底）
-        table = Table(title=f"{src}（{ts}，{len(items)} 只）", show_lines=False)
+        table = Table(title=rec_title, show_lines=False)
         table.add_column("代码", style="cyan", width=8)
         table.add_column("名称", width=10, overflow="fold")
         table.add_column("扫描价", justify="right", width=8)
@@ -2877,7 +2904,7 @@ def scan_review(days: int = 7):
             if missing:
                 sub += f" ｜ [dim]{missing} 只无行情未计入[/dim]"
             console.print(sub)
-            md.append(f"## {src}（{ts}，{len(items)} 只）")
+            md.append(f"## {src}（{ts} 落盘{days_tag}，{len(items)} 只）")
             md.append("")
             md.append("| 代码 | 名称 | 扫描价 | 现价 | 涨跌% | 超额% |")
             md.append("|---|---|---|---|---|---|")
@@ -2926,7 +2953,7 @@ def scan_review(days: int = 7):
             bench_all = sum(all_bench) / len(all_bench) if all_bench else None
             bench_part = (f" ｜ 沪深300 [dim]{_curve_spark(bench_curve)}[/dim]"
                           f"[dim] {bench_all:+.2f}%[/dim]" if bench_all is not None else "")
-            console.print(f"  整体走势（扫描日→今，按交易日）：扫描组 [{c_st}]"
+            console.print(f"  整体走势（{earliest}→{today_str}，按交易日对齐）：扫描组 [{c_st}]"
                           f"{_curve_spark(cohort_curve)}[/][{c_st}] {avg:+.2f}%[/]"
                           + bench_part)
         console.print(f"  [dim]上涨占比与平均超额是扫描质量的直接标尺：多次复盘持续为正，"
@@ -2939,7 +2966,7 @@ def scan_review(days: int = 7):
             ks = sorted(cohort_curve)
             curve_s = " → ".join(
                 f"k{k}:{sum(cohort_curve[k]) / len(cohort_curve[k]):+.2f}%" for k in ks)
-            md.append(f"- 整体走势（按交易日对齐的累计涨幅均值）：{curve_s}")
+            md.append(f"- 整体走势（{earliest}→{today_str}，按交易日对齐的累计涨幅均值）：{curve_s}")
     else:
         console.print("  [yellow]所有标的均无行情数据，无法统计[/yellow]")
         md.append("## 汇总")

@@ -165,8 +165,15 @@ def _patch_net_and_state(monkeypatch, tmp_path, records, quotes, kline_df=None, 
     """统一 mock：历史记录 / 批量行情 / K线兜底 / 指数 / 报告目录，全部重定向 tmp_path。
 
     bars=None 时指数基准 mock 为空（绝不打真实网络）。
+    get_scan_history mock 按 days 参数真实过滤（模拟窗口语义，供自动扩大路径测试）。
     """
-    monkeypatch.setattr(session_state, "get_scan_history", lambda days=None: records)
+    def _fake_history(days=None):
+        if days is None:
+            return list(records)
+        cutoff = (datetime.now() - timedelta(days=days)).strftime("%Y-%m-%d")
+        return [r for r in records if (r.get("timestamp") or "")[:10] >= cutoff]
+
+    monkeypatch.setattr(session_state, "get_scan_history", _fake_history)
     monkeypatch.setattr("src.data.akshare_client.AKShareClient.get_realtime_quotes",
                         lambda codes, retry=1: quotes)
     if kline_df is not None:
@@ -387,3 +394,42 @@ def test_sparkline_downsamples_long_paths():
     sp = cli_main._sparkline(vals)
     assert len(sp) == 10
     assert sp[0] == "▁" and sp[-1] == "▇"   # 单调升：首尾端点保留
+
+
+# ── 自动扩大窗口 + 落盘时间标注（用户实测反馈修复）─────────
+
+def test_scan_review_auto_widens_when_window_empty(monkeypatch, tmp_path, capsys):
+    """默认7天窗口外全是老记录 → 自动扩大到全部历史并明说（导入旧记录的核心场景）。"""
+    old_dt = (datetime.now() - timedelta(days=20)).strftime("%Y-%m-%d")
+    records = [{
+        "timestamp": f"{old_dt}T14:30:00", "source": "bz scan 旧扫描", "count": 1,
+        "items": [{"code": "600519", "name": "贵州茅台", "price": 100.0}],
+    }]
+    _patch_net_and_state(monkeypatch, tmp_path, records,
+                         {"600519": {"price": 110.0}}, None, None)
+    cli_main.scan_review(days=7)   # 默认窗口：20天前的记录本被滤掉
+    out = capsys.readouterr().out
+    assert "已自动扩大到全部 1 条历史" in out.replace("\n", "")
+    assert "bz scan 旧扫描" in out
+    assert "+10.00" in out         # 记录真实可复盘
+
+
+def test_scan_review_title_shows_persist_time_and_age(monkeypatch, tmp_path, capsys):
+    old_dt = (datetime.now() - timedelta(days=5)).strftime("%Y-%m-%d")
+    records = [{
+        "timestamp": f"{old_dt}T14:30:00", "source": "scan market 测试", "count": 1,
+        "items": [{"code": "600519", "name": "贵州茅台", "price": 100.0}],
+    }]
+    _patch_net_and_state(monkeypatch, tmp_path, records,
+                         {"600519": {"price": 105.0}}, None, None)
+    cli_main.scan_review(days=7)
+    out = capsys.readouterr().out
+    assert "落盘" in out and "距今 5 天" in out   # 落盘时间 + 被选中多久
+
+
+def test_scan_review_truly_empty_message_mentions_import(monkeypatch, tmp_path, capsys):
+    _patch_net_and_state(monkeypatch, tmp_path, [], {}, None, None)
+    cli_main.scan_review(days=7)
+    out = capsys.readouterr().out.replace("\n", "")
+    assert "还没有可复盘的扫描历史" in out
+    assert "scan review import" in out   # 空态提示引导导入（rich 换行容错）
