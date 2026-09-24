@@ -42,8 +42,8 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 |---|---|---|---|
 | M0 | 已完成初步盘点 | 建立架构图、资产索引、实际测试基线；识别外源测试和副作用 | 已记录基线与边界；不声称完成全部源码逐行审计 |
 | M1 | 已实施（2026-09-24） | pytest 默认离线；真实接口显式开关；测试收集前隔离 home，保留离线 data_sources 单测 | 一条命令得到稳定结果；不碰真实 `~/.muyun`，不默认花 AI 费用 |
-| M2 | 待实施 | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
-| M3 | 待实施 | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
+| M2 | 已实施（2026-09-24） | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
+| M3 | 已实施（2026-09-24） | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
 | M4 | 待实施 | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
 | M5 | 待实施 | 持仓并发写保护：先梳理所有写入方法及调用方，再以内容版本检测拒绝旧快照覆盖；失败必须传到输出层 | 两实例修改不会静默覆盖，REPL/chat/Web/TUI 都不报假成功 |
 | M6 | 待实施 | 集中运行诊断、缓存新鲜度与缺失原因呈现；核对安装入口；压缩 Agent 指令中的历史叙事 | 新环境可按文档启动，诊断不泄密；知识入口短而准确 |
@@ -70,6 +70,12 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 - 有全局状态改动必须跑完整离线回归。真实数据接口/AI 验证单独记账，不能用它们的抖动掩盖离线失败。
 
 ## 执行记录
+
+### 2026-09-24 / Claude Code / M2 + M3 实施
+
+- **M2（commit 66e5e2d，v0.8.13）**：`_atomic_write_json`（mkstemp+os.replace，失败清理保留旧快照）应用于 last_scan/deep_analyzed；`get_last_scan` 结构校验坏快照整体拒绝（#N 不错位，修数组根 AttributeError）；JSONL 逐行 decode 坏行计数告警；timestamp 混排排序防御；`ScanSaveResult(snapshot, history)` 部分成功如实上报。全量 756 passed / 0 failed。code-quality-guard：无 P0/P1，5 条 P2 中 4 条同批修复、2 条登记 ISS-095 已知剩余。
+- **M3（commit 1709975，v0.8.14）**：报告文件名秒级 + open("x") 独占创建 + _2/_3 递增（同分钟同主题不再互相覆盖）；import 已知记录改集合且**查重分粒度**（旧格式分钟键 / 新格式精确键——监督 Agent P1 实证：v0.8.11~13 live 秒级历史与分钟报告用精确键永不命中会重复导入，真实数据沙箱 29→32 行）；成功追加才入集合；`ScanSaveResult.timestamp` 同源传递（save/persist 两次 now() 跨秒错位消除）；旧 fixture 换固定文本 `_LEGACY_REPORT_V1`。全量 765 passed / 0 failed。code-quality-guard：1×P1 + 2×P2 全部同批修复。
+- 未做（任务卡范围外，ISS-096 已知剩余）：`review_*.md`/`watch_*.md` 复盘报告仍是分钟命名。
 
 ### 2026-09-24 / Claude Code / M1 实施
 
