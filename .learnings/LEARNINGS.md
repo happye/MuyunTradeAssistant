@@ -1650,3 +1650,28 @@ M1 落地时把交接文档里「test_indicator_math_actually_ran 我的环境�
 - Recurrence-Count: 1
 - First-Seen: 2026-09-24
 - Last-Seen: 2026-09-24
+
+## [LRN-20260925-015] best_practice
+**Logged**: 2026-09-25T10:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: tests, isolation
+
+### Summary
+**monkeypatch 替换模块属性期间，任何模块被「首次 import」都会把替身按值捕获进自己的命名空间，且 monkeypatch 恢复不了——这是全量测试能过、局部顺序一变就炸的典型病根。**
+
+M5 批实证：test_tui 的 `_mock_engines` patch `portfolio.PortfolioManager`，而 tui/app 引擎初始化触发 `src.cli.main` **首次导入**——main 顶层的 `from src.data.portfolio import PortfolioManager` 是按值绑定，把 lambda 永久捕获进 main 命名空间；monkeypatch teardown 只恢复 portfolio 模块的属性，管不到 main 里的副本。全量跑一直没炸是因为收集顺序 chat 先于 ui（main 早已以真实类导入）；一旦 ui 先跑（单文件组合、目录改名、并行收集），下游 5 个桥测试全挂。修复 = 测试文件收集期预导入 main，保证 by-value 绑定恒为真实类。
+
+### Suggested Action
+- 写「patch 模块属性」类测试替身时，先全库 grep 该符号的 `from ... import X` 按值绑定方（如 `PortfolioManager` 在 main.py:32）——凡可能在本测试期间首次导入的，都要在测试文件顶部预导入真实模块
+- 「全量绿但组合跑红」的顺序依赖，第一嫌疑就是 by-value 捕获替身，其次才是环境变量/缓存残留
+- 接线类测试（parse_input→run_cli 全链）与单元直调测试要并存：M6 的 doctor 命令 4 个单测全绿但 run_cli 函数级导入清单漏了符号，运行时必 NameError——直接调实现永远抓不到接线断裂
+
+### Metadata
+- Source: session_finding
+- Related Files: tests/ui/test_tui.py, src/cli/main.py, src/tui/app.py, src/data/portfolio.py, tests/core/test_doctor.py, start.py
+- Tags: monkeypatch-capture, by-value-import, test-order-dependence, import-order, wiring-test
+- Pattern-Key: test.byvalue_capture
+- Recurrence-Count: 1
+- First-Seen: 2026-09-25
+- Last-Seen: 2026-09-25
