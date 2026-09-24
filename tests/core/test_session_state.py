@@ -116,3 +116,167 @@ def test_stale_warning():
     assert session_state._stale_warning(fresh) == ""
     assert session_state._stale_warning(None) == ""
     assert session_state._stale_warning("not-a-date") == ""
+
+
+# ── M2（plan/TECHNICAL_HANDOFF §4）：原子写 + 读取边界校验 ──────
+
+def _redirect_all(monkeypatch, tmp_path):
+    """M2 用例统一重定向全部状态文件（含 deep_analyzed / watchlist）。"""
+    monkeypatch.setattr(session_state, "_LAST_SCAN_FILE", tmp_path / "last_scan.json")
+    monkeypatch.setattr(session_state, "_SCAN_HISTORY_FILE", tmp_path / "scan_history.jsonl")
+    monkeypatch.setattr(session_state, "_DEEP_ANALYZED_FILE", tmp_path / "deep_analyzed.json")
+    monkeypatch.setattr(session_state, "_WATCH_FILE", tmp_path / "watchlist.jsonl")
+
+
+def test_serialize_failure_no_raise_and_keeps_old(monkeypatch, tmp_path):
+    """items 含不可序列化对象 → 不抛异常、返回假、旧快照字节不变。"""
+    _redirect_all(monkeypatch, tmp_path)
+    assert session_state.save_last_scan([{"code": "A"}], "test")
+    old = (tmp_path / "last_scan.json").read_bytes()
+    r = session_state.save_last_scan([{"code": "B", "dims": {("tuple", "key")}}], "bad")
+    assert not r.snapshot
+    assert (tmp_path / "last_scan.json").read_bytes() == old
+
+
+def test_replace_failure_keeps_old_snapshot(monkeypatch, tmp_path):
+    """os.replace 失败（磁盘满等）→ 旧快照字节不变，临时文件不残留。"""
+    _redirect_all(monkeypatch, tmp_path)
+    assert session_state.save_last_scan([{"code": "A"}], "test")
+    old = (tmp_path / "last_scan.json").read_bytes()
+
+    real_replace = __import__("os").replace
+
+    def _boom(src, dst):
+        raise OSError("磁盘满了")
+    monkeypatch.setattr(__import__("os"), "replace", _boom)
+    r = session_state.save_last_scan([{"code": "B"}], "test")
+    monkeypatch.setattr(__import__("os"), "replace", real_replace)
+    assert not r.snapshot
+    assert (tmp_path / "last_scan.json").read_bytes() == old
+    assert not list(tmp_path.glob("*.tmp")), "失败的临时文件必须清理，不许残留"
+
+
+def test_last_scan_rejects_null_root(monkeypatch, tmp_path):
+    _redirect_all(monkeypatch, tmp_path)
+    (tmp_path / "last_scan.json").write_text("null", encoding="utf-8")
+    assert session_state.get_last_scan() is None
+    assert session_state.resolve_index(1) is None
+
+
+def test_last_scan_rejects_array_root(monkeypatch, tmp_path):
+    """JSON 根是数组 → 拒绝整个快照（回归锁：原实现 resolve_index 会 AttributeError）。"""
+    _redirect_all(monkeypatch, tmp_path)
+    (tmp_path / "last_scan.json").write_text('[{"code":"A"}]', encoding="utf-8")
+    assert session_state.get_last_scan() is None
+    assert session_state.resolve_index(1) is None
+
+
+def test_last_scan_rejects_bad_items_structure(monkeypatch, tmp_path):
+    """items 非 list / item 非 dict / item 缺 code → 拒绝整个快照，#N 不错位。"""
+    _redirect_all(monkeypatch, tmp_path)
+    cases = [
+        {"timestamp": "2026-09-24T10:00:00", "items": {"0": {"code": "A"}}},   # items 非 list
+        {"timestamp": "2026-09-24T10:00:00", "items": ["A", {"code": "B"}]},   # item 非 dict
+        {"timestamp": "2026-09-24T10:00:00", "items": [{"name": "无代码"}]},    # code 不可用
+    ]
+    for payload in cases:
+        (tmp_path / "last_scan.json").write_text(
+            __import__("json").dumps(payload, ensure_ascii=False), encoding="utf-8")
+        assert session_state.get_last_scan() is None, f"应拒绝: {payload}"
+        assert session_state.resolve_index(1) is None
+
+
+def test_last_scan_rejects_bad_timestamp(monkeypatch, tmp_path):
+    _redirect_all(monkeypatch, tmp_path)
+    for ts in (123, None, "not-a-date"):
+        payload = {"timestamp": ts, "items": [{"code": "A"}]}
+        (tmp_path / "last_scan.json").write_text(
+            __import__("json").dumps(payload), encoding="utf-8")
+        assert session_state.get_last_scan() is None, f"应拒绝 timestamp={ts!r}"
+
+
+def test_last_scan_empty_items_is_valid(monkeypatch, tmp_path):
+    """items=[] 是合法快照（空扫描），不算损坏。"""
+    _redirect_all(monkeypatch, tmp_path)
+    assert session_state.save_last_scan([], "scan market 空规则")
+    data = session_state.get_last_scan()
+    assert data is not None and data["items"] == []
+    assert session_state.resolve_index(1) is None  # 但 #N 取不到
+
+
+def test_scan_history_survives_bad_encoding_and_truncated_line(monkeypatch, tmp_path):
+    """单行无效 UTF-8 / 截断尾行 → 隔离跳过，其余有效行保留（不崩不丢）。"""
+    _redirect_all(monkeypatch, tmp_path)
+    good = __import__("json").dumps(
+        {"timestamp": "2026-09-24T10:00:00", "source": "s", "count": 1,
+         "items": [{"code": "A"}]}, ensure_ascii=False)
+    (tmp_path / "scan_history.jsonl").write_bytes(
+        b"\xff\xfe garbage line\n"          # 无效 UTF-8
+        + good.encode("utf-8") + b"\n"
+        + b'{"timestamp": "2026-09-25T10'   # 截断尾行（崩溃残留）
+        + b"\n")
+    rows = session_state.get_scan_history()
+    assert len(rows) == 1
+    assert rows[0]["items"][0]["code"] == "A"
+
+
+def test_scan_history_sort_mixed_timestamp_types(monkeypatch, tmp_path):
+    """timestamp 混排 None/数字/字符串 → 排序不 TypeError，全部行可读。"""
+    _redirect_all(monkeypatch, tmp_path)
+    rows = [
+        {"timestamp": None, "source": "a", "items": []},
+        {"timestamp": 123, "source": "b", "items": []},
+        {"timestamp": "2026-09-24T10:00:00", "source": "c", "items": []},
+    ]
+    (tmp_path / "scan_history.jsonl").write_text(
+        "\n".join(__import__("json").dumps(r, ensure_ascii=False) for r in rows),
+        encoding="utf-8")
+    got = session_state.get_scan_history()
+    assert len(got) == 3  # 不崩即过（原实现 sort 直接 TypeError）
+
+
+def test_deep_analyzed_rejects_non_dict_root(monkeypatch, tmp_path):
+    """deep_analyzed.json 根是数组/null → 返回 {}（回归锁：原实现 .get 会 AttributeError）。"""
+    _redirect_all(monkeypatch, tmp_path)
+    for content in ("[]", "null", '"string"'):
+        (tmp_path / "deep_analyzed.json").write_text(content, encoding="utf-8")
+        assert session_state.get_deep_analyzed() == {}, f"应拒绝根: {content}"
+
+
+def test_watch_events_survive_corrupt_lines_and_bad_items(monkeypatch, tmp_path):
+    """观察池事件流：坏行隔离 + items 非列表的事件不拖垮重放。"""
+    _redirect_all(monkeypatch, tmp_path)
+    good_add = __import__("json").dumps(
+        {"timestamp": "2026-09-24T10:00:00", "action": "add", "source": "s",
+         "items": [{"code": "600519", "name": "茅台"}]}, ensure_ascii=False)
+    bad_items = __import__("json").dumps(
+        {"timestamp": "2026-09-24T10:01:00", "action": "remove", "source": "s",
+         "items": "不是列表"}, ensure_ascii=False)
+    (tmp_path / "watchlist.jsonl").write_bytes(
+        b"\xff\xfe bad utf8\n"
+        + good_add.encode("utf-8") + b"\n"
+        + bad_items.encode("utf-8") + b"\n"
+        + b'{"timestamp": "2026-09-24T10:02' + b"\n")
+    active = session_state.get_watch_active()
+    assert len(active) == 1
+    assert active[0]["items"][0]["code"] == "600519"
+
+
+def test_empty_files_are_tolerated(monkeypatch, tmp_path):
+    """空文件（0 字节，崩溃残留常见）→ 快照按无扫描、历史按空处理，不崩不告警刷屏。"""
+    _redirect_all(monkeypatch, tmp_path)
+    (tmp_path / "last_scan.json").write_bytes(b"")
+    assert session_state.get_last_scan() is None
+    assert session_state.resolve_index(1) is None
+    (tmp_path / "scan_history.jsonl").write_bytes(b"")
+    assert session_state.get_scan_history() == []
+
+
+def test_save_last_scan_reports_partial_success(monkeypatch, tmp_path):
+    """快照成功但历史追加失败 → 返回值如实表达部分成功（snapshot=True, history=False）。"""
+    _redirect_all(monkeypatch, tmp_path)
+    monkeypatch.setattr(session_state, "append_scan_history", lambda *a, **k: False)
+    r = session_state.save_last_scan([{"code": "A"}], "test")
+    assert r.snapshot is True
+    assert r.history is False
+    assert not r  # 整体不算成功（__bool__ = 两者都成）

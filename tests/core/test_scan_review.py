@@ -145,7 +145,7 @@ def test_save_last_scan_also_appends_history(monkeypatch, tmp_path):
     """收口行为锁死：save_last_scan 的所有调用方（scan market/bz scan/chat）自动进历史。"""
     _redirect_state(monkeypatch, tmp_path)
     items = [{"code": "000001", "name": "平安银行", "price": 10.0}]
-    assert session_state.save_last_scan(items, "scan market 健康回调") is True
+    assert session_state.save_last_scan(items, "scan market 健康回调")  # M2 起返回 ScanSaveResult，真值=快照+历史都成
     assert (tmp_path / "last_scan.json").exists()
     assert (tmp_path / "scan_history.jsonl").exists()
     rows = session_state.get_scan_history()

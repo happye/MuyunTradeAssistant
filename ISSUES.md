@@ -2011,3 +2011,21 @@ P3（已取消）:
 - **验证**: 新增 import 旧记录存活回归（140 天记录 + 两次后续 append 存活）+ 持仓不入池断言；全量 755 passed / 2 skipped（5 失败为既有失败，54c0475 基线即有）
 - **更新记录**:
   - 2026-09-23: 审查 → 修复 → 复审全绿，commit 落地于本 commit
+
+---
+
+### ISS-095: 会话状态容错——快照原子写/坏快照整体拒绝/历史逐行隔离（v0.8.13，plan/ M2）
+- **状态**: ✅ 已解决（2026-09-24；来源=plan/TECHNICAL_HANDOFF §4 任务卡，架构师迭代计划执行）
+- **修复清单**:
+  1. 🆕 **JSON 快照原子写**：`_atomic_write_json`（先序列化→同目录 mkstemp 唯一临时文件→os.replace，失败清理临时文件保留旧快照）；应用于 last_scan.json（save_last_scan）与 deep_analyzed.json（mark_deep_analyzed，indent=1 保持原格式）
+  2. 🆕 **坏快照整体拒绝**：`_valid_last_scan` 结构校验（根 dict/timestamp 可解析/items 列表/每项带非空 code）——原实现数组根会让 `resolve_index` 直接 AttributeError、`#N` 崩溃；拒绝时告警并按「无扫描」处理，绝不过滤坏条目重排（#N 不错位）；`get_deep_analyzed` 拒绝非 dict 根（原 .get 崩）
+  3. 🆕 **JSONL 逐行隔离**：scan_history/watchlist 改 read_bytes+逐行 decode，坏编码/截断尾行计数告警（原 `read_text` 整文件解码，单行坏字节=UnicodeDecodeError 全崩且旧 except 只捕 OSError 接不住）；timestamp 混排 None/数字/字符串排序键统一转字符串（原 TypeError）
+  4. 🆕 **部分成功如实上报**：`save_last_scan` 返回 `ScanSaveResult(snapshot, history)`（__bool__=两者都成保持旧语义），快照挂了历史仍独立追加；三处调用方均忽略返回值零改动
+  5. 🆕 **观察池语义坏事件计数告警**：items 非列表的 add 事件不再静默消失（监督 Agent P2-3）
+- **测试**: test_session_state.py +13（替换/序列化失败旧字节不变+临时文件不残留、null/数组根/坏 items/坏 timestamp/空文件整体拒绝、空 items 合法、坏编码+截断行隔离、timestamp 混排、deep_analyzed 坏根、watch 坏行+坏 items 重放、部分成功返回）；全量 756 passed / 0 failed / 2 skipped / 1 deselected
+- **告警人话化三处同步**: plain_errors 6 条新 pattern（最近扫描快照/行损坏已跳过/事件结构异常已跳过/历史追加失败/序列化失败/写入失败旧文件保留）+ 报错速查手册 N 章节 + 代码本体；顺带删除 `append_scan_history 失败` 死条目（文本已改「复盘历史追加失败」，旧 pattern 永不命中，监督 Agent P2-1）
+- **已知剩余（本轮不修）**:
+  - P2-4 `#N` 路径坏快照时告警重复打两遍（resolve_index 与 last_scan_count 各读一次 get_last_scan，双调用结构 M2 之前就有）——低频噪音，待下次动 start.py _resolve_index_arg 时合并读取
+  - P2-6 `_atomic_write_json` 临时文件清理是 best-effort（os.unlink 被杀软瞬时锁占用/进程硬杀会留 .tmp 残留）——mkstemp 唯一命名保证残留不互抢，可接受
+- **更新记录**:
+  - 2026-09-24: 任务卡实施 + code-quality-guard 对抗审查（无 P0/P1，5 条 P2 中 4 条同批修复、2 条登记已知剩余），commit 落地于本 commit
