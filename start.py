@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.15"  # v0.8.15=持仓并发写保护(内容指纹冲突拒绝+内存回滚+四端不报假成功, plan/M5)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.16"  # v0.8.16=运行诊断doctor+安装事实源统一+Agent入口叙事压缩(plan/M6)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -102,6 +102,7 @@ def show_help():
     print("│                                                    │")
     print("│  ★ 观察池 (v0.8.12)                                 │")
     print("│    watch                 看观察池(入池价→现价+走势) │")
+    print("│    doctor                运行诊断(环境/依赖/配置/缓存)│")
     print("│    watch add <代码|#N>   手动入池(缺省拉实时价)     │")
     print("│    watch rm <代码>       移出观察池                 │")
     print("│    分析出 WATCH 的票自动入池，scan review 标 ✓      │")
@@ -394,6 +395,10 @@ def parse_input(user_input: str):
                 print(f"  [!] '{parts[1]}' 不是有效天数，已按默认 30 天处理（用法: expect 60）")
         return ("expect", {"days": days})
 
+    # ── 运行诊断（v0.8.16，plan/ M6）：只读零 AI 环境体检 ──
+    if cmd in ("doctor", "诊断"):
+        return ("doctor", {})
+
     # ── 市场恐慌指数（v0.8.10）──
     if cmd == "fear":
         rest = parts[1:]
@@ -662,6 +667,7 @@ _COMMAND_HINTS = {
     "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan 交易计划",
     "expect": "expect 未来事件日历+预期透支度",
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
+    "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1501,7 +1507,7 @@ def run_cli(mode: str, args: dict):
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
-        scan_review, scan_review_import, watch_pool,
+        scan_review, scan_review_import, watch_pool, doctor,
     )
 
     ai_overrides = {}
@@ -1765,6 +1771,10 @@ def run_cli(mode: str, args: dict):
         # v0.8.12：观察池——WATCH 自动入池，watch 复盘引擎看入池以来表现
         watch_pool(args)
 
+    elif mode == "doctor":
+        # v0.8.16：运行诊断——只读零 AI 环境体检（plan/ M6）
+        doctor()
+
     elif mode == "noai":
         _no_ai = not _no_ai
         status = "已禁用（纯技术面）" if _no_ai else "已启用"
@@ -1834,7 +1844,7 @@ def run_cli(mode: str, args: dict):
                 from src.cli.main import load_config
             except ImportError as e:
                 print(f"\n  [!] Chat 依赖缺失: {e}")
-                print("  [!] 请先运行: uv sync")
+                print("  [!] 请先安装依赖（事实源 requirements.txt）: pip install -r requirements.txt")
                 return
             run_chat_repl(load_config())
 

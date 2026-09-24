@@ -1,5 +1,7 @@
-# 暮云思辨投资助手 - 依赖
-# Python 3.11+，包管理器 uv（推荐 uv sync）或 pip install -r requirements.txt
+# 暮云思辨投资助手 - 依赖（安装事实源：钉版本的已验证清单）
+# Python 3.11+，安装：uv venv .venv && uv pip install -r requirements.txt
+#   （或 python -m venv .venv + .venv\Scripts\python -m pip install -r requirements.txt）
+# 注意：仓库无 pyproject.toml，uv sync 不可用；升级版本须走独立验证
 # 版本为 2026-06-24 实测可用的已验证版本，钉版本保证一次性部署成功
 
 # ── 核心框架 ──

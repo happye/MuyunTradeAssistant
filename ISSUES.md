@@ -2063,3 +2063,17 @@ P3（已取消）:
   - TUI/web 的策略回写失败只有日志级告警（textual 全屏接管后 stderr 可见性存疑）——与 v0.8.9.5 既有通道一致，待 UI 通知层统一设计
 - **更新记录**:
   - 2026-09-25: 任务卡实施 + code-quality-guard 对抗审查（2×P1：overweight 假成功/chat update 错因误导 AI + 6×P2，全部同批修复），commit 落地于本 commit
+
+---
+
+### ISS-098: 运行诊断 doctor + 安装事实源统一 + Agent 入口叙事压缩（v0.8.16，plan/ M6）
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/TECHNICAL_HANDOFF §6 任务卡，架构师迭代计划执行）
+- **修复清单**:
+  1. 🆕 **doctor 运行诊断**（src/cli/main.py，REPL `doctor`/`诊断`，chat 命令桥自动可用）：只读零 AI 零网络——解释器（是否 .venv）/17 项核心依赖（find_spec 存在性 + importlib.metadata 版本，不 import 模块防告警副作用）/配置存在性/`~/.muyun` 状态与缓存（复盘历史行数/评分缓存/日线缓存/恐慌指数快照等逐项计数）/RAG 知识库/报告目录；缺失项如实标注「未生成/缺失」。**安全红线：settings.local.yaml 只报存在性，内容绝不回显**（test_doctor 写假密钥锁死）
+  2. 🔴 **安装事实源统一**：实测 `uv sync` 因仓库无 pyproject.toml 直接报错（error: No pyproject.toml found）——AGENTS.md/CLAUDE.md 旧文档推荐 uv sync = 新环境按文档装不起来。按任务卡二选一取 **requirements.txt 为事实源**（钉版本的已验证清单；不补 pyproject+lock 的原因：uv 解析器会重新解析传递依赖，违反"不盲目升级依赖"）。AGENTS §一/CLAUDE 命令表/chat `__main__.py` 依赖缺失提示/docs/chat模块架构文档 同步更正为 `uv venv .venv` + `uv pip install -r requirements.txt`（或标准 venv+pip）
+  3. 🆕 **Agent 入口叙事压缩**：AGENTS.md「当前版本」段 v0.8.14 及更早的历史叙事链（~15KB）一字不动迁入 docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md，AGENTS.md 保留 v0.8.15/v0.8.16 条目 + 指针；两条跨版本硬约束补进 §五（akshare 对未来日期返回最新数据必须过滤 / DataFeeder 等价性参照基准不得删除）——archive/README 索引同步
+- **测试**: +4（test_doctor：分节齐全/密钥内容零回显/全新空环境容忍/依赖缺失标注）；全量 775 passed / 0 failed / 2 skipped / 1 deselected
+- **验收对照（plan/README M6）**: 新环境可按文档启动 ✓（安装命令为实测口径）；诊断不泄密 ✓（泄密红线测试）；知识入口短而准确 ✓（AGENTS.md 63.8KB→43.7KB，保留约束与指针）
+- **已知剩余（本轮不修）**: review_*.md/watch_*.md 复盘报告分钟命名（沿 ISS-096）；TUI/web 回写失败日志级告警（沿 ISS-097）
+- **更新记录**:
+  - 2026-09-25: 任务卡实施 + code-quality-guard 对抗审查（1×P0：run_cli 函数级导入清单漏 doctor → 命令运行时 NameError，直接调 cli_main.doctor 的单测抓不到接线断裂——补导入 + parse_input→run_cli 接线冒烟锁；1×P1 start.py 管道模式残留 uv sync 提示；1×P1 doctor 对 settings.local.yaml 缺失断言「AI 不可用」失实——key 有三个合法来源改条件式文案；5×P2 同批清扫：requirements.txt 自身头注释/archive 索引标题/docstring 多承诺/plan 措辞/⑤⑥节 glob OSError 兜底），commit 落地于本 commit

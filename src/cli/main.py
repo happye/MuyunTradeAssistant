@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.15[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.16[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -3141,6 +3141,145 @@ def scan_review_import():
         console.print("  [dim]没有新增记录（全部已导入或无法解析）[/dim]")
 
 
+# ── 运行诊断（v0.8.16，plan/ M6）───────────────────────────────
+_DOCTOR_SETTINGS_LOCAL = Path(__file__).resolve().parents[2] / "configs" / "settings.local.yaml"
+
+# (import名, 显示名)：诊断逐项 find_spec，缺失如实标注（import 名与包名不同的在此映射）
+_DOCTOR_DEPS = [
+    ("yaml", "pyyaml"), ("pydantic", "pydantic"), ("rich", "rich"),
+    ("pandas", "pandas"), ("numpy", "numpy"), ("matplotlib", "matplotlib"),
+    ("akshare", "akshare"), ("baostock", "baostock"), ("efinance", "efinance"),
+    ("curl_cffi", "curl_cffi"), ("openai", "openai"),
+    ("faiss", "faiss-cpu"), ("sentence_transformers", "sentence-transformers"),
+    ("jieba", "jieba"), ("sklearn", "scikit-learn"),
+    ("textual", "textual"), ("flask", "flask"),
+]
+
+
+def doctor():
+    """运行诊断（v0.8.16，plan/ M6）：只读零 AI 的环境体检。
+
+    解释器 / 核心依赖 / 配置存在性 / ~/.muyun 状态与缓存 / RAG 知识库 / 报告目录，
+    缺失项如实标注「未生成/缺失」不崩溃。
+    安全红线：settings.local.yaml 只报存在性，内容（API key）绝不回显。
+    """
+    from importlib.util import find_spec
+    from datetime import datetime as _dt
+
+    console.print(f"\n[bold cyan]🩺 运行诊断[/bold cyan]（只读，零 AI 零网络）")
+
+    # ── 解释器 ──
+    in_venv = sys.prefix != getattr(sys, "base_prefix", sys.prefix)
+    console.print(f"\n[bold]① 解释器[/bold]")
+    console.print(f"  Python: [cyan]{sys.version.split()[0]}[/cyan]  "
+                  f"{'(项目 .venv)' if in_venv else '(系统环境，建议用项目 .venv)'}")
+    console.print(f"  路径: {sys.executable}")
+
+    # ── 核心依赖 ──
+    console.print(f"\n[bold]② 核心依赖[/bold]")
+    from importlib.metadata import version as _pkg_version
+    missing = []
+    for mod_name, disp in _DOCTOR_DEPS:
+        spec = find_spec(mod_name)
+        if spec is None:
+            missing.append(disp)
+            console.print(f"  [red]✗ {disp}: 缺失[/red]")
+        else:
+            # 版本走包元数据（不 import 模块——重依赖导入慢且可能带告警副作用）
+            try:
+                ver = f" {_pkg_version(disp)}"
+            except Exception:
+                ver = ""
+            console.print(f"  ✓ {disp}{ver}")
+    if missing:
+        console.print(f"  [yellow]缺失 {len(missing)} 项——按 README「依赖安装」补装"
+                      f"（pip install -r requirements.txt）[/yellow]")
+
+    # ── 配置 ──
+    repo = Path(__file__).resolve().parents[2]
+    console.print(f"\n[bold]③ 配置[/bold]")
+    settings_yml = repo / "configs" / "settings.yaml"
+    console.print(f"  configs/settings.yaml: "
+                  + ("✓ 存在" if settings_yml.exists() else "[red]✗ 缺失（无法启动）[/red]"))
+    # 安全红线：本地覆盖文件只报存在性，内容（API key）绝不回显
+    if _DOCTOR_SETTINGS_LOCAL.exists():
+        console.print(f"  configs/settings.local.yaml: ✓ 已配置（内容不回显）")
+    else:
+        console.print(f"  configs/settings.local.yaml: 未创建"
+                      f"（API key 须配在 settings.yaml / 环境变量 / 此文件三者之一，"
+                      f"否则 AI 调节/评分不可用；参照 settings.local.yaml.example）")
+    scan_rules = repo / "src" / "scanner" / "scan_rules.yaml"
+    console.print(f"  src/scanner/scan_rules.yaml: "
+                  + ("✓ 存在" if scan_rules.exists() else "[red]✗ 缺失（扫描不可用）[/red]"))
+
+    # ── 状态目录 ~/.muyun ──
+    state = Path.home() / ".muyun"
+    console.print(f"\n[bold]④ 状态目录[/bold] {state}")
+    if not state.exists():
+        console.print(f"  [yellow]目录不存在（全新环境）——首次扫描/分析后自动生成[/yellow]")
+    else:
+        def _count(p, pattern="*"):
+            try:
+                return sum(1 for _ in p.glob(pattern))
+            except OSError:
+                return -1
+        rows = [
+            ("last_scan.json（#N 接续）", state / "last_scan.json", None),
+            ("scan_history.jsonl（复盘历史）", state / "scan_history.jsonl", None),
+            ("watchlist.jsonl（观察池）", state / "watchlist.jsonl", None),
+            ("deep_analyzed.json（l all 去重）", state / "deep_analyzed.json", None),
+            ("benzong_cache/（评分缓存）", state / "benzong_cache", "*"),
+            ("kline_cache/（日线当日缓存）", state / "kline_cache", "*"),
+            ("news_cache/（个股新闻当日缓存）", state / "news_cache", "*"),
+            ("fear_index/（恐慌指数快照）", state / "fear_index", "**"),
+        ]
+        for label, p, pat in rows:
+            if not p.exists():
+                console.print(f"  {label}: 未生成")
+                continue
+            if pat is None:
+                try:
+                    n = sum(1 for _ in p.open(encoding="utf-8")) if p.suffix in (".jsonl",) else "✓"
+                except OSError:
+                    n = "✓"
+                console.print(f"  {label}: ✓" + (f"（{n} 行）" if isinstance(n, int) else ""))
+            else:
+                pat2 = "**/*" if pat == "**" else pat
+                n = _count(p, pat2)
+                console.print(f"  {label}: ✓（{n} 个文件）" if n >= 0 else f"  {label}: 读取失败")
+
+    # ── RAG 知识库 ──
+    console.print(f"\n[bold]⑤ RAG 知识库[/bold]")
+    kb = repo / "投资策略（持续更新）"
+    if kb.exists():
+        try:
+            n_docs = sum(1 for p in kb.rglob("*") if p.suffix.lower() in (".txt", ".md"))
+            console.print(f"  知识库文档: ✓（{n_docs} 个 txt/md）")
+        except OSError as e:
+            console.print(f"  [yellow]知识库目录读取失败（不影响分析主流程）: {e}[/yellow]")
+    else:
+        console.print(f"  [yellow]知识库目录缺失（RAG 检索降级，bz 不受影响）[/yellow]")
+    idx = repo / "knowledge"
+    if idx.exists():
+        console.print(f"  knowledge/: ✓（索引目录存在）")
+    else:
+        console.print(f"  [yellow]knowledge/ 索引缺失——启动时自动重建（首次较慢）[/yellow]")
+
+    # ── 报告目录 ──
+    rpt = repo / "分析报告" / "scan"
+    if rpt.exists():
+        try:
+            n_md = sum(1 for p in rpt.glob("*.md"))
+            console.print(f"\n[bold]⑥ 报告目录[/bold] ✓（分析报告/scan：{n_md} 份 md）")
+        except OSError as e:
+            console.print(f"\n[bold]⑥ 报告目录[/bold] [yellow]读取失败: {e}[/yellow]")
+    else:
+        console.print(f"\n[bold]⑥ 报告目录[/bold] 未生成（首次扫描/复盘后出现）")
+
+    console.print(f"\n  [dim]诊断时间: {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                  f"｜只读体检，不改任何状态[/dim]\n")
+
+
 def watch_pool(args: dict):
     """观察池（v0.8.12）：WATCH 语义自动入池 + watch add/rm 手动管理。
 
@@ -4104,8 +4243,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.15：持仓并发写保护；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.15 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        # v0.8.16：运行诊断+安装事实源统一；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.16 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

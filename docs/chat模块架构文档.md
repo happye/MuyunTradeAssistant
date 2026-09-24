@@ -196,7 +196,7 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 
 **两阶段解决**：
 1. `shutdown_engines()`（进程内清理）：关 AI 客户端 httpx 连接池 → baostock 登出（仅当登录过）→ 置空 4 个引擎单例 → `gc.collect()`。挂在 REPL 的 `finally`（q/EOF/Ctrl+C/异常全覆盖）。实测回收 ~55MB（弱引用验证 torch 模型确被 GC）。
-2. **子进程化**（治本）：start.py 通过 `subprocess` 调 `python -m src.chat`，主进程永不 import chat/RAG/torch；chat 退出即由 OS 整体回收全部 ~440MB。附带收益：主进程启动更快、chat 依赖缺失不再拖垮主程序（`__main__.py` 里友好提示 `uv sync`）。
+2. **子进程化**（治本）：start.py 通过 `subprocess` 调 `python -m src.chat`，主进程永不 import chat/RAG/torch；chat 退出即由 OS 整体回收全部 ~440MB。附带收益：主进程启动更快、chat 依赖缺失不再拖垮主程序（`__main__.py` 里友好提示按 requirements.txt 安装）。
 
 **新机器初始化**：chat 依赖 openai/jieba/faiss-cpu/sentence-transformers + RAG 模型 + API key，`__main__.py` 的 ImportError 兜底会列出缺什么。
 

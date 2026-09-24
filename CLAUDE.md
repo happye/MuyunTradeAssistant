@@ -62,9 +62,10 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 | Fear index | REPL `fear` / `fear history` / `fear backfill` (objective 0-100 panic gauge, zero AI, v0.8.10) |
 | Scan review (validate scan picks) | REPL `scan review [days]` / `scan review import` (per-stock change vs CSI300 + sparkline path, zero AI, v0.8.11) |
 | Watch pool | REPL `watch` / `watch add <code|#N>` / `watch rm` (auto-collects WATCH picks on analysis; review-style tracking since entry, v0.8.12) |
+| Run diagnostics | REPL `doctor` (read-only env check: interpreter/deps/configs/state caches/RAG; zero AI, zero network, never echoes secrets, v0.8.16) |
 | Web UI preview | `preview_start` → "web" (`uv run python -m src.web.app`, :5000, autoPort) |
 | Tests (pytest, offline by default since M1) | `pytest -q` (see tests/README.md for external/AI opt-in); script direct-run: `.\.venv\Scripts\python.exe tests\core\test_xxx.py` |
-| Install dependencies | `uv sync` |
+| Install dependencies | `uv venv .venv` + `uv pip install -r requirements.txt` (requirements.txt is the pinned source of truth; `uv sync` unavailable — no pyproject.toml) |
 
 **Verification discipline:**
 
