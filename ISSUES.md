@@ -2029,3 +2029,20 @@ P3（已取消）:
   - P2-6 `_atomic_write_json` 临时文件清理是 best-effort（os.unlink 被杀软瞬时锁占用/进程硬杀会留 .tmp 残留）——mkstemp 唯一命名保证残留不互抢，可接受
 - **更新记录**:
   - 2026-09-24: 任务卡实施 + code-quality-guard 对抗审查（无 P0/P1，5 条 P2 中 4 条同批修复、2 条登记已知剩余），commit 落地于本 commit
+
+---
+
+### ISS-096: 扫描报告防同分钟覆盖 + 导入复合键幂等（v0.8.14，plan/ M3）
+- **状态**: ✅ 已解决（2026-09-24；来源=plan/TECHNICAL_HANDOFF §5 任务卡，架构师迭代计划执行）
+- **修复清单**:
+  1. 🆕 **报告防同分钟覆盖**：`persist_scan_report` 文件名分钟级 → 秒级 + 独占创建（open "x"，同秒同主题 `_2/_3` 递增，写失败清理半截文件）——原实现直接 `write_text`，同分钟同主题连续扫描第二份覆盖第一份
+  2. 🆕 **导入复合键幂等**：`scan_review_import` 已知记录 `{分钟[:16]: 来源}` dict → 集合；**查重分粒度**（监督审查 P1 修复）：旧格式文件按「分钟+来源」键（v0.8.11~13 live 扫描历史是秒级 timestamp，精确键会让分钟文件 :00 ≠ :45 永不命中而重复导入——监督 Agent 用真实数据沙箱模拟实证 29→32 行），新格式按精确 (timestamp, source) 键；同分钟多来源由 source 区分不互相覆盖
+  3. 🆕 **成功追加才入集合**：同批重复文件不重入、追加失败可重试（原实现本轮新导入不更新已知集合）
+  4. 🆕 **新格式导入**：v0.8.14+ 报告（文件名秒级）按正文「> 时间：」精确时间导入；正文带「报告格式：v2」标记行供人工辨识（导入分流依据是文件名秒级正则）
+  5. 🆕 **时间戳同源**：`ScanSaveResult` 增加 `timestamp`（=写入历史的精确时间），main/start 两处调用方透传给 `persist_scan_report`；`save_last_scan` 历史追加同用该 timestamp——消除 save/persist 两次 `datetime.now()` 跨秒边界错位
+- **测试**: test_scan_review.py +10（固定旧格式文本 fixture `_LEGACY_REPORT_V1` 重写——任务卡要求不得用生成器伪装旧文件、同分钟多来源幂等、同批重复文件不重入、追加失败可重试、新格式精确时间导入、**分钟文件命中秒级 live 历史不重复**（P1 回归锁）、同分钟双报告共存、timestamp 参数链路、ScanSaveResult.timestamp）；全量 765 passed / 0 failed / 2 skipped / 1 deselected
+- **告警人话化三处同步**: plain_errors +2（scan 报告 timestamp 参数非法/scan 报告同名冲突超过重试上限）+ 报错速查手册 N 章节 + 代码本体
+- **已知剩余（本轮不修）**:
+  - `review_*.md` / `watch_*.md` 复盘报告仍是分钟命名（同分钟重跑互相覆盖）——任务卡范围只含扫描报告；复盘报告是可再生输出，影响小，待报告层重构一并处理
+- **更新记录**:
+  - 2026-09-24: 任务卡实施 + code-quality-guard 对抗审查（1×P1 分钟/秒粒度幂等失效 + 2×P2，全部同批修复），commit 落地于本 commit

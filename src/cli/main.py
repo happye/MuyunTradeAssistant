@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.13[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.14[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -2532,8 +2532,8 @@ def scan_market(
         _cols = [("price", "价"), ("change_pct", "涨跌%"), ("turnover_rate", "换手%"),
                  ("volume_ratio", "量比"), ("amplitude", "振幅%"), ("amount_yi", "额(亿)")]
         _src = f"scan market {rule_display}"
-        save_last_scan(_items, _src)
-        _rp = persist_scan_report(_items, _src, columns=_cols)
+        _saved = save_last_scan(_items, _src)
+        _rp = persist_scan_report(_items, _src, columns=_cols, timestamp=_saved.timestamp)
         if _rp:
             console.print(f"  [dim]📝 扫描结果已存：{_rp}[/dim]")
             console.print(f"  [dim]💡 后续：l all 批量深分析全部(简明卡) / ba 批量评分排名[/dim]")
@@ -3076,11 +3076,14 @@ def scan_review(days: int = 7):
 
 
 def scan_review_import():
-    """把 v0.8.7~v0.8.10 落盘的旧扫描报告（分析报告/scan/*.md）导入 scan_history.jsonl。
+    """把落盘扫描报告（分析报告/scan/*.md）导入 scan_history.jsonl。
 
-    报告格式（persist_scan_report 产出）：首行「# 扫描结果 - {来源}」带原始来源；
-    文件名前缀 YYYY-MM-DD_HH-MM 即扫描时间；「## 明细」段逐项「- 字段: 值」。
-    同 (时间, 来源) 已在历史中的自动跳过（可重复执行）。review_*.md 复盘报告不是扫描记录，跳过。
+    旧格式（v0.8.7~v0.8.13，文件名分钟精度）：文件名前缀 YYYY-MM-DD_HH-MM 即扫描
+    时间（秒补 :00），保留原分钟语义，并按「分钟+来源」粒度查重（live 秒级历史
+    中的同一扫描必须命中，不得重复导入）；新格式（v0.8.14+，文件名秒级）：正文
+    「> 时间：」为精确扫描时间，按精确 (时间, 来源) 查重。同批内成功追加才把键
+    加入已知集合——同批重复文件不重入、追加失败可重试。review_*.md 复盘报告
+    不是扫描记录，跳过。
     """
     import re as _re
     from src.cli import session_state
@@ -3094,28 +3097,50 @@ def scan_review_import():
         console.print("  [yellow]没有可导入的旧扫描报告[/yellow]（review_*.md 是复盘报告，自动跳过）")
         return
 
-    known_src = {(r.get("timestamp") or "")[:16]: (r.get("source") or "")
-                 for r in session_state.get_scan_history()}
+    # 复合键集合（M3，v0.8.14）：原 {分钟: 来源} dict 同分钟多来源互相覆盖，
+    # 会导致重复执行时把第一个来源再导入一遍。
+    # 查重分粒度（监督审查 P1 修复）：旧格式文件只有分钟精度，必须按分钟粒度查重
+    # ——v0.8.11~13 的 live 扫描历史是秒级 timestamp，精确键匹配会让分钟文件
+    # 永不命中而重复导入；新格式有精确时间，按精确键查重。同分钟多来源由
+    # 键里的 source 区分，不会互相覆盖。
+    _hist = session_state.get_scan_history()
+    known_precise = {(r.get("timestamp") or "", (r.get("source") or "")) for r in _hist}
+    known_minute = {(t[:16], s) for t, s in known_precise}
     head_re = _re.compile(r"^### (\d+)\. (\S+) (.*)$")
     kv_re = _re.compile(r"^- ([A-Za-z_][A-Za-z_0-9]*): (.*)$")
     title_re = _re.compile(r"^# 扫描结果 - (.+)$")
+    time_re = _re.compile(r"^> 时间：(\d{4}-\d{2}-\d{2}) (\d{2}:\d{2}:\d{2})\s*$")
+    new_name_re = _re.compile(r"^\d{4}-\d{2}-\d{2}_\d{2}-\d{2}-\d{2}_")
 
     imported = skipped_files = skipped_recs = bad_files = 0
     for p in files:
-        # 文件名时间戳：YYYY-MM-DD_HH-MM_<安全化来源>.md
-        m = _re.match(r"^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_", p.name)
         try:
             lines = p.read_text(encoding="utf-8").splitlines()
         except (OSError, UnicodeDecodeError):
             bad_files += 1
             continue
         src_line = next((title_re.match(l) for l in lines if title_re.match(l)), None)
-        if m is None or src_line is None:
+        if src_line is None:
             bad_files += 1
             continue
-        timestamp = f"{m.group(1)}T{m.group(2).replace('-', ':')}:00"
         source = src_line.group(1).strip()
-        if known_src.get(timestamp[:16]) == source:
+        if new_name_re.match(p.name):
+            # 新格式（v0.8.14+）：正文「> 时间：」是精确扫描时间，精确键查重
+            tl = next((time_re.match(l) for l in lines if time_re.match(l)), None)
+            if tl is None:
+                bad_files += 1
+                continue
+            timestamp = f"{tl.group(1)}T{tl.group(2)}"
+            key, is_new_format = (timestamp, source), True
+        else:
+            # 旧格式：文件名时间戳 YYYY-MM-DD_HH-MM_<安全化来源>.md（分钟语义）
+            m = _re.match(r"^(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})_", p.name)
+            if m is None:
+                bad_files += 1
+                continue
+            timestamp = f"{m.group(1)}T{m.group(2).replace('-', ':')}:00"
+            key, is_new_format = (timestamp[:16], source), False
+        if key in (known_precise if is_new_format else known_minute):
             skipped_recs += 1
             continue
 
@@ -3137,13 +3162,13 @@ def scan_review_import():
                 continue
             kv = kv_re.match(line.strip())
             if kv:
-                key, raw = kv.group(1), kv.group(2).strip()
-                if key in ("code", "name"):
+                key_, raw = kv.group(1), kv.group(2).strip()
+                if key_ in ("code", "name"):
                     continue
                 try:
-                    cur[key] = float(raw) if raw not in ("None", "") else None
+                    cur[key_] = float(raw) if raw not in ("None", "") else None
                 except ValueError:
-                    cur[key] = raw
+                    cur[key_] = raw
             elif not line.strip():
                 cur = None
         if not items:
@@ -3151,6 +3176,9 @@ def scan_review_import():
             continue
         if session_state.append_scan_history(items, source, timestamp=timestamp):
             imported += 1
+            # 成功追加才入集合：同批重复文件不重入、失败可重试（两个粒度同步维护）
+            known_precise.add((timestamp, source))
+            known_minute.add((timestamp[:16], source))
         else:
             skipped_files += 1
 
@@ -4127,8 +4155,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.13：会话状态容错；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.13 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        # v0.8.14：扫描报告防覆盖+导入幂等；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.14 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

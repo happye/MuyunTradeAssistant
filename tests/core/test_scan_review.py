@@ -359,37 +359,53 @@ def test_review_path_anchors_and_realtime_tail(monkeypatch):
 
 # ── 旧扫描报告导入（scan review import）──────────────────
 
-def _make_legacy_report(tmp_path, date_str="2026-09-10_10-00"):
-    """用 persist_scan_report 本尊生成旧格式报告（保证格式保真），再回填历史文件名。"""
-    monkey_items = [{"code": "600519", "name": "贵州茅台", "price": 1257.12,
-                     "change_pct": 1.2, "turnover_rate": 0.8},
-                    {"code": "000001", "name": "平安银行", "price": 11.7,
-                     "change_pct": -0.5, "turnover_rate": 0.6}]
-    old_report_dir = session_state._REPORT_DIR
-    session_state._REPORT_DIR = tmp_path / "scan"
-    try:
-        path = session_state.persist_scan_report(
-            monkey_items, "scan market 健康回调",
-            columns=[("price", "价"), ("change_pct", "涨跌%"), ("turnover_rate", "换手%")])
-    finally:
-        session_state._REPORT_DIR = old_report_dir
-    assert path
-    target = tmp_path / "scan" / f"{date_str}_scan_market_健康回调.md"
-    Path(path).rename(target)
-    return target
+# 固定旧格式文本 fixture（M3 任务卡要求：不得用生成器伪装旧文件——生成器一变
+# "兼容测试"就虚假通过）。忠实复刻 v0.8.7~v0.8.10 persist_scan_report 实际产出格式
+# （真实样本：分析报告/scan/2026-07-22_02-01_bz_scan_oversold_watch.md）。
+_LEGACY_REPORT_V1 = """# 扫描结果 - scan market 健康回调
+
+> 时间：2026-09-10 10:00:00
+> 共 2 只
+
+| # | 代码 | 名称 | 价 | 涨跌% | 换手% |
+|---|------|------|------|------|------|
+| 1 | 600519 | 贵州茅台 | 1257.12 | 1.20 | 0.80 |
+| 2 | 000001 | 平安银行 | 11.70 | -0.50 | 0.60 |
+
+## 明细
+
+### 1. 600519 贵州茅台
+- price: 1257.12
+- change_pct: 1.2
+- turnover_rate: 0.8
+
+### 2. 000001 平安银行
+- price: 11.7
+- change_pct: -0.5
+- turnover_rate: 0.6
+"""
+
+
+def _write_report(report_dir, filename: str, text: str):
+    """写一份指定文件名的报告文本到 report_dir（不经过任何生成器）。"""
+    report_dir.mkdir(parents=True, exist_ok=True)
+    p = report_dir / filename
+    p.write_text(text, encoding="utf-8")
+    return p
 
 
 def test_import_legacy_reports(monkeypatch, tmp_path):
     _redirect_state(monkeypatch, tmp_path)
-    _make_legacy_report(tmp_path)
-    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", tmp_path / "scan")
+    report_dir = tmp_path / "scan"
+    _write_report(report_dir, "2026-09-10_10-00_scan_market_健康回调.md", _LEGACY_REPORT_V1)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
 
     from src.cli.main import scan_review_import
     scan_review_import()
     rows = session_state.get_scan_history()
     assert len(rows) == 1
     rec = rows[0]
-    assert rec["timestamp"] == "2026-09-10T10:00:00"   # 文件名时间戳回填
+    assert rec["timestamp"] == "2026-09-10T10:00:00"   # 文件名时间戳回填（旧格式分钟语义）
     assert rec["source"] == "scan market 健康回调"       # 标题行原始来源
     assert rec["count"] == 2
     by_code = {it["code"]: it for it in rec["items"]}
@@ -399,14 +415,155 @@ def test_import_legacy_reports(monkeypatch, tmp_path):
 
 def test_import_is_idempotent(monkeypatch, tmp_path, capsys):
     _redirect_state(monkeypatch, tmp_path)
-    _make_legacy_report(tmp_path)
-    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", tmp_path / "scan")
+    report_dir = tmp_path / "scan"
+    _write_report(report_dir, "2026-09-10_10-00_scan_market_健康回调.md", _LEGACY_REPORT_V1)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
     from src.cli.main import scan_review_import
     scan_review_import()
     scan_review_import()   # 第二次：同(时间,来源)自动跳过
     out = capsys.readouterr().out
     assert "导入 0 条" in out or "已存在跳过 1 条" in out
     assert len(session_state.get_scan_history()) == 1
+
+
+def test_import_same_minute_multi_sources_idempotent(monkeypatch, tmp_path):
+    """同分钟两个不同来源的旧报告：全部导入，且重复执行不重入（复合键集合，M3）。
+
+    回归锁：原实现已知记录用 {分钟: 来源} dict 表示，同分钟多来源互相覆盖，
+    第二次执行会把第一个来源再导入一遍（重复行）。
+    """
+    _redirect_state(monkeypatch, tmp_path)
+    report_dir = tmp_path / "scan"
+    text_a = _LEGACY_REPORT_V1.replace("scan market 健康回调", "bz scan 主题A")
+    text_b = _LEGACY_REPORT_V1.replace("scan market 健康回调", "bz scan 主题B")
+    _write_report(report_dir, "2026-09-10_10-00_bz_scan_主题A.md", text_a)
+    _write_report(report_dir, "2026-09-10_10-00_bz_scan_主题B.md", text_b)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    assert len(session_state.get_scan_history()) == 2   # 同分钟两来源都进历史
+    scan_review_import()   # 第二次：复合键 (timestamp, source) 全命中，不重入
+    assert len(session_state.get_scan_history()) == 2
+
+
+def test_import_same_batch_duplicate_file_no_reentry(monkeypatch, tmp_path):
+    """同批两个内容相同的文件（同时间同来源不同文件名）→ 只导入一条（M3）。
+
+    回归锁：原实现本轮新导入的键没有加入已知集合，同批重复文件会重入。
+    """
+    _redirect_state(monkeypatch, tmp_path)
+    report_dir = tmp_path / "scan"
+    _write_report(report_dir, "2026-09-10_10-00_scan_market_健康回调.md", _LEGACY_REPORT_V1)
+    _write_report(report_dir, "2026-09-10_10-00_scan_market_健康回调_copy.md", _LEGACY_REPORT_V1)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    assert len(session_state.get_scan_history()) == 1
+
+
+def test_import_append_failure_is_retryable(monkeypatch, tmp_path, capsys):
+    """追加失败 → 计数可见且不入已知集合，下次执行可重试补录（M3）。"""
+    _redirect_state(monkeypatch, tmp_path)
+    report_dir = tmp_path / "scan"
+    _write_report(report_dir, "2026-09-10_10-00_scan_market_健康回调.md", _LEGACY_REPORT_V1)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
+    from src.cli.main import scan_review_import
+    real_append = session_state.append_scan_history
+    monkeypatch.setattr(session_state, "append_scan_history", lambda *a, **k: False)
+    scan_review_import()
+    assert "写入失败 1 条" in capsys.readouterr().out
+    assert len(session_state.get_scan_history()) == 0
+    monkeypatch.setattr(session_state, "append_scan_history", real_append)
+    scan_review_import()   # 恢复后重试：补录成功
+    assert len(session_state.get_scan_history()) == 1
+
+
+def test_import_minute_file_matches_live_seconds_history(monkeypatch, tmp_path):
+    """v0.8.11~13 live 扫描（历史秒级 timestamp）+ 盘上分钟格式报告 → 导入不重复。
+
+    回归锁（监督 Agent P1 实证）：旧代码分钟截断匹配恰好兜住这种「live 已入
+    历史 + 分钟报告还在盘上」的重叠；M3 一度收窄成精确键导致 :00 ≠ :45 永不
+    命中、重复导入。修复 = 旧格式文件按分钟粒度查重。
+    """
+    _redirect_state(monkeypatch, tmp_path)
+    # live 扫描已自动入历史（秒级，save_last_scan 收口）
+    session_state.append_scan_history(
+        [{"code": "600519", "name": "贵州茅台", "price": 1257.12}],
+        "scan market 健康回调", timestamp="2026-09-22T00:56:45")
+    report_dir = tmp_path / "scan"
+    text = _LEGACY_REPORT_V1.replace(
+        "scan market 健康回调", "scan market 健康回调").replace(
+        "> 时间：2026-09-10 10:00:00", "> 时间：2026-09-22 00:56:45")
+    _write_report(report_dir, "2026-09-22_00-56_scan_market_健康回调.md", text)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    rows = session_state.get_scan_history()
+    assert len(rows) == 1, "分钟文件必须命中秒级 live 历史（分钟粒度查重），不得重复导入"
+    assert rows[0]["timestamp"] == "2026-09-22T00:56:45"   # 保留 live 原秒级时间
+    scan_review_import()
+    assert len(session_state.get_scan_history()) == 1      # 持续幂等
+
+
+def test_import_v2_report_precise_timestamp(monkeypatch, tmp_path):
+    """v0.8.14+ 新格式（文件名秒级）：按正文精确时间导入，重复执行幂等（M3）。"""
+    _redirect_state(monkeypatch, tmp_path)
+    report_dir = tmp_path / "scan"
+    v2_text = _LEGACY_REPORT_V1.replace(
+        "scan market 健康回调", "bz scan AI").replace(
+        "> 时间：2026-09-10 10:00:00", "> 时间：2026-09-24 10:00:30")
+    _write_report(report_dir, "2026-09-24_10-00-30_bz_scan_AI.md", v2_text)
+    monkeypatch.setattr(cli_main, "_REVIEW_REPORT_DIR", report_dir)
+    from src.cli.main import scan_review_import
+    scan_review_import()
+    rows = session_state.get_scan_history()
+    assert len(rows) == 1
+    assert rows[0]["timestamp"] == "2026-09-24T10:00:30"   # 正文精确时间（非分钟截断）
+    scan_review_import()
+    assert len(session_state.get_scan_history()) == 1      # 幂等
+
+
+def test_persist_report_same_minute_no_overwrite(monkeypatch, tmp_path):
+    """同分钟同主题连续扫描两次 → 两份报告都保留（M3：秒级文件名+独占创建）。
+
+    回归锁：原文件名只有分钟精度且直接 write_text，第二份覆盖第一份。
+    """
+    from datetime import datetime as _real_dt
+
+    class _FrozenDatetime(_real_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return _real_dt(2026, 9, 24, 10, 0, 30)
+
+    monkeypatch.setattr(session_state, "_REPORT_DIR", tmp_path / "scan")
+    monkeypatch.setattr(session_state, "datetime", _FrozenDatetime)
+    p1 = session_state.persist_scan_report([{"code": "A", "score": 1}], "bz scan 同主题")
+    p2 = session_state.persist_scan_report([{"code": "A", "score": 2}], "bz scan 同主题")
+    assert p1 and p2 and p1 != p2, "同分钟同主题两次扫描必须各得一份报告"
+    assert "2026-09-24_10-00-30" in p1 and "2026-09-24_10-00-30" in p2  # 秒级文件名
+    assert "score: 1" in Path(p1).read_text(encoding="utf-8")
+    assert "score: 2" in Path(p2).read_text(encoding="utf-8")  # 第一份内容未被覆盖
+
+
+def test_persist_report_accepts_history_timestamp(monkeypatch, tmp_path):
+    """timestamp 参数（与 save_last_scan 历史记录一致传递）：文件名与正文都用它（M3）。"""
+    monkeypatch.setattr(session_state, "_REPORT_DIR", tmp_path / "scan")
+    path = session_state.persist_scan_report(
+        [{"code": "A", "score": 3}], "bz scan 链路",
+        timestamp="2026-09-24T10:00:30")
+    assert path and "2026-09-24_10-00-30" in path
+    content = Path(path).read_text(encoding="utf-8")
+    assert "> 时间：2026-09-24 10:00:30" in content
+    assert "报告格式：v2" in content   # 人工辨识标记（导入侧实际按文件名秒级分流）
+
+
+def test_save_last_scan_result_carries_timestamp(monkeypatch, tmp_path):
+    """ScanSaveResult 携带历史记录的精确 timestamp——调用方透传给报告落盘实现同源（M3）。"""
+    _redirect_state(monkeypatch, tmp_path)
+    r = session_state.save_last_scan([{"code": "A"}], "test")
+    assert r.timestamp
+    data = session_state.get_last_scan()
+    assert data["timestamp"] == r.timestamp   # 与快照/历史完全一致
 
 
 def test_parse_scan_review_import():

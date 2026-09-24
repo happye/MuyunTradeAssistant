@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.13"  # v0.8.13=会话状态容错(快照原子写/坏快照整体拒绝/历史逐行隔离)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.14"  # v0.8.14=扫描报告防覆盖+导入幂等(plan/M3)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -1307,8 +1307,8 @@ def run_benzong_scan(args: dict):
                 "invalidate": _it.get("invalidate", False),
             })
         _src = f"bz scan {theme}".strip()
-        save_last_scan(_items, _src)
-        _rp = persist_scan_report(_items, _src)
+        _saved = save_last_scan(_items, _src)
+        _rp = persist_scan_report(_items, _src, timestamp=_saved.timestamp)
         if _rp:
             print(f"  📝 扫描结果已存：{_rp}")
         print(f"  💡 后续：l all 批量深分析这{len(batch['top_n'])}只(简明卡)")

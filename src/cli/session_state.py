@@ -82,10 +82,14 @@ def _atomic_write_json(path: Path, data, indent: int = 2) -> bool:
 class ScanSaveResult(NamedTuple):
     """save_last_scan 结果：快照与历史分别报告，部分成功不冒充全成（M2）。
 
-    __bool__ = 两者都成才算 True，保持"整体成功才真"的旧布尔语义。
+    timestamp 是本条记录写入时的精确 ISO 时间——调用方把它透传给
+    persist_scan_report 可保证报告文件名/正文与历史记录同源（M3，
+    消除两次 datetime.now() 跨秒边界导致的时间戳错位）。
+    __bool__ = 快照与历史都成才算 True，保持"整体成功才真"的旧布尔语义。
     """
     snapshot: bool
     history: bool
+    timestamp: str = ""
 
     def __bool__(self) -> bool:
         return self.snapshot and self.history
@@ -101,7 +105,7 @@ def save_last_scan(items: list[dict], source: str) -> ScanSaveResult:
     快照原子写（_atomic_write_json）；历史追加独立尝试——快照挂了历史仍值得记
     （复盘数据更贵），两者成败分别报告，不冒充事务完成。
 
-    Returns: ScanSaveResult(snapshot, history)；__bool__ = 两者都成
+    Returns: ScanSaveResult(snapshot, history, timestamp)；__bool__ = 两者都成
     """
     data = {
         "timestamp": datetime.now().isoformat(timespec="seconds"),
@@ -110,8 +114,8 @@ def save_last_scan(items: list[dict], source: str) -> ScanSaveResult:
         "items": items,
     }
     snap_ok = _atomic_write_json(_LAST_SCAN_FILE, data)
-    hist_ok = append_scan_history(items, source)
-    return ScanSaveResult(snap_ok, hist_ok)
+    hist_ok = append_scan_history(items, source, timestamp=data["timestamp"])
+    return ScanSaveResult(snap_ok, hist_ok, data["timestamp"])
 
 
 def append_scan_history(items: list[dict], source: str,
@@ -418,11 +422,18 @@ def watch_entry_of(code: str) -> Optional[dict]:
 
 
 def persist_scan_report(items: list[dict], source: str,
-                        columns: list[tuple[str, str]] = None) -> str:
+                        columns: list[tuple[str, str]] = None,
+                        timestamp: Optional[str] = None) -> str:
     """scan 结果落盘 markdown 列表。返回路径；失败返回空串。
 
     columns: 表格列 [(key, label)]，默认笨总评分三列（评分/等级/置信度）。
         scan market 等技术面结果可传 [("price","价"),("change_pct","涨跌%"),...]。
+    timestamp: ISO 时间戳（save_last_scan 的 ScanSaveResult.timestamp 透传，M3），
+        缺省取当前时间——传入时文件名/正文与历史记录精确同源。
+
+    v0.8.14（M3）起文件名带秒级时间戳 + 独占创建（open "x"，同秒同主题冲突时
+    _2/_3 递增）：同分钟同主题连续扫描不再互相覆盖；文件名秒级即新格式标志
+    （导入侧按此分流），正文带「报告格式：v2」标记行供人工辨识。
     """
     try:
         _REPORT_DIR.mkdir(parents=True, exist_ok=True)
@@ -433,12 +444,19 @@ def persist_scan_report(items: list[dict], source: str,
     if columns is None:
         columns = [("score", "评分"), ("grade", "等级"), ("confidence", "置信度")]
 
-    now = datetime.now()
-    ts = now.strftime("%Y-%m-%d_%H-%M")
+    if timestamp:
+        try:
+            now = datetime.fromisoformat(timestamp)
+        except (ValueError, TypeError):
+            logger.warning(f"scan 报告 timestamp 参数非法，回退当前时间: {timestamp!r}")
+            now = datetime.now()
+    else:
+        now = datetime.now()
+    ts = now.strftime("%Y-%m-%d_%H-%M-%S")   # v0.8.14: 秒级（原分钟级，同分钟互相覆盖）
     full_ts = now.strftime("%Y-%m-%d %H:%M:%S")
 
     safe_source = re.sub(r'[<>:"/\\|?*\s]+', "_", source).strip("_.") or "scan"
-    path = _REPORT_DIR / f"{ts}_{safe_source}.md"
+    base = f"{ts}_{safe_source}"
 
     def _fmt(k, v):
         if v is None:
@@ -456,6 +474,7 @@ def persist_scan_report(items: list[dict], source: str,
     L.append("")
     L.append(f"> 时间：{full_ts}")
     L.append(f"> 共 {len(items)} 只")
+    L.append("> 报告格式：v2（v0.8.14 起，文件名秒级时间戳）")
     L.append("")
     header = "| # | 代码 | 名称 | " + " | ".join(label for _, label in columns) + " |"
     sep = "|---|------|------|" + "|".join("------" for _ in columns) + "|"
@@ -477,9 +496,22 @@ def persist_scan_report(items: list[dict], source: str,
             L.append(f"- {k}: {v}")
         L.append("")
 
-    try:
-        path.write_text("\n".join(L), encoding="utf-8")
-        return str(path)
-    except OSError as e:
-        logger.warning(f"persist_scan_report 写入失败: {e}")
-        return ""
+    content = "\n".join(L)
+    # 独占创建防覆盖：同名已存在（同秒同主题）则 _2/_3 递增，绝不覆盖已有报告
+    for suffix in ("", "_2", "_3", "_4", "_5"):
+        cand = _REPORT_DIR / f"{base}{suffix}.md"
+        try:
+            with open(cand, "x", encoding="utf-8") as f:
+                f.write(content)
+            return str(cand)
+        except FileExistsError:
+            continue
+        except OSError as e:
+            try:
+                cand.unlink(missing_ok=True)  # 半截文件不残留
+            except OSError:
+                pass
+            logger.warning(f"persist_scan_report 写入失败: {e}")
+            return ""
+    logger.warning(f"scan 报告同名冲突超过重试上限，未落盘: {base}")
+    return ""
