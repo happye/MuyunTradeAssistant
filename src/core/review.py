@@ -55,6 +55,43 @@ def curve_spark(curve: dict) -> str:
     return sparkline([curve[k] for k in sorted(curve)])
 
 
+def bench_point(bench_rows, bench_last, date: str):
+    """基准同窗对齐（M4 第二批：scan_review/watch_pool 同构逻辑收敛）。
+
+    返回 (基准锚点收盘, 同窗涨跌%)；基准缺失或锚点前无数据返回 (None, None)。
+    bench_rows: [{date, close}]（升序）；bench_last: 最新收盘（None=基准缺失）。
+    """
+    if not bench_rows or bench_last is None:
+        return None, None
+    base = None
+    for r in bench_rows:
+        if r["date"] <= date:
+            base = r["close"]
+        else:
+            break
+    if not base:
+        return None, None
+    return base, (bench_last - base) / base * 100
+
+
+def compute_chg_excess(base, latest, bench_chg):
+    """逐票涨跌与同窗超额：(chg%, excess%)；base/latest/bench_chg 任一缺失则 (None, None)。"""
+    if base and latest:
+        chg = (latest - base) / base * 100
+        if bench_chg is not None:
+            return chg, chg - bench_chg
+        return chg, None
+    return None, None
+
+
+def bench_path(bench_base, bench_rows, anchor_date: str):
+    """基准同窗路径：[(锚, base)] + 锚点日之后的逐日 [(date, close)]，供 offset_curve 聚合。"""
+    if not bench_base:
+        return []
+    return ([("锚", bench_base)]
+            + [(rb["date"], rb["close"]) for rb in bench_rows if rb["date"] > anchor_date])
+
+
 def review_path(code: str, scan_date: str, base, latest, df_cache: dict, today_str: str):
     """扫描日→今的收盘路径 [(标签, 价)]：锚点(扫描日基准价) + 其后逐 bar 收盘 + 实时价收尾。
 

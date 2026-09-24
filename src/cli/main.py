@@ -2712,6 +2712,9 @@ def _review_base_from_kline(code: str, scan_date: str, df_cache: dict):
 # 注意：_curve_spark 内部的 sparkline 调用走 src.core.review 命名空间，
 # 拦截它需 patch core 模块（patch cli_main._sparkline 只影响这里的直接调用点）。
 from src.core.review import (   # noqa: E402
+    bench_path as _bench_path,
+    bench_point as _bench_point_core,
+    compute_chg_excess as _compute_chg_excess_core,
     curve_spark as _curve_spark,
     offset_curve as _offset_curve,
     review_path as _review_path,
@@ -2805,18 +2808,8 @@ def scan_review(days: int = 7):
         _review_base_from_kline(code, code_first_scan.get(code) or earliest, df_cache)
 
     def _bench_point(scan_date: str):
-        """(基准锚点收盘, 同窗涨跌%)；基准缺失返回 (None, None)。"""
-        if not bench_rows or bench_last is None:
-            return None, None
-        base = None
-        for r in bench_rows:
-            if r["date"] <= scan_date:
-                base = r["close"]
-            else:
-                break
-        if not base:
-            return None, None
-        return base, (bench_last - base) / base * 100
+        """(基准锚点收盘, 同窗涨跌%)；基准缺失返回 (None, None)。（M4 第二批收敛至 core）"""
+        return _bench_point_core(bench_rows, bench_last, scan_date)
 
     # 4) 逐条记录评估（旧→新，收在最近的扫描上）；路径收集后循环外统一算整体走势曲线
     # 观察池交叉标注：在池股在「池」列打标（观察池与复盘互相看见）
@@ -2866,21 +2859,16 @@ def scan_review(days: int = 7):
                 latest = float(q.get("price")) if q.get("price") else None
             except (TypeError, ValueError):
                 latest = None
-            chg = excess = None
-            if base and latest:
-                chg = (latest - base) / base * 100
-                if bench_chg is not None:
-                    excess = chg - bench_chg
+            chg, excess = _compute_chg_excess_core(base, latest, bench_chg)
             path = _review_path(code, scan_date, base, latest, df_cache, today_str)
             rows.append({"code": code, "name": str(it.get("name") or "")[:10],
                          "base": base, "latest": latest, "chg": chg, "excess": excess,
                          "path": path})
         # 路径收集（曲线在循环后用 _offset_curve 统一聚合）；基准同窗路径同构
         all_paths.extend(r["path"] for r in rows)
-        if bench_base:
-            bench_paths.append([("锚", bench_base)]
-                               + [(rb["date"], rb["close"]) for rb in bench_rows
-                                  if rb["date"] > scan_date])
+        bp = _bench_path(bench_base, bench_rows, scan_date)
+        if bp:
+            bench_paths.append(bp)
 
         chgs = [r["chg"] for r in rows if r["chg"] is not None]
         excesses = [r["excess"] for r in rows if r["excess"] is not None]
@@ -3370,17 +3358,7 @@ def watch_pool(args: dict):
     bench_last = bench_rows[-1]["close"] if bench_rows else None
 
     def _bench_point(entry_date: str):
-        if not bench_rows or bench_last is None:
-            return None, None
-        base = None
-        for rb in bench_rows:
-            if rb["date"] <= entry_date:
-                base = rb["close"]
-            else:
-                break
-        if not base:
-            return None, None
-        return base, (bench_last - base) / base * 100
+        return _bench_point_core(bench_rows, bench_last, entry_date)
 
     # 逐票日线预热（走势 + 缺价兜底共用；kline_cache 当日缓存 → 重复查看零请求）
     df_cache: dict = {}
@@ -3413,17 +3391,12 @@ def watch_pool(args: dict):
                 latest = float(q.get("price")) if q.get("price") else None
             except (TypeError, ValueError):
                 latest = None
-            chg = excess = None
-            if base and latest:
-                chg = (latest - base) / base * 100
-                if bench_chg is not None:
-                    excess = chg - bench_chg
+            chg, excess = _compute_chg_excess_core(base, latest, bench_chg)
             path = _review_path(code, entry_date, base, latest, df_cache, today_str)
             all_paths.append(path)
-            if bench_base:
-                bench_paths.append([("锚", bench_base)]
-                                   + [(rb["date"], rb["close"]) for rb in bench_rows
-                                      if rb["date"] > entry_date])
+            bp = _bench_path(bench_base, bench_rows, entry_date)
+            if bp:
+                bench_paths.append(bp)
             rows.append({"code": code, "name": str(it.get("name") or "")[:10],
                          "entry": entry_ts, "entry_short": entry_short, "source": rec.get("source") or "?",
                          "base": base, "latest": latest, "chg": chg, "excess": excess,

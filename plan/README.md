@@ -44,7 +44,7 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 | M1 | 已实施（2026-09-24） | pytest 默认离线；真实接口显式开关；测试收集前隔离 home，保留离线 data_sources 单测 | 一条命令得到稳定结果；不碰真实 `~/.muyun`，不默认花 AI 费用 |
 | M2 | 已实施（2026-09-24） | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
 | M3 | 已实施（2026-09-24） | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
-| M4 | 第一批已实施（2026-09-24，纯计算提取） | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
+| M4 | 已实施（2026-09-24/25，两批） | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
 | M5 | 已实施（2026-09-25） | 持仓并发写保护：先梳理所有写入方法及调用方，再以内容版本检测拒绝旧快照覆盖；失败必须传到输出层 | 两实例修改不会静默覆盖，REPL/chat/Web/TUI 都不报假成功 |
 | M6 | 已实施（2026-09-25） | 集中运行诊断、缓存新鲜度与缺失原因呈现；核对安装入口；压缩 Agent 指令中的历史叙事 | 新环境可按文档启动，诊断不泄密；知识入口短而准确 |
 
@@ -70,6 +70,12 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 - 有全局状态改动必须跑完整离线回归。真实数据接口/AI 验证单独记账，不能用它们的抖动掩盖离线失败。
 
 ## 执行记录
+
+### 2026-09-25 / Claude Code / M4 第二批实施（同构评估收敛，内部重构无行为变化）
+
+- 第二批按 ADR-01「首轮只收口已经存在多个调用方的逻辑」收敛真正重复的实现：scan_review 与 watch_pool 的 `_bench_point`（基准同窗对齐，15 行×2）、逐票 `chg/excess` 计算、`bench_paths` 组装全部同构——提取为 `src/core/review.py` 的 `bench_point`/`compute_chg_excess`/`bench_path`，两命令改调同一实现（复用增加、改动面缩小；两份维护变一份）。
+- **展示层留在 cli 是有意决策**（非未完成）：scan_review/watch_pool 的 Rich 渲染与 main 的 console（chat Tee 捕获依赖）深度耦合，搬到独立 render 模块只是文件搬家（架构师口径："main.py 行数下降只说明搬家"），收益低于风险；ADR-02 口径下复用增加才算重构收益，本批达成了它。
+- main 兼容出口不变（`_sparkline`/`_review_path` 等身份别名 + `_bench_point` 局部薄壳）；全量 776 passed / 0 failed，既有精确数字断言即等价锁。
 
 ### 2026-09-25 / Claude Code / M1 任务卡第 5 步收口（离线纯净性审计）
 
