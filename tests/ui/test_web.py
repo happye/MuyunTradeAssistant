@@ -37,6 +37,7 @@ class _FakePM:
         return self._positions
 
     def add_position(self, stock_code, stock_name="", entry_price=None, ratio=0.20, lifecycle="OPEN"):
+        # M5 起真实现返回 bool（保存成败），替身对齐返回 True=已保存
         class _Pos:
             def __init__(self, code, name, ratio):
                 self.stock_code = code
@@ -45,6 +46,7 @@ class _FakePM:
                 self.entry_price = None
                 self.lifecycle = "OPEN"
         self._positions.append(_Pos(stock_code, stock_name, ratio))
+        return True
 
     def to_strategy_state(self, code):
         return None

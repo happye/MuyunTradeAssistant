@@ -6,7 +6,8 @@
 2. add_position / update_position_fields 拒绝非法值：负数/NaN/Inf 仓位、非正数开仓价
    （AI 供参的 manage_portfolio 是入口，数据层必须兜底）
 3. portfolio.yaml 中残缺 trade_plan 加载不崩，且原始数据在保存后原样保留（防静默抹除）
-4. 会话外修改 portfolio.yaml（mtime 变化）后 _save 必须发人话告警（防旧快照回滚无感知）
+4. 会话外修改 portfolio.yaml 后 _save 必须拒绝写入并回滚内存（M5 内容指纹，
+   升级原 mtime 告警；内容未变的 touch 不算冲突）
 
 纯 mock/临时目录，无网络。跑法：pytest tests/core/test_iss078_portfolio_safety.py
 """
@@ -175,17 +176,101 @@ def test_update_preserves_corrupt_plan_raw():
             assert "残缺计划" in f.read(), "回写后残缺计划原始数据被静默抹除"
 
 
-# ── 4. 会话外修改告警 ─────────────────────────────────────
+# ── 4. M5 并发写保护（plan/TECHNICAL_HANDOFF §6，升级 ISS-078 的 mtime 检测）──
 
-def test_save_warns_on_external_modification(caplog):
+def test_save_rejects_when_disk_modified_externally(caplog):
+    """两实例同版本起步：A 先保存，B 后保存必须被拒绝——不得覆盖较新的用户操作。
+
+    M5 核心场景（任务卡验收）：内容指纹检测外部修改 → 拒绝写入 + 内存回滚磁盘版。
+    （原实现只告警仍覆盖，mtime 检测形同虚设。）
+    """
+    with _tmp_portfolio({"600519": {
+        "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
+    }}) as path:
+        a = PortfolioManager(path)
+        b = PortfolioManager(path)      # 与 A 同一磁盘版本起步
+        assert a.add_position("000001", stock_name="A的新仓", ratio=0.1) is True
+        # B 基于旧快照改：必须冲突拒绝，磁盘上 A 的改动不能被覆盖
+        with caplog.at_level(logging.WARNING, logger="src.data.portfolio"):
+            r = b.add_position("600036", stock_name="B的新仓", ratio=0.1)
+        assert r is False, "旧快照保存必须被拒绝（防覆盖另一会话的较新改动）"
+        assert any("已被其他会话" in rec.message for rec in caplog.records), \
+            "冲突拒绝必须发人话告警"
+        with open(path, encoding="utf-8") as f:
+            disk = yaml.safe_load(f)
+        assert "000001" in disk["positions"], "A 的较新改动必须完好"
+        assert "600036" not in disk["positions"], "B 的旧快照改动不得落盘"
+        # 内存回滚：B 已重新加载磁盘真值（A 的改动可见，B 自己的被丢弃）
+        assert b.get_position("600036") is None
+        assert b.get_position("000001") is not None
+
+
+def test_save_tolerates_touch_with_same_content(caplog):
+    """外部只改 mtime 未改内容（编辑器 touch/复制文件）→ 不算冲突，正常保存。
+
+    内容指纹比 mtime 更少误报：mtime 变了但字节相同 = 没有外部改动可覆盖。
+    """
     with _tmp_portfolio({"600519": {
         "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
     }}) as path:
         pm = PortfolioManager(path)
-        # 模拟会话外修改：改 mtime（内容语义上等于外部编辑器保存过）
         st = os.stat(path)
         os.utime(path, (st.st_atime, st.st_mtime + 100))
         with caplog.at_level(logging.WARNING, logger="src.data.portfolio"):
-            pm.add_position("000001", stock_name="新仓", ratio=0.1)
-        assert any("会话外" in r.message for r in caplog.records), \
-            "检测到外部修改时必须发人话告警（防旧快照回滚无感知）"
+            r = pm.add_position("000001", stock_name="新仓", ratio=0.1)
+        assert r is True, "内容未变的 touch 不算冲突，必须正常保存"
+        assert not any("已被其他会话" in rec.message for rec in caplog.records)
+
+
+def test_add_position_without_prior_file_saves():
+    """首次建仓（加载时无文件）→ 无冲突语义，正常保存返回 True。"""
+    fd, path = tempfile.mkstemp(suffix=".yaml", prefix="iss078_m5_")
+    os.close(fd)
+    os.remove(path)   # 确保文件不存在
+    try:
+        pm = PortfolioManager(path)
+        assert pm.add_position("600519", stock_name="首仓", entry_price=100.0, ratio=0.2) is True
+        pm2 = PortfolioManager(path)
+        assert pm2.get_position("600519") is not None
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
+def test_update_position_fields_propagates_save_failure():
+    """_save 失败 → update_position_fields 返回 False，不报假成功（M5）。
+
+    回归锁：原实现忽略 _save 返回值，保存失败仍返回 True（chat 会向用户谎报成功）。
+    """
+    from src.data.portfolio import SaveResult
+    with _tmp_portfolio({"600519": {
+        "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
+    }}) as path:
+        pm = PortfolioManager(path)
+        pm._save = lambda: SaveResult(False, False)
+        assert pm.update_position_fields("600519", current_ratio=0.2) is False
+
+
+def test_attach_plan_propagates_save_failure():
+    """_save 失败 → attach_plan 返回 False，不报假成功（M5）。"""
+    from src.data.portfolio import SaveResult
+    with _tmp_portfolio({"600519": {
+        "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
+    }}) as path:
+        pm = PortfolioManager(path)
+        pm._save = lambda: SaveResult(False, False)
+        assert pm.attach_plan("600519", TradePlan(**_plan_dump())) is False
+
+
+def test_update_from_strategy_decision_propagates_save_failure():
+    """_save 失败 → update_from_strategy_decision 返回 False（M5 起传播 bool）。"""
+    from src.data.portfolio import SaveResult
+    with _tmp_portfolio({"600519": {
+        "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
+    }}) as path:
+        pm = PortfolioManager(path)
+        pm._save = lambda: SaveResult(False, False)
+        fake_sd = _fake_decision()
+        fake_stock = type("S", (), {"stock_name": "贵州茅台"})()
+        assert pm.update_from_strategy_decision(
+            "600519", "贵州茅台", fake_sd, fake_stock, price=1500.0) is False

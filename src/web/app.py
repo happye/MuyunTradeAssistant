@@ -118,9 +118,10 @@ def _analyze_work(code):
     # 原 web 分析只读不写，持仓股策略状态不推进，与 chat/CLI 对同一持仓股决策分歧
     if has_position and pos is not None:
         try:
-            _portfolio.update_from_strategy_decision(
-                pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data
-            )
+            # M5：回写保存失败如实告警（update_from_strategy_decision 返回 bool）
+            if not _portfolio.update_from_strategy_decision(
+                    pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data):
+                logger.warning(f"web 回写策略状态未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
         except Exception as e:
             logger.warning(f"web 回写策略状态失败({pos.stock_code}): {e}")
     return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai}
@@ -265,8 +266,11 @@ def pos_add():
         return '<div class="text-red-600 p-2">引擎未初始化</div>'
     try:
         price = float(price_str) if price_str else None
-        _portfolio.add_position(stock_code=code, stock_name=name,
-                                entry_price=price, ratio=0.20)
+        # M5：保存失败（文件被其他会话修改/磁盘异常）必须如实提示，不报假成功
+        if not _portfolio.add_position(stock_code=code, stock_name=name,
+                                       entry_price=price, ratio=0.20):
+            return ('<div class="text-red-600 p-2">加仓未保存：持仓文件可能被'
+                    '其他会话修改（详见服务端日志），请刷新后重试</div>')
         positions = _portfolio.list_positions()
         return render_template("fragments/positions.html", positions=positions,
                                msg=f"已加仓 {code}（20%）")

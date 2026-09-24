@@ -205,9 +205,10 @@ class MuyunTUI(App):
         # v0.8.9.5（彻查批 A-4）：持仓股回写策略状态（chat H1/CLI/web 同款行为平价）
         if has_position and pos is not None:
             try:
-                self._portfolio.update_from_strategy_decision(
-                    pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data
-                )
+                # M5：回写保存失败如实告警（update_from_strategy_decision 返回 bool）
+                if not self._portfolio.update_from_strategy_decision(
+                        pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data):
+                    logger.warning(f"TUI 回写策略状态未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
             except Exception as e:
                 logger.warning(f"TUI 回写策略状态失败({pos.stock_code}): {e}")
         return stock_data, dr, sd, ee, ai

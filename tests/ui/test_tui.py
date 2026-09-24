@@ -4,6 +4,14 @@ mock 底层引擎（FakeScanner/FakePM），验证 @work worker 异步填表 + �
 不接真引擎（避免真 scan 4分钟 + 真 init）。
 """
 
+# 顺序敏感（M5 批修复的隔离脆弱性）：_mock_engines 会替换
+# portfolio.PortfolioManager，而 tui/app.py:73 的引擎初始化会连带**首次导入**
+# src.cli.main——其顶层 `from src.data.portfolio import PortfolioManager` 是
+# 按值绑定，若在 patch 生效期间才执行会把 lambda 永久捕获进 main 命名空间
+# （monkeypatch 只恢复 portfolio 模块的属性，管不到 main 的副本），污染后续
+# 全部测试。收集期先导入 main，保证 by-value 绑定是真实类。
+import src.cli.main  # noqa: F401,E402
+
 
 class _FakeCand:
     def __init__(self, code, name):

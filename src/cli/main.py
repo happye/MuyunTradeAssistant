@@ -152,7 +152,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.14[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.15[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -1476,7 +1476,7 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
             console.print(f"[green]✓ 交易计划已保存到 portfolio.yaml[/green]")
             console.print(f"  [dim]后续跑 `scan` 时 PlanGuard 会按此计划压制 weak_sell（计划未失效时不卖）[/dim]")
         else:
-            console.print(f"[red]✗ 附加失败（持仓不存在？）[/red]")
+            console.print(f"[red]✗ 附加失败（持仓不存在，或保存失败——文件可能被其他会话修改，详见上方告警）[/red]")
     else:
         console.print(f"[dim]已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补[/dim]")
 
@@ -2053,12 +2053,16 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             console.print("[red]仓位比例需在 0-1 之间（0%-100%）[/red]")
             return
 
-        pm.add_position(
+        if not pm.add_position(
             stock_code=stock_code,
             stock_name=name or stock_code,
             entry_price=price if price > 0 else None,
             ratio=ratio,
-        )
+        ):
+            # M5：保存失败（文件被其他会话修改/磁盘异常，详见上方告警）——不报假成功
+            console.print(f"[red]✗ 持仓保存失败：{name or stock_code} ({stock_code}) 未写入"
+                          f"——请看上方告警，处理后重试[/red]")
+            return
         console.print(f"[green]✓ 已添加持仓: {name or stock_code} ({stock_code})[/green]")
         console.print(f"  仓位: {ratio:.0%}" + (f"  开仓价: {price:.2f}" if price > 0 else ""))
 
@@ -2088,7 +2092,11 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             return
 
         pos = pm.get_position(stock_code)
-        pm.remove_position(stock_code)
+        if not pm.remove_position(stock_code):
+            # M5：保存失败不报假成功
+            console.print(f"[red]✗ 持仓删除失败：{stock_code} 仍在持仓中"
+                          f"（文件可能被其他会话修改，详见上方告警）[/red]")
+            return
         console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
 
     elif action == "overweight":
@@ -2131,7 +2139,11 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         tp.overweight_executed = True
         tp.overweight_expiry = expiry
         tp.overweight_basis = basis
-        pm.attach_plan(stock_code, tp)
+        if not pm.attach_plan(stock_code, tp):
+            # M5：保存失败不报假成功——overweight_executed 标志没落盘，PlanGuard 不会压制第二次超配
+            console.print(f"[red]✗ 超配标志保存失败：{stock_code} 的 overweight_executed 未落盘"
+                          f"（文件可能被其他会话修改，详见上方告警）——请核对后重试[/red]")
+            return
         console.print(f"[green]✓ {stock_code} 超配已激活（笨总教学十）[/green]")
         console.print(f"  依据: {basis}")
         console.print(f"  到期: {expiry}（1-2月重新定价窗口，到期评估退出超配部分）")
@@ -4092,8 +4104,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.14：扫描报告防覆盖+导入幂等；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.14 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        # v0.8.15：持仓并发写保护；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.15 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

@@ -9,14 +9,18 @@
 - 持仓数据必须真实，系统只建议不强制
 - YAML格式透明可编辑，用户随时可手动修改
 - 系统自动维护strategy_state，用户一般不需碰
+- 并发写保护（M5，v0.8.15）：保存前比对磁盘内容指纹（sha256），被外部/其他
+  实例改过 → 拒绝写入 + 内存回滚磁盘版，绝不静默覆盖较新改动；mutator 返回
+  bool 如实上报保存成败
 """
 
+import hashlib
 import math
 import os
 import logging
 from pathlib import Path
 from datetime import datetime
-from typing import Optional
+from typing import NamedTuple, Optional
 
 import yaml
 
@@ -31,6 +35,26 @@ DEFAULT_PORTFOLIO_PATH = os.path.join(
     os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))),
     "portfolio.yaml"
 )
+
+
+class SaveResult(NamedTuple):
+    """持仓保存结果（M5，plan/TECHNICAL_HANDOFF §6）。
+
+    ok=True 已写入磁盘；ok=False 且 conflict=True = 磁盘被外部/其他实例修改，
+    本次改动被拒绝且内存已回滚为磁盘版本（防旧快照覆盖较新改动）；
+    ok=False 且 conflict=False = 损坏保护/IO 失败，内存不变。
+    """
+    ok: bool
+    conflict: bool = False
+
+
+def _file_fingerprint(path) -> Optional[str]:
+    """文件内容指纹（sha256 hex）；文件不存在/不可读返回 None。"""
+    try:
+        with open(path, "rb") as f:
+            return hashlib.sha256(f.read()).hexdigest()
+    except OSError:
+        return None
 
 
 def _validate_ratio(value: float, field: str = "仓位比例") -> float:
@@ -185,6 +209,7 @@ class PortfolioManager:
         if not os.path.exists(self.portfolio_path):
             logger.info(f"持仓文件不存在，将创建: {self.portfolio_path}")
             self._data = {"positions": {}}
+            self._loaded_fingerprint = None
             return
 
         try:
@@ -196,11 +221,9 @@ class PortfolioManager:
                 for k, v in positions.items()
             }
             self._corrupted = False
-            # ISS-078：记录加载时的文件 mtime，_save 据此检测会话外修改（防旧快照回滚无感知）
-            try:
-                self._loaded_mtime = os.path.getmtime(self.portfolio_path)
-            except OSError:
-                self._loaded_mtime = None
+            # M5（升级 ISS-078 的 mtime 基线）：记录加载时的内容指纹，
+            # _save 据此检测会话外修改（内容级比对，touch 不误报）
+            self._loaded_fingerprint = _file_fingerprint(self.portfolio_path)
             logger.info(f"持仓文件已加载: {self.portfolio_path}")
         except Exception as e:
             logger.error(
@@ -208,8 +231,9 @@ class PortfolioManager:
                 f"请修复或删除 {self.portfolio_path} 后重试）: {e}")
             self._data = {"positions": {}}
             self._corrupted = True
+            self._loaded_fingerprint = None
 
-    def _save(self):
+    def _save(self) -> SaveResult:
         """保存到portfolio.yaml
 
         v0.8.7.8 裁决修复 G01：
@@ -217,23 +241,26 @@ class PortfolioManager:
         - 原子写：先写 tmp 再 os.replace，进程被杀/磁盘满不再产生半截文件
         - 每次保存前保留 .bak 单份滚动备份；批量删仓（≥4→减半）额外留
           portfolio.yaml.before_<时间戳> 快照（合法操作放行，但数据可追溯）
+
+        M5（v0.8.15）并发写保护：保存前比对磁盘内容指纹——磁盘文件在本实例
+        加载后被外部/其他实例改过（内容变化）→ 拒绝写入并回滚内存为磁盘版，
+        宁可让用户重做一次操作也不静默覆盖较新改动（原 ISS-078 实现只告警仍
+        覆盖，形同虚设）。内容未变的 touch（编辑器保存/复制）不算冲突。
         """
         if getattr(self, "_corrupted", False):
             logger.error("G01 损坏保护生效：portfolio.yaml 此前加载失败，本次保存被拒绝。"
                          "请人工修复该文件（或删除后重试），期间持仓改动仅保留在内存")
-            return False
+            return SaveResult(False, False)
 
-        # ISS-078 外部修改检测：文件在本实例加载后被外部（编辑器/其他进程）改过，
-        # 本次整文件写回会覆盖外部改动——至少要让用户知道（.bak 是保存前一版，可对照恢复）
-        if os.path.exists(self.portfolio_path) and getattr(self, "_loaded_mtime", None):
-            try:
-                disk_mtime = os.path.getmtime(self.portfolio_path)
-                if abs(disk_mtime - self._loaded_mtime) > 1e-6:
-                    logger.warning(
-                        "持仓文件在会话外被修改（检测到 mtime 变化），本次保存基于程序内数据、"
-                        "外部改动可能被覆盖；如外部改动是有意的，请先核对 portfolio.yaml 与 .bak")
-            except OSError:
-                pass
+        # M5 外部修改检测：磁盘有文件且内容 ≠ 本实例加载时的内容 → 冲突拒绝。
+        # 磁盘无文件 = 无外部内容可覆盖（含"外部删除后重建"工作流），照常写入。
+        disk_fp = _file_fingerprint(self.portfolio_path)
+        if disk_fp is not None and disk_fp != getattr(self, "_loaded_fingerprint", None):
+            self._load()   # 内存回滚：与磁盘真值重新同步（先回滚再告警，措辞才属实）
+            logger.warning(
+                "持仓文件已被其他会话或编辑器修改，本次改动被拒绝（未覆盖外部改动），"
+                "内存已恢复为磁盘最新版本——请核对后重新操作")
+            return SaveResult(False, True)
 
         os.makedirs(os.path.dirname(self.portfolio_path) or ".", exist_ok=True)
 
@@ -265,45 +292,46 @@ class PortfolioManager:
 
         tmp_path = self.portfolio_path + ".tmp"
         try:
+            header = (
+                "# ============================================================\n"
+                "# 暮云思辨投资助手 - 持仓记录本\n"
+                "# ============================================================\n"
+                "#\n"
+                "# 使用说明：\n"
+                "# 1. 实时分析时系统会自动读取此文件，获取你的持仓状态\n"
+                "# 2. 分析完成后，系统会建议更新持仓，输入Y确认/N跳过\n"
+                "# 3. 你也可以手动编辑此文件（如在外部做了交易操作）\n"
+                "#\n"
+                "# 重要：系统决策依赖此数据的准确性！\n"
+                "#   - 如果你在券商APP做了买卖，请及时手动更新此文件\n"
+                "#   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期\n"
+                "#   - strategy_state由系统自动维护，一般不需要手动修改\n"
+                "#\n"
+                "# ============================================================\n\n"
+            )
+            body = yaml.dump(
+                self._data,
+                default_flow_style=False,
+                allow_unicode=True,
+                sort_keys=False,
+            )
+            content = header + body
             with open(tmp_path, 'w', encoding='utf-8') as f:
-                # 先写入文件头注释
-                f.write("# ============================================================\n")
-                f.write("# 暮云思辨投资助手 - 持仓记录本\n")
-                f.write("# ============================================================\n")
-                f.write("#\n")
-                f.write("# 使用说明：\n")
-                f.write("# 1. 实时分析时系统会自动读取此文件，获取你的持仓状态\n")
-                f.write("# 2. 分析完成后，系统会建议更新持仓，输入Y确认/N跳过\n")
-                f.write("# 3. 你也可以手动编辑此文件（如在外部做了交易操作）\n")
-                f.write("#\n")
-                f.write("# 重要：系统决策依赖此数据的准确性！\n")
-                f.write("#   - 如果你在券商APP做了买卖，请及时手动更新此文件\n")
-                f.write("#   - lifecycle字段说明：FLAT=空仓 OPEN=新开仓 HOLD=持仓 EXIT=退出过程 COOLDOWN=冷却期\n")
-                f.write("#   - strategy_state由系统自动维护，一般不需要手动修改\n")
-                f.write("#\n")
-                f.write("# ============================================================\n\n")
-
-                # 写入positions
-                yaml.dump(
-                    self._data,
-                    f,
-                    default_flow_style=False,
-                    allow_unicode=True,
-                    sort_keys=False,
-                )
+                f.write(content)
             # G01 原子替换：tmp 完整写完后一次性替换，杜绝半截文件
             os.replace(tmp_path, self.portfolio_path)
             self._corrupted = False
-            # ISS-078：自己的写入不算"会话外修改"，刷新基线防重复告警
-            try:
-                self._loaded_mtime = os.path.getmtime(self.portfolio_path)
-            except OSError:
-                pass
+            # 自己的写入不算"会话外修改"：指纹直接取刚写入的字节（不重读文件，
+            # 消除重读被杀软/备份工具瞬时独占返回 None 造成的下轮误拒窗口）。
+            # 文本模式写入时 '\n' 会被翻译成 os.linesep（Windows=CRLF），
+            # 哈希必须对翻译后的实际字节算，否则下轮加载比对必假冲突
+            self._loaded_fingerprint = hashlib.sha256(
+                content.replace("\n", os.linesep).encode("utf-8")).hexdigest()
             logger.info(f"持仓文件已保存: {self.portfolio_path}")
-            return True
+            return SaveResult(True, False)
         except Exception as e:
             logger.error(f"持仓文件保存失败: {e}")
-            return False
+            return SaveResult(False, False)
 
     # ===== 读取操作 =====
 
@@ -388,11 +416,14 @@ class PortfolioManager:
         entry_price: Optional[float] = None,
         ratio: float = 0.20,
         lifecycle: str = "OPEN",
-    ):
+    ) -> bool:
         """手动添加持仓
 
         ISS-078：ratio/entry_price 走数据层校验——此前本路径零校验，
         负数/NaN/Inf 仓位实测可落盘并污染总仓位计算（AI 供参入口必须兜底）。
+
+        Returns (M5): True 保存成功；False 保存失败（冲突被拒绝/IO 失败，
+            详见告警——调用方不得报假成功）
         """
         ratio = _validate_ratio(ratio)
         if entry_price is not None:
@@ -431,14 +462,18 @@ class PortfolioManager:
         if "positions" not in self._data:
             self._data["positions"] = {}
         self._data["positions"][stock_code] = record.to_dict()
-        self._save()
+        return self._save().ok
 
-    def remove_position(self, stock_code: str):
-        """删除持仓记录"""
+    def remove_position(self, stock_code: str) -> bool:
+        """删除持仓记录。
+
+        Returns (M5): True 删除并保存成功；False 无此记录或保存失败（详见告警）
+        """
         positions = self._data.get("positions", {})
         if stock_code in positions:
             del positions[stock_code]
-            self._save()
+            return self._save().ok
+        return False
 
     def update_position_fields(
         self,
@@ -453,7 +488,8 @@ class PortfolioManager:
         走 _save()（原子写 + .bak 备份 + 损坏保护）。
 
         Returns:
-            True 修改成功；False 持仓不存在（含 ratio/price 传 None 且无可改项的情况）
+            True 修改成功；False 持仓不存在 / 没有可改项 / 保存失败
+            （M5：冲突被拒绝或 IO 失败，详见告警）
         """
         positions = self._data.get("positions", {})
         if stock_code not in positions:
@@ -477,8 +513,7 @@ class PortfolioManager:
 
         if not changed:
             return False
-        self._save()
-        return True
+        return self._save().ok
 
     def attach_plan(self, stock_code: str, plan: TradePlan) -> bool:
         """为已存在持仓附加 TradePlan（v0.8.5）。
@@ -488,13 +523,12 @@ class PortfolioManager:
             plan: TradePlan 实例（建议由 TradePlanGenerator 生成 + 用户编辑后传入）
 
         Returns:
-            True 表示附加成功；False 表示持仓不存在
+            True 表示附加成功；False 表示持仓不存在或保存失败（M5 起如实传播）
         """
         if "positions" not in self._data or stock_code not in self._data["positions"]:
             return False
         self._data["positions"][stock_code]["trade_plan"] = plan.model_dump()
-        self._save()
-        return True
+        return self._save().ok
 
     def update_from_strategy_decision(
         self,
@@ -503,7 +537,7 @@ class PortfolioManager:
         strategy_decision,  # StrategyDecision
         stock_data,  # StockData
         price: Optional[float] = None,
-    ):
+    ) -> bool:
         """根据策略层决策结果更新持仓记录
 
         Args:
@@ -512,6 +546,8 @@ class PortfolioManager:
             strategy_decision: 策略层决策结果（StrategyDecision）
             stock_data: 股票数据（StockData）
             price: 成交价格（用于更新entry_price），如果None则使用stock_data.price
+
+        Returns (M5): True 保存成功；False 保存失败（冲突被拒绝/IO 失败）
         """
         today = datetime.now().strftime("%Y-%m-%d")
         new_state = strategy_decision.new_state
@@ -605,5 +641,5 @@ class PortfolioManager:
         else:
             self._data["positions"][stock_code] = record.to_dict()
 
-        self._save()
+        return self._save().ok
 

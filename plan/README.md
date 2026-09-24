@@ -45,7 +45,7 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 | M2 | 已实施（2026-09-24） | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
 | M3 | 已实施（2026-09-24） | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
 | M4 | 第一批已实施（2026-09-24，纯计算提取） | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
-| M5 | 待实施 | 持仓并发写保护：先梳理所有写入方法及调用方，再以内容版本检测拒绝旧快照覆盖；失败必须传到输出层 | 两实例修改不会静默覆盖，REPL/chat/Web/TUI 都不报假成功 |
+| M5 | 已实施（2026-09-25） | 持仓并发写保护：先梳理所有写入方法及调用方，再以内容版本检测拒绝旧快照覆盖；失败必须传到输出层 | 两实例修改不会静默覆盖，REPL/chat/Web/TUI 都不报假成功 |
 | M6 | 待实施 | 集中运行诊断、缓存新鲜度与缺失原因呈现；核对安装入口；压缩 Agent 指令中的历史叙事 | 新环境可按文档启动，诊断不泄密；知识入口短而准确 |
 
 执行顺序：M0 → M1 → M2 → M3；M4/M5 各独立提交与验证，M6 随批次收口。不得把“待实施”描述成已完成。
@@ -70,6 +70,12 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 - 有全局状态改动必须跑完整离线回归。真实数据接口/AI 验证单独记账，不能用它们的抖动掩盖离线失败。
 
 ## 执行记录
+
+### 2026-09-25 / Claude Code / M5 实施
+
+- `PortfolioManager._save` 内容指纹冲突拒绝（sha256，升级 ISS-078 mtime：touch 不误报；自写基线取写入字节哈希）+ `_load()` 内存回滚 + `SaveResult(ok, conflict)`；5 个 mutator 返回保存成败 bool；REPL pos add/rm/overweight/plan、web /pos/add、chat update、chat/web/tui 回写四端失败提示接线。
+- 顺带修复既有测试隔离脆弱性（监督 Agent 逐一排查 6 个顺序依赖失败后定位）：test_tui patch `portfolio.PortfolioManager` 期间 tui/app 首次导入 `src.cli.main`，main 顶层 by-value 绑定永久捕获 lambda——修复 = 测试文件收集期预导入 main。
+- code-quality-guard：2×P1（overweight 假成功/chat update 错因误导 AI）+ 6×P2 全部同批修复；核心并发保护经两实例探针实测（A 存→B 拒→回滚可见 A→B 重做成功）。全量 771 passed / 0 failed。已知剩余（check→replace 竞争窗口、TUI/web 回写日志级告警）登记 ISS-097。
 
 ### 2026-09-24 / Claude Code / M4 第一批实施（纯计算提取，内部重构无行为变化）
 

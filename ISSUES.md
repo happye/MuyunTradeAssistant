@@ -2046,3 +2046,20 @@ P3（已取消）:
   - `review_*.md` / `watch_*.md` 复盘报告仍是分钟命名（同分钟重跑互相覆盖）——任务卡范围只含扫描报告；复盘报告是可再生输出，影响小，待报告层重构一并处理
 - **更新记录**:
   - 2026-09-24: 任务卡实施 + code-quality-guard 对抗审查（1×P1 分钟/秒粒度幂等失效 + 2×P2，全部同批修复），commit 落地于本 commit
+
+---
+
+### ISS-097: 持仓并发写保护——内容指纹冲突拒绝/内存回滚/四端不报假成功（v0.8.15，plan/ M5）
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/TECHNICAL_HANDOFF §6 任务卡，架构师迭代计划执行）
+- **修复清单**:
+  1. 🔴 **冲突拒绝**：`_save` 保存前比对磁盘内容指纹（sha256，升级 ISS-078 mtime 检测：touch 不误报；自己保存的基线直接取写入字节哈希，不重读文件）——磁盘被外部/其他实例改过 → 拒绝写入 + `_load()` 内存回滚磁盘版 + 人话告警（原实现只告警仍覆盖，两实例并发保存后者静默吃掉前者）。`SaveResult(ok, conflict)` NamedTuple；文件被外部删除 = 无内容可覆盖照常写入（保留"删除后重建"工作流）
+  2. 🔴 **mutator 如实传播**：add/remove/update_position_fields/attach_plan/update_from_strategy_decision 全部返回保存成败 bool（原 update/attach 忽略 _save 结果，保存失败仍返回 True = chat 谎报成功）
+  3. 🆕 **四端失败提示**：REPL pos add/rm/overweight/plan 红字（overweight 的 overweight_executed 标志未落盘必须明示——PlanGuard 二次超配压制依赖它）；web /pos/add 错误片段；chat update 错因文案覆盖三种 False；chat/web/tui 策略回写失败告警
+  4. 🆕 **测试隔离脆弱性修复**：test_tui 的 `_mock_engines` patch `portfolio.PortfolioManager` 期间 tui/app 引擎初始化**首次导入** `src.cli.main`，其顶层 by-value 绑定把 lambda 永久捕获（monkeypatch 只恢复 portfolio 模块属性，管不到 main 的副本）——ui 目录先于 chat 目录收集时 5 个桥测试全挂；修复 = 测试文件收集期预导入 main（既有潜伏问题，非 M5 引入，全量跑因 chat 先于 ui 收集而未暴露）
+- **测试**: +6 −1（test_iss078_portfolio_safety：两实例冲突拒绝+内存回滚+磁盘完好、touch 不误报、首次建仓无冲突、三个 mutator 失败传播；删除旧 mtime 告警锁——语义已升级）；test_web _FakePM.add_position 对齐 bool 返回；全量 771 passed / 0 failed / 2 skipped / 1 deselected
+- **告警人话化三处同步**: 新增「持仓文件已被其他会话」（终止级）+ 删除死条目「持仓文件在会话外被修改」（告警文本已改，旧 pattern 永不命中且旧文案描述的"可能被覆盖"与 M5 语义相反）
+- **已知剩余（本轮不修）**:
+  - check→replace 仍有竞争窗口（跨进程安全需共同锁/CAS 存储，ADR-05：实测出现多进程事务需求再评估 SQLite）——单用户场景窗口极窄
+  - TUI/web 的策略回写失败只有日志级告警（textual 全屏接管后 stderr 可见性存疑）——与 v0.8.9.5 既有通道一致，待 UI 通知层统一设计
+- **更新记录**:
+  - 2026-09-25: 任务卡实施 + code-quality-guard 对抗审查（2×P1：overweight 假成功/chat update 错因误导 AI + 6×P2，全部同批修复），commit 落地于本 commit

@@ -359,9 +359,10 @@ def _analyze_stock_single(stock_code: str) -> str:
                     logger.info(f"chat回写跳过({_key}): 持仓已被外部删除")
                     return result
                 _stock_name = stock_data.stock_name or _key
-                _portfolio_manager.update_from_strategy_decision(
-                    _key, _stock_name, strategy_decision, stock_data
-                )
+                # M5：回写保存失败如实告警（update_from_strategy_decision 返回 bool）
+                if not _portfolio_manager.update_from_strategy_decision(
+                        _key, _stock_name, strategy_decision, stock_data):
+                    logger.warning(f"chat回写策略状态未落盘({_key}): 持仓文件被外部修改或写入失败")
             except Exception as e:
                 logger.warning(f"chat回写策略状态失败({_key}): {e}")
 
@@ -942,7 +943,10 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
                         stock_name=stock_name or None,
                     )
                     if not changed:
-                        return TOOL_ERROR_MARK + f"{code} 无持仓记录或没有可修改的字段（仓位/开仓价/名称至少提供一项）"
+                        # M5：False 有三种成因（无持仓/无可改项/保存失败），AI 侧文案要全覆盖防误导
+                        return (TOOL_ERROR_MARK + f"{code} 修改未生效：无持仓记录、没有可修改的字段，"
+                                f"或保存失败（持仓文件可能被其他会话修改，见上方 ⚠ 告警）——"
+                                f"如持仓实际存在，请核对后重试")
                     pos = pm.get_position(code)
                     buf.write(f"✓ 已更新 {code}：仓位 {pos.current_ratio:.0%}"
                               f" / 开仓价 {pos.entry_price or '-'} / 名称 {pos.stock_name or '-'}\n")

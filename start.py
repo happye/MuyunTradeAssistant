@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.14"  # v0.8.14=扫描报告防覆盖+导入幂等(plan/M3)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.15"  # v0.8.15=持仓并发写保护(内容指纹冲突拒绝+内存回滚+四端不报假成功, plan/M5)；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
