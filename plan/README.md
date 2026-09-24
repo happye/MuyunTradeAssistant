@@ -44,7 +44,7 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 | M1 | 已实施（2026-09-24） | pytest 默认离线；真实接口显式开关；测试收集前隔离 home，保留离线 data_sources 单测 | 一条命令得到稳定结果；不碰真实 `~/.muyun`，不默认花 AI 费用 |
 | M2 | 已实施（2026-09-24） | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
 | M3 | 已实施（2026-09-24） | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
-| M4 | 待实施 | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
+| M4 | 第一批已实施（2026-09-24，纯计算提取） | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
 | M5 | 待实施 | 持仓并发写保护：先梳理所有写入方法及调用方，再以内容版本检测拒绝旧快照覆盖；失败必须传到输出层 | 两实例修改不会静默覆盖，REPL/chat/Web/TUI 都不报假成功 |
 | M6 | 待实施 | 集中运行诊断、缓存新鲜度与缺失原因呈现；核对安装入口；压缩 Agent 指令中的历史叙事 | 新环境可按文档启动，诊断不泄密；知识入口短而准确 |
 
@@ -70,6 +70,13 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 - 有全局状态改动必须跑完整离线回归。真实数据接口/AI 验证单独记账，不能用它们的抖动掩盖离线失败。
 
 ## 执行记录
+
+### 2026-09-24 / Claude Code / M4 第一批实施（纯计算提取，内部重构无行为变化）
+
+- 新增 `src/core/review.py`（ADR-03 第一批）：`sparkline`/`offset_curve`/`curve_spark`/`review_path` 四个无 IO 纯函数原样提取（含 `SPARK_CHARS`），零网络零文件零终端；`_review_index_bars`/`_review_base_from_kline` 带 IO 留在 main（按任务卡"无 IO 先拆"）。
+- main.py 原定义替换为兼容导出（`from src.core.review import sparkline as _sparkline, ...`）——tests 对 `cli_main._sparkline` 的引用与 patch 点不变，scan_review/watch_pool 内部调用走模块全局仍可被拦截。
+- 测试 +1（兼容导出身份锁：`cli_main._sparkline is core_review.sparkline`，防未来复制实现双源漂移）。全量 766 passed / 0 failed——既有精确数字断言即行为等价锁。
+- 展示（review_render）与命令（review_commands）迁移按 ADR-03 拆分顺序留后续批次：scan_review/watch_pool 的 Rich 渲染与 console/Tee 交互需先定 ReviewInput/ReviewResult 契约（与现有报告逐项对照），不宜与本批混做。
 
 ### 2026-09-24 / Claude Code / M2 + M3 实施
 

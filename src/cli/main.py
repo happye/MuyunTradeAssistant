@@ -2694,80 +2694,17 @@ def _review_base_from_kline(code: str, scan_date: str, df_cache: dict):
         return None
 
 
-_SPARK_CHARS = "▁▂▃▄▅▆▇"
-
-
-def _sparkline(values: list, max_points: int = 10) -> str:
-    """数值序列 → Unicode 迷你走势（8 档 min-max 归一化）。
-
-    超过 max_points 均匀降采样（保首尾端点，形状不变）——30 天窗口的完整逐日
-    数值在复盘报告里，控制台曲线只保留形状。少于 2 个有效点返回 —。
-    NaN/None 视为无效点（停牌行数据源可能给 NaN）。
-    """
-    vals = [v for v in values if v is not None and v == v]
-    if len(vals) < 2:
-        return "—"
-    if len(vals) > max_points:
-        idx = [round(i * (len(vals) - 1) / (max_points - 1)) for i in range(max_points)]
-        vals = [vals[i] for i in idx]
-    lo, hi = min(vals), max(vals)
-    if hi - lo < 1e-9:
-        return _SPARK_CHARS[3] * len(vals)   # 全平
-    return "".join(_SPARK_CHARS[min(6, int((v - lo) / (hi - lo) * 7))] for v in vals)
-
-
-def _offset_curve(paths: list) -> dict:
-    """多条收盘路径按「锚点后第 k 个点」对齐取累计涨幅均值：{k: 均值%}（锚点=k0=0）。
-
-    锚点缺失（base0 空）的路径整条跳过——与逐票缺价剔除的口径一致。
-    """
-    buckets: dict = {}
-    for pts in paths:
-        if not pts:
-            continue
-        base0 = pts[0][1]
-        if not base0:
-            continue
-        for k, (_, v) in enumerate(pts):
-            buckets.setdefault(k, []).append((v / base0 - 1) * 100)
-    return {k: sum(v) / len(v) for k, v in buckets.items()}
-
-
-def _curve_spark(curve: dict) -> str:
-    """均值曲线 → 迷你走势。空曲线返回 —。"""
-    if not curve:
-        return "—"
-    return _sparkline([curve[k] for k in sorted(curve)])
-
-
-def _review_path(code: str, scan_date: str, base, latest, df_cache: dict, today_str: str):
-    """扫描日→今的收盘路径 [(标签, 价)]：锚点(扫描日基准价) + 其后逐 bar 收盘 + 实时价收尾。
-
-    锚点优先用落盘快照价（扫描时刻真实价格）；K线序列从 df_cache 取（须已预热）。
-    末 bar 非今日时把实时价接为最后一点（baostock 当日 bar 17:30 后才就绪，盘中也有走势）。
-    """
-    df = df_cache.get(code)
-    if df is None:
-        return []
-    date_col = "日期" if "日期" in df.columns else "date"
-    close_col = "收盘" if "收盘" in df.columns else "close"
-    if date_col not in df.columns or close_col not in df.columns:
-        return []
-    try:
-        sub = df[df[date_col].astype(str).str[:10] > scan_date]
-        pts = []
-        if base:
-            pts.append(("扫描日", float(base)))
-        for _, r in sub.iterrows():
-            c = r[close_col]
-            if c and c == c:   # NaN != NaN：停牌行收盘价可能为 NaN
-                pts.append((str(r[date_col])[:10], float(c)))
-        last_date = str(sub.iloc[-1][date_col])[:10] if not sub.empty else None
-        if latest and (last_date is None or last_date < today_str):
-            pts.append(("现价", float(latest)))
-        return pts
-    except (ValueError, TypeError, KeyError):
-        return []
+# ── review 纯计算（M4，plan/ADR-03 第一批）─────────────────────
+# 实现已提取到 src/core/review.py（无 IO，CLI/chat 可共享）；此处保留旧下划线名
+# 兼容导出——tests 直接引用 cli_main._sparkline 等，既有调用点/patch 点不迁移。
+# 注意：_curve_spark 内部的 sparkline 调用走 src.core.review 命名空间，
+# 拦截它需 patch core 模块（patch cli_main._sparkline 只影响这里的直接调用点）。
+from src.core.review import (   # noqa: E402
+    curve_spark as _curve_spark,
+    offset_curve as _offset_curve,
+    review_path as _review_path,
+    sparkline as _sparkline,
+)
 
 
 def scan_review(days: int = 7):

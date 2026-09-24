@@ -341,6 +341,19 @@ def test_sparkline_known_values():
     assert sp[0] == "▁" and sp[-1] == "▇"
 
 
+def test_review_pure_functions_are_core_compat_aliases():
+    """M4：main 的 _sparkline/_offset_curve/_review_path 等是 src.core.review 的兼容导出。
+
+    身份锁：防止未来有人把实现复制回 main 造成双源漂移；测试对 cli_main 别名的
+    monkeypatch 也能继续影响 scan_review/watch_pool 内部调用。
+    """
+    from src.core import review as core_review
+    assert cli_main._sparkline is core_review.sparkline
+    assert cli_main._offset_curve is core_review.offset_curve
+    assert cli_main._curve_spark is core_review.curve_spark
+    assert cli_main._review_path is core_review.review_path
+
+
 def test_review_path_anchors_and_realtime_tail(monkeypatch):
     """路径 = 锚点(扫描价) + 其后逐bar收盘 + 实时价收尾（末bar非今日时）。"""
     df = pd.DataFrame({"日期": ["2026-09-20", "2026-09-21", "2026-09-22"],
