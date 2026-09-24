@@ -41,7 +41,7 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 | 编号 | 状态 | 范围 / 技术方案 | 验收与可感知结果 |
 |---|---|---|---|
 | M0 | 已完成初步盘点 | 建立架构图、资产索引、实际测试基线；识别外源测试和副作用 | 已记录基线与边界；不声称完成全部源码逐行审计 |
-| M1 | 待实施 | pytest 默认离线；真实接口显式开关；测试收集前隔离 home，保留离线 data_sources 单测 | 一条命令得到稳定结果；不碰真实 `~/.muyun`，不默认花 AI 费用 |
+| M1 | 已实施（2026-09-24） | pytest 默认离线；真实接口显式开关；测试收集前隔离 home，保留离线 data_sources 单测 | 一条命令得到稳定结果；不碰真实 `~/.muyun`，不默认花 AI 费用 |
 | M2 | 待实施 | 会话 JSON 快照同目录临时文件原子替换；验证 last_scan / deep_analyzed / 历史 / watch 读取边界；损坏行告警可见 | `last` / `#N` / `watch` 遇坏记录不崩，保留可读记录；写入失败旧快照完整 |
 | M3 | 待实施 | 扫描报告命名防同分钟覆盖，兼容旧报告导入；故障注入及真实 REPL 冒烟 | 连续相同主题扫描保留两份报告，历史导入仍幂等 |
 | M4 | 待实施 | 分批提取 CLI 的 review 纯计算与命令服务；main 保留兼容出口；共享入口只依赖服务，不反向依赖界面 | 精确数字及命令桥确认门不变；CLI/chat 相同输入同结果 |
@@ -70,6 +70,14 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 - 有全局状态改动必须跑完整离线回归。真实数据接口/AI 验证单独记账，不能用它们的抖动掩盖离线失败。
 
 ## 执行记录
+
+### 2026-09-24 / Claude Code / M1 实施
+
+- 负责文件：`pytest.ini`（新增）、`tests/conftest.py`、`tests/README.md`（新增）、3 个时间依赖测试（`test_fear_index_adversarial.py` / `test_fear_index_history.py` / `test_trade_plan.py`）、`test_indicator_math_script.py`、`test_source_check.py` / `test_tech_context_e2e.py`（标记）、`AGENTS.md` / `CLAUDE.md`（测试命令行同步）。零 `src/` 改动。
+- 隔离方案采用 conftest import 期 HOME/USERPROFILE 环境变量（未用根 autouse fixture，避开 §3 记录的 chat_command_bridge 替身覆盖坑）；`test_all_api.py` 用收集期排除 + `MUYUN_RUN_EXTERNAL=1` 显式启用。
+- **未定性已定性**：`test_indicator_math_actually_ran` 的失败与 HOME 无关——fixture `subprocess.run(text=True)` 未指定 `encoding=`，中文 Windows 下父进程按 GBK 解码子进程 UTF-8 输出，汇总行正则匹配不到。修法 = 显式 `encoding="utf-8"`。
+- 验收证据：裸 `pytest -q` = **744 passed / 0 failed / 2 skipped / 1 deselected（70s）**（= 架构师隔离基线 741 + 3 个时间依赖修复转绿）；跑前跑后真实 `~/.muyun` 文件数 1047 不变、无任何更新时间晚于标记文件的文件；data_sources mock 用例 30/31 照常收集（structure 1 项被 external 标记排除）；`MUYUN_RUN_EXTERNAL=1` 下 test_all_api 15 项可收集（未实跑）。
+- 3 个修复只固定时钟/名字/日期，业务断言零改动；跨日期稳定机制 = 冻结类 / patch 名字实际所在模块 / `evaluate(today=)`。
 
 ### 2026-09-24 / Codex / 调研与计划交付
 

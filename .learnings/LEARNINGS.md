@@ -1625,3 +1625,28 @@ scan review/观察池五提交的 code-quality-guard 对抗审查（13 项发现
 - Recurrence-Count: 2
 - First-Seen: 2026-09-22
 - Last-Seen: 2026-09-23
+
+## [LRN-20260924-014] best_practice
+**Logged**: 2026-09-24T12:00:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests, windows
+
+### Summary
+**「子进程测试稳定失败但隔离 HOME 后通过」≠ HOME 依赖——先查父进程对子进程输出的解码码页。**
+
+M1 落地时把交接文档里「test_indicator_math_actually_ran 我的环境稳定失败、架构师隔离 HOME 环境通过，疑似依赖 HOME 下某状态」定性了：与 HOME 完全无关。fixture 的 `subprocess.run(text=True, errors="replace")` **没指定 `encoding=`**，父进程按 `locale.getpreferredencoding()`（中文 Windows = GBK）解码子进程输出；子进程带着 `PYTHONIOENCODING=utf-8` 写 UTF-8 字节 → GBK 解码成乱码 → 「通过 N 项|警告 N 项|失败 0 项」汇总行正则永远匹配不到。架构师环境能过只是碰巧带了 PYTHONUTF8=1（UTF-8 模式下 locale 编码返回 utf-8）。教训：两个环境变量差异（HOME vs PYTHONUTF8）在「稳定失败/稳定通过」上表现一模一样，猜环境依赖前先看 I/O 字节流路径。
+
+### Suggested Action
+- 本项目所有 `subprocess.run(..., text=True)` **必须显式 `encoding="utf-8"`**（console/管道码页是 GBK，中文输出必乱）；grep 同类点：`subprocess.run` 且 `text=True` 且无 `encoding=`
+- 跨环境「一会过一会不过」的测试：先复现抓原始断言输出（看是否乱码），再谈环境状态依赖
+- 子进程输出含中文要用正则断言时，解码码页是第一嫌疑，HOME/缓存状态排后面
+
+### Metadata
+- Source: session_finding
+- Related Files: tests/core/test_indicator_math_script.py, scripts/verify_indicator_math.py, tests/conftest.py, pytest.ini
+- Tags: subprocess-encoding, gbk-utf8-mojibake, test-isolation, root-cause-analysis, pytest-ini
+- Pattern-Key: test.subprocess_decoding
+- Recurrence-Count: 1
+- First-Seen: 2026-09-24
+- Last-Seen: 2026-09-24

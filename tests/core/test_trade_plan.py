@@ -166,9 +166,11 @@ def test_planguard_invalidate_no_suppress():
 def test_planguard_take_profit_passthrough():
     """规则 2: take_profit_trim 不动"""
     sd = _sd(price=10.5)
-    plan = _make_plan()
+    plan = _make_plan()  # opened_at=2026-06-19, max_hold_days=90
     strategy = _make_strategy_decision(SignalType.SELL, sell_path="take_profit_trim")
-    result = PlanGuard().evaluate(strategy, plan, sd)
+    # today 固定在持有期第 6 天：不传则按真实今天评估，opened_at+90 天一过
+    # time_stop（规则 3）就抢先触发（M1 交接 §2 修复，断言不变）
+    result = PlanGuard().evaluate(strategy, plan, sd, today="2026-06-25")
     assert result.decision == SignalType.SELL
     assert result.sell_path == "take_profit_trim"
 

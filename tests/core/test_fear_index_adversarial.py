@@ -92,7 +92,19 @@ def test_turnover_single_side_missing_is_excluded(fear_home, monkeypatch):
 
 def test_vol_mom_falls_back_when_baseline_missing(fear_home, monkeypatch):
     """baseline(当日) 日线未出 → 用序列末日计算并标 STALE，不整成分 MISSING。"""
+    from datetime import datetime as _real_dt
+
     monkeypatch.setattr(fh, "recent_trade_date", lambda now=None: "2026-09-11")
+
+    class _FrozenDatetime(_real_dt):
+        """冻结被测模块时钟：_metric_vol_mom 的 7 天陈旧判断直接调 datetime.now()，
+        不冻结则锚定日期一过就退化成 MISSING（M1 交接 §2 修复，跨日期稳定）。"""
+
+        @classmethod
+        def now(cls, tz=None):
+            return _real_dt(2026, 9, 11, 18, 0, 0)
+
+    monkeypatch.setattr(mm_mod, "datetime", _FrozenDatetime)
     _seed_closes(300, end_offset=1)  # 序列止于 2026-09-10
     comps = mm_mod._metric_vol_mom("2026-09-11")
     vol = next(c for c in comps if c.name == "volatility")

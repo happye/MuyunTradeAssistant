@@ -19,10 +19,13 @@ import pytest
 
 # 脚本式E2E（需真实AI调用+argparse参数），pytest收集时默认跳过；
 # 直跑: PYTHONUTF8=1 uv run python tests/core/test_tech_context_e2e.py
-pytestmark = pytest.mark.skipif(
-    os.environ.get("MUYUN_E2E_AI") != "1",
-    reason="脚本式E2E需真实AI+argparse参数，用 uv run python 直跑（设MUYUN_E2E_AI=1强制pytest跑）",
-)
+pytestmark = [
+    pytest.mark.ai,  # 真实 AI 调用（花钱），pytest.ini 注册的标记
+    pytest.mark.skipif(
+        os.environ.get("MUYUN_E2E_AI") != "1",
+        reason="脚本式E2E需真实AI+argparse参数，用 uv run python 直跑（设MUYUN_E2E_AI=1强制pytest跑）",
+    ),
+]
 
 from src.data.models import StockData, AIModifierResult
 from src.core.tech_context import TechContextBuilder

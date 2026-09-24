@@ -152,7 +152,7 @@ docs/               # 详细文档
 | `tests/artifacts/` | 历史回测/issue 验证的输出产物（json/log，非脚本） | extended_backtest_2024* / issue_033_round* |
 | `tests/rag_eval/` | RAG 检索质量评估工具 | evaluator.py + relevance_labels |
 
-跑法：`pytest tests/ -q --ignore=tests/artifacts --ignore=tests/rag_eval` 全量（统计口径固化 L05：每次全量的 passed/skipped 数字写进 commit message，历史对比以此为准）；单文件 `.\.venv\Scripts\python.exe tests\chat	est_xxx.py`（脚本自带 sys.path 修复）；网络类脚本先看文件头注释。
+跑法：`pytest -q` 离线全量（M1 起 pytest.ini 固定收集根/排除与 HOME 隔离，统计口径固化 L05：每次全量的 passed/skipped 数字写进 commit message，历史对比以此为准）；单文件 `pytest tests/core/test_scan_review.py -q` 或脚本直跑 `.\.venv\Scripts\python.exe tests\core\test_xxx.py`（脚本自带 sys.path 修复）；真实外源/AI 显式启用方式见 tests/README.md；网络类脚本先看文件头注释。
 
 ---
 

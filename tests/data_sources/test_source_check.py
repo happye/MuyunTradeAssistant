@@ -4,11 +4,13 @@
 1. _classify_error 各类错误归类 + hint 正确
 2. _probe 包装：成功/失败两条路径
 3. format_report 输出格式
-4. check_all_sources 结构完整性（mock，不打真实网络）
+4. check_all_sources 结构完整性（external：真实调用网络源，默认排除）
 """
 
 import os
 import sys
+
+import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 if hasattr(sys.stdout, "reconfigure"):
@@ -124,11 +126,13 @@ def test_format_report():
     print("✓ format_report 输出含 ✅/❌/合计")
 
 
+@pytest.mark.external
 def test_check_all_sources_structure():
-    """4. check_all_sources 结构完整（不打真实网络，只验结构）
+    """check_all_sources 结构完整（external：真实调用网络源，Baostock 等）
 
-    注意：此测试会真实调用网络源（Baostock 等）。
-    若断网则 sources 仍会返回（每源独立 try），结构应完整。
+    注意：此测试会真实调用网络源（Baostock 等），默认被 -m "not external" 排除
+    （文件头部旧文案"不打真实网络"与实际行为矛盾，M1 已纠正为如实描述）。
+    断网则 sources 仍会返回（每源独立 try），结构应完整。
     只验证 schema，不验证 ok 值。
     """
     from src.data.source_check import check_all_sources

@@ -63,7 +63,7 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 | Scan review (validate scan picks) | REPL `scan review [days]` / `scan review import` (per-stock change vs CSI300 + sparkline path, zero AI, v0.8.11) |
 | Watch pool | REPL `watch` / `watch add <code|#N>` / `watch rm` (auto-collects WATCH picks on analysis; review-style tracking since entry, v0.8.12) |
 | Web UI preview | `preview_start` → "web" (`uv run python -m src.web.app`, :5000, autoPort) |
-| Tests (script-style, not pytest) | `.\.venv\Scripts\python.exe tests\test_xxx.py` |
+| Tests (pytest, offline by default since M1) | `pytest -q` (see tests/README.md for external/AI opt-in); script direct-run: `.\.venv\Scripts\python.exe tests\core\test_xxx.py` |
 | Install dependencies | `uv sync` |
 
 **Verification discipline:**

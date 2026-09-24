@@ -32,9 +32,11 @@ _SUMMARY_RE = re.compile(r"通过\s*(\d+)\s*项\s*\|\s*警告\s*(\d+)\s*项\s*\|
 def verify_run():
     """跑一次脚本（模块级缓存，避免同一份断言重复付 2 秒）。"""
     env = dict(os.environ, PYTHONIOENCODING="utf-8")
+    # encoding 必须显式 utf-8：text=True 不带 encoding 时父进程按本地码页
+    # （中文 Windows=GBK）解码子进程的 UTF-8 输出 → 中文乱码 → 汇总行匹配不到
     return subprocess.run(
         [sys.executable, SCRIPT], cwd=ROOT, env=env,
-        capture_output=True, text=True, errors="replace", timeout=300)
+        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
 
 
 def test_script_exists():

@@ -147,6 +147,9 @@ def test_get_fear_report_assembles_and_snapshots(fear_home, monkeypatch):
 
     monkeypatch.setattr(fh, "recent_trade_date", lambda now=None: "2026-09-11")
     monkeypatch.setattr(fh, "ensure_light_history", lambda b, force=False: {"erp": "fresh"})
+    # pkg 层名字绑定：__init__ 是 from .history import recent_trade_date，get_fear_report
+    # 调的是本地名——只 patch fh 改不动它，快照日期会落成"今天"（M1 交接 §2 修复）
+    monkeypatch.setattr(pkg, "recent_trade_date", lambda now=None: "2026-09-11")
 
     fake = [
         MetricValue("breadth", "涨跌广度", 0.42, 78.0, source="mock"),
