@@ -32,8 +32,19 @@ def test_backtest_skips_macro_fetch():
         assert r is None
 
 
-def test_live_still_fetches():
-    """live=True + 无显式成交额：macro 层照常调用（实盘行为不变）"""
+def test_live_still_fetches(monkeypatch):
+    """live=True + 无显式成交额：macro 层照常调用（实盘行为不变）
+
+    M1 网络审计修复：live 个股信号（股东户数/融资余额）会真调 akshare——
+    故障注入隔离，宏观层调用断言不变。
+    """
+    import akshare as _ak
+
+    def _offline(*a, **k):
+        raise RuntimeError("离线测试故障注入")
+    monkeypatch.setattr(_ak, "stock_zh_a_gdhs_detail_em", _offline)
+    monkeypatch.setattr(_ak, "stock_margin_detail_sse", _offline)
+    monkeypatch.setattr(_ak, "stock_margin_detail_szse", _offline)
     with patch("src.core.exit_signals.check_macro_top_signal") as m:
         m.return_value = None
         check_top_signals(_sd(), "600519", live=True)

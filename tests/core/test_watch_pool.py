@@ -190,6 +190,15 @@ def _patch_watch_env(monkeypatch, tmp_path, records, quotes, kline_df=None, bars
         monkeypatch.setattr(
             "src.data.akshare_client.AKShareClient.get_historical_kline",
             lambda code, period="daily", adjust="qfq", start_date=None, end_date=None, retry=3: kline_df)
+    else:
+        # M1 网络审计修复：K 线兜底必须 mock——否则 watch 渲染的逐票日线预热会
+        # 真连 baostock 登录（离线集合里隐藏的真实外源调用）。返回最小非空 df
+        # 而非 None，让 kline_cnt 计数与成本行文案保持真实路径行为
+        import pandas as _pd
+        monkeypatch.setattr(
+            "src.data.akshare_client.AKShareClient.get_historical_kline",
+            lambda code, period="daily", adjust="qfq", start_date=None, end_date=None, retry=3:
+                _pd.DataFrame({"日期": ["2020-01-02"], "收盘": [99.0]}))
     import src.core.fear_index.history as fear_hist
     monkeypatch.setattr(fear_hist, "_bs_index_kline",
                         (lambda code, fields, start, end: bars) if bars is not None

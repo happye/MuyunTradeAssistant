@@ -176,9 +176,20 @@ def test_chat_analyze_stock_multi_with_confirm_delegates_run_command():
     assert calls == [("l 600519 000001", True)]
 
 
-def test_chat_analyze_stock_invalid_token_noted():
-    """单只有效码+非法片段：走单只路径（完整报告），非法片段以 skip_note 前置提示。"""
+def test_chat_analyze_stock_invalid_token_noted(monkeypatch):
+    """单只有效码+非法片段：走单只路径（完整报告），非法片段以 skip_note 前置提示。
+
+    M1 网络审计修复：隔离取数链（calculate_indicators/实时行情兜底）——本测试
+    测的是分流与 skip_note 前置，不该真连 baostock/新浪。
+    """
     import src.chat.tools as tools
+    from src.data.akshare_client import AKShareClient
+
+    def _offline(*a, **k):
+        raise RuntimeError("离线测试故障注入")
+    monkeypatch.setattr(AKShareClient, "calculate_indicators", _offline)
+    monkeypatch.setattr(AKShareClient, "get_realtime_quote", lambda code: {})
+
     calls = []
     with _swap(tools, "_orchestrator", object()), \
             _swap(tools, "run_command", lambda c, confirm=False: calls.append((c, confirm)) or "批量结果"):
@@ -200,10 +211,13 @@ def test_chat_run_command_multi_mode_in_confirm_gate():
 
 # ── run_cli 分发接线（mock 分析函数，不触网不烧 AI） ──
 
-def test_run_cli_live_multi_dispatch_wiring():
+def test_run_cli_live_multi_dispatch_wiring(monkeypatch):
     import start as start_mod
     import src.cli.main as cli_main
     import src.cli.session_state as ss
+    from src.data.akshare_client import AKShareClient
+    # M1 网络审计修复：live_multi 的 _QUOTE_PREFETCH 在 analyze_live 之前跑，须隔离
+    monkeypatch.setattr(AKShareClient, "get_realtime_quotes", lambda codes, retry=1: {})
     calls, marks = [], []
     with _swap(cli_main, "analyze_live",
                lambda code, ai_overrides=None, ai_debug=False, compact=False:

@@ -57,7 +57,9 @@ def test_vol_mom_survives_unsorted_series_file(fear_home, monkeypatch):
     fh._save_series("hist_turnover_sz.json", [{"date": r["date"], "amount": 0.8} for r in rows])
     fh._save_series("hist_margin.json", [{"date": r["date"], "balance_yi": 10000.0} for r in rows])
     fh._save_series("hist_erp.json", [{"date": r["date"], "erp_pct": 4.0} for r in rows])
-    comps = mm_mod.compute_market_components("2026-09-11")
+    # M1 网络审计修复：被测对象是 vol/mom 成分的乱序防御——直测 _metric_vol_mom，
+    # 不经 compute_market_components（其 breadth/zt/turnover 为 live 成分，会真拉网）
+    comps = mm_mod._metric_vol_mom("2026-09-11")
     vol = next(c for c in comps if c.name == "volatility")
     assert vol.status == "OK" and vol.score is not None  # 乱序不致取错末日
 
@@ -180,6 +182,9 @@ def test_light_history_all_sources_fail_no_crash(fear_home, monkeypatch):
 def test_report_all_components_missing_no_snapshot(fear_home, monkeypatch):
     import src.core.fear_index as pkg
     monkeypatch.setattr(fh, "recent_trade_date", lambda now=None: "2026-09-11")
+    # pkg 层名字绑定（同 assembles 用例的 M1 修复）：get_fear_report 调的是
+    # __init__ 的本地名，缺它则 recent_trade_date→trading_days 真连 baostock
+    monkeypatch.setattr(pkg, "recent_trade_date", lambda now=None: "2026-09-11")
     fake = [MetricValue(n, n, None, None, status="MISSING")
             for n in ("breadth", "zt_heat", "volatility", "momentum",
                       "turnover", "margin", "erp")]

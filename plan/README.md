@@ -71,6 +71,12 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / M1 任务卡第 5 步收口（离线纯净性审计）
+
+- 按任务卡"把未 mock 的网络路径逐一查清"：写 socket.connect 阻断审计插件（scripts/audit_offline_net.py，含 asyncio socketpair 自唤醒放行），实测离线全量——首次 total=404，逐条定性后修复 6 处隐藏触网，复跑 **total=0**（776 passed / 0 failed）。
+- 修复清单：① test_video_report_tier1 `liquidity(None)` 实为自动拉取路径（409 次 THS 全市场）→ 显式故障注入；② tier2 `top_signals(live=True)` 宏观成交额真拉 → mock get_market_turnover；③④ watch_pool/scan_review 的逐票 K 线兜底真连 baostock 登录 → mock get_historical_kline（最小非空 df 保住成本行断言）；⑤ multi_code 两用例的新浪预取/取数链 → mock 入口；⑥ fear adversarial 缺 pkg 层 recent_trade_date patch（M1 assembles 修复的同类点漏网——铁律 1 ③同类点扫描当时只修了被点名一处）。
+- 已知盲区（如实）：子进程测试与 curl_cffi（libcurl C 层）不走 Python socket，审计覆盖不到；127.0.0.1 命中为 asyncio socketpair 自唤醒（进程内 IPC，放行）。
+
 ### 2026-09-25 / Claude Code / M6 实施
 
 - **安装事实源**：实测 `uv sync` 因仓库无 pyproject.toml 直接报错（新环境装不起来）——按任务卡二选一取「统一为 requirements 安装命令」（requirements.txt 本身是钉版本已验证清单；避免 uv 解析器重解析传递依赖造成"盲目升级"）；AGENTS/CLAUDE/chat `__main__` 提示/架构文档全部更正，依赖升级须走独立验证。

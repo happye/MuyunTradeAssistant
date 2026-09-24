@@ -210,6 +210,18 @@ def _patch_net_and_state(monkeypatch, tmp_path, records, quotes, kline_df=None, 
             return kline_df
         monkeypatch.setattr("src.data.akshare_client.AKShareClient.get_historical_kline",
                             _fake_kline)
+    else:
+        # M1 网络审计修复：kline_df=None（缺行情场景）也必须隔离——scan review 的
+        # 逐票日线预热会对全部记录真连 baostock 登录。返回最小非空 df 保住
+        # kline_cnt 计数与成本行文案的真实路径行为
+        import pandas as _pd
+
+        def _fake_kline_offline(code, period="daily", adjust="qfq", start_date=None,
+                                end_date=None, retry=3):
+            assert adjust is None  # 复盘口径必须不复权（与扫描快照价同口径）
+            return _pd.DataFrame({"日期": ["2020-01-02"], "收盘": [99.0]})
+        monkeypatch.setattr("src.data.akshare_client.AKShareClient.get_historical_kline",
+                            _fake_kline_offline)
     import src.core.fear_index.history as fear_hist
     monkeypatch.setattr(fear_hist, "_bs_index_kline",
                         (lambda code, fields, start, end: bars) if bars is not None

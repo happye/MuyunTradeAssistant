@@ -168,6 +168,8 @@ git show --stat HEAD | tail -5    # 看代码文件行数变化，别只看 mess
 6. **回测必须从 settings.yaml 显式传 `entry_exit_config` 给 BacktestEngine**，CLI 不兜底
 7. **回测不能跑 AI**（30股×242天×6维=43560次），必须用规则版 fallback
 8. **网络失败是反爬不是代理问题** → 降级 + 警告，**绝不编造数据**
+9. **`subprocess.run(text=True)` 必须显式 `encoding="utf-8"`**（LRN-20260924-014）：不带 encoding 时中文 Windows 父进程按 GBK 解码子进程 UTF-8 输出 → 中文全乱码 → 靠解析输出内容的断言全灭（「一会过一会不过」先查解码码页，再谈环境状态依赖）
+10. **patch 模块属性期间禁止让任何模块「首次 import」**（LRN-20260925-015）：`from X import Y` 按值绑定会把替身永久捕获进导入方命名空间（monkeypatch 只恢复被 patch 的模块属性）→ 全量绿但局部组合跑红的顺序依赖，第一嫌疑；patch 类测试文件顶部先预导入有 by-value 绑定的真实模块；且**接线测试（parse_input→run_cli 全链）与单元直调测试必须并存**——直调实现抓不到接线断裂（M6 doctor P0 实证）
 
 完整 15 条见 `AGENTS.md` §五。
 

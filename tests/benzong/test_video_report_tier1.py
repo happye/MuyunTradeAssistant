@@ -29,8 +29,14 @@ def test_liquidity_state_tiers():
     print("✓ 流动性分档 0.8/1.3/1.5 阈值正确")
 
 
-def test_liquidity_none_on_failure():
-    """1.1 获取失败返回 None 不崩"""
+def test_liquidity_none_on_failure(monkeypatch):
+    """1.1 获取失败返回 None 不崩（M1 网络审计修复：显式故障注入——原实现传 None
+    触发 assess_liquidity_state 的自动拉取路径，离线集合里真打全市场快照 409 次连接）"""
+    from src.core.benzong import data_provider
+
+    def _offline(*a, **k):
+        raise RuntimeError("离线测试故障注入：成交额不可用")
+    monkeypatch.setattr(data_provider, "get_market_turnover", _offline)
     assert assess_liquidity_state(None) is None or isinstance(assess_liquidity_state(None), tuple)
     print("✓ 流动性 None 输入不崩")
 

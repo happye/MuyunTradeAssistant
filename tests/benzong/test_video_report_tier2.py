@@ -114,8 +114,12 @@ def test_triple_up_no_trigger_above_ma5():
     print("✓ 3倍+但未破MA5不触发")
 
 
-def test_top_signals_integration_sector():
+def test_top_signals_integration_sector(monkeypatch):
     """2.3 集成：trade_plan 透传触发板块层"""
+    # M1 网络审计修复：live=True 的宏观信号会真拉全市场成交额（THS 分页 404 次
+    # 连接）——mock 成交额为固定中性值，隔离出"渗透率信号"这一被测对象
+    from src.core.benzong import data_provider
+    monkeypatch.setattr(data_provider, "get_market_turnover", lambda *a, **k: 1.0)
     p = _mk_plan(penetration_stage="30+")
     sd = _mk_sd(price=10)
     # live 门控：渗透率信号需网络数据源，默认(回测/测试)路径跳过（ISS-052 纪律）

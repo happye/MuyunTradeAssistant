@@ -404,10 +404,11 @@ docs/               # 详细文档
 | `docs/选股与持仓规划实战工作流.md` | **v0.8.6.5 新增**：端到端用法主线（选股→评分→建仓→持有→离场），含不同市况用法 |
 | `docs/2026-08-23_美债风险文档评估+量化拥挤监测思路.md` | **v0.8.7 新增**：美债监测面板评估（拍板不做 ISS-062）+ 监测信号先过历史迷你回测纪律 + 拥挤度代理候选清单 |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-094）+ 顶部当前待办汇总 |
-| `docs/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | **最新交接**：scan review/观察池交付明细 + plan/ 迭代计划接手指引（新会话先读） |
-| `plan/` | 架构师迭代计划（M1–M6 里程碑 + ADR + 任务卡，未实施）；接手新任务先读 `plan/README.md` |
-| `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接，不再维护），索引见 `docs/archive/README.md` |
+| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-098）+ 顶部当前待办汇总 |
+| `docs/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接：scan review/观察池交付明细 + plan/ 计划接手指引（**plan/ M1–M6 已于 2026-09-24/25 全部实施**，本文为历史快照不回填，完成态见 `plan/README.md` 执行记录） |
+| `plan/` | 架构师迭代计划（M1–M6 里程碑 + ADR + 任务卡，**M1–M6 已全部实施**，状态与执行记录见 `plan/README.md`；C1–C6 能力增强与 ADR-02/04/06/07 为后续独立排期） |
+| `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
+| `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |
 | `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members/oversold_watch超跌错杀观察） |
 | `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |

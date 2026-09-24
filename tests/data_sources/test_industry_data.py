@@ -159,8 +159,18 @@ def test_generic_report_unknown_all_fails():
     assert out.startswith("[工具失败]")
 
 
-def test_generic_report_with_fake_board():
+def test_generic_report_with_fake_board(monkeypatch):
     """通用引擎：命中商品锚（无板块）也能出报告，含价格锚+宏观+指引。"""
+    # M1 网络审计修复：现货/基差段会真调 akshare（日期回退 4 天多次）——
+    # 故障注入隔离，报告走降级路径（商品锚段仍输出）
+    import akshare as _ak
+
+    def _offline(*a, **k):
+        raise RuntimeError("离线测试故障注入")
+    monkeypatch.setattr(_ak, "futures_spot_price", _offline)
+    monkeypatch.setattr(_ak, "futures_zh_daily_sina", _offline)
+    monkeypatch.setattr(_ak, "macro_china_pmi", _offline)
+    monkeypatch.setattr(_ak, "macro_china_ppi", _offline)
     # 不给 scanner（板块解析跳过），只靠商品锚
     out = ind.build_industry_report("生猪养殖", [], scanner_engine=None)
     assert "生猪" in out

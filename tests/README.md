@@ -59,3 +59,16 @@ pytest tests/core/test_scan_review.py::test_parse_and_history_roundtrip -q
 
 - `external`：打真实外部数据源/网络。默认被 `addopts = -m "not external"` 排除。
 - `ai`：调用真实 AI 接口（花钱）。现有用例另有 `MUYUN_E2E_AI` 门自行 skip。
+
+## 离线纯净性审计（M1 任务卡第 5 步产物）
+
+离线集合声称"不碰网络"，靠审计工具实测守卫：
+
+```bash
+PYTHONPATH=scripts .venv/Scripts/python.exe -m pytest -q -p audit_offline_net
+```
+
+插件阻断 `socket.connect` 并按测试名记录调用栈（报告写 `tests/artifacts/_audit_net_hits.txt`）——
+`total=0` 即离线纯净；触网测试会以失败暴露，按栈补 mock 或标 external。
+2026-09-25 首次审计修掉 6 处隐藏触网（详见 scripts/audit_offline_net.py 文件头）。
+已知盲区：子进程测试与 curl_cffi（libcurl C 层）不走 Python socket，审计不到。
