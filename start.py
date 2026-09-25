@@ -1553,8 +1553,9 @@ def run_cli(mode: str, args: dict):
             print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
         failed = []
         ok = 0
-        # C2：批量任务账本（tasks 命令可查进度与失败项）
-        _tk = f"手动多代码×{len(codes)}"
+        # C2：批量任务账本（tasks 命令可查进度与失败项）——键含代码集摘要，
+        # 防不同代码集同数量碰撞继承无关的失败记录（监督员批 3 核对项）
+        _tk = "手动多代码 " + ",".join(codes[:4]) + ("…" if len(codes) > 4 else "")
         _ss.batch_task_start("l", _tk, codes)
         for i, code in enumerate(codes, 1):
             print(f"\n{'='*60}")
@@ -1585,8 +1586,9 @@ def run_cli(mode: str, args: dict):
             return
         print(f"\n  一键分析所有持仓（{len(positions)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
         from src.cli import session_state as _ss_la
-        _tk_la = f"持仓×{len(positions)}"
-        _ss_la.batch_task_start("la", _tk_la, [pos.stock_code for pos in positions])
+        _la_codes = [pos.stock_code for pos in positions]
+        _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
+        _ss_la.batch_task_start("la", _tk_la, _la_codes)
         for i, pos in enumerate(positions, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")

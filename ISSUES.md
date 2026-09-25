@@ -2104,3 +2104,11 @@ P3（已取消）:
 - **边界**: 成功项复用沿用既有 deep_analyzed/评分缓存语义（核实未改变）；只做可见性不引入通用工作流框架（C2 口径）
 - **测试**: +6（test_session_state batch 批）；全量 795 passed / 0 failed。同批补批 2 账本（plan/README 批 2 条目、README "787"→"789" 笔误——监督员核对发现）
 - **更新记录**: 2026-09-25 commit 落地于本 commit
+
+---
+
+### ISS-102: C3 数据诊断与成本透明——doctor 增强（v0.8.17，plan/ C3）
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/ARCHITECTURE §四 C3）
+- **交付**: doctor ④ 节补 analysis_evidence（条数+末条距今——监督员批 2 建议采纳，把证据静默失败变成 doctor 可见症状）与 batch_tasks 健康项、缓存目录磁盘大小；③ 节补 AI 配置透明（provider/model 显示，api_key 只报布尔绝不回显）；总耗时透明行
+- **测试**: +1（test_doctor C3 项）；全量 796 passed / 0 failed。同批修批 3 监督核对项：ba 逐项 mark 挪进 _progress 回调（修中断丢进度）、l/la 任务键改代码集摘要（防同数量碰撞继承）、tasks 四文档同步
+- **更新记录**: 2026-09-25 commit 落地于本 commit

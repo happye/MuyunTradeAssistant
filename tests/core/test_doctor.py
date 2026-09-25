@@ -77,3 +77,25 @@ def test_doctor_wired_through_run_cli(monkeypatch, capsys):
     start.run_cli(mode, args)   # 不抛即过（内部函数级 import 断裂会 NameError）
     out = capsys.readouterr().out
     assert "运行诊断" in out
+
+
+def test_doctor_c3_evidence_and_ai_config(monkeypatch, tmp_path, capsys):
+    """C3：doctor 显示分析证据健康项（条数/末条距今）与 AI 配置（provider/model，
+    api_key 只报布尔不回显）。"""
+    _redirect = tmp_path / "home"
+    (_redirect / ".muyun").mkdir(parents=True)
+    monkeypatch.setenv("HOME", str(_redirect))
+    monkeypatch.setenv("USERPROFILE", str(_redirect))
+    import json as _json
+    from datetime import datetime as _dt, timedelta as _td
+    ev_file = _redirect / ".muyun" / "analysis_evidence.jsonl"
+    ev_file.write_text(_json.dumps({
+        "ts": (_dt.now() - _td(hours=5)).isoformat(timespec="seconds"),
+        "code": "600519", "decision": "HOLD",
+    }, ensure_ascii=False) + "\n", encoding="utf-8")
+    cli_main.doctor()
+    out = capsys.readouterr().out
+    assert "analysis_evidence" in out and "末条距今" in out
+    assert "batch_tasks" in out
+    assert "provider=" in out
+    assert "体检耗时" in out   # C3 分阶段耗时（总耗时透明）

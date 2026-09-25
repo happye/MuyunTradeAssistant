@@ -1673,6 +1673,13 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
 
     def _progress(i, total, code, status):
         console.print(f"  [{i}/{total}] {code} {status}")
+        # C2：逐项记账（监督员批 3 核对：循环后批量回填会在中断时丢全部进度，
+        # 挪进回调与 start.py 三循环同款）
+        try:
+            from src.cli import session_state as _ss_ba
+            _ss_ba.batch_task_mark("ba", src_label, code, status != "失败", note=status)
+        except Exception:
+            pass
 
     console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
     res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
@@ -1680,7 +1687,8 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
 
     ranked = res.get("ranked", [])
     failures = res.get("failures", [])
-    # C2：批量任务账本（tasks 命令可查进度与失败项）
+    # C2：任务账本登记（逐项 mark 在 _progress 回调；此处补漏——回调未覆盖的
+    # 情况如全部命中缓存零评分轮次时也要有完整清单）
     try:
         from src.cli import session_state as _ss_ba
         _ss_ba.batch_task_start("ba", src_label, codes)
@@ -3150,6 +3158,8 @@ def doctor():
     """
     from importlib.util import find_spec
     from datetime import datetime as _dt
+    import time as _time
+    _t0 = _time.perf_counter()
 
     console.print(f"\n[bold cyan]🩺 运行诊断[/bold cyan]（只读，零 AI 零网络）")
 
@@ -3196,6 +3206,18 @@ def doctor():
     scan_rules = repo / "src" / "scanner" / "scan_rules.yaml"
     console.print(f"  src/scanner/scan_rules.yaml: "
                   + ("✓ 存在" if scan_rules.exists() else "[red]✗ 缺失（扫描不可用）[/red]"))
+    # C3：AI 配置透明（provider/model 非密钥，可显示；api_key 绝不回显）
+    try:
+        from src.config import load_config as _lc
+        _ai_cfg = (_lc().get("ai") or {})
+        _prov = _ai_cfg.get("provider", "deepseek")
+        _model = _ai_cfg.get("model", "")
+        _has_key = bool(_ai_cfg.get("api_key"))
+        console.print(f"  AI 配置: provider={_prov}"
+                      + (f" model={_model}" if _model else "")
+                      + (f"，api_key {'已配置' if _has_key else '未在此文件配置（可能走 local/环境变量）'}"))
+    except Exception as e:
+        console.print(f"  [yellow]AI 配置读取失败: {type(e).__name__}[/yellow]")
 
     # ── 状态目录 ~/.muyun ──
     state = Path.home() / ".muyun"
@@ -3213,6 +3235,8 @@ def doctor():
             ("scan_history.jsonl（复盘历史）", state / "scan_history.jsonl", None),
             ("watchlist.jsonl（观察池）", state / "watchlist.jsonl", None),
             ("deep_analyzed.json（l all 去重）", state / "deep_analyzed.json", None),
+            ("analysis_evidence.jsonl（分析证据）", state / "analysis_evidence.jsonl", None),
+            ("batch_tasks.json（批量任务账本）", state / "batch_tasks.json", None),
             ("benzong_cache/（评分缓存）", state / "benzong_cache", "*"),
             ("kline_cache/（日线当日缓存）", state / "kline_cache", "*"),
             ("news_cache/（个股新闻当日缓存）", state / "news_cache", "*"),
@@ -3227,11 +3251,27 @@ def doctor():
                     n = sum(1 for _ in p.open(encoding="utf-8")) if p.suffix in (".jsonl",) else "✓"
                 except OSError:
                     n = "✓"
-                console.print(f"  {label}: ✓" + (f"（{n} 行）" if isinstance(n, int) else ""))
+                extra = ""
+                if label.startswith("analysis_evidence"):
+                    # C3：证据静默失败的可诊断化——末条距今提示（监督员批 2 建议）
+                    try:
+                        last_line = [l for l in p.open(encoding="utf-8") if l.strip()][-1]
+                        last_ts = json.loads(last_line).get("ts", "")
+                        age_h = (_dt.now() - _dt.fromisoformat(last_ts)).total_seconds() / 3600
+                        extra = f"，末条距今 {age_h:.0f} 小时"
+                    except Exception:
+                        pass
+                console.print(f"  {label}: ✓" + (f"（{n} 行{extra}）" if isinstance(n, int) else extra))
             else:
                 pat2 = "**/*" if pat == "**" else pat
                 n = _count(p, pat2)
-                console.print(f"  {label}: ✓（{n} 个文件）" if n >= 0 else f"  {label}: 读取失败")
+                size_mb = 0.0
+                try:
+                    size_mb = sum(f.stat().st_size for f in p.rglob("*") if f.is_file()) / 1e6
+                except OSError:
+                    pass
+                size_s = f"，{size_mb:.1f} MB" if size_mb >= 0.1 else ""
+                console.print(f"  {label}: ✓（{n} 个文件{size_s}）" if n >= 0 else f"  {label}: 读取失败")
 
     # ── RAG 知识库 ──
     console.print(f"\n[bold]⑤ RAG 知识库[/bold]")
@@ -3262,6 +3302,7 @@ def doctor():
         console.print(f"\n[bold]⑥ 报告目录[/bold] 未生成（首次扫描/复盘后出现）")
 
     console.print(f"\n  [dim]诊断时间: {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
+                  f"｜体检耗时 {(_time.perf_counter() - _t0) * 1000:.0f} ms"
                   f"｜只读体检，不改任何状态[/dim]\n")
 
 
