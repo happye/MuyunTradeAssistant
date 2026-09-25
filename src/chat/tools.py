@@ -349,6 +349,15 @@ def _analyze_stock_single(stock_code: str) -> str:
         except Exception as e:
             logger.debug(f"chat 分析证据钩子异常(不影响主流程): {e}")
 
+        # 影子差异捕获（plan/fusion 影子阶段前置）：legacy 终态 vs fusion_mid/long
+        # 决策表对照——纯读零 AI 不改主结论；开关 fusion.shadow_capture（默认开）
+        try:
+            from src.core.shadow_diff import capture_shadow
+            capture_shadow(decision_result, strategy_decision, execution_eval,
+                           pos, packet=_packet, source="chat")
+        except Exception as e:
+            logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
+
         from src.chat.formatter import format_analysis_result
         result = format_analysis_result(
             stock_data, decision_result, strategy_decision,

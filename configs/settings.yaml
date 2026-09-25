@@ -208,3 +208,7 @@ chat:
     budget_ratio: 0.85             # 触发折叠的阈值（占 provider 上下文窗口比例，官方窗口见 ai.<provider>.context_window）
     keep_recent_tool_results: 6    # 折叠时保留最近 N 条工具结果不折叠
 
+
+# 融合架构开关（plan/fusion，v0.8.19 影子阶段前置）
+fusion:
+  shadow_capture: true  # 影子差异捕获：l/la/chat 分析持仓时额外用 fusion_mid/long 决策表出对照包落 ~/.muyun/shadow_diff.jsonl（纯读零 AI 不改主结论）；false=关闭

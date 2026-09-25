@@ -90,6 +90,7 @@ def show_help():
     L.append(_row())
     L.append(_row("● 每日入口"))
     L.append(_cmd("today", "今日工作台（待办/持仓/等待——建议≠成交）"))
+    L.append(_cmd("shadow", "影子对照报告（legacy vs fusion 决策表差异观察）"))
     L.append(_row())
     L.append(_row("● 分析"))
     L.append(_cmd("l <代码>", "实时深分析（自动落证据卡）"))
@@ -415,6 +416,10 @@ def parse_input(user_input: str):
     if cmd in ("today", "今日"):
         return ("today", {})
 
+    # ── 影子对照报告（plan/fusion 影子阶段前置）：legacy vs fusion 决策表差异观察 ──
+    if cmd in ("shadow", "影子"):
+        return ("shadow", {})
+
     # ── 市场恐慌指数（v0.8.10）──
     if cmd == "fear":
         rest = parts[1:]
@@ -709,6 +714,7 @@ _COMMAND_HINTS = {
     "diff": "diff <代码> 分析对比：同股最近两次深分析的价格/决策/信号变化",
     "tasks": "tasks 批量任务账本：l all/la/ba 的进度与失败项，中断续跑可见",
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
+    "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1549,7 +1555,7 @@ def run_cli(mode: str, args: dict):
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
         scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
-        batch_tasks_cmd, today_command,
+        batch_tasks_cmd, today_command, shadow_command,
     )
 
     ai_overrides = {}
@@ -1847,6 +1853,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "today":
         # v0.8.19：今日工作台——先持仓风险，再等条件（plan/fusion F7）
         today_command()
+
+    elif mode == "shadow":
+        # plan/fusion 影子阶段前置：legacy vs fusion_mid/long 决策表差异观察报告
+        shadow_command()
 
     elif mode == "noai":
         _no_ai = not _no_ai

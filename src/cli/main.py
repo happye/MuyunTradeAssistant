@@ -547,6 +547,14 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                                           source="analyze_live", packet=_packet)
             except Exception as e:
                 logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
+            # 影子差异捕获（plan/fusion 影子阶段前置）：legacy 终态 vs fusion_mid/long
+            # 决策表对照——纯读零 AI 不改主结论；开关 fusion.shadow_capture（默认开）
+            try:
+                from src.core.shadow_diff import capture_shadow
+                capture_shadow(decision_result, strategy_decision, execution_eval,
+                               pos, packet=_packet, source="la")
+            except Exception as e:
+                logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
             # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
             # 只更新内存不落盘；现随观察量落盘；建议入 pending，`pos confirm` 确认）
             try:
@@ -918,6 +926,14 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         except Exception as e:
             logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             _watch_info = None
+        # 影子差异捕获（plan/fusion 影子阶段前置）：legacy 终态 vs fusion_mid/long
+        # 决策表对照——纯读零 AI 不改主结论；开关 fusion.shadow_capture（默认开）
+        try:
+            from src.core.shadow_diff import capture_shadow
+            capture_shadow(result, strategy_decision, execution_eval,
+                           pos, packet=_packet, source="l")
+        except Exception as e:
+            logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
         # F1（plan/fusion ADR-F03）：持仓股分析后记录观察量+建议——不再把建议当
         # 持仓回写；建议入 pending 账本，`pos confirm` 确认实际成交才改持仓事实
         if has_position and pos is not None:
@@ -3655,6 +3671,18 @@ def today_command():
     if watch_failed:
         view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
     console.print(render_today(view))
+
+
+def shadow_command():
+    """shadow 影子对照报告（plan/fusion 影子阶段前置，ROLLOUT §1/§4）。
+
+    legacy 终态 vs fusion_mid/long 决策表的差异观察——l/la/chat 分析持仓时自动
+    捕获（开关 fusion.shadow_capture）；分原因聚合，不比较总收益（DESIGN 硬要求）。
+    纯读取零网络零 AI。
+    """
+    from src.core.shadow_diff import build_shadow_report, render_shadow_report
+    report = build_shadow_report()
+    console.print(render_shadow_report(report))
 
 
 def batch_tasks_cmd():
