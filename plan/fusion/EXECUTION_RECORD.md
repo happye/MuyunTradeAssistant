@@ -220,7 +220,7 @@
 - 迁移：旧 portfolio.yaml 零改动加载（缺标记→LEGACY_UNVERIFIED 只在下次保存时写入新字段）；proposals.json 首次使用自动创建
 - 回滚：回到 e99b280 可恢复旧建议流（回写调用方在旧 commit 自洽）；**不能恢复"分析自动当成交"**（TASKS F1 回滚条款原文满足）
 
-### 状态：REVIEW（7 阻断已修 + 全量待终验，commit 后由监督员核对转 VERIFIED）
+### 状态：VERIFIED（2026-09-25 监督员 7 项清单全过无阻断：四要素断言/M5 零回退/不伪造持仓双闸/幂等/四端接线全实证；发现 A-E 全闭环——A/C 账本更正、B pos 列表 LEGACY 提示、D 版本五处同步、E entry_price 置 None（回归测试留 F3 顺手补））
 
 ---
 ## F2 — 最终裁决与所有输出一致
@@ -294,6 +294,6 @@
 - evidence.jsonl 旧记录零迁移（终态字段追加，缺字段=当时未记录，diff 不误报）
 - 回滚：ai.direction_aware_adjustment=false 回 AI legacy 口径；摘要/证据/排名/统一终态为正确性修复不随回滚撤销（TASKS F2 回滚条款）
 
-### 状态：REVIEW（待 quality-guard + 监督员核对）
+### 状态：VERIFIED（2026-09-25 监督员终核全过无阻断：PROBES A/B 真接线/安全网逐行零退化/哨兵测试/P0 断链真修复均实证；906 passed 监督员独立复跑一致）
 
 ---
