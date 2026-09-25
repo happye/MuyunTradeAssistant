@@ -1,5 +1,7 @@
 # 暮云持续迭代计划
 
+**新一轮能力融合设计（2026-09-25，只交付方案，未实施）**：[bz × scan × AI 中长期统一决策架构](fusion/README.md)。研究、数据契约、周期策略、验证门槛与 F0–F9 任务卡均在 `plan/fusion/`；中断恢复先读 [RESUME](fusion/RESUME.md)。以下 M/C 批次是前一轮工程迭代记录，不能与新的 F 批次混记。
+
 更新：2026-09-24。接手基线：`e84fac4`（v0.8.12.1）。
 
 总架构、模块边界、能力增强路线和 Agent 协作机制见 [总体架构与演进设计](ARCHITECTURE.md)。首批技术任务卡、测试失败分析及读入顺序见 [技术交接](TECHNICAL_HANDOFF.md)。
@@ -59,7 +61,7 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 3. **数据兼容**：保留现有 JSON/YAML schema、`#N` 顺序、入池时间锚点和旧报告格式。告警新增同步 `plain_errors.py` 与报错速查手册。
 4. **拆分**：先提取没有 IO 的 review 算法，再拆展示/命令。保留 `main` 的旧导入点及测试 patch 接口，确认 consumer 后再逐步迁移，避免一次移动整个大文件。
 5. **安全网**：`position_action=CLOSE_ALL` 是执行语义；评分改动必须失效评分缓存；RAG 重排默认关闭；不并行加载多个真实模型。
-6. **持仓**：当前 `_save` 发现外部修改只警告仍覆盖，多数 mutator 未传播 bool。M5 必须端到端设计，不能只在 `_save` 加一个 return 就声称修复。
+6. **持仓（原基线问题，M5 已实施）**：原 `_save` 外部修改后仍覆盖、mutator 未传播失败，现已增加指纹冲突拒绝与失败传播，见执行记录。新一轮另审“建议与真实持仓分离”，不要把并发保存保护误当成交语义已解决。
 
 ## Agent 协作约定
 
