@@ -85,10 +85,10 @@ FACTOR_SPECS: list[FactorSpec] = [
         unit="比值",
         missing_policy="分母≤0 不用比值排名，改专门风险解释（sector_growth_guard）；分项缺失各自 UNKNOWN",
         sector_scope="非金融",
-        availability_rule="DATA_COVERAGE「财务三表」（TTM 需至少4个季度披露，公布日可信）",
+        availability_rule="DATA_COVERAGE「财务三表」（探查通过，接线待做；TTM 需至少4个季度披露，公布日可信）",
         economic_hypothesis="利润有现金流支撑的公司盈利质量更高——长期持有的核心筛选之一",
         experiment_id="",
-        needs_data_probe=True,
+        needs_data_probe=False,  # 2026-09-26 探查通过（pubDate 实证）；接线批前仍只登记
         sector_growth_guard="净利润≤0 时改输出『利润为负+现金流方向』的风险解释，不做比值",
     ),
     FactorSpec(
@@ -96,14 +96,14 @@ FACTOR_SPECS: list[FactorSpec] = [
         version="1",
         horizon="LONG",
         definition="适用行业 NOPAT/平均投入资本（ROIC），或经核对的 ROE；保留计算构成（分母口径必须可审计）",
-        inputs=["financial（待现场探查）", "user_asserted"],
+        inputs=["financial（baostock 季频 pubDate 已探查可 PIT，2026-09-26）", "user_asserted"],
         unit="%（或比值）",
         missing_policy="投入资本或 NOPAT 分项缺失 → UNKNOWN；不把高杠杆 ROE 当质量",
         sector_scope="非金融（金融与负投入资本不硬套 ROIC）",
-        availability_rule="DATA_COVERAGE「财务三表」",
+        availability_rule="DATA_COVERAGE「财务三表」（探查通过，接线待做）",
         economic_hypothesis="持续资本回报率高于资本成本的企业创造长期价值",
         experiment_id="",
-        needs_data_probe=True,
+        needs_data_probe=False,  # 2026-09-26 探查通过（pubDate 实证）；接线批前仍只登记
         sector_growth_guard="投入资本≤0 时输出 UNKNOWN 并注明口径异常",
     ),
     FactorSpec(
@@ -111,14 +111,14 @@ FACTOR_SPECS: list[FactorSpec] = [
         version="1",
         horizon="LONG",
         definition="净债务、现金/短债、利息保障、到期分布——各自独立输出，不合成单一分",
-        inputs=["financial.balance（待现场探查）"],
+        inputs=["financial.balance（baostock query_balance_data pubDate 已探查可 PIT，2026-09-26）"],
         unit="各分量原生单位",
         missing_policy="缺到期分布数据不认定无偿债压力——该分量 UNKNOWN 并注明",
         sector_scope="非金融工业企业口径（金融行业规则未适配，禁套）",
         availability_rule="DATA_COVERAGE「财务三表」",
         economic_hypothesis="资产负债结构约束是硬风险/复核触发源，独立于盈利质量",
         experiment_id="",
-        needs_data_probe=True,
+        needs_data_probe=False,  # 2026-09-26 探查通过；接线批前仍只登记
     ),
     FactorSpec(
         factor_id="valuation_range_v1",
@@ -127,14 +127,14 @@ FACTOR_SPECS: list[FactorSpec] = [
         definition="正常化每股盈利×可比倍数区间（同行业同时点样本），或经审核的现金流情景；"
                    "记录盈利定义、倍数参照、净债务/股数调整；亏损企业不用普通 PE；"
                    "价值区间不是确定目标价",
-        inputs=["financial（待现场探查）", "market.close（天然PIT）", "user_asserted（可比样本）"],
+        inputs=["financial（baostock 季频 pubDate 已探查可 PIT，2026-09-26）", "market.close（天然PIT）", "user_asserted（可比样本）"],
         unit="元/股（区间）",
         missing_policy="盈利为负/可比样本不足 → NOT_APPLICABLE + 保留研究（不强填区间）",
         sector_scope="先支持盈利稳定的普通非金融企业；高增长亏损/金融未适配显式标 NOT_APPLICABLE",
-        availability_rule="财务三表 + 同日行情样本；倍数参照集必须同时点",
+        availability_rule="财务三表（探查通过，接线待做）+ 同日行情样本；倍数参照集必须同时点",
         economic_hypothesis="价格位置只是风险维度；真实估值区间决定『好公司≠现在适合买』",
         experiment_id="",
-        needs_data_probe=True,
+        needs_data_probe=False,  # 2026-09-26 探查通过；接线批前仍只登记
         sector_growth_guard="正常化盈利≤0 时不用普通 PE，转专门研究",
     ),
     FactorSpec(
@@ -143,15 +143,15 @@ FACTOR_SPECS: list[FactorSpec] = [
         horizon="MID",
         definition="过去60交易日个股收益 − 行业指数收益（窗长是首个实验候选，非已验证最优）；"
                    "扣除当日未收盘信息（bar 收盘日尾才可用）",
-        inputs=["market.daily（天然PIT）", "market.industry_index（DATA_COVERAGE：未接线，待探查）"],
+        inputs=["market.daily（天然PIT）", "market.industry_index（akshare index_hist_sw 申万日线，2026-09-26 探查可用，接线待做）"],
         unit="%",
         missing_policy="行业指数缺失 → UNKNOWN（不用全市场指数冒充行业）；停牌日剔除",
         sector_scope="全行业",
-        availability_rule="DATA_COVERAGE「行业指数」行（未接线）——个股日线天然 PIT 但行业"
-                          "指数缺失时因子整体不可算，故 needs_data_probe=True",
+        availability_rule="DATA_COVERAGE「行业指数」行（探查通过，接线待做）——个股日线天然 PIT，"
+                          "行业指数接线前因子整体不可算",
         economic_hypothesis="相对行业强弱是中期趋势纪律的排序输入（Weinstein 体系的量化投影）",
         experiment_id="E4",
-        needs_data_probe=True,
+        needs_data_probe=False,  # 2026-09-26 探查通过（申万指数日线可得）；接线批前仍只登记
     ),
     FactorSpec(
         factor_id="trading_capacity_v1",

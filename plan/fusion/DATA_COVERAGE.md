@@ -24,18 +24,18 @@
 | 业绩预告 | baostock query_forecast_report | **可 PIT**（profitForcastExpPubDate 官方公布日） | 已接线（AKShareClient.get_latest_forecast，ISS-053 用） | ✅ 进证据层（forecast_record） |
 | 官方公告 | 巨潮 disclosure_report（akshare，经 get_recent_announcements 备源） | **可 PIT**（公告日期官方） | 备源已接；巨潮 DataFrame 无来源列，**F3 审查 P1-3 修复：data_provider 备源分支已打 source="巨潮公告" 标**（research_snapshot official_date 判定依赖） | ✅ 进证据层（official_date=True）；注意主源有数据时不走巨潮分支 |
 | 个股新闻 | 东财 stock_news_em | **不可回填历史快照**（每条自带发布时间，但"最近N天"窗口接口无法对历史 as_of 重建当时视图） | 主源已接（live 用） | ⚠️ live 视图可见；**严格快照必拒**（与 ISS-052"回测不填公告"纪律同构，机器化到证据层） |
-| 财务三表（营收/利润/现金流/ROE） | baostock 季频明细接口（query_profit_data 等） | 待现场探查（接口存在，**本项目未接线**，公布日字段可得性未验证） | 未接 | ⚠️ F4/F5 因子接线前必须先跑 external 探查脚本；无公布日则只能 live，不进回测 |
+| 财务三表（营收/利润/现金流/ROE） | baostock 季频明细（query_profit_data / query_balance_data / query_cash_flow_data / query_operation_data / query_growth_data） | **✅ 已现场探查可 PIT**（2026-09-26，`tests/data_sources/probe_fin_pubdate.py`，产物 `tests/artifacts/probe_fin_pubdate.log`）：五接口全有 `pubDate` 官方公布日（样本：600519 2023Q4 → pubDate 2024-04-03），同期重复查询一致 | 接口可用、未接线 | ✅ **财务证据可进严格 PIT 快照**（E2/E4 财务因子解锁）；长期（LONG）12 季度财务包的探查前置已满足——**接线与全量覆盖验证**（分层抽样只证可得性）在接线批做 |
 | 分部营收/业务暴露 | 无稳定自动接口 | 不可得 | 无 | 走 `user_asserted_record` 人工通道（DESIGN 允许，USER_ASSERTED 标记输入者/时间/适用期） |
-| ST 状态/股东户数/融资余额 | baostock/akshare | **当前值 only，非 PIT**（ISS-053 实证） | 已接（live 安全网/top_signal） | live only；回测路径保持禁用（既有纪律不变） |
+| ST 状态/股东户数/融资余额 | baostock/akshare | **当前值 only，非 PIT**（ISS-053 实证） | 已接（live 安全网/top_signal） | live only；回测路径保持禁用（既有纪律不变）。注：baostock K线 `isST` 字段日频可得（探查实证可用），历史 ST 状态可经 K线回溯——与实时接口的"当前值 only"是两回事 |
 | 行业数据（需求量/价格/库存） | industry_data.py（chat 行业分析文本报告层） | **无结构化序列、无 PIT**（TTL 缓存 1 小时 + 缺失/过期降级标注，live-only） | 文本层已接（chat 用） | ⚠️ 不能作 PIT 证据；结构化需求量数据待现场探查接线（demand_change_v1 依赖） |
-| 行业指数 | **未接线**（data_feeder 仅取大盘 sh.000300） | 待现场探查（baostock 有行业指数接口，公布语义未验证） | 未接 | ⚠️ relative_trend_v1 的分母必需——接线前因子只登记不计算 |
-| 停牌状态 | **未接线**（data_feeder K 线无 tradestatus 字段） | 待现场探查 | 未接 | ⚠️ trading_capacity_v1 的状态分量暂记 UNKNOWN（比值主计算不受阻） |
+| 行业指数 | akshare `index_hist_sw`（申万指数日线）+ baostock query_stock_industry（行业归属） | **✅ 已现场探查**（同上产物）：`index_hist_sw('801010','day')` 6463 行 OHLC+量额（1999 起），指数 bar 天然 PIT；行业归属为**当前值**（updateDate 语义=最近更新，**历史行业归属变化不可回溯**——历史重放用行业归属需谨慎） | 未接线 | ✅ relative_trend_v1 的分母可接（接线随 F5 因子计算批）；行业归属作静态映射时须登记 updateDate caveat |
+| 停牌状态 | baostock query_history_k_data_plus `tradestatus` 字段（1 正常/0 停牌） | **✅ 已现场探查**（同上产物）：字段可用，日频随 K线返回 | 未接线（data_feeder 现不含该字段） | ✅ trading_capacity_v1 状态分量可接（接线随 DataFeeder 字段扩展；ratio 主计算不受阻） |
 | RAG 检索块 | 本地 FAISS | 方法文本，非事实 | 已接 | qualify 默认排除——不当公司事实 |
 
-**首发行业范围结论**（TASKS F3"发现不足则缩小首发范围并明示"）：严格 PIT 回测可用的
-证据类别=**行情 + 业绩预告 + 官方公告**三类；财务三表待公布日字段现场验证后才可进
-回测。长期（LONG）质量研究所需的 12 季度财务包（DESIGN §5.2）在财务三表接线验证前
-**不启动**——不填通用数字强行纳入。
+**首发行业范围结论**（TASKS F3"发现不足则缩小首发范围并明示"；2026-09-26 探查后更新）：严格 PIT 回测可用的
+证据类别=**行情 + 业绩预告 + 官方公告 + 财务季频五接口（pubDate 已探查实证）**；行业指数/停牌状态接口也已
+实证可得（接线后可用）。**接线与全量覆盖验证**（抽样只证可得性，不代全量）在 E2/E4 财务因子接线批进行；
+长期（LONG）质量研究所需的 12 季度财务包（DESIGN §5.2）探查前置已满足，接线批启动。
 
 ## 3. 验收对照（TASKS F3）
 

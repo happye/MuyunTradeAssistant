@@ -144,11 +144,14 @@ def test_unprobed_factors_registered_not_computed():
              if o.__module__ == reg.__name__}
     assert funcs == {"get_spec", "validate_registry"}, \
         f"登记模块出现计算类函数（未探查因子不得计算）: {funcs - {'get_spec', 'validate_registry'}}"
-    # 财务类/行业类因子 needs_data_probe（DATA_COVERAGE：三表/行业数据/行业指数未接线）
+    # 探查已通过（2026-09-26，tests/data_sources/probe_fin_pubdate.py：财务季频 pubDate
+    # 实证 + 申万指数日线可用）→ 翻转 False；接线批前仍只登记
     for fid in ("earnings_quality_v1", "capital_return_v1", "balance_risk_v1",
-                "valuation_range_v1", "business_exposure_v1", "demand_change_v1",
-                "relative_trend_v1"):
-        assert get_spec(fid).needs_data_probe is True
+                "valuation_range_v1", "relative_trend_v1"):
+        assert get_spec(fid).needs_data_probe is False, f"{fid} 探查已通过仍标未验证"
+    # 上游仍未取得：分部营收（business_exposure）无自动接口、行业量价库存（demand_change）未探查
+    for fid in ("business_exposure_v1", "demand_change_v1"):
+        assert get_spec(fid).needs_data_probe is True, f"{fid} 上游未验证不得翻转"
     # 行情天然 PIT 且输入已接线的因子可先计算（停牌状态分量 UNKNOWN 不阻比值）
     assert get_spec("trading_capacity_v1").needs_data_probe is False
 
