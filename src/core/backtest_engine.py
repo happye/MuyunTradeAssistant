@@ -199,6 +199,7 @@ class BacktestEngine:
         qizong_codes: Optional[set] = None,  # DEPRECATED(跳法A阶段1.3): 显式气宗股集，建 plan 时强制 mode=qizong
         jianzong_codes: Optional[set] = None,  # 跳法A阶段4: 显式剑宗股集，建 plan 时强制 mode=jianzong(短持30天紧止损)
         benzong_auto_mode: bool = True,  # 跳法A阶段1.3: 建仓时调 rule_scorer 自动定 mode（A→气宗/B→剑宗）
+        t_plus_1_lot_mode: bool = False,  # E0(plan/fusion): T+1 按批次份额——当日新买份额不可卖（G11）；默认关=现行为（单标量 buy_date 整仓判定）
     ):
         self.stock_code = stock_code
         self.start_date = start_date
@@ -262,6 +263,8 @@ class BacktestEngine:
         self._jianzong_codes = jianzong_codes or set()  # 显式剑宗覆盖
         self._benzong_auto_mode = benzong_auto_mode  # 跳法A阶段1.3: 自动评分定 mode
         self._benzong_mode_cache = {}  # {code: grade} 缓存，避免同股重复评分
+        self.t_plus_1_lot_mode = t_plus_1_lot_mode  # E0：批次份额 T+1（默认关=legacy 不变）
+        self._t1_lot_blocked_count = 0  # lot 模式下当日新买份额不可卖被拦截的次数（E0 报告用）
         self._plan_stats = {        # 统计：用于回测后看 plan 实际效果
             "plans_created": 0,
             "weak_sells_suppressed_by_guard": 0,
@@ -356,12 +359,14 @@ class BacktestEngine:
 
         total_days = feeder.get_date_count()
         high_since_entry = None  # v0.8.3: 持仓期间最高价（Chandelier Exit用）
+        bought_today = 0  # E0 lot 模式：当日新买股数（T+1 批次份额判定用；每交易日重置）
 
         for i, (date, stock_data) in enumerate(feeder.iterate()):
             if first_price is None:
                 first_price = stock_data.price
 
             current_price = stock_data.price
+            bought_today = 0  # E0 lot 模式：每交易日重置
 
             # ===== 执行前日挂单 =====
             if pending_result is not None:
@@ -444,6 +449,7 @@ class BacktestEngine:
                             trade = account.buy(buy_price, target_position_ratio=pos_ratio)
                             if trade:
                                 account.buy_date = date
+                                bought_today += trade.shares
 
                     elif effective_action == PositionAction.ADD:
                         # A17 修复：买入不受 T+1 约束（T+1 只限制当日买入份额的卖出），
@@ -451,15 +457,19 @@ class BacktestEngine:
                         if account.has_position:
                             buy_price = exec_price * (1 + actual_slippage)
                             trade = account.buy(buy_price, target_position_ratio=pos_ratio)
+                            if trade:
+                                bought_today += trade.shares
                         elif not account.has_position and self._not_in_cooldown(date, last_sell_date):
                             buy_price = exec_price * (1 + actual_slippage)
                             trade = account.buy(buy_price, target_position_ratio=min(pos_ratio, 0.20))
                             if trade:
                                 account.buy_date = date
+                                bought_today += trade.shares
                                 actual_pos_action = PositionAction.OPEN
 
                     elif effective_action == PositionAction.REDUCE:
-                        if account.has_position and self._can_sell(date, account.buy_date):
+                        _can_sell_ok, _sellable = self._can_sell_today(date, account, bought_today)
+                        if account.has_position and _can_sell_ok:
                             current_ratio = account.position_ratio(exec_price)
                             if current_ratio < 0.05:
                                 sell_price = exec_price * (1 - actual_slippage)
@@ -476,20 +486,33 @@ class BacktestEngine:
                                     if sell_shares <= 0:
                                         sell_shares = 100
                                     sell_shares = min(sell_shares, account.position)
-                                    remaining = account.position - sell_shares
-                                    remaining_ratio = (remaining * exec_price) / total_val if total_val > 0 else 0
-                                    if remaining_ratio < 0.05:
-                                        sell_shares = account.position
-                                        actual_pos_action = PositionAction.CLOSE_ALL
-                                    sell_price = exec_price * (1 - actual_slippage)
-                                    trade = account.sell(sell_price, shares=sell_shares)
+                                    if self.t_plus_1_lot_mode:
+                                        # E0：批次份额口径——当日新买份额不可卖（G11）
+                                        sell_shares = min(sell_shares, _sellable)
+                                    if sell_shares > 0:
+                                        remaining = account.position - sell_shares
+                                        remaining_ratio = (remaining * exec_price) / total_val if total_val > 0 else 0
+                                        if remaining_ratio < 0.05:
+                                            sell_shares = account.position
+                                            if self.t_plus_1_lot_mode:
+                                                sell_shares = min(sell_shares, _sellable)
+                                            actual_pos_action = PositionAction.CLOSE_ALL
+                                        sell_price = exec_price * (1 - actual_slippage)
+                                        trade = account.sell(sell_price, shares=sell_shares)
 
                     elif effective_action == PositionAction.CLOSE_ALL:
-                        if account.has_position and self._can_sell(date, account.buy_date):
+                        _can_sell_ok, _sellable = self._can_sell_today(date, account, bought_today)
+                        if account.has_position and _can_sell_ok:
                             sell_price = exec_price * (1 - actual_slippage)
-                            trade = account.sell(sell_price)
-                            if trade:
-                                actual_pos_action = PositionAction.CLOSE_ALL
+                            if self.t_plus_1_lot_mode and _sellable < account.position:
+                                trade = account.sell(sell_price, shares=_sellable)
+                                if trade:
+                                    # 影子批审查 P2：批次口径部分卖出如实记 REDUCE（记 CLOSE_ALL 会误导归因）
+                                    actual_pos_action = PositionAction.REDUCE
+                            else:
+                                trade = account.sell(sell_price)
+                                if trade:
+                                    actual_pos_action = PositionAction.CLOSE_ALL
 
                     elif effective_action == PositionAction.STAY_OUT:
                         pass  # 不操作
@@ -504,14 +527,21 @@ class BacktestEngine:
                             trade = account.buy(buy_price, target_position_ratio=0.20)
                             if trade:
                                 account.buy_date = date
+                                bought_today += trade.shares
                                 actual_pos_action = PositionAction.OPEN
 
                     elif pending_signal == SignalType.SELL and account.has_position:
-                        if self._can_sell(date, account.buy_date):
+                        _can_sell_ok, _sellable = self._can_sell_today(date, account, bought_today)
+                        if _can_sell_ok:
                             sell_price = exec_price * (1 - actual_slippage)
-                            trade = account.sell(sell_price)
-                            if trade:
-                                actual_pos_action = PositionAction.CLOSE_ALL
+                            if self.t_plus_1_lot_mode and _sellable < account.position:
+                                trade = account.sell(sell_price, shares=_sellable)
+                                if trade:
+                                    actual_pos_action = PositionAction.REDUCE  # 批次口径部分卖出
+                            else:
+                                trade = account.sell(sell_price)
+                                if trade:
+                                    actual_pos_action = PositionAction.CLOSE_ALL
 
                     # 记录交易
                     if trade:
@@ -697,16 +727,24 @@ class BacktestEngine:
                 logger.warning(
                     f"回测末日({last_date})开盘价缺失，强制清仓退化按收盘价成交（无T+1/滑点保护）"
                 )
-            forced_sell = account.sell(clear_price)
+            if self.t_plus_1_lot_mode:
+                # E0：批次份额口径——末日强平只清当日以前批次（T+1 不因回测收尾破例）；
+                # 残留份额（当日买入）按收盘价计入净值，体现在 last_snapshot
+                sellable = account.position - bought_today
+                forced_sell = account.sell(clear_price, shares=sellable) if sellable > 0 else None
+            else:
+                forced_sell = account.sell(clear_price)
             if forced_sell:
                 forced_sell.date = last_date
                 forced_sell.reason = "[回测结束强制清仓]"
                 account.cash = self._deduct_sell_costs(account.cash, forced_sell.amount, last_date)
                 trades.append(forced_sell)
+                # lot 模式可能残留当日买入的未清份额（按收盘价计入）——legacy 清仓后
+                # position=0，此重算与原显式置零数值完全一致
                 total_val = account.total_value(last_snapshot.price)
                 last_snapshot.cash = round(account.cash, 2)
-                last_snapshot.position = 0
-                last_snapshot.market_value = 0.0
+                last_snapshot.position = account.position
+                last_snapshot.market_value = round(account.market_value(last_snapshot.price), 2)
                 last_snapshot.total_value = round(total_val, 2)
                 last_snapshot.return_pct = round((total_val / self.initial_capital - 1) * 100, 2)
 
@@ -797,6 +835,7 @@ class BacktestEngine:
                 qizong_codes=self._qizong_codes,
                 jianzong_codes=self._jianzong_codes,
                 benzong_auto_mode=self._benzong_auto_mode,
+                t_plus_1_lot_mode=self.t_plus_1_lot_mode,  # 影子批审查 P2：MC 同口径透传
             )
 
             result = temp_engine.run()
@@ -827,6 +866,30 @@ class BacktestEngine:
         if self.execution_mode == self.MODE_LEGACY_COMPATIBLE and hold_days < self.min_hold_days:
             return False
         return True
+
+    def _can_sell_today(self, current_date: str, account: "SimulatedAccount",
+                        bought_today: int) -> tuple[bool, int]:
+        """卖出前可卖判定。返回 (是否可卖, 可卖股数)。
+
+        - 默认（t_plus_1_lot_mode=False）：走既有单标量 buy_date 整仓判定
+          `_can_sell`（现行为不变，可卖股数仅作参考值）
+        - E0 lot 模式（t_plus_1_lot_mode=True）：T+1 按批次份额（G11）——
+          可卖 = 持仓 − 当日新买；min_hold_days 仍仅 legacy_compatible 生效
+          （与 _can_sell 同口径）。整仓因当日新买不可卖时计入 _t1_lot_blocked_count
+        """
+        if not self.t_plus_1_lot_mode:
+            ok = self._can_sell(current_date, account.buy_date)
+            return ok, (account.position if ok else 0)
+        sellable = account.position - bought_today
+        if self.execution_mode == self.MODE_LEGACY_COMPATIBLE and account.buy_date:
+            d1 = datetime.strptime(account.buy_date, "%Y-%m-%d")
+            if (datetime.strptime(current_date, "%Y-%m-%d") - d1).days < self.min_hold_days:
+                return False, 0
+        if sellable <= 0:
+            if account.position > 0:
+                self._t1_lot_blocked_count += 1
+            return False, 0
+        return True, sellable
 
     def _not_in_cooldown(self, current_date: str, last_sell_date: Optional[str]) -> bool:
         """检查是否在买入冷却期外。
