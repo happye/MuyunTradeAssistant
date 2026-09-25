@@ -536,6 +536,17 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 _evidence.record_evidence(decision_result, strategy_decision, source="analyze_live")
             except Exception as e:
                 logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
+            # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
+            # 只更新内存不落盘；现随观察量落盘；建议入 pending，`pos confirm` 确认）
+            try:
+                if not pm.record_analysis_observation(
+                        pos.stock_code, stock_data.stock_name or pos.stock_code,
+                        strategy_decision, stock_data):
+                    logger.warning(f"观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
+                pm.record_proposal(pos.stock_code, stock_data.stock_name or pos.stock_code,
+                                   strategy_decision, source="la")
+            except Exception as e:
+                logger.warning(f"观察量/建议记录失败(不影响分析主流程，持仓文件未改动): {e}")
             if hasattr(strategy_decision,'entry_exit') and strategy_decision.entry_exit:
                 ee = strategy_decision.entry_exit
                 if ee.get('highest_since_entry'):
@@ -885,6 +896,18 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         except Exception as e:
             logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             _watch_info = None
+        # F1（plan/fusion ADR-F03）：持仓股分析后记录观察量+建议——不再把建议当
+        # 持仓回写；建议入 pending 账本，`pos confirm` 确认实际成交才改持仓事实
+        if has_position and pos is not None:
+            try:
+                if not pm.record_analysis_observation(
+                        stock_code, stock_data.stock_name or pos.stock_code,
+                        strategy_decision, stock_data):
+                    logger.warning(f"观察量未落盘({stock_code}): 持仓文件被外部修改或写入失败")
+                pm.record_proposal(stock_code, stock_data.stock_name or pos.stock_code,
+                                   strategy_decision, source="l")
+            except Exception as e:
+                logger.warning(f"观察量/建议记录失败(不影响分析主流程，持仓文件未改动): {e}")
         # v0.8.7.1: 人话摘要面板（白话结论在最前；渲染失败不影响主流程）
         try:
             _print_plain_summary(result, strategy_decision, stock_data, pos, watch_info=_watch_info)
@@ -1986,8 +2009,13 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
         return False
 
 
-def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0, ratio: float = 0.20, update: bool = False):
-    """持仓管理子命令"""
+def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0,
+                     ratio: float | None = None, update: bool = False):
+    """持仓管理子命令
+
+    ratio 语义（F1）：add=建仓仓位（None→0.20 兜底）；confirm=实际成交的仓位变化
+    （None=按建议全额）。所有 add 调用方均显式传参，签名默认值改动不影响它们。
+    """
     pm = PortfolioManager()
 
     if action == "list":
@@ -2054,7 +2082,70 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         else:
             console.print(f"\n[dim]💡 提示：持仓尚无 TradePlan。下次跑 `pos add` 时系统会自动 AI 辅助生成交易计划（v0.8.5 新增）[/dim]")
 
+        # F1（plan/fusion ADR-F03）：待确认建议区——分析建议不是成交事实，等用户确认
+        pend = pm.pending_proposals()
+        if pend:
+            console.print(f"\n[bold yellow]📌 待确认建议（{len(pend)} 条）——这是建议，尚未记为成交[/bold yellow]")
+            for p in pend:
+                tgt = f" → 目标仓位 {p.target_ratio:.0%}" if p.target_ratio is not None else ""
+                stale = f" ｜ {p.created_at[:16]} 来自 {p.source or '?'}" if p.created_at else ""
+                console.print(
+                    f"  [cyan]{p.stock_code}[/cyan] {p.stock_name}: "
+                    f"[yellow]{p.position_action}[/yellow]{tgt} ｜ {p.reason[:40]}{stale}")
+                console.print(f"    [dim]实际成交后确认: pos confirm {p.stock_code} [实际仓位变化] [成交价][/dim]")
+
+    elif action == "confirm":
+        # F1：确认实际成交——唯一把建议变成持仓事实的入口
+        if not stock_code:
+            console.print("[red]请指定股票代码[/red]")
+            return
+        pend = pm.pending_proposals(stock_code)
+        target = pend[-1] if pend else None
+        if target is None:
+            console.print(f"[yellow]⚠ {stock_code} 无待确认建议（分析建议在 l/la/chat 分析持仓股后生成）。"
+                          f"手动建仓/删仓请用 pos add / pos rm[/yellow]")
+            return
+        pos_now = pm.get_position(stock_code)
+        if pos_now is None:
+            # F1 审查 P1-5：建议账本独立于持仓文件，pos rm/外部删除后建议仍在
+            console.print(f"[yellow]⚠ {stock_code} 持仓记录已删除（pos rm 或外部编辑），"
+                          f"待确认建议已随之作废（REJECTED）——如重新建仓请重跑分析[/yellow]")
+            pm.reject_pending_proposal(stock_code, note="持仓记录已删除，建议作废")
+            return
+        # 方向：卖出类建议 → SELL；加仓建议 → BUY
+        fill_action = "SELL" if target.position_action in ("REDUCE", "CLOSE_ALL") else "BUY"
+        if ratio and ratio > 0:
+            change = ratio  # 用户显式给的部分成交比例
+        else:
+            # 缺省 = 建议全额：目标 - 当前
+            change = (pos_now.current_ratio or 0.0) - (target.target_ratio or 0.0) \
+                if fill_action == "SELL" else (target.target_ratio or 0.0) - (pos_now.current_ratio or 0.0)
+            change = round(abs(change), 6) or None
+        if not change or change <= 0:
+            console.print(f"[yellow]⚠ {stock_code} 建议目标与当前仓位一致，无需确认成交[/yellow]")
+            return
+        console.print(f"\n[bold cyan]📌 确认成交[/bold cyan]")
+        console.print(f"  {stock_code} {target.stock_name}: {fill_action} 仓位变化 {change:.0%}"
+                      f"{f' @ ¥{price}' if price else ''}（依据建议 {target.position_action}）")
+        result = pm.confirm_fill(
+            stock_code, fill_action, change,
+            price=price if price and price > 0 else None,
+            proposal_id=target.proposal_id,
+        )
+        if result.ok:
+            console.print(f"[green]✓ {result.message}[/green]")
+            after = pm.get_position(stock_code)
+            if after is not None:
+                console.print(f"  持仓现状: 仓位 {after.current_ratio:.0%} ｜ 生命周期 {after.lifecycle}"
+                              + (f" ｜ 开仓价 {after.entry_price}" if after.entry_price else ""))
+            else:
+                console.print("  持仓现状: 记录已删除（清仓完成）")
+        else:
+            console.print(f"[red]✗ 确认失败: {result.message}[/red]")
+
     elif action == "add":
+        if ratio is None:
+            ratio = 0.20  # 建仓缺省仓位（原签名默认值，confirm 语义区分见 docstring）
         if not stock_code:
             console.print("[red]请指定股票代码[/red]")
             return

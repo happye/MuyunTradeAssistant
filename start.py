@@ -126,6 +126,7 @@ def show_help():
     L.append(_row("● 持仓"))
     L.append(_cmd("pos [list]", "持仓列表"))
     L.append(_cmd("pos add <代码> [名] [价] [仓位]", "建仓（带价格才生成计划草稿）"))
+    L.append(_cmd("pos confirm <代码> [变化] [价]", "确认实际成交（建议≠成交，F1）"))
     L.append(_cmd("pos rm <代码>", "删除持仓记录"))
     L.append(_cmd("pos plan <代码>|all [--update]", "查看 / 生成 / 更新交易计划"))
     L.append(_cmd("pos overweight <代码> [依据]", "超配策略（教学十，只出手一次）"))
@@ -514,6 +515,28 @@ def parse_input(user_input: str):
                 print("  [!] 用法: pos rm <代码>")
                 return None
             return ("pos_remove", {"stock_code": parts[2]})
+        elif sub in ("confirm", "cf"):
+            # F1（plan/fusion）：确认实际成交——分析建议不是成交事实，这里落账
+            if len(parts) < 3:
+                print("  [!] 用法: pos confirm <代码> [实际仓位变化] [成交价]")
+                print("      pos confirm 601318              按建议全额确认")
+                print("      pos confirm 601318 0.1          部分成交（仓位变化 10%）")
+                print("      pos confirm 601318 0.1 48.5     部分成交并记成交价")
+                return None
+            args = {"stock_code": parts[2], "ratio": None, "price": 0.0}
+            if len(parts) >= 4:
+                try:
+                    args["ratio"] = float(parts[3])
+                except ValueError:
+                    print(f"  [!] 仓位变化无效: '{parts[3]}'（需数字 0-1），pos confirm 取消")
+                    return None
+            if len(parts) >= 5:
+                try:
+                    args["price"] = float(parts[4])
+                except ValueError:
+                    print(f"  [!] 成交价无效: '{parts[4]}'（需数字），pos confirm 取消")
+                    return None
+            return ("pos_confirm", args)
         elif sub in ("plan", "p"):
             # v0.8.5：pos plan <代码> 查看/生成计划；v0.8.6.3：--update 更新，all 批量
             if len(parts) < 3:
@@ -1859,6 +1882,11 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "pos_remove":
         manage_positions("remove", stock_code=args.get("stock_code", ""))
+
+    elif mode == "pos_confirm":
+        # F1：确认实际成交（建议→事实的唯一入口）
+        manage_positions("confirm", stock_code=args.get("stock_code", ""),
+                         ratio=args.get("ratio"), price=args.get("price", 0.0))
 
     elif mode == "pos_plan":
         manage_positions("plan", stock_code=args.get("stock_code", ""),

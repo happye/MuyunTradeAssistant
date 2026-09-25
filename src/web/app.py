@@ -114,14 +114,17 @@ def _analyze_work(code):
         high_since_entry=pos.high_since_entry if pos else None,
         trade_plan=pos.trade_plan if pos else None,
     )
-    # v0.8.9.5（彻查批 A-4）：持仓股回写策略状态（chat H1/CLI 同款行为平价）——
-    # 原 web 分析只读不写，持仓股策略状态不推进，与 chat/CLI 对同一持仓股决策分歧
+    # v0.8.9.5（彻查批 A-4）：持仓股回写观察量（chat/CLI 同款行为平价）——
+    # F1（plan/fusion ADR-F03）：不再把建议当持仓回写；只写观察量+建议入账，
+    # 用户确认成交才改持仓事实
     if has_position and pos is not None:
         try:
-            # M5：回写保存失败如实告警（update_from_strategy_decision 返回 bool）
-            if not _portfolio.update_from_strategy_decision(
+            # M5：保存失败如实告警（record_analysis_observation 返回 bool）
+            if not _portfolio.record_analysis_observation(
                     pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data):
-                logger.warning(f"web 回写策略状态未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
+                logger.warning(f"web 观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
+            _portfolio.record_proposal(pos.stock_code,
+                                       stock_data.stock_name or pos.stock_code, sd, source="web")
         except Exception as e:
             logger.warning(f"web 回写策略状态失败({pos.stock_code}): {e}")
     return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai}

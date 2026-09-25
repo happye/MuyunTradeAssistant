@@ -173,7 +173,7 @@ REPL 命令里的 `input()` 交互（ba/l all 的 y/N、pos add 的 TradePlan �
 
 ### 配套一致性修复
 
-- **持仓无条件 reload**：run_command/manage_portfolio 结束后必重读 `_portfolio_manager`——l/la/l all 回写策略状态、pos plan 写计划都发生在新建 PM 实例上，chat 层若持陈旧快照，下次 analyze_stock 的 update_from_strategy_decision 会把旧快照整体写回、**静默回滚刚做的修改**（数据丢失向量，不能按"是否写操作"枚举）。
+- **持仓无条件 reload**：run_command/manage_portfolio 结束后必重读 `_portfolio_manager`——l/la/l all 落观察量、pos plan 写计划都发生在新建 PM 实例上，chat 层若持陈旧快照，下次 analyze_stock 的 record_analysis_observation 会把旧快照整体写回、**静默回滚刚做的修改**（数据丢失向量，不能按"是否写操作"枚举）。
 - **RAG 单例对齐**：init_engines 把 chat 建的 `_rag_service` 注册为 `rag.service._rag_service_singleton`——CLI 的 TradePlan 路径（cli/main.py `_try_attach_trade_plan`/`_generate_or_update_plan`）调 get_rag_service() 懒加载，不对齐会在 chat 进程内二次加载 torch+FAISS（内存翻倍）。shutdown_engines 对应清空。
 - **scan_market 同步写 session_state**：chat 内扫描结果存 `~/.muyun/last_scan.json`（与 CLI 同一状态文件，跨进程可见），`#N`/`l all`/`ba`/`pos add #N` 全链路接续。
 - **SystemExit 接住**：CLI 内部数据失败 sys.exit(1)（SystemExit 是 BaseException，agent 层 except Exception 抓不住），漏接会杀死整个 chat 会话。
@@ -186,7 +186,7 @@ chat 复用 CLI 引擎，但"复用"不等于"自动一致"——历史上至少
 |------|------|------|
 | chat 分析持仓股永不产生买卖点 | Orchestrator 漏传 `entry_exit_config` → 买卖点计算器为 None | init_engines 补齐 |
 | chat 对持仓股的决策与 CLI 不同 | `analyze` 漏传 `has_position/entry_price/high_since_entry/trade_plan` → PlanGuard/止损/高位止盈全失效 | analyze_stock 补齐 7 项 |
-| 持仓策略状态随时间分歧 | chat 只读不写 → inertia/cooldown 冻结 | 分析后回写 `update_from_strategy_decision`（仅持仓股，防创建虚假记录） |
+| 持仓策略状态随时间分歧 | chat 只读不写 → inertia/cooldown 冻结 | 分析后落观察量 `record_analysis_observation` + 建议入账 `record_proposal`（仅持仓股，防创建虚假记录；F1 起建议不再当持仓回写，`pos confirm` 确认成交） |
 
 **经验**：多入口复用同一引擎时，参数传递要有一个"对账清单"，每次改引擎签名必须同步检查所有入口。
 

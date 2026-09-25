@@ -1,10 +1,11 @@
-"""ISS-078 持仓数据安全回归测试（第三轮对抗审查 2026-09-03）
+"""ISS-078 持仓数据安全回归测试（第三轮对抗审查 2026-09-03；F1 迁移 2026-09-25）
 
 锁死语义：
-1. update_from_strategy_decision 回写必须保留既有 trade_plan（P0：chat 每分析一次
-   持仓股就把计划抹掉的病根；连带 overweight_executed「只出手一次」铁律标志）
-2. add_position / update_position_fields 拒绝非法值：负数/NaN/Inf 仓位、非正数开仓价
-   （AI 供参的 manage_portfolio 是入口，数据层必须兜底）
+1. record_analysis_observation（原 update_from_strategy_decision，F1 三拆）只写观察量、
+   原地更新不重建记录——trade_plan/未知字段必须原样保留（P0：chat 每分析一次持仓股
+   就把计划抹掉的病根；连带 overweight_executed「只出手一次」铁律标志）
+2. add_position / update_position_fields / confirm_fill 拒绝非法值：负数/NaN/Inf 仓位、
+   非正数开仓价（AI 供参的 manage_portfolio 是入口，数据层必须兜底）
 3. portfolio.yaml 中残缺 trade_plan 加载不崩，且原始数据在保存后原样保留（防静默抹除）
 4. 会话外修改 portfolio.yaml 后 _save 必须拒绝写入并回滚内存（M5 内容指纹，
    升级原 mtime 告警；内容未变的 touch 不算冲突）
@@ -59,14 +60,15 @@ def _tmp_portfolio(positions: dict):
 
 
 def _fake_decision(pos_action="HOLD_POSITION", ratio=0.0):
-    """鸭子类型 StrategyDecision 替身（update_from_strategy_decision 只访问属性）。"""
+    """鸭子类型 StrategyDecision 替身（record_analysis_observation 只访问属性）。"""
     from types import SimpleNamespace
     state = SimpleNamespace(
         lifecycle=SimpleNamespace(value="HOLD"), cooldown_remaining=0,
         cooldown_reason=None, reverse_count=0, inertia_counter=1,
         last_decision=SimpleNamespace(value="HOLD"), recent_signals=["HOLD"],
         signal_stability_score=1.0, reduce_protection_remaining=0,
-        min_hold_remaining=0, add_protection_remaining=0,
+        min_hold_remaining=0, add_protection_remaining=0, last_tick_date=None,
+        current_position_ratio=ratio,
     )
     return SimpleNamespace(
         position_action=SimpleNamespace(value=pos_action),
@@ -75,9 +77,14 @@ def _fake_decision(pos_action="HOLD_POSITION", ratio=0.0):
     )
 
 
-# ── 1. P0：回写保留 trade_plan ────────────────────────────
+def _fake_stock(price=1500.0, name="贵州茅台"):
+    from types import SimpleNamespace
+    return SimpleNamespace(price=price, stock_name=name)
 
-def test_update_from_strategy_decision_preserves_trade_plan():
+
+# ── 1. P0：观察量更新保留 trade_plan（F1 迁移：原地更新不重建记录）───
+
+def test_observation_preserves_trade_plan():
     with _tmp_portfolio({"600519": {
         "stock_name": "贵州茅台", "entry_date": "2026-09-01", "entry_price": 1500.0,
         "current_ratio": 0.1, "last_action": "HOLD_POSITION", "lifecycle": "HOLD",
@@ -85,25 +92,29 @@ def test_update_from_strategy_decision_preserves_trade_plan():
     }}) as path:
         pm = PortfolioManager(path)
         assert pm.get_position("600519").trade_plan is not None, "前置：计划应已加载"
-        pm.update_from_strategy_decision("600519", "贵州茅台", _fake_decision(), None, price=1500.0)
+        assert pm.record_analysis_observation(
+            "600519", "贵州茅台", _fake_decision(), _fake_stock()) is True
 
         rec = pm.get_position("600519")
-        assert rec.trade_plan is not None, "回写后 trade_plan 被抹掉（P0 病根）"
+        assert rec.trade_plan is not None, "观察量更新后 trade_plan 被抹掉（P0 病根）"
         assert rec.trade_plan.current_stop == 95.0, "追踪止损价必须保住"
         assert rec.trade_plan.overweight_executed is False, "超配一次性标志必须保住"
+        # F1 语义：观察量不改变已确认数量/成本/开仓日期
+        assert rec.current_ratio == 0.1, "观察量不得改动已确认仓位"
+        assert rec.entry_date == "2026-09-01" and rec.entry_price == 1500.0
 
         with open(path, encoding="utf-8") as f:
             assert "trade_plan" in f.read(), "磁盘上的 trade_plan 键被删除"
 
 
-def test_update_wipes_when_no_plan_is_fine():
-    """无计划的持仓回写后也不得凭空造计划。"""
+def test_observation_without_plan_stays_without_plan():
+    """无计划的持仓观察量更新后也不得凭空造计划。"""
     with _tmp_portfolio({"600519": {
         "stock_name": "贵州茅台", "current_ratio": 0.1, "lifecycle": "HOLD",
         "strategy_state": {},
     }}) as path:
         pm = PortfolioManager(path)
-        pm.update_from_strategy_decision("600519", "贵州茅台", _fake_decision(), None, price=1500.0)
+        pm.record_analysis_observation("600519", "贵州茅台", _fake_decision(), _fake_stock())
         assert pm.get_position("600519").trade_plan is None
 
 
@@ -165,15 +176,15 @@ def test_corrupt_trade_plan_loads_and_preserves_raw():
         assert "残缺计划" in content, "保存后残缺 trade_plan 原始数据被静默抹除"
 
 
-def test_update_preserves_corrupt_plan_raw():
+def test_observation_preserves_corrupt_plan_raw():
     with _tmp_portfolio({"600519": {
         "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
         "trade_plan": {"plan_id": "残缺计划"},
     }}) as path:
         pm = PortfolioManager(path)
-        pm.update_from_strategy_decision("600519", "贵州茅台", _fake_decision(), None, price=1500.0)
+        pm.record_analysis_observation("600519", "贵州茅台", _fake_decision(), _fake_stock())
         with open(path, encoding="utf-8") as f:
-            assert "残缺计划" in f.read(), "回写后残缺计划原始数据被静默抹除"
+            assert "残缺计划" in f.read(), "观察量更新后残缺计划原始数据被静默抹除"
 
 
 # ── 4. M5 并发写保护（plan/TECHNICAL_HANDOFF §6，升级 ISS-078 的 mtime 检测）──
@@ -262,15 +273,13 @@ def test_attach_plan_propagates_save_failure():
         assert pm.attach_plan("600519", TradePlan(**_plan_dump())) is False
 
 
-def test_update_from_strategy_decision_propagates_save_failure():
-    """_save 失败 → update_from_strategy_decision 返回 False（M5 起传播 bool）。"""
+def test_observation_propagates_save_failure():
+    """_save 失败 → record_analysis_observation 返回 False（M5 起传播 bool）。"""
     from src.data.portfolio import SaveResult
     with _tmp_portfolio({"600519": {
         "stock_name": "贵州茅台", "current_ratio": 0.1, "strategy_state": {},
     }}) as path:
         pm = PortfolioManager(path)
         pm._save = lambda: SaveResult(False, False)
-        fake_sd = _fake_decision()
-        fake_stock = type("S", (), {"stock_name": "贵州茅台"})()
-        assert pm.update_from_strategy_decision(
-            "600519", "贵州茅台", fake_sd, fake_stock, price=1500.0) is False
+        assert pm.record_analysis_observation(
+            "600519", "贵州茅台", _fake_decision(), _fake_stock()) is False

@@ -344,9 +344,10 @@ def _analyze_stock_single(stock_code: str) -> str:
             execution_eval, ai_result
         )
 
-        # 审查修复H1：回写策略状态(inertia/cooldown/high_since_entry等)到portfolio.yaml，
-        # 与CLI一致；原chat只读不写->持仓股策略状态冻结，chat与CLI随时间分歧。
-        # 仅持仓股回写(非持仓回写会创建虚假持仓记录)
+        # 审查修复H1：回写观察量到portfolio.yaml（与CLI一致）；原chat只读不写->
+        # 持仓股策略状态冻结，chat与CLI随时间分歧。仅持仓股（非持仓不伪造持仓）。
+        # F1（plan/fusion ADR-F03）：不再把建议整包当持仓回写——record_analysis_
+        # observation 只写观察量/信号历史；建议入账 pending，用户确认成交才改持仓。
         if has_position and pos and _portfolio_manager:
             # ISS-078 监督审查 P2：用 pos 的实际存储键（H05 规范化后匹配到的）查询
             # 与回写——AI 传 sh600519 式带前缀代码时 raw code 查询会误判"已被外部
@@ -355,17 +356,22 @@ def _analyze_stock_single(stock_code: str) -> str:
             try:
                 # ISS-078：回写前重读一次并确认持仓仍在——分析期间用户可能在外部
                 # 编辑器改过 portfolio.yaml，陈旧 _data 整文件写回会静默回滚外部修改
-                # （_save 已有 mtime 告警兜底，这里把窗口进一步收窄并防"外部已删仓、
-                # 回写又把记录造回来"）
                 _reload_portfolio_manager()
                 if _portfolio_manager.get_position(_key) is None:
                     logger.info(f"chat回写跳过({_key}): 持仓已被外部删除")
                     return result
                 _stock_name = stock_data.stock_name or _key
-                # M5：回写保存失败如实告警（update_from_strategy_decision 返回 bool）
-                if not _portfolio_manager.update_from_strategy_decision(
+                # M5：保存失败如实告警（返回 bool）
+                if not _portfolio_manager.record_analysis_observation(
                         _key, _stock_name, strategy_decision, stock_data):
-                    logger.warning(f"chat回写策略状态未落盘({_key}): 持仓文件被外部修改或写入失败")
+                    logger.warning(f"chat观察量未落盘({_key}): 持仓文件被外部修改或写入失败")
+                _prop = _portfolio_manager.record_proposal(_key, _stock_name,
+                                                           strategy_decision, source="chat")
+                if _prop is not None:
+                    result += (
+                        f"\n\n📌 持仓建议已记录（**尚未记为成交**）：建议 {_prop.position_action}"
+                        f"{f'（目标仓位 {_prop.target_ratio:.0%}）' if _prop.target_ratio is not None else ''}。"
+                        f"持仓记录未变；实际成交后请确认（`pos confirm {_key}` 或手动更新 portfolio.yaml）。")
             except Exception as e:
                 logger.warning(f"chat回写策略状态失败({_key}): {e}")
 
@@ -730,9 +736,9 @@ def _get_start_module():
 def _reload_portfolio_manager():
     """命令/持仓操作后无条件重读 portfolio.yaml。
 
-    run_command/manage_portfolio 的写盘（pos plan、l/la/l all 的策略状态回写、
-    pos add/rm）都发生在各自新建的 PortfolioManager 实例上；chat 的
-    _portfolio_manager 若不重读，analyze_stock 随后的 update_from_strategy_decision
+    run_command/manage_portfolio 的写盘（pos plan、l/la/l all 的观察量落盘、
+    pos add/rm/confirm）都发生在各自新建的 PortfolioManager 实例上；chat 的
+    _portfolio_manager 若不重读，analyze_stock 随后的 record_analysis_observation
     会把旧快照整体写回，静默回滚刚做的修改（对抗审查点③：数据丢失向量，
     不能按"是否写操作"枚举，必须无条件做）。
     """
