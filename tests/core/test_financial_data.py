@@ -83,7 +83,7 @@ def _install_fakes(monkeypatch, rows_by_fn, error_fn=None):
 
     for fn_name in fd._INTERFACE_FIELDS:
         monkeypatch.setattr(bs_mod, fn_name, _mk(fn_name))
-    monkeypatch.setattr(fd, "_ensure_baostock_login", lambda: None)
+    monkeypatch.setattr(fd, "_ensure_baostock_login", lambda: True)  # 登录桩返回真值
     return calls
 
 
@@ -123,11 +123,7 @@ def test_timeout_interface_degrades(monkeypatch):
     _install_fakes(monkeypatch, _MOUTAI_2023Q4)
     from concurrent.futures import TimeoutError as _FT
 
-    def _boom(fn, timeout=30):
-        if "profit" in getattr(fn, "__name__", "") or True:
-            pass
-        raise _FT()
-    # 只对 profit 接口超时：按调用序包装（_query_one 对每个接口各调一次 _call_with_timeout）
+    # 只对 profit 接口注入超时（替换 _query_one 层——循环层防线应接住并降级）
     real_query = fd._query_one
 
     def _fake_query(fn_name, bs_code, year, quarter, timeout):
@@ -155,6 +151,15 @@ def test_missing_pubdate_skips_interface(monkeypatch):
 def test_illegal_code_rejected():
     with pytest.raises(ValueError):
         fd.get_financial_quarterly("abc", 2023, 4)
+
+
+def test_login_failure_returns_empty(monkeypatch):
+    """登录失败提前返回空（不发 5 次注定失败的请求）。"""
+    calls = _install_fakes(monkeypatch, _MOUTAI_2023Q4)
+    monkeypatch.setattr(fd, "_ensure_baostock_login", lambda: False)
+    out = fd.get_financial_quarterly("600519", 2023, 4)
+    assert out == []
+    assert calls == []  # 未发任何接口请求
 
 
 def test_evidence_integration_and_pit_gate(monkeypatch):

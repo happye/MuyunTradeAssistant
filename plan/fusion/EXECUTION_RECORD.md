@@ -924,3 +924,63 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：VERIFIED（2026-09-26 code-quality-guard 两轮审查 + 修复闭环复核通过；遗留登记：lot 模式 REDUCE 子支标签修正无独立回归锁——该路径需 mock feeder 驱动 run()，随 E6/E3 扩展补）
 
 ---
+## 通宵批 — 财务季频接线 + E6 组合实验 + 性能基线（2026-09-26 夜，用户授权自主推进）
+
+- **任务**：影子前置批登记的下一步中可自主执行项 / 实现者：Claude Code（Opus 5.1 1M）/ 监督者：code-quality-guard（影子批两轮已覆盖同批代码面；本批新增面待下轮审查）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/data/financial_data.py` | 新增：baostock 季频五接口 → fin dict 窄适配（pubDate→available_at；单位实测锚定；缺失不补 0；30s 硬超时 + 单接口异常不拖垮其余） |
+| `tests/core/test_financial_data.py` | 新增 8 测试（mock 零网络：映射/缺失/降级/登录失败提前返回/PIT 闸门拒未来） |
+| `src/cli/plain_errors.py` + `docs/报错速查手册.md` | 财务季频新告警 4 条人话映射（N+3 节；三处同步） |
+| `tests/backtest/e0_correctness_baseline.py` | `--dump-trades`（强制重跑双臂导出逐笔交易；非超时异常记账续跑——影子批审查 P2 闭环） |
+| `tests/backtest/e6_portfolio_budget.py` | 新增：E6 双臂 runner（naive 到达序 vs solve_budget 统一预算；盯市前复权收盘；逐笔拒绝原因落报告） |
+| `plan/fusion/E6_REPORT.md` | 新增：E6 v1 报告（口径 caveat + 收益差异防误读声明） |
+| `plan/fusion/EXPERIMENTS.md` / `DATA_COVERAGE.md` | E6 状态 runnable→已执行（v1）；财务三表现状 未接线→已接 |
+
+### 已完成条款
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 财务季频进证据层（DATA_COVERAGE「财务三表」接线）| financial_data.get_financial_quarterly → financial_record | live 冒烟 600519 2023Q4：32 条证据，netProfit 775.2亿元，available_at=2024-04-03T23:59+08:00 |
+| 单位语义不猜（G15）| 实测锚定：比例字段=小数比值（roeAvg 0.3618=36.18%，文档标 % 实测非——登记「倍」）；货币=元；缺失空串→None | test_financial_data 映射断言 + 模块 docstring |
+| 严格 PIT 闸门消费财务证据 | EvidenceSnapshot strict：公布前 as_of 拒收（dropped_pit=全量）| `test_evidence_integration_and_pit_gate` |
+| E6 同一单股动作集合（E_SPEC）| E0 臂 A 逐笔交易 --dump-trades 重跑导出（42 文件）| tests/artifacts/e0_baseline/trades/（gitignored 本地） |
+| G09 拒绝原因明确 | naive「现金不足」vs 统一臂 solve_budget 拒绝/截断原因逐笔落报告 | E6_REPORT.md 拒绝明细 |
+| E6 主指标（不可实现仓位/集中风险）| 最大单股权重 78.5%→30.0%；同日最大合计需求 213% NAV 不可全实现被预算协调 | E6_REPORT.md |
+| 收益差异不冒充策略优劣（VALIDATION §1）| 报告显式声明 naive 收益来自先到先得路径与高集中持仓 | E6_REPORT.md 结论段 |
+| 性能基线（VALIDATION §7 零写入部分）| today p50=12.6ms/p95=12.9ms；shadow p50=0.3ms；doctor p50=308ms/p95=471ms（n=7 进程内）| 本段登记；30 秒用户验收线达标 |
+
+### 未完成条款（保持 TODO）
+
+- E6 v1 口径升级：行业暴露约束（行业映射未接线）/ 批次份额 T+1 回放（F8 P1-B）/ 费率对齐回测口径 / per_stock_max 等用户风险档持久化
+- l/la 冷热缓存与 AI 费用 p50-p95 实测：触真实持仓状态（观察量/建议写入）+ AI 费用——待用户会话
+- E1/E2/E4/E5/E7 执行：E1 历史市场快照未备；E2/E4 财务因子计算接线（fetcher 已备）；E5 AI opt-in；E7 待 E1-E6
+- 八类用户任务走查：需用户参与
+
+### 用户可见变化
+
+无（研究基建批；`start.py` 行为零变化——如实登记，符合 F3/F4/F8 基建批先例）。
+
+### 迁移/回滚验证
+
+- financial_data.py 纯新增模块，无生产消费方（回滚=删文件+测试）；E6 runner/报告纯新增；E6_REPORT.md 为文档产物
+- 回放/探查脚本均为 external opt-in，不进 pytest 默认收集
+
+### 对抗审查记录（code-quality-guard，2026-09-26 通宵批，2 P1+7 P2）
+
+- 🔴 P1-1 E6 结论行「减少不可实现仓位」无数据支撑且与表格反方向（统一臂拒绝 94>56）+ 恒真死条件 → **已修**：结论只写集中度断言（78.5%→30.0%）；拒绝拆分「求解拒绝 vs 执行拒绝」分计（25/69）；删恒真条件
+- 🔴 P1-2 get_close_series error_code≠0 静默返回空序列（盯市失真进报告零告警）→ **已修**（显式 print 告警，与超时路径同格式）
+- ⚠️ P2 dump-trades 重复追加账本行 → **已修**（dump 模式跳过 _append_result）
+- ⚠️ P2 E6 内联 bs_code 前缀推导与 _normalize_stock_code 不一致（920 北交所隐患）→ **已修**（复用 financial_data._to_baostock_code 单一事实源）
+- ⚠️ P2 登记表字段漂移静默产 None 证据 / 登录失败仍发 5 请求 → **已修**（字段缺失显式告警跳过；登录失败提前返回 + 测试锁）
+- ⚠️ P2 压力损失率「过闸」措辞与机制不符（估计值只过「未知不给额度」门不参与额度计算）→ **已修**（caveat 重写）
+- ⚠️ P2 末日强平 exits-first 重排未登记 / 报告头硬编码 / max_same_day_demand 只报 naive → **已修**（caveat 补登记；头动态化；两臂分报）
+- ⚠️ P2 北交所季频财务不支持未登记 → **已修**（DATA_COVERAGE 范围限制补笔）
+- 审查确认：决策路径零侵入、CACHE_VERSION 红线不适用、告警三处同步命中、_FakeRS 契约正确、两臂公平性、报告-log-账本数字三方一致
+
+### 状态：VERIFIED（2026-09-26 通宵批对抗审查 2 P1+7 P2 全部修复；全量 1067 passed, 2 skipped, 1 deselected）
+
+---

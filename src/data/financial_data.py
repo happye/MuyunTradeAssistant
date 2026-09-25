@@ -94,7 +94,9 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
     单接口失败只缺该接口字段（告警留痕），不拖垮其余接口。
     """
     bs_code = _to_baostock_code(stock_code)
-    _ensure_baostock_login()
+    if not _ensure_baostock_login():
+        logger.warning(f"Baostock 登录失败，财务季频证据跳过 {bs_code} {year}Q{quarter}")
+        return []
     out: list[dict] = []
     for fn_name, fields in _INTERFACE_FIELDS.items():
         try:
@@ -117,8 +119,14 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
             continue
         for field, unit in fields:
             raw = row.get(field)
+            if raw is None:
+                # 字段名与登记表漂移（baostock 改版征兆）——显式告警，不产 None 值假证据
+                logger.warning(
+                    f"Baostock 财务季频字段缺失 {fn_name}.{field} {bs_code} {year}Q{quarter}"
+                    "——登记表与接口实际字段不一致，请核对 _INTERFACE_FIELDS")
+                continue
             value = None
-            if raw not in (None, ""):
+            if raw != "":
                 try:
                     value = float(raw)
                 except (TypeError, ValueError):

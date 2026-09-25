@@ -15,7 +15,7 @@ E0–E7 的真实执行未发生**（需外源数据/长时回测，单独入口
 | E3 | 持有纪律 | 同一事前候选与入场日 | legacy/fusion_mid/fusion_long 分别报告 | rule_bz_proxy | blocked_on_data |
 | E4 | 技术择时 | 同一投资逻辑和预算 | 固定周期分批/技术触发/混合门控 | rule_bz_proxy | blocked_on_data |
 | E5 | AI | 同一证据、计划、预算 | 无AI/结构化提取/提取+反证（旧 modifier 独立对照） | **ai_lookahead** | blocked_on_data |
-| E6 | 组合 | 同一单股动作集合 | 逐股建议 vs 统一资金与集中度约束 | rule_bz_proxy | **runnable**（solve_budget 已可离线对比） |
+| E6 | 组合 | 同一单股动作集合 | 逐股建议 vs 统一资金与集中度约束 | rule_bz_proxy | **已执行（2026-09-26，v1）**：E0 臂 A 动作集 420万两臂对照——统一预算最大单股权重 78.5%→30.0%、拒绝全部有因；报告 E6_REPORT.md（v1 口径 caveat 见报告） |
 | E7 | 完整系统 | 同一PIT全集、成本、研究资源预算 | 修正后基线 vs 完整融合漏斗 | rule_bz_proxy | blocked_on_data |
 
 信息集标签强制：rule_bz_proxy / ai_lookahead / human_mode 三类不混记（信息集来源

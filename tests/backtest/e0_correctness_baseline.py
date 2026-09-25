@@ -135,12 +135,13 @@ def _res_metrics(res, blocked_t1) -> dict:
     }
 
 
-def run_all(cases, timeout_s: int) -> None:
+def run_all(cases, timeout_s: int, dump_trades: bool = False) -> None:
     done = _load_done()
     for code, name, year, group, mode_label in cases:
         force_mode = mode_label if mode_label in ("qizong", "jianzong") else None
         for arm, lot in (("A_legacy", False), ("B_lot", True)):
-            if (code, year, arm) in done:
+            if (code, year, arm) in done and not dump_trades:
+                # dump-trades 模式强制重跑（交易对象只在内存里，导出需真实 run）
                 print(f"  ↷ 已有结果，跳过 {year} {code} {arm}", flush=True)
                 continue
             print(f"▶ {year} {code} {name} [{group}] mode={mode_label} 臂={arm}", flush=True)
@@ -164,7 +165,20 @@ def run_all(cases, timeout_s: int) -> None:
                 row.update(_res_metrics(res, blocked))
                 print(f"    收益 {row['total_return_pct']:.2f}%  回撤 {row['max_drawdown_pct']:.2f}%"
                       f"  交易 {row['total_trades']}  T+1批拦截 {row['t1_lot_blocked']}", flush=True)
-            _append_result(row)
+                if dump_trades and res is not None:
+                    _dump_trades(code, year, arm, res)
+            if not dump_trades:
+                # dump 模式为 E6 供给交易明细——结果行已记录过，重复追加只会让账本膨胀
+                _append_result(row)
+
+
+def _dump_trades(code: str, year: str, arm: str, res) -> None:
+    """逐笔交易导出（E6 组合实验的「同一单股动作集合」输入；TradeRecord JSON）。"""
+    tdir = os.path.join(ART_DIR, "trades")
+    os.makedirs(tdir, exist_ok=True)
+    path = os.path.join(tdir, f"{code}_{year}_{arm}.json")
+    with open(path, "w", encoding="utf-8") as f:
+        json.dump([t.model_dump(mode="json") for t in res.trades], f, ensure_ascii=False, indent=1)
 
 
 def write_manifest(cases) -> str:
@@ -283,6 +297,7 @@ def main():
     g.add_argument("--smoke", action="store_true", help="冒烟：2 例代表案例")
     g.add_argument("--full", action="store_true", help="全量：21 案例")
     g.add_argument("--report", action="store_true", help="只从已有结果出报告")
+    g.add_argument("--dump-trades", action="store_true", help="重跑全量双臂并导出逐笔交易（E6 输入）")
     ap.add_argument("--timeout", type=int, default=1200, help="单臂超时秒数")
     args = ap.parse_args()
 
@@ -300,11 +315,12 @@ def main():
         cases = list(CASES)
 
     print("=" * 80)
-    print(f"  E0 正确性基线（{'冒烟' if args.smoke else '全量'} {len(cases)} 例 × 双臂）")
+    print(f"  E0 正确性基线（{'冒烟' if args.smoke else '全量'} {len(cases)} 例 × 双臂）"
+          + ("+ 逐笔导出" if args.dump_trades else ""))
     print("  唯一变量：t_plus_1_lot_mode（T+1 批次份额）；其余参数与五年回测口径一致")
     print("=" * 80, flush=True)
     write_manifest(cases)
-    run_all(cases, args.timeout)
+    run_all(cases, args.timeout, dump_trades=args.dump_trades)
     build_report()
 
 
