@@ -827,3 +827,90 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：VERIFIED（2026-09-25 监督员终核无阻断：五阶段阶梯+停止触发器+零删除纪律；所有入口覆盖缺口已登记——today 当前仅 REPL+chat 桥）
 
 ---
+## 影子阶段前置批 — 影子差异捕获 + E0 正确性基线 + 数据资格探查
+
+- **任务**：ROLLOUT §1 shadow 门槛两要素（E0 基线 + 差异报告机制）+ DATA_COVERAGE 三行探查 / 实现者：Claude Code（Opus 5.1 1M）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`1914812`（F9 收口后；本批前先行收口遗留文档指针 `e317e5a`）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/shadow_diff.py` | 新增：影子对照捕获（facts 映射 v1 + 模拟 HorizonPlan 派生 + evaluate_horizon 双周期 + 差异原因五标签 + JSONL 追加账本 + 分原因报告） |
+| `src/cli/main.py` / `src/chat/tools.py` | l/la/chat 三入口 packet 构建后接 capture_shadow（失败 warning 不影响主流程）；新增 `shadow_command` |
+| `start.py` | shadow/影子 解析 + run_cli 派发 + 帮助菜单「每日入口」+ 命令说明 |
+| `configs/settings.yaml` | 新增 `fusion.shadow_capture: true`（capture 语义默认开；false 零写入） |
+| `src/cli/plain_errors.py` + `docs/报错速查手册.md` | 新告警 2 条人话映射（N+2 节；三处同步纪律） |
+| `src/core/backtest_engine.py` | `t_plus_1_lot_mode` 开关参数（默认 False=现行为不变）：T+1 按批次份额（G11）——可卖=持仓−当日新买；减仓路径份额封顶；末日强平只清当日以前批次（快照重算与 legacy 数值一致）；`_t1_lot_blocked_count` 计数 |
+| `tests/backtest/e0_correctness_baseline.py` | 新增：E0 双臂 external runner（复用五年 CASES 人工标注 mode；manifest 落盘；results.jsonl 增量续跑；报告生成——结论判定沿用项目噪声阈 LRN-20260619-001） |
+| `tests/data_sources/probe_fin_pubdate.py` | 新增：财务季频 pubDate/行业指数/停牌状态现场探查（external opt-in） |
+| `plan/fusion/DATA_COVERAGE.md` | 三行「待现场探查」→ 实测结论回写（探查产物 tests/artifacts/probe_fin_pubdate.log） |
+| `src/core/factor_registry.py` | 探查通过的 5 因子 needs_data_probe→False（earnings_quality/capital_return/balance_risk/valuation_range/relative_trend；business_exposure/demand_change 仍 True——上游未取得） |
+| `plan/fusion/E0_BASELINE_REPORT.md` | 新增：E0 逐案对照 + 汇总 + 诚实 caveat |
+| `plan/fusion/ROLLOUT.md` / `EXPERIMENTS.md` | shadow 门槛状态更新；E0 状态更新 |
+| `使用手册.md` | 新增「影子对照报告（shadow）」章节 |
+| 版本 v0.8.20 五处同步 | start.py/main.py/AGENTS.md/README.md/使用手册 |
+
+### 已完成条款
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 差异报告机制（shadow 门槛之二）| shadow_diff 全链 + `shadow` 命令 | `test_shadow_diff.py` 18 项 |
+| shadow 不改主结论、不回写持仓（DESIGN）| 捕获纯读+追加 JSONL；主结论零触碰 | 开关关闭/无持仓零写入测试 |
+| 差异标记原因，不只比总收益（DESIGN 硬要求）| 五标签分类 + 分原因聚合报告 | `test_report_aggregates_reasons_no_returns`（断言无"收益"字样） |
+| 不把 legacy mode 映射成 horizon（F5 硬约束）| 双周期各出一包；legacy_mode 仅对照字段 | `test_both_horizons_evaluated_policy_ids` |
+| 行1 硬退出不被影子流程吞（G02 对照本体）| hard_exit 先于激活门直达 EXIT | `test_hard_exit_maps_exit_in_both_horizons`（legacy HOLD vs fusion EXIT） |
+| thesis 恒 UNESTABLISHED（不拿评分冒充逻辑）| 无 benzong 代理——差异主因如实登记 thesis_unestablished | 映射表 v1 docstring + 测试 |
+| T+1 批次份额（G11，F8 登记「随 E0 基线设计定稿」）| backtest_engine `t_plus_1_lot_mode`（默认关） | `test_backtest_t1_lot_mode.py` 9 项；默认关=基线安全 |
+| E0 manifest 缺一不可（VALIDATION §2）| ExperimentManifest.build 落盘（样本集/费用规则/信息集标签/冻结时间） | tests/artifacts/e0_baseline/manifest_*.json |
+| E0 真实执行（EXPERIMENTS.md E0 blocked_on_data 解锁）| 21 案例双臂跑通，results.jsonl 42 行 | `plan/fusion/E0_BASELINE_REPORT.md` |
+| 失败试验也保留（VALIDATION §3）| results.jsonl 含超时/失败行不删；坏行隔离 | runner 代码 + G14 口径 |
+| DATA_COVERAGE 三行探查（E2/E4 前置）| 财务季频五接口 pubDate 官方公布日实证（600519 2023Q4→2024-04-03，同期查询一致）；申万 index_hist_sw 6463 行日线；tradestatus 字段可用（1 正常/0 停牌；附带 isST 日频） | probe_fin_pubdate.py + tests/artifacts/probe_fin_pubdate.log |
+
+### E0 执行结果（首个真实执行的 E 实验）
+
+- 21 有效配对；收益差异 ≥0.01pp 仅 3 例；Δpp 均值 −0.0414，最大绝对值 1.11pp（斯菱智驱）
+- T+1 批次硬拦截 0 次（差异来自减仓路径份额封顶与残仓不足 5% 收口语义）
+- **结论**：全部差异在项目噪声阈内（单股<2pp、整体<1pp，LRN-20260619-001）——**旧回测基线可视为与修正后基线等价**；后续 E3/E4/E6 沿用既有基线，臂 B 作敏感性参照
+- 臂 A 精确复现 ISS-046 参照数字（宁德 2020 = 79.00%），harness 等价性佐证
+
+### 未完成条款（保持 TODO）
+
+- **影子数据积累与 opt_in 推进**：shadow 捕获已 live（默认开），数据随日常分析积累；
+  opt_in 晋级条件（差异报告连续稳定 + 正确性门槛）按 ROLLOUT §1 定期复核
+- **八类用户任务走查**（F7/F9 登记）：需用户参与，继续登记
+- **chat/Web/TUI 的 today/影子展示接线**：报告命令当前 REPL 入口（chat 经命令桥可达）
+- **E1–E7 逐实验执行**：E1 历史市场快照未备；E2/E4 财务因子接线批（探查已过，登记表已翻转）；
+  E3 持有纪律双臂（以 E0 结论=既有基线为参照）；E5 AI opt-in 评测；E6 动作集宜取自真实分析日；
+  E7 待 E1–E6
+- 财务季频接口接线进证据层（research_snapshot 窄适配）+ 全量覆盖验证（抽样只证可得性）
+- 行业归属历史回溯 caveat：baostock query_stock_industry 为当前值（updateDate 语义），
+  历史行业变化不可回溯——历史重放用行业归属须另行解决（已登记 DATA_COVERAGE）
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_shadow_diff.py -q
+# 18 passed（初版 4 failed：evaluate_horizon 漏传 confirmed_ratio 致 held 判定错 +
+# 测试助手 None 哨兵缺陷 + store 变量清理误删——修复后全绿）
+.\.venv\Scripts\python.exe -m pytest tests/core/test_backtest_t1_lot_mode.py tests/core/test_v0895_correctness_batch.py -q
+# 20 passed（lot 模式 9 项 + 引擎既有回归 11 项）
+.\.venv\Scripts\python.exe -m pytest tests/core/test_candidate_lineage.py -q
+# 17 passed（登记表探查翻转 + 测试同步实证状态；business_exposure/demand_change 保持 True）
+```
+
+### 用户可见变化（v0.8.20）
+
+1. 新命令 `shadow`/`影子`：影子对照报告（差异率分原因 + 最近记录；披露"shadow 模拟计划"前置）
+2. 持仓股分析（l/la/chat）后台多写一条影子对照记录（`~/.muyun/shadow_diff.jsonl`）——分析输出零变化
+3. `configs/settings.yaml` 新增 `fusion.shadow_capture` 开关（默认开）
+
+### 迁移/回滚验证
+
+- 迁移：shadow_diff.jsonl 首次使用自动创建；backtest_engine 新参数默认 False=全部既有调用零变化
+- 回滚：`fusion.shadow_capture: false` 即停捕获（账本保留不删）；lot 模式仅 E0 runner 显式开启；
+  E0 产物为纯新增文件，删除即回滚；探查脚本与 DATA_COVERAGE 回写不影响任何运行时行为
+
+### 状态：REVIEW（实现+验证完成；待监督员终核后转 VERIFIED）
+
+---

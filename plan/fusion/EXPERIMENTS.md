@@ -9,9 +9,9 @@ E0–E7 的真实执行未发生**（需外源数据/长时回测，单独入口
 
 | ID | 名称 | 固定 | 改变 | 信息集标签 | 当前状态 |
 |---|---|---|---|---|---|
-| E0 | 正确性基线 | 同一历史快照、旧策略参数 | 仅终态/事实持仓/执行正确性修正 | rule_bz_proxy | blocked_on_data |
+| E0 | 正确性基线 | 同一历史快照、旧策略参数 | 仅终态/事实持仓/执行正确性修正 | rule_bz_proxy | **已执行（2026-09-26，首个真实执行）**：21 案例双臂（legacy vs T+1 批次份额），差异全部在项目噪声阈内——旧基线与修正后基线等价；报告 E0_BASELINE_REPORT.md + manifest tests/artifacts/e0_baseline/ |
 | E1 | 候选召回 | 同时点市场全集、研究预算 | 技术/产业/质量单路 vs 并集配额 | rule_bz_proxy | blocked_on_data（机制可跑：候选池 fingerprint 对账键；**数据未备**——同时点市场全集需历史快照） |
-| E2 | 投资逻辑资格 | 同一候选集合、相同入场/退出 | 无资格过滤/bz旧分/证据资格 | rule_bz_proxy | blocked_on_data |
+| E2 | 投资逻辑资格 | 同一候选集合、相同入场/退出 | 无资格过滤/bz旧分/证据资格 | rule_bz_proxy | blocked_on_data（2026-09-26 探查后财务 pubDate 已实证可 PIT——财务因子接线批是前置） |
 | E3 | 持有纪律 | 同一事前候选与入场日 | legacy/fusion_mid/fusion_long 分别报告 | rule_bz_proxy | blocked_on_data |
 | E4 | 技术择时 | 同一投资逻辑和预算 | 固定周期分批/技术触发/混合门控 | rule_bz_proxy | blocked_on_data |
 | E5 | AI | 同一证据、计划、预算 | 无AI/结构化提取/提取+反证（旧 modifier 独立对照） | **ai_lookahead** | blocked_on_data |
