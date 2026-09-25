@@ -152,6 +152,13 @@ def get_recent_announcements(code: str, days: int = 30) -> list[dict]:
         # 主源有数据时走不到此分支，凌晨主源空+巨潮也空时暴露）
         if backup is not None and not backup.empty:
             items = _parse_news_df(backup, cutoff)
+            for it in items:
+                # F3（plan/fusion P1-3 修复）：巨潮官方公告打源标——research_snapshot
+                # 的 official_date 判定（"巨潮"子串）依赖它；巨潮 DataFrame 无来源列，
+                # 不打标则官方公告通道恒空、严格 PIT 快照收不到公告。
+                # 显示侧更信息量（此前为空串），无消费方依赖空值（grep 核对）。
+                orig = it.get("source") or ""
+                it["source"] = "巨潮公告" + (f"｜{orig}" if orig else "")
 
     return items
 

@@ -297,3 +297,68 @@
 ### 状态：VERIFIED（2026-09-25 监督员终核全过无阻断：PROBES A/B 真接线/安全网逐行零退化/哨兵测试/P0 断链真修复均实证；906 passed 监督员独立复跑一致）
 
 ---
+## F3 — 证据快照与时点数据资格
+
+- **任务**：F3 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`a04aea3`（F2 统一终态）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/data/research_snapshot.py` | 新增：EvidenceRecord（时点三分离+口径+revision）/EvidenceSnapshot（strict PIT 闸门+内容 hash）/qualify 资格判定/窄适配 record 构造（market/announcement/forecast/financial/user_asserted/rag）/live 惰性抓取 helper |
+| `tests/core/test_research_snapshot.py` | 新增：20 测试（含审查修复回归锁：重述非冲突/多期非冲突/单位归一/live 视图 None 安全） |
+| `plan/fusion/DATA_COVERAGE.md` | 新增：数据契约与可得性覆盖报告（诚实矩阵：可PIT/live-only/待现场探查三类分明） |
+
+### 已完成条款（对照 TASKS.md F3）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 未来公告和后发重述不进入旧快照 | strict PIT 闸门（available_at 缺失或>as_of 必拒）+ revision_id 分版 | `test_future_announcement_excluded_from_old_snapshot` / `test_late_restatement_does_not_enter_old_snapshot` / `test_market_bar_pit_natural` |
+| 元/万元及累计/单季口径可验证 | normalize_amount（未登记单位拒猜）+ financial_record period_kind 必填 | `test_unit_conversion_explicit` / `test_period_kind_must_be_explicit_for_financial` / `test_qualify_respects_period_kind` |
+| 删必需字段后资格变 INCOMPLETE | qualify 显式命名缺失/过期/冲突 | `test_missing_required_evidence_incomplete_named` / `test_stale_evidence_flagged` / `test_conflicting_evidence_reported` |
+| RAG 方法文本不当公司事实 | qualify 默认排除 source_kind=rag | `test_rag_text_not_company_fact` |
+| 同快照重放稳定 | snapshot_id 内容 hash（evidence_id/fetched_at/入序无关） | `test_snapshot_id_stable_across_replay_and_order` |
+| 回测路径零实时网络 | 模块层禁网络 import（AST 源码守卫）+ live helper 函数体内惰性 import | `test_module_import_is_network_free` |
+| 先支持行情/官方公告/财务三类，不重建数据层 | 窄适配 record 构造函数消费现有 provider dict；live helper 复用 get_recent_announcements/get_latest_forecast | DATA_COVERAGE.md 矩阵 |
+| 建立关键财务可得性矩阵，不足则缩小首发范围 | DATA_COVERAGE.md：严格PIT 可用=行情+业绩预告+官方公告；财务三表待现场探查；分部营收走人工通道；长期财务包在验证前不启动 | DATA_COVERAGE.md §2 |
+| 证据异常/过期/未知分开 | quality_status 七态 + 时效判定 + CONFLICTED 显式 | `test_conflicting_evidence_reported` 等 |
+
+### 未完成条款（保持 TODO）
+
+- 财务三表（baostock query_profit_data 等）接线：公布日字段可得性需 external 现场探查
+  （tests/data_sources/test_all_api.py 扩展，opt-in）——探查前不进严格快照、长期财务包不启动
+- 分部营收自动取得：无稳定接口，USER_ASSERTED 人工通道已备（DESIGN 允许）
+- ThesisRecord（DESIGN §5.2 投资逻辑记录）：属 F5 PlanV2 范围（thesis 与计划绑定落地），
+  F3 只交付证据层
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_research_snapshot.py -q
+# 初版 5 failed（snapshot_id 混入 evidence_id 重放不稳 / helper 用真实 now 对固定 as_of
+# 时序脆弱 / 口径提示英文）→ 修：_content_hash 用 content_fingerprint / rag+user_asserted
+# 显式 available_at 参数 / 口径中文提示 / bar 时区测试修正 → 16 passed
+# 对抗审查 3 阻断修复后 → 20 passed（重述语义重写 + live 视图 None 安全 + 巨潮源标）
+.\.venv\Scripts\python.exe -m pytest -q
+# 926 passed, 2 skipped, 1 deselected（F2 后 906 + 净增 20；F4 预置文件 stash 隔离后实测）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "EvidenceSnapshot\|research_snapshot" src/` → 仅本模块+测试（F3 无生产消费方，
+  F4/F5 接线）；现有 provider 调用方零改动（窄适配旁路可回滚）
+
+### 用户可见变化
+
+无（F3 数据层基建，`start.py` 行为零变化；证据层消费方 F4/F5 落地时才可感知——
+TASKS F3 定位为研究可信基建）。
+
+### 迁移/回滚验证
+
+- 回滚 = 删除 research_snapshot.py + 测试 + DATA_COVERAGE.md 即回 a04aea3（零既有文件改动）
+- 缺字段不补假数据：financial_record 无 period_kind 拒构造 / 无公布日 available=None 不进严格快照
+
+### 状态：REVIEW（待 quality-guard + 监督员核对）
+
+---
