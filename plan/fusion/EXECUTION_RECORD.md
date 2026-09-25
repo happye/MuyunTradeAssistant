@@ -435,3 +435,95 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：REVIEW（待 quality-guard + 监督员核对）
 
 ---
+## F5 — 中期与长期 PlanV2 和纯策略
+
+- **任务**：F5 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`ab65900`（F4 候选池）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/decision_policy.py` | 新增：HorizonPlan（PlanV2 侧挂对象，horizon 限 MID/LONG）/HorizonFacts/evaluate_horizon（DESIGN §4.2 决策表逐行机器化，行0-10 从上到下首条决定性条件优先） |
+| `src/core/research.py` | 新增：ThesisRecord（DESIGN §5.2 七要素）/assess_thesis（证据驱动状态转移，UNKNOWN 不自动变 FALSE）/evaluate_invalidation_rules 三值求值 |
+| `tests/core/test_horizon_policy.py` | 新增：20 测试（决策表逐行+验收条款回归） |
+
+### 已完成条款（对照 TASKS.md F5）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 同股票同证据不同周期结果可解释 | 同事实组 MID→行5 REDUCE / LONG→行7 HOLD，reason 指回各自决策表行 | `test_same_facts_different_horizons_explainable` |
+| 中期逻辑失效不能自动延长期限 | **决策表端结构化推导**（审查 P1-1 修复：evaluate_horizon 读 plan.invalidate_if 三值求值，TRUE→行3 EXIT / UNKNOWN→行4b REVIEW，不依赖调用方自觉） | `test_mid_invalidation_true_structurally_forces_exit` / `test_invalidation_unknown_reviews_not_add` / `test_assess_thesis_driven_by_evidence` |
+| 长期短期技术噪声不触发未约定退出 | 行7：short_term_noise_only → HOLD 留痕（technical_exit 标志也不升级成退出） | `test_long_short_term_noise_does_not_exit` |
+| 长期缺财务不发质量合格结论 | 行4 先于行8：research INCOMPLETE 时 quality_valuation_ok 也不 OPEN/ADD | `test_long_missing_financial_never_quality_pass` |
+| 新计划需确认后才激活 | 行0 激活门：accepted_at 空 → 只 REVIEW | `test_unaccepted_plan_only_reviews` |
+| 未支持行业明确限制 | unsupported_industry → research 强制 NOT_APPLICABLE → 不填通用数字 | `test_unsupported_industry_limited` |
+| 复核日只触发 REVIEW 不是强制卖 | review_due 标记不改 VALID 持有结论（行9） | `test_review_due_is_not_forced_sell` |
+| 结构化失效条件；UNKNOWN 与 FALSE 分明 | InvalidationRule + evaluate_invalidation_rules 三值 | `test_invalidation_three_value_semantics` |
+| legacy 气宗180自然日/阶段双实现/Chandelier 保持原行为 | 零改动（strategy_layer/plan_guard/entry_exit 零文件触碰） | `git show --stat` 可证 |
+| 新增策略ID，不用旧 mode 代替 horizon | fusion_mid_v1/fusion_long_v1；HorizonPlan.horizon 限 MID/LONG（LEGACY 拒收） | `test_policy_ids_are_new_not_legacy_mode` |
+| 旧计划零写入即可继续读取 | 侧挂对象独立，不 import TradePlan（命名空间断言） | `test_plan_v2_is_sidecar_no_tradeplan_write` |
+| UNKNOWN 与 FALSE 分明（组合未知不给精确目标） | budget_available=None → HOLD/OPEN 有条件方向 target=None | `test_unknown_budget_no_precise_add` |
+
+### 未完成条款（保持 TODO）
+
+- PlanV2 持久化存储与用户确认流程（`pos plan` 家族扩展）：属 F7 today 工作台接线
+  （accepted_at 的用户确认动作需要入口）；F5 交付纯策略层+侧挂对象
+- MID 转 LONG 的用户确认流程入口：语义锚已立（mid_to_long_requires_new_assessment），
+  流程入口随 F7
+- 决策表与 legacy 七层的并行运行开关（shadow/opt_in 接线）：属 F8/F9 实验开关
+- 行5 的 REDUCE 目标权重计算（依"已接受退出策略"细化）：需 plan.exit_policy_id 具体
+  化后落地（F7 计划编辑流程）
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_horizon_policy.py -q
+# 初版 3 failed（assess_thesis 无规则时误判 REVIEW_REQUIRED / 耦合断言查 docstring /
+# model_copy 不校验）→ 修：状态转移顺序调整（None=未给规则按事实评估）+ hasattr 断言
+# + 直接构造校验 + PlanV2 horizon 限 MID/LONG → 20 passed
+.\.venv\Scripts\python.exe -m pytest -q
+# 963 passed, 2 skipped, 1 deselected（F4 后 943 + 净增 20）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "evaluate_horizon\|HorizonPlan" src/ tests/` → 仅本模块+测试（F5 无生产消费方）
+- strategy_layer/plan_guard/entry_exit/benzong 零改动（legacy 保真）
+
+### 用户可见变化
+
+无（纯策略层基建；消费方 F7 today 工作台）。
+
+### 迁移/回滚验证
+
+- 回滚 = 删除两个新模块+测试即回 ab65900；shadow/opt_in 可关闭（接入由调用方开关控制）
+- 版本对象保留，不反写旧计划、不删除历史（侧挂设计保证）
+
+### 对抗审查记录（code-quality-guard，2026-09-25，4 P1+8 P2）
+
+- 🔴 P1-1 invalidate TRUE→INVALID→EXIT 无结构性保障（调用方漏接 assess_thesis 时失效计划可无限 ADD；原测试名夸大）→ **已修**（决策表端三值求值结构化推导 + 真断言回归锁 + 账本证据行更正）
+- 🔴 P1-2 行0 激活门掩盖已核实硬退出（违反 DESIGN §2.2）→ **已修**（行1 提前到激活门之前）+ 回归锁
+- 🔴 P1-3 行6 未持有列漏预算门（budget=False 仍 OPEN + 反事实 reason）→ **已修**（落行9 WAIT）+ 回归锁
+- 🔴 P1-4 行7 未持有列错给 HOLD（违反 ADR-F08）→ **已修**（未持有落行8/9 评估）+ 回归锁
+- ⚠️ P2 review_due 静默吞掉 → **已修**（next_check 落包）；⚠️ 行4 未持有对齐 DESIGN 两列 REVIEW → **已修**（永真式断言收紧）；⚠️ 行8/行10 覆盖缺口 → **已补测试**；⚠️ §4.1 字段缺口（entry/exit_policy_id/risk_profile_id/accepted_risk_limits）→ **已补字段**；⚠️ 行2 死分支 exec_status → **已修**；⚠️ accepted_at 空串激活 → **已修**；⚠️ research.py 小项（FactStatus 死导入已修/horizon 校验与 LONG→MID 锚登记）；⚠️ 提交边界（F6 预置混入风险）→ 按 stash 纪律只 add F5 文件
+
+### 未完成条款补充（F5 审查 P2 登记）
+
+- plan.review_triggers / max_hold_until 消费逻辑（财报/事件/日期复核的具体判定）——F7 接线
+- ThesisRecord.horizon 枚举校验、LONG→MID 显式记录锚——随 F7 计划编辑流程
+- DESIGN §4.1 accepted_risk_limits 的结构化（现为 str 列表）——F7 组合预算输入时细化
+
+### 红灯→绿灯证据与命令（更正后）
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_horizon_policy.py -q
+# 初版 20 passed（3 处断言夸大被审查抓出）→ 4 P1 修复后 29 passed
+.\.venv\Scripts\python.exe -m pytest -q
+# 972 passed, 2 skipped, 1 deselected（F4 后 943 + 净增 29；
+# F6 预置文件 stash 隔离后实测提交树口径——复现口径依赖 stash 预置，见交接说明）
+```
+
+### 状态：REVIEW（4 P1 已修，待监督员核对转 VERIFIED）
+
+---
