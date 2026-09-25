@@ -861,7 +861,7 @@ TASKS F3 定位为研究可信基建）。
 | 不把 legacy mode 映射成 horizon（F5 硬约束）| 双周期各出一包；legacy_mode 仅对照字段 | `test_both_horizons_evaluated_policy_ids` |
 | 行1 硬退出不被影子流程吞（G02 对照本体）| hard_exit 先于激活门直达 EXIT | `test_hard_exit_maps_exit_in_both_horizons`（legacy HOLD vs fusion EXIT） |
 | thesis 恒 UNESTABLISHED（不拿评分冒充逻辑）| 无 benzong 代理——差异主因如实登记 thesis_unestablished | 映射表 v1 docstring + 测试 |
-| T+1 批次份额（G11，F8 登记「随 E0 基线设计定稿」）| backtest_engine `t_plus_1_lot_mode`（默认关） | `test_backtest_t1_lot_mode.py` 9 项；默认关=基线安全 |
+| T+1 批次份额（G11，F8 登记「随 E0 基线设计定稿」）| backtest_engine `t_plus_1_lot_mode`（默认关） | `test_backtest_t1_lot_mode.py` 10 项；默认关=基线安全 |
 | E0 manifest 缺一不可（VALIDATION §2）| ExperimentManifest.build 落盘（样本集/费用规则/信息集标签/冻结时间） | tests/artifacts/e0_baseline/manifest_*.json |
 | E0 真实执行（EXPERIMENTS.md E0 blocked_on_data 解锁）| 21 案例双臂跑通，results.jsonl 42 行 | `plan/fusion/E0_BASELINE_REPORT.md` |
 | 失败试验也保留（VALIDATION §3）| results.jsonl 含超时/失败行不删；坏行隔离 | runner 代码 + G14 口径 |
@@ -894,7 +894,7 @@ TASKS F3 定位为研究可信基建）。
 # 18 passed（初版 4 failed：evaluate_horizon 漏传 confirmed_ratio 致 held 判定错 +
 # 测试助手 None 哨兵缺陷 + store 变量清理误删——修复后全绿）
 .\.venv\Scripts\python.exe -m pytest tests/core/test_backtest_t1_lot_mode.py tests/core/test_v0895_correctness_batch.py -q
-# 20 passed（lot 模式 9 项 + 引擎既有回归 11 项）
+# 20 passed（lot 模式 10 项 + 引擎既有回归 10 项）
 .\.venv\Scripts\python.exe -m pytest tests/core/test_candidate_lineage.py -q
 # 17 passed（登记表探查翻转 + 测试同步实证状态；business_exposure/demand_change 保持 True）
 ```
@@ -911,6 +911,16 @@ TASKS F3 定位为研究可信基建）。
 - 回滚：`fusion.shadow_capture: false` 即停捕获（账本保留不删）；lot 模式仅 E0 runner 显式开启；
   E0 产物为纯新增文件，删除即回滚；探查脚本与 DATA_COVERAGE 回写不影响任何运行时行为
 
-### 状态：REVIEW（实现+验证完成；待监督员终核后转 VERIFIED）
+### 对抗审查记录（code-quality-guard 两轮，2026-09-26）
+
+- 🔴 P1 tradestatus 文档结论引用失败首跑日志（成功复跑只到 stdout 未落盘）→ **已修**：probe 脚本补 error_code/空结果显式打印（根因盲区消除）+ 重跑落盘产物，四处文档措辞与日志核对一致
+- ⚠️ P2 Monte Carlo 临时引擎漏传 t_plus_1_lot_mode（MC 臂静默降级 legacy 口径）→ **已修** + 注释
+- ⚠️ P2 runner 非超时异常中止整批不记账 / 超时行阻塞续跑 → **已修**（try/except 记 error 行继续；timeout/error 行不算 done，重试可达；报告跳过 error 配对）
+- ⚠️ P2 lot 部分卖出冒充 CLOSE_ALL → **已修**（CLOSE_ALL/信号SELL 主分支 + REDUCE 残仓 <5% 子支均按「sell_shares==持仓」条件化；复核残留项闭环）
+- ⚠️ P2 弱断言 → **已修**（双 fixture 断言）
+- ⚠️ 账本两处测试计数失实（9 项→实为 10 项；拆分 9+11→实为 10+10）→ **已订正**
+- 复核结论（第二轮）：五项修复闭环 + 账本抽查属实 + 1059 全量独立复跑一致 → **可转 VERIFIED**
+
+### 状态：VERIFIED（2026-09-26 code-quality-guard 两轮审查 + 修复闭环复核通过；遗留登记：lot 模式 REDUCE 子支标签修正无独立回归锁——该路径需 mock feeder 驱动 run()，随 E6/E3 扩展补）
 
 ---

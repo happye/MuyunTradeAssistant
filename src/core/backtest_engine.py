@@ -496,7 +496,10 @@ class BacktestEngine:
                                             sell_shares = account.position
                                             if self.t_plus_1_lot_mode:
                                                 sell_shares = min(sell_shares, _sellable)
-                                            actual_pos_action = PositionAction.CLOSE_ALL
+                                            # 批次口径截断后非真全卖 → 如实记 REDUCE（监督员复核残留项）
+                                            actual_pos_action = (PositionAction.CLOSE_ALL
+                                                                 if sell_shares == account.position
+                                                                 else PositionAction.REDUCE)
                                         sell_price = exec_price * (1 - actual_slippage)
                                         trade = account.sell(sell_price, shares=sell_shares)
 
