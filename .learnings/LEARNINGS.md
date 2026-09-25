@@ -1675,3 +1675,29 @@ M5 批实证：test_tui 的 `_mock_engines` patch `portfolio.PortfolioManager`�
 - Recurrence-Count: 1
 - First-Seen: 2026-09-25
 - Last-Seen: 2026-09-25
+
+## [LRN-20260925-016] best_practice
+**Logged**: 2026-09-25T12:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: tests, process
+
+### Summary
+**回调插桩（progress_cb 内的记账/副作用）没有时序测试 = 不可见的 no-op；commit message 声称的「落账/修复」必须与 diff 逐项一致——监督 agent 抓到两连：ba 的 batch_task_start 放在 auto_score_batch 之后（回调 mark 全落空、中断丢进度的修复未生效），且 plan/README 批 4 条目「声称已落实际未落」。**
+
+两个坑同根：**修完不验证副作用真的发生**。_progress 回调里的 batch_task_mark 对未登记任务静默 no-op（既有测试锁死的语义反过来保护了 bug：no-op 不抛不崩，全量全绿）；plan/README 条目在 git add 清单里漏了文件但 commit message 照写「已落账」。plus：函数内 `from X import Y` 的 patch 必须打源模块（main.auto_score_batch 属性不存在，时序锁测试第一版就踩了）。
+
+### Suggested Action
+- 凡「回调/钩子里做写操作」的插桩，必须配时序测试：mock 依赖函数令其触发一次回调，断言副作用已发生（test_ba_task_ledger_timing 为范本）
+- commit 前对照 message 逐文件核对 `git show --stat`（铁律 2 已有，但「声称落账的文档文件」也要在 stat 清单里点名核对）
+- 函数内 from-import 的符号：patch 源模块属性（src.core.benzong.batch_scorer.auto_score_batch），patch 使用方模块属性无效
+- 监督 agent 的核对范围必须包含「commit message 声称 vs diff 实际」逐项比对——本轮抓到的两个问题都在这个盲区
+
+### Metadata
+- Source: session_finding（code-quality-guard 监督员批 4 核对）
+- Related Files: src/cli/main.py, tests/benzong/test_ba_task_ledger_timing.py, plan/README.md, src/cli/session_state.py
+- Tags: callback-instrumentation, timing-test, claim-diff-drift, batch-ledger, no-op-pitfall
+- Pattern-Key: test.callback_timing
+- Recurrence-Count: 1
+- First-Seen: 2026-09-25
+- Last-Seen: 2026-09-25
