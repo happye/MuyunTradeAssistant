@@ -527,3 +527,98 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：REVIEW（4 P1 已修，待监督员核对转 VERIFIED）
 
 ---
+## F6 — 证据型 AI：事实提取、反证与解释
+
+- **任务**：F6 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`ccfcd3b`（F5 周期决策表）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/claim_extraction.py` | 新增：ClaimRecord（结构化主张+引用+revision）/derive_event_id（事件谱系去重键）/verify_claim（规则核验：无引用/引用不存在/**实体归属不符**/未来日期/单位不合法 拒收）/ClaimExtractor 协议（同输入不重复付费缓存）+ DeterministicExtractor（零 AI 确定性通道）/MockLLMExtractor（评测替身）/dedup_claims |
+| `tests/ai_eval/claim_annotations.json` | 新增：冻结人工标注集 8 用例（错误实体/旧闻重炒/财报更正/上下游影响相反/缺证据/注入文本/未来日期/单位不合法） |
+| `tests/core/test_claim_extraction.py` | 新增：15 测试（含标注集全量跑） |
+
+### 已完成条款（对照 TASKS.md F6）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 不凭 LLM 自报 confidence 加仓 | model_confidence 仅诊断字段；核验结论与 confidence 值无关（0.9/0.1 同结论）；F2 方向感知调节已断 score 直改路径 | `test_confidence_is_diagnostic_only` |
+| 非法引用拒收 | verify_claim 五规则（无引用/引用不存在/**实体归属不符**/未来日期/单位不合法） | `test_no_citation_rejected` / `test_unknown_citation_rejected` / `test_future_date_rejected` / `test_bad_unit_rejected` |
+| 重复新闻不重复计票 | 事件谱系（derive_event_id 源ID→正文hash→主体/类型/时间/数值聚类）+ dedup_claims；更正公告 revision 区分不被吞 | `test_duplicate_news_deduped` / `test_correction_not_deduped` / `test_old_news_resubmission_dedup` |
+| 无 AI 时模板行动卡可用 | DeterministicExtractor 零 AI 确定性通道；F2 行动卡独立存在（无 AI 依赖） | `test_deterministic_extractor_offline_usable` |
+| 同输入不重复付费 | extract 缓存（输入内容 hash 键）+ calls 计数 | `test_same_input_not_double_charged` |
+| 冻结小型人工标注集（六类场景） | tests/ai_eval/claim_annotations.json 冻结；确定性核验器全量跑通；LLM 提取器接入后按同集评测（正确率/漏检/捏造/费用） | `test_frozen_annotation_set_all_cases` |
+| 分清 OBSERVED 与 MODEL_INFERRED | VerifiedClaim.fact_status=MODEL_INFERRED（不冒充）；user_asserted 通道独立（F3） | `test_valid_claim_passes_all_checks` |
+| 注入文本免疫 | 正文指令性文字按数据处理——核验只依赖结构化字段与引用；statement 不含注入指令 | `test_frozen_annotation_set_all_cases` AN-06 |
+| 上下游影响相反 | AN-04：关系默认 NEUTRAL（上游利好可能是下游成本压力），禁止自动 SUPPORTS | `test_frozen_annotation_set_all_cases` AN-04 |
+
+### 未完成条款（保持 TODO）
+
+- 真实 LLM 提取器接入与评测（提取正确率/重大风险漏检/事实捏造/费用与耗时对比）：
+  协议+标注集+替身已备，**真实调用属 AI opt-in 评测**（external 入口，不混默认 pytest）
+- 多维提取调用合并评测（六维共享一次结构化提取）：随真实提取器落地后按 ADR-F06
+  "批量合并须验证各维质量没有下降"评测
+- ai_modifier/event_layer/benzong 调用边界改写（现有 AI 流量改产 claim）：涉及决策
+  路径行为变更——按 TASKS F2 口径需 A/B 开关，挂 F8 影子运行阶段（F2 已做方向感知
+  防护，直接改写留待影子验证后）
+- expect/events 共用 event_id 接线、fear 进环境字段：随 F7/F8 接线
+- RAG 检索块 ID/内容 hash/版本贯通（解释引用可追到块）：F3 rag_method_record 已备
+  骨架，回答级引用归属沿 F2 登记不修项推进
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_claim_extraction.py -q
+# 15 passed（标注集首跑即绿；verify_claim 实体归属核验在标注集驱动下补强）
+.\.venv\Scripts\python.exe -m pytest -q
+# 987 passed, 2 skipped, 1 deselected（F5 后 972 + 净增 15）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "claim_extraction\|ClaimRecord" src/ tests/` → 仅本模块+测试+标注集（无生产消费方）
+- ai_modifier/event_layer/benzong 零改动（边界改写挂 F8 影子阶段，见未完成条款）
+
+### 用户可见变化
+
+无（提取层基建；消费方 F7/F8；真实 LLM 提取器为 AI opt-in 评测项）。
+
+### 迁移/回滚验证
+
+- 回滚 = 删除两个新文件+标注集即回 ccfcd3b；无 AI 时确定性通道与 F2 模板行动卡均可用
+  （不填"中性看好"掩盖失败——确定性通道只转写已有公告字段，无法结构化则空列表）
+
+### 对抗审查记录（code-quality-guard，2026-09-25，5 P1+8 P2）
+
+- 🔴 P1-1 跨来源事件聚类未按 ADR-F06 两阶段实现（改写转载分裂 event_id）→ **已修**（dedup_claims 第二阶段 event_key=主体/类型/发生日/归一值聚类；revision!=1 是更正版本跳过聚类保留可审计；值 None 不入键防误并）+ 回归锁
+- 🔴 P1-2 错误实体拒收是测试池构造假象（uri 来源级弱验证可穿透）→ **已修（诚实边界方案）**：docstring 写明弱验证/强验证分界（文档级 hash+归属=强验证）；弱池穿透用例锁定为已知缺口登记；AN-01 保留强池拒收断言
+- 🔴 P1-3 naive datetime 触发 TypeError 崩溃而非拒收 → **已修**（ClaimRecord tz-aware 构造期校验，EvidenceRef 同款）
+- 🔴 P1-4 单位白名单伪 token"股-万股-亿股"（万股被拒/垃圾入库）→ **已修**（拆分为 股/万股/亿股）
+- 🔴 P1-5 DeterministicExtractor 畸形输入崩溃违反自身降级契约 → **已修**（日期解析失败→None/relation 归一映射非法降 NEUTRAL/value 非数值→None/构造失败→空列表如实降级）
+- ⚠️ P2 聚类键值归一（5亿元==50000万元）/occurred future 检查/缓存键加提取器标识/更正 lineage 登记/revision 测试锁死/永真断言修复/AN-02·03 runner 期望/LLM 通道注入防护登记/账本数字重测——**全部处理**（修或登记，见未完成条款）
+
+### 未完成条款补充（F6 审查 P2 登记）
+
+- **LLM 通道注入防护机制**：确定性通道的注入免疫是结构性的（不读正文语义）；LLM
+  接入后 statement/relation/value 全来自模型输出，verify_claim 不审 statement 语义——
+  防护机制（结构化输出 schema 约束+引用强制）随真实提取器设计（F8 影子阶段前置）
+- occurred_at 未来值检查（事实 claim vs 预期事件语义区分）——随 expect/events 接线（F7/F8）
+- 文档级证据池（每份公告独立 uri/hash+归属方）——强验证引用的前提，随 F3 矩阵
+  「财务三表/官方公告」现场探查接线
+- 更正公告自动回填 lineage_ids 指回原事件——F7/F8 接线
+
+### 红灯→绿灯证据与命令（更正后）
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_claim_extraction.py -q
+# 初版 15 passed → 5 P1 修复后 24 passed（含 9 个审查回归锁）
+.\.venv\Scripts\python.exe -m pytest -q
+# 996 passed, 2 skipped, 1 deselected（F5 后 972 + 净增 24：claim 15 + 审查回归 9；
+# F7 预置文件 stash 隔离后实测提交树口径；此前 987 为推算值已更正——审查指正）
+```
+
+### 状态：REVIEW（5 P1 已修，数字待提交树实测回填，待监督员核对转 VERIFIED）
+
+---
