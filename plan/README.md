@@ -71,6 +71,20 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / 批 5：C4 RAG 评估增强 + 批 4 更正（监督员 P1）
+
+- **批 4 更正（监督员核对抓到的 P1，65f81c6 已推送含失实声称，本 commit 更正）**：ba 的 `batch_task_start` 原放在 `auto_score_batch` 之后——_progress 回调里的逐项 mark 对未登记任务 no-op，"修中断丢进度"未生效。已挪到 auto_score_batch 之前 + 新增时序锁测试（test_ba_task_ledger_timing，进度回调首次触发时任务必须已登记）。教训：回调插桩没有时序测试=不可见的 no-op；commit message 声称的落账必须与 diff 一致。
+- **C4 交付**：evaluator.py 新增 `series_breakdown`（top-k 命中按 doc_id 系列前缀分组——引用归属的分组视图，命中过度集中=知识覆盖面偏科可见）+ 报告带生成时间（索引变更后重跑对比）；无下划线 doc_id 归 other 不污染系列统计。既有 IR 指标（Recall/MRR/NDCG）与 check_label_coverage 已存在，本批未重造；auto_label 自证与重排默认关闭的既有结论保持。
+- 纯计算指标纳入离线回归（test_rag_eval_metrics 4 项）；真实检索评估仍为手动跑（tests/README.md 有跑法）。
+- 测试 +5（metrics 4 + 时序锁 1）；全量 **801 passed / 0 failed**。
+
+### 2026-09-25 / Claude Code / 批 4：C3 doctor 增强（阶段 C）
+
+- doctor ④ 节：+ analysis_evidence 健康项（条数+末条距今——监督员批 2 建议采纳，把证据静默失败变成 doctor 可见症状）+ batch_tasks 健康项 + 缓存目录磁盘大小；③ 节：AI 配置透明（provider/model 显示，api_key 只报布尔绝不回显）；尾部体检耗时行。
+- **C3 收窄如实声明**（ISS-102 已补记未交付段）：立项口径的"分阶段耗时/请求数/缓存命中率"未做——缓存命中率需运行时计数器（新框架，违背最小化），按需后排；已交付"总耗时+缓存磁盘大小+请求透明的成本行（既有）"。
+- 测试 +1；全量 796 passed / 0 failed。
+- **P3 两条登记于 ISS-102**（ba 失败项缺 code 键产出 None 条目 / 保留窗挤出），不修。
+
 ### 2026-09-25 / Claude Code / 批 3：C2 批量任务可续跑（阶段 C）+ 批 2 账本补齐
 
 - **C2 交付**：session_state 批量任务账本（batch_task_start/mark/get_recent_batch_tasks，`~/.muyun/batch_tasks.json` 原子写、坏账本重置、保留最近 5 个任务）；l 多代码/la/l all/ba 四个批量循环逐项记账（成功/失败+错误摘要）；REPL 新命令 `tasks`（进度 n/总数、失败项、续跑提示）。成功项复用沿用既有 deep_analyzed/评分缓存语义（核实过，未改变）；失败项自动重试语义保持。任务账本只做可见性，不引入通用工作流框架（C2 口径）。

@@ -2094,15 +2094,14 @@ P3（已取消）:
 - **交付**: src/cli/evidence.py（record_evidence/load_evidence/diff_evidence）；l/la/l all/chat 四入口自动落证据（JSONL ~/.muyun/analysis_evidence.jsonl + 人话证据卡 分析报告/analysis/）；REPL `diff <代码>` 只列变化项
 - **关键实现决策**: 新旧记录按 JSONL **出现序**定先后（同秒两条 ts 排序不可靠，测试暴露）；旧记录缺字段视为"当时未记录"不误报（区分真实变化与口径变化，C1 验收项）；坏行逐行隔离（M2 同款）；证据写盘失败不影响分析主流程
 - **测试**: +7（test_evidence）；全量 789 passed / 0 failed
-- **更新记录**: 2026-09-25 commit 落地于本 commit
-
----
-
-### ISS-101: 批量任务账本 + tasks 命令（v0.8.17，plan/ C2）
+- **已知剩余（立项口径收窄，如实声明）**: 分阶段逐节耗时/请求数累计/缓存命中率未做——命中率需运行时计数器（新框架违背最小化），按需后排；已交付总耗时+缓存磁盘大小+既有成本行
+- **P3 登记**: ba 失败项缺 code 键会产出 None 条目（仅可见性影响）；保留窗挤出（极端才触发）
+- **更新记录**: 2026-09-25 commit 落地于本 commit；同日监督核对后 ba 时序更正见 ISS-101 批注
 - **状态**: ✅ 已解决（2026-09-25；来源=plan/ARCHITECTURE §四 C2，阶段 C）
 - **交付**: session_state 批量任务账本（batch_task_start/mark/get_recent_batch_tasks，原子写、坏账本重置、保留 5 个）；l 多代码/la/l all/ba 四个批量循环逐项记账；REPL `tasks` 命令（进度/失败项/续跑提示）
 - **边界**: 成功项复用沿用既有 deep_analyzed/评分缓存语义（核实未改变）；只做可见性不引入通用工作流框架（C2 口径）
 - **测试**: +6（test_session_state batch 批）；全量 795 passed / 0 failed。同批补批 2 账本（plan/README 批 2 条目、README "787"→"789" 笔误——监督员核对发现）
+- **监督批 3 核对后修复**: ba 逐项 mark 挪进 _progress 回调（原循环后回填，中断丢进度——ISS-102 批更正）+ l/la 任务键改代码集摘要（防碰撞继承）；时序锁 test_ba_task_ledger_timing
 - **更新记录**: 2026-09-25 commit 落地于本 commit
 
 ---

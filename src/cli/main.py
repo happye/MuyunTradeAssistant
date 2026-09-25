@@ -1682,16 +1682,19 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
             pass
 
     console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
+    # C2：任务登记必须在 auto_score_batch **之前**——_progress 回调里的逐项
+    # mark 对未登记任务是 no-op，start 放后面=中断时账本连任务都没有
+    # （监督员批 4 核对抓到 65f81c6 的此失误，时序锁见 test_ba_task_ledger_timing）
+    from src.cli import session_state as _ss_ba
+    _ss_ba.batch_task_start("ba", src_label, codes)
     res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
                            progress_cb=_progress)
 
     ranked = res.get("ranked", [])
     failures = res.get("failures", [])
-    # C2：任务账本登记（逐项 mark 在 _progress 回调；此处补漏——回调未覆盖的
-    # 情况如全部命中缓存零评分轮次时也要有完整清单）
+    # 运行后补漏：回调未覆盖的边界（如全部命中缓存零评分轮次、评分异常中断前
+    # 的已完成项）也要有完整清单；不做 prune，保最近 5 任务
     try:
-        from src.cli import session_state as _ss_ba
-        _ss_ba.batch_task_start("ba", src_label, codes)
         for _r in ranked:
             _ss_ba.batch_task_mark("ba", src_label, _r.get("code"), True)
         for _f in failures:

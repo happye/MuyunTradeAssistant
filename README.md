@@ -401,7 +401,7 @@ volume_ratio:
 - 🆕 **`diff <代码>` 分析对比**：同股最近两次深分析只列变化项——价格/评分 Δ、决策与仓位动作转向、技能信号转向/新增/消失、新增提示；「较上次为何变化」一眼可读
 - 🆕 **`tasks` 批量任务账本**：l all/la/ba/l 多代码 的进度与失败项可见，中断后续跑有据；成功项由当日缓存复用、失败项自动重试（语义不变）
 - 🆕 **ADR-02 装配统一**：`src/core/runtime.py` 工厂收敛 6 处手写 Orchestrator 装配（漏传 entry_exit/rag 的 H2/ISS-032 同族事故病根）；配置加载迁 `src/config.py`（路径不依赖 cwd）；回测装配独立（守卫测试）
-- 测试 +19（test_runtime 6 + test_evidence 7 + batch 6）；全量 795 passed
+- 测试 +19（test_runtime 6 + test_evidence 7 + batch 6 + doctor C3 1 + C4 metrics 4 + ba 时序锁 1……按版本累计）；全量 801 passed
 
 ### v0.8.16 (运行诊断+安装事实源统一) - 2026-09-25
 

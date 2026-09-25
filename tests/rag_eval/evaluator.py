@@ -173,15 +173,37 @@ def evaluate(rag_service, queries, labels, top_k=5):
     return results
 
 
+def series_breakdown(results, top_k=5):
+    """C4：按系列（doc_id 前缀）统计 top-k 命中分布——「引用归属」的分组视图。
+
+    检索结果若过度集中于单一系列，即使 Recall 高也说明知识覆盖面偏科。
+    doc_id 前缀 = 系列隔离标识（rz/jrz/qp/ol/ot 等，v0.8.9.0 纪律）。
+
+    Returns:
+        {系列前缀: 出现次数}，按次数降序；无法解析前缀的归入 "other"。
+    """
+    from collections import Counter
+    hits = Counter()
+    for r in results:
+        for doc_id in (r.get("top_docs") or [])[:top_k]:
+            doc_id = str(doc_id)
+            # 无下划线（不属于任何系列）的 doc_id 归入 other，不污染系列统计
+            prefix = doc_id.split("_", 1)[0] if "_" in doc_id else "other"
+            hits[prefix or "other"] += 1
+    return dict(hits.most_common())
+
+
 def print_report(results):
     """打印评估报告"""
     n = len(results)
     avg_recall = sum(r["recall@5"] for r in results) / n
     avg_mrr = sum(r["mrr"] for r in results) / n
     avg_ndcg = sum(r["ndcg@5"] for r in results) / n
-    
+
     print("=" * 70)
     print("RAG 检索质量评估报告")
+    print(f"生成时间: {__import__('datetime').datetime.now().isoformat(timespec='seconds')}"
+          f"（索引变更后重跑本评估对比，C4）")
     print("=" * 70)
     print(f"测试查询数: {n}")
     print(f"Top-K: 5")
@@ -224,7 +246,17 @@ def print_report(results):
         avg_m = sum(x["mrr"] for x in items) / len(items)
         avg_n = sum(x["ndcg@5"] for x in items) / len(items)
         print(f"{cat:<10} {len(items):>5} {avg_r:>8.3f} {avg_m:>8.3f} {avg_n:>8.3f}")
-    
+
+    # C4：引用归属分组视图——top-k 命中按知识系列分布（过度集中=覆盖面偏科）
+    breakdown = series_breakdown(results, top_k=5)
+    total_hits = sum(breakdown.values()) or 1
+    print()
+    print("系列归属分布（top-k 命中按 doc_id 前缀分组）:")
+    for prefix, cnt in breakdown.items():
+        bar = "#" * max(1, round(cnt / total_hits * 30))
+        print(f"  {prefix:<12} {cnt:>5}  {bar}")
+    print("  （命中过度集中于单一系列时，即使 Recall 达标也应扩评估集或补知识库）")
+
     return {
         "avg_recall@5": round(avg_recall, 3),
         "avg_mrr": round(avg_mrr, 3),
@@ -232,6 +264,7 @@ def print_report(results):
         "num_queries": n,
         "targets": targets,
         "results": results,
+        "series_breakdown": breakdown,
     }
 
 
