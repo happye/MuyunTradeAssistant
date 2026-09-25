@@ -2111,3 +2111,11 @@ P3（已取消）:
 - **交付**: doctor ④ 节补 analysis_evidence（条数+末条距今——监督员批 2 建议采纳，把证据静默失败变成 doctor 可见症状）与 batch_tasks 健康项、缓存目录磁盘大小；③ 节补 AI 配置透明（provider/model 显示，api_key 只报布尔绝不回显）；总耗时透明行
 - **测试**: +1（test_doctor C3 项）；全量 796 passed / 0 failed。同批修批 3 监督核对项：ba 逐项 mark 挪进 _progress 回调（修中断丢进度）、l/la 任务键改代码集摘要（防同数量碰撞继承）、tasks 四文档同步
 - **更新记录**: 2026-09-25 commit 落地于本 commit
+
+---
+
+### ISS-103: C5 扫描方法有效性 + C6 评分证据增强 + ADR-04/06/07 收口（v0.8.17，plan/ 阶段 D）
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/ARCHITECTURE §四 C5/C6 + §三 ADR-06/07，ADR-04 判定收口）
+- **交付**: ① scan_review「按扫描方法分组」表（口径全透明：只次独立计/同窗基准/缺口剔除/小样本不下结论）；② bz 单股输出透出行业景气数据来源（v0.8.8.7 三级桥接成果可视化）；③ benzong/registry.py 维度元数据集中（ADR-07，公式不动，测试锁与 scorer 权重键一致）；④ scripts/measure_timeout_overhead.py 超时资源测量并实跑基线（ADR-06：6 次超时无卡死/孤儿线程+2 自然消亡/退出不等待）；⑤ ADR-04 判定：fear/doctor/evidence 已实现最小闭环，不建通用元数据层
+- **测试**: +2（test_bz_registry）；C5 随既有 scan_review 断言；全量 806 passed / 0 failed
+- **更新记录**: 2026-09-25 commit 落地于本 commit

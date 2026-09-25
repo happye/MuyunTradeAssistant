@@ -1408,6 +1408,9 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         flagbearer_code = bz.flagbearer_code
         penetration_stage = bz.penetration_stage
         console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
+        _src_line = _bz_industry_sources_line(bz.score)   # C6：行业景气数据来源透出
+        if _src_line:
+            console.print(_src_line)
     except Exception as e:
         logger.warning(f"建仓笨总评分失败: {e}")
         console.print(f"   [yellow]⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）[/yellow]")
@@ -1483,6 +1486,9 @@ _BZ_DIM_CN = {
     "valuation_position": "估值位置", "industry_leader": "龙头地位",
     "market_recognition": "市场认可", "risk_deduction": "风险控制",
 }
+# ADR-07：中文名已集中到 src/core/benzong/registry.py（DIM_CN），此处保持原名兼容；
+# 新代码请引用 registry（上面字面量与 DIM_CN 一致性由 test_bz_registry 锁定）
+from src.core.benzong.registry import DIM_ORDER as _BZ_DIM_ORDER  # noqa: E402,F401
 
 
 def _cached_benzong_brief(stock_code: str):
@@ -1926,6 +1932,9 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             benzong_grade = bz.score.effective_grade()
             industry_prosperity = bz.score.industry_prosperity
             console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}）")
+            _src_line = _bz_industry_sources_line(bz.score)   # C6：行业景气数据来源透出
+            if _src_line:
+                console.print(_src_line)
         except Exception as e:
             logger.warning(f"{action_label}时笨总评分失败: {e}")
             console.print(f"   [yellow]⚠ 笨总评分未获取，mode 不设定[/yellow]")
@@ -2833,6 +2842,7 @@ def scan_review(days: int = 7):
     all_paths: list = []
     bench_paths: list = []
     total_missing = 0
+    source_stats: dict = {}   # C5：按扫描方法分组（key=source）
     md = [f"# 扫描复盘 - {scope_label}", "",
           f"> 生成时间：{_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
           + (f"｜基准沪深300 截至 {bench_rows[-1]['date']}" if bench_rows else "｜基准缺失"), ""]
@@ -2884,6 +2894,16 @@ def scan_review(days: int = 7):
         total_missing += missing
         all_chgs.extend(chgs)
         all_excess.extend(excesses)
+        # C5：按扫描方法（source）分组累计——哪种筛选方式在随后几日有真实优势
+        try:
+            _src_key = (src or "?").split("（")[0].strip() or "?"
+            _g = source_stats.setdefault(_src_key, {"n": 0, "chgs": [], "excesses": [], "missing": 0})
+            _g["n"] += 1
+            _g["chgs"].extend(chgs)
+            _g["excesses"].extend(excesses)
+            _g["missing"] += missing
+        except Exception as e:
+            logger.debug(f"C5 分组统计失败(不影响复盘): {e}")
 
         # 表格（涨红跌绿；按涨跌降序，无行情垫底）
         table = Table(title=rec_title, show_lines=False)
@@ -2986,6 +3006,32 @@ def scan_review(days: int = 7):
                           + bench_part)
         console.print(f"  [dim]上涨占比与平均超额是扫描质量的直接标尺：多次复盘持续为正，"
                       f"说明该规则的选股在随后几日有真实优势[/dim]")
+
+        # C5：按扫描方法分组统计——哪种筛选方式在随后几日有真实优势（口径全透明）
+        if len(source_stats) > 1 or (len(source_stats) == 1 and len(records) > 1):
+            console.print(f"\n  [bold]按扫描方法分组[/bold]（同股多次扫描按只次独立计，"
+                          f"基准=各自扫描日同窗沪深300；缺口已剔除）")
+            _st = Table(show_lines=False)
+            _st.add_column("扫描方法", overflow="fold")
+            _st.add_column("只次", justify="right", width=6)
+            _st.add_column("胜率", justify="right", width=8)
+            _st.add_column("平均涨跌", justify="right", width=9)
+            _st.add_column("平均超额", justify="right", width=9)
+            _st.add_column("无行情", justify="right", width=6)
+            for _src_key in sorted(source_stats):
+                _g = source_stats[_src_key]
+                _cs = _g["chgs"]
+                if not _cs:
+                    _st.add_row(_src_key, str(len(_cs) + _g["missing"]), "-", "-", "-", str(_g["missing"]))
+                    continue
+                _ups = sum(1 for c in _cs if c > 0)
+                _wr = f"{_ups / len(_cs) * 100:.0f}%"
+                _avg = f"{sum(_cs) / len(_cs):+.2f}%"
+                _ex = f"{sum(_g['excesses']) / len(_g['excesses']):+.2f}pp" if _g["excesses"] else "-"
+                _st.add_row(_src_key, str(len(_cs)), _wr, _avg, _ex, str(_g["missing"]))
+            console.print(_st)
+            console.print(f"  [dim]分组口径：只次=每条扫描里的每只票各计一次；样本少（<10 只次）的分组只看方向不下结论[/dim]")
+
         md.append(f"## 汇总")
         md.append("")
         md.append(f"- {len(records)} 条扫描，{len(all_chgs)} 只次有行情，"
@@ -2993,6 +3039,25 @@ def scan_review(days: int = 7):
         if len(cohort_curve) > 1:
             curve_s = " → ".join(f"k{k}:{cohort_curve[k]:+.2f}%" for k in sorted(cohort_curve))
             md.append(f"- 整体走势（{earliest}→{today_str}，按交易日对齐的累计涨幅均值）：{curve_s}")
+        if len(source_stats) > 1 or (len(source_stats) == 1 and len(records) > 1):
+            md.append("")
+            md.append("## 按扫描方法分组")
+            md.append("")
+            md.append("| 扫描方法 | 只次 | 胜率 | 平均涨跌 | 平均超额 | 无行情 |")
+            md.append("|---|---|---|---|---|---|")
+            for _src_key in sorted(source_stats):
+                _g = source_stats[_src_key]
+                _cs = _g["chgs"]
+                if not _cs:
+                    md.append(f"| {_src_key} | {len(_cs) + _g['missing']} | - | - | - | {_g['missing']} |")
+                    continue
+                _ups = sum(1 for c in _cs if c > 0)
+                _wr = f"{_ups / len(_cs) * 100:.0f}%"
+                _avg = f"{sum(_cs) / len(_cs):+.2f}%"
+                _ex = f"{sum(_g['excesses']) / len(_g['excesses']):+.2f}pp" if _g["excesses"] else "-"
+                md.append(f"| {_src_key} | {len(_cs)} | {_wr} | {_avg} | {_ex} | {_g['missing']} |")
+            md.append("")
+            md.append("> 口径：同股多次扫描按只次独立计；基准=各自扫描日同窗沪深300；样本 <10 只次的分组只看方向不下结论")
         md.append("")
     else:
         console.print("  [yellow]所有标的均无行情数据，无法统计[/yellow]")
@@ -3307,6 +3372,24 @@ def doctor():
     console.print(f"\n  [dim]诊断时间: {_dt.now().strftime('%Y-%m-%d %H:%M:%S')}"
                   f"｜体检耗时 {(_time.perf_counter() - _t0) * 1000:.0f} ms"
                   f"｜只读体检，不改任何状态[/dim]\n")
+
+
+def _bz_industry_sources_line(bz_score) -> str:
+    """C6（v0.8.17）：行业景气维的证据来源摘要行——三级桥接（v0.8.8.7）拉到的
+    客观数据来源透出到输出，覆盖不足时用户能看见（而非只见一个分数）。
+
+    bz_score.dimensions_meta["industry_prosperity"]["sources"] 样例：
+    ["行业: 稀土", "商品锚(氧化镝)", "需求端: 新能源车", "新闻 12 条"]。无数据返回空串。
+    """
+    try:
+        meta = (getattr(bz_score, "dimensions_meta", None) or {}).get("industry_prosperity") or {}
+        srcs = meta.get("sources") or []
+        if not srcs:
+            return ""
+        return "   [dim]行业景气来源: " + "；".join(str(s) for s in srcs[:4]) + "[/dim]"
+    except Exception as e:
+        logger.debug(f"行业景气来源摘要生成失败(不影响输出): {e}")
+        return ""
 
 
 def diff_evidence_cmd(stock_code: str):

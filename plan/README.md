@@ -71,6 +71,20 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / 批 8：ADR-04/06/07 收口（阶段 D）+ C 批次收口
+
+- **ADR-07 评分元数据**：新增 `src/core/benzong/registry.py`（DIM_ORDER/DIM_CN 集中声明）；main._BZ_DIM_CN 保持原名兼容并加注册表指针；测试锁 registry 与 scorer 权重键集合一致（防漂移）。唯一公式仍由 scorer.py 拥有，未动公式/未 bump CACHE_VERSION（无评分行为变化）。
+- **ADR-06 超时资源测量**：新增 `scripts/measure_timeout_overhead.py`（零网络模拟阻塞）并实跑基线：6 次模拟超时总耗时 12.2s 无卡死（防冻结生效），孤儿线程 +2 后自然消亡，进程退出不等待（shutdown(wait=False) 纪律验证）。专项测量结论：当前语义开销可控，无需专项改造。
+- **ADR-04 判定（文档级收口）**：OK/STALE/MISSING 语义已由 fear（v0.8.10）、doctor（M6）、分析证据 as_of（C1）实现最小闭环；"每个新增字段必须有消费方"红线下不建通用元数据层，跨模块扩展按需逐例。
+- **阶段门槛核对**：A（M1–M3）✅；B（M4+live 装配统一+M5）✅ ADR-02 批 1 收口；C（M6+C1+C2）✅；D（C3–C6+超时专项）✅ 本批收口。C 批次全部完成。
+- 测试 +2（test_bz_registry）；全量 **806 passed / 0 failed**。
+
+### 2026-09-25 / Claude Code / 批 6：C5 扫描方法有效性（阶段 D）+ 批 7：C6 评分证据增强（阶段 D）
+
+- **C5**：scan_review 汇总尾部新增「按扫描方法分组」表（控制台+报告 md 双输出）：每 source 的只次/胜率/平均涨跌/平均超额/无行情数。口径全透明（架构师 C5 验收项）：同股多次扫描按只次独立计、基准=各自扫描日同窗沪深300、缺口剔除、样本 <10 只次只看方向不下结论。零额外请求（复用复盘已取数据）。
+- **C6**：`_bz_industry_sources_line` helper——行业景气维的数据来源透出（["行业: 稀土", "商品锚(氧化镝)", "新闻 12 条"] 等，v0.8.8.7 三级桥接成果可视化）；接 bz 单股建仓引导与 pos plan 两处输出；无来源时不输出假来源行（行缺席=覆盖不足的信号）。新维度未加（按 C6 口径"新维度先独立观察"）。
+- 测试 +3（test_c6_bz_evidence 3 + C5 随既有 scan_review 断言覆盖）；全量 804 passed / 0 failed。
+
 ### 2026-09-25 / Claude Code / 批 5：C4 RAG 评估增强 + 批 4 更正（监督员 P1）
 
 - **批 4 更正（监督员核对抓到的 P1，65f81c6 已推送含失实声称，本 commit 更正）**：ba 的 `batch_task_start` 原放在 `auto_score_batch` 之后——_progress 回调里的逐项 mark 对未登记任务 no-op，"修中断丢进度"未生效。已挪到 auto_score_batch 之前 + 新增时序锁测试（test_ba_task_ledger_timing，进度回调首次触发时任务必须已登记）。教训：回调插桩没有时序测试=不可见的 no-op；commit message 声称的落账必须与 diff 一致。
