@@ -18,16 +18,13 @@ def test_ba_ledger_registered_before_first_progress_cb(monkeypatch, tmp_path):
     monkeypatch.setattr(ss, "_BATCH_TASKS_FILE", tmp_path / "batch_tasks.json")
 
     def fake_auto_score(codes, top_n, force_refresh, progress_cb):
-        # 模拟评分中途：第一只评完即回调（此时账本里必须已有任务）
+        # 模拟评分中途：第一只评完即回调（此时账本里必须已有任务）。
+        # 返回空 ranked/failures——运行后回填无料可补，done 里 600519 的唯一
+        # 来源就是回调 mark；若时序回退（start 挪回 run 后）本测试必红
+        # （监督员批 8 核对：原 fake 返回非空 ranked 时回填会救活断言=假锁）。
         progress_cb(1, len(codes), "600519", "50/B")
         captured["cb_seen"] = True
-        return {
-            "ranked": [{"code": "600519", "name": "茅台", "effective_grade": "B",
-                        "confidence": 0.7, "invalidate": False,
-                        "dim_scores": {"s": 50}, "dim_confidences": {"s": 1},
-                        "normalized_score": 50}],
-            "failures": [],
-        }
+        return {"ranked": [], "failures": []}
 
     captured = {}
     # benzong_batch_analyze 内是函数级 from-import——patch 源模块属性才会生效
