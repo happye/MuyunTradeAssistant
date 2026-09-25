@@ -24,3 +24,9 @@ DIM_CN = {
     "market_recognition": "市场认可",
     "risk_deduction": "风险控制",
 }
+
+# 缓存键构成声明（ADR-07 元数据）：实际键实现唯一归 cache.py
+# （cache.get(code, date, dim)，~/.muyun/benzong_cache/）。此处只集中
+# "缓存键由哪三个字段构成"这一事实，供文档与后续工具引用；与实现的
+# 一致性由 test_registry_cache_key_matches_cache_implementation 锁定。
+CACHE_KEY_FIELDS = ["code", "date", "dim"]

@@ -71,6 +71,21 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / 用户追问触发：条款级穷尽核对 + 4 处遗漏补齐
+
+- 用户质疑测试速度与文档遗留，触发逐条款穷尽核对。测试速度实证：809 收集/806 执行/56s——`--durations` 显示最慢 12 项占 45s（回测等价性 20.6s 等），其余 ~790 项为 mock 内存单测（均 <50ms）；快的原因是 M1 起网络体检 test_all_api（分钟级大户）已分离出离线集合。
+- **条款级核对发现的 4 处遗漏，本批补齐**：
+  1. ADR-02「配置校验给出字段路径与修正方式」未做 → load_config 补根类型/空文件/本地覆盖根类型三重校验（ValueError 带文件路径与修正指引；ai 节不校验，不阻止纯客观命令）+ 3 项测试
+  2. ADR-07「缓存键元数据集中」只写在 docstring → registry 补 CACHE_KEY_FIELDS 常量 + 测试锁与 cache.get 实际签名一致（首版就抓到声明与实现漂移：stock_code/date/dimension vs code/date/dim）
+  3. C5「分组表无专项测试」（批 8 漏登记，监督员批 8 核对点名）→ 补 2 项专项测试（两来源出分组表+口径说明；单来源不刷屏）
+  4. 批 8 的 C5 缺口登记本身漏写 plan/README → 本条补记
+- **核对后仍登记不修的条款（附理由）**：
+  - C2「以配置版本识别任务」：现有调用链外层无 config 上下文，强传=接线改动大于收益；输入标识（source/codes）已做
+  - C4「回答级引用归属」（AI 回答追到检索块）：chat 层归因，架构师「以后逐步迁移」条款，检索层分组视图已做
+  - ADR-06「任务 ID/结果时点可辨识」「全链路预算」：动 _safe_call 返回契约影响全部调用方，超最小化边界，按需专项
+  - ADR-02「RAG 退出可释放」：单例纪律已有，释放路径未专项验证，登记
+- 测试 +5（runtime 校验 3 + C5 分组 2）；全量 **811 passed / 0 failed**。
+
 ### 2026-09-25 / Claude Code / 批 8：ADR-04/06/07 收口（阶段 D）+ C 批次收口
 
 - **ADR-07 评分元数据**：新增 `src/core/benzong/registry.py`（DIM_ORDER/DIM_CN 集中声明）；main._BZ_DIM_CN 保持原名兼容并加注册表指针；测试锁 registry 与 scorer 权重键集合一致（防漂移）。唯一公式仍由 scorer.py 拥有，未动公式/未 bump CACHE_VERSION（无评分行为变化）。

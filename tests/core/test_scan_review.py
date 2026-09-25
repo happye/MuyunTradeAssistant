@@ -642,3 +642,49 @@ def test_scan_review_truly_empty_message_mentions_import(monkeypatch, tmp_path, 
     out = capsys.readouterr().out.replace("\n", "")
     assert "还没有可复盘的扫描历史" in out
     assert "scan review import" in out   # 空态提示引导导入（rich 换行容错）
+
+
+# ── C5：按扫描方法分组统计（v0.8.17）──────────────────────
+
+def test_scan_review_grouped_stats_by_source(monkeypatch, tmp_path, capsys):
+    """两种扫描来源 → 汇总后出「按扫描方法分组」表：各来源只次/胜率/平均超额。
+
+    回归锁（监督员批 8 核对：C5 此前无专项测试）：分组表、口径说明、
+    两种来源各自独立成行；无行情计入"无行情"列。
+    """
+    d1 = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    records = [
+        {   # 来源 A：600519 涨（+10），000001 无行情
+            "timestamp": f"{d1}T10:00:00", "source": "scan market 健康回调", "count": 2,
+            "items": [{"code": "600519", "name": "贵州茅台", "price": 100.0},
+                      {"code": "000001", "name": "平安银行", "price": 10.0}],
+        },
+        {   # 来源 B：600519 跌（-5）
+            "timestamp": f"{d1}T11:00:00", "source": "bz scan AI", "count": 1,
+            "items": [{"code": "600519", "name": "贵州茅台", "price": 100.0}],
+        },
+    ]
+    _patch_net_and_state(monkeypatch, tmp_path, records,
+                         {"600519": {"price": 110.0}, "000001": None},
+                         {"600519": {"price": 95.0}}, None)
+    cli_main.scan_review(days=7)
+    out = capsys.readouterr().out.replace("\n", "")
+    assert "按扫描方法分组" in out, "两种来源必须触发分组表"
+    assert "scan market 健康回调" in out and "bz scan AI" in out
+    assert "只次" in out and "胜率" in out and "平均超额" in out
+    # 口径说明（C5 验收：明确样本与缺失）
+    assert "只次独立计" in out and "不下结论" in out
+
+
+def test_scan_review_grouped_stats_single_source_no_table(monkeypatch, tmp_path, capsys):
+    """单来源单条记录 → 不出分组表（无对比意义，不刷屏）。"""
+    d1 = (datetime.now() - timedelta(days=3)).strftime("%Y-%m-%d")
+    records = [{
+        "timestamp": f"{d1}T10:00:00", "source": "scan market 健康回调", "count": 1,
+        "items": [{"code": "600519", "name": "贵州茅台", "price": 100.0}],
+    }]
+    _patch_net_and_state(monkeypatch, tmp_path, records,
+                         {"600519": {"price": 110.0}}, None, None)
+    cli_main.scan_review(days=7)
+    out = capsys.readouterr().out.replace("\n", "")
+    assert "按扫描方法分组" not in out

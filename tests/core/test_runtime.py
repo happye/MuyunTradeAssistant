@@ -105,6 +105,39 @@ def test_load_config_custom_path():
     assert isinstance(cfg, dict)
 
 
+def test_load_config_validates_root_type(monkeypatch, tmp_path):
+    """ADR-02 配置校验：根非字典（YAML 损坏）→ ValueError 带文件路径，
+    不让 config.get 在调用方深处抛 AttributeError。"""
+    import pytest
+    import src.config as cfg_mod
+
+    bad = tmp_path / "settings.yaml"
+    bad.write_text("- a\n- b\n", encoding="utf-8")   # 根是列表
+    monkeypatch.setattr(cfg_mod, "_DEFAULT_PATH", bad)
+    with pytest.raises(ValueError, match="根必须是字典"):
+        cfg_mod.load_config()
+
+    empty = tmp_path / "empty.yaml"
+    empty.write_text("", encoding="utf-8")
+    monkeypatch.setattr(cfg_mod, "_DEFAULT_PATH", empty)
+    with pytest.raises(ValueError, match="配置文件为空"):
+        cfg_mod.load_config()
+
+
+def test_load_config_local_override_non_dict_root_rejected(monkeypatch, tmp_path):
+    """local 覆盖文件根非字典 → 明确报错（不给静默深合并失败留门）。"""
+    import pytest
+    import src.config as cfg_mod
+    base = tmp_path / "settings.yaml"
+    local = tmp_path / "settings.local.yaml"
+    base.write_text("skills: {dir: x}\n", encoding="utf-8")
+    local.write_text("- bad\n", encoding="utf-8")
+    monkeypatch.setattr(cfg_mod, "_DEFAULT_PATH", base)
+    monkeypatch.setattr(cfg_mod, "_LOCAL_PATH", local)
+    with pytest.raises(ValueError, match="本地覆盖文件根必须是字典"):
+        cfg_mod.load_config()
+
+
 def test_backtest_assembly_does_not_use_live_factory():
     """回测装配独立于 live 工厂（ADR-02 验收：源码级守卫，防误收敛）。"""
     bt = os.path.join(os.path.dirname(__file__), "..", "..", "src", "core", "backtest_engine.py")

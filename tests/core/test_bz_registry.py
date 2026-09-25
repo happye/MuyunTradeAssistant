@@ -26,3 +26,13 @@ def test_registry_order_and_cn_consistency():
     """DIM_ORDER 与 DIM_CN 键集合一致（顺序表不漏维度）。"""
     assert set(DIM_ORDER) == set(DIM_CN.keys())
     assert len(DIM_ORDER) == 6
+
+
+def test_registry_cache_key_matches_cache_implementation():
+    """CACHE_KEY_FIELDS 与 cache.py 实际键签名一致（ADR-07 元数据不漂移）。"""
+    import inspect
+    from src.core.benzong import cache
+    from src.core.benzong.registry import CACHE_KEY_FIELDS
+    params = list(inspect.signature(cache.get).parameters.keys())
+    assert params[:3] == CACHE_KEY_FIELDS, \
+        f"registry 声明的缓存键 {CACHE_KEY_FIELDS} 与 cache.get 实际签名 {params[:3]} 漂移"

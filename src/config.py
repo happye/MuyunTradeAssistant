@@ -32,13 +32,25 @@ def load_config(config_path: str = None) -> dict:
     仍由各 AI 入口自行兜底。
 
     config_path 缺省用项目根下的 configs/settings.yaml（不依赖调用者 cwd）。
+
+    配置校验（ADR-02：只检查必需字段，错误给出字段路径和修正方式；不因未配置
+    可选 AI 而阻止纯客观命令——ai 节不校验）：
+    - 根必须是字典（YAML 顶层列表/标量=配置文件损坏，给出文件路径）
     """
     path = Path(config_path) if config_path else _DEFAULT_PATH
     with open(path, 'r', encoding='utf-8') as f:
         config = yaml.safe_load(f)
+    if config is None:
+        raise ValueError(f"配置文件为空: {path}（可对照 configs/settings.yaml.example 重建）")
+    if not isinstance(config, dict):
+        raise ValueError(f"配置文件根必须是字典（键值对）: {path}——"
+                         f"当前类型 {type(config).__name__}，可能是文件损坏，"
+                         f"请对照 configs/settings.yaml.example 检查")
     if _LOCAL_PATH.exists():
         with open(_LOCAL_PATH, 'r', encoding='utf-8') as f:
             local = yaml.safe_load(f) or {}
         if local:
+            if not isinstance(local, dict):
+                raise ValueError(f"本地覆盖文件根必须是字典: {_LOCAL_PATH}")
             config = _deep_merge(config, local)
     return config
