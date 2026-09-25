@@ -27,6 +27,9 @@
 | 财务三表（营收/利润/现金流/ROE） | baostock 季频明细接口（query_profit_data 等） | 待现场探查（接口存在，**本项目未接线**，公布日字段可得性未验证） | 未接 | ⚠️ F4/F5 因子接线前必须先跑 external 探查脚本；无公布日则只能 live，不进回测 |
 | 分部营收/业务暴露 | 无稳定自动接口 | 不可得 | 无 | 走 `user_asserted_record` 人工通道（DESIGN 允许，USER_ASSERTED 标记输入者/时间/适用期） |
 | ST 状态/股东户数/融资余额 | baostock/akshare | **当前值 only，非 PIT**（ISS-053 实证） | 已接（live 安全网/top_signal） | live only；回测路径保持禁用（既有纪律不变） |
+| 行业数据（需求量/价格/库存） | industry_data.py（chat 行业分析文本报告层） | **无结构化序列、无 PIT**（TTL 缓存 1 小时 + 缺失/过期降级标注，live-only） | 文本层已接（chat 用） | ⚠️ 不能作 PIT 证据；结构化需求量数据待现场探查接线（demand_change_v1 依赖） |
+| 行业指数 | **未接线**（data_feeder 仅取大盘 sh.000300） | 待现场探查（baostock 有行业指数接口，公布语义未验证） | 未接 | ⚠️ relative_trend_v1 的分母必需——接线前因子只登记不计算 |
+| 停牌状态 | **未接线**（data_feeder K 线无 tradestatus 字段） | 待现场探查 | 未接 | ⚠️ trading_capacity_v1 的状态分量暂记 UNKNOWN（比值主计算不受阻） |
 | RAG 检索块 | 本地 FAISS | 方法文本，非事实 | 已接 | qualify 默认排除——不当公司事实 |
 
 **首发行业范围结论**（TASKS F3"发现不足则缩小首发范围并明示"）：严格 PIT 回测可用的

@@ -362,3 +362,76 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：REVIEW（待 quality-guard + 监督员核对）
 
 ---
+## F4 — 三路候选与最小因子包
+
+- **任务**：F4 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`5d14727`（F3 证据快照）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/candidate_pool.py` | 新增：CandidateRoute 三路 / RouteContribution 谱系 / Candidate 并集去重 / CandidateSet（配额确定序截断+excluded 可追溯+fingerprint 排列无关）/ scan·bz 窄适配构造（量比缺失→volume_ratio_missing） |
+| `src/core/factor_registry.py` | 新增：FactorSpec 登记模板（DESIGN §5.3 全字段）+ 首批 8 因子登记 + validate_registry 自检（needs_data_probe 标记上游未验证因子） |
+| `tests/core/test_candidate_lineage.py` | 新增：17 测试（含审查修复回归组：法C形态/空码留痕/rank配额/来源截断原因/同路多规则谱系/dict序不变/filter序不变） |
+
+### 已完成条款（对照 TASKS.md F4）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 多渠道同股只计算一次 | build_candidate_set 并集去重（同股一个 Candidate，contributions 记全部路） | `test_union_dedup_same_stock_once` |
+| 候选来源配额不会因输入顺序变 | 路内 (code, rule, rank, filters) 确定序截断 + fingerprint 排列无关 | `test_quota_stable_under_input_permutation` |
+| 长期候选不受当天回调必要条件误杀 | LONG_QUALITY 路独立准入+独立配额 | `test_long_quality_admitted_without_technical_conditions` / `test_quota_per_route_independent` |
+| 快照缺量比的候选标待验证，不宣称缩量 | scan 适配 missing_filters=volume_ratio_missing（missing≠applied） | `test_missing_volume_ratio_marked_not_claimed` / `test_scan_adapter_marks_missing_amount_too` |
+| 不新增龙头偏向，不把小盘按论文一刀切删除 | 候选池层只有配额无规模歧视 | `test_no_size_or_leader_discrimination` |
+| 保留 source/rule_version/applied/missing filters/rank completeness/**来源截断原因+配额截断记录** | RouteContribution.source_truncation_reason + excluded_by_quota（F4 审查 P1 断链修复：适配器收下→构造时透传） | `test_source_truncation_reason_preserved` / `test_quota_stable_under_input_permutation` |
+| 新因子登记文件 | factor_registry 8 因子全字段登记（definition/inputs/unit/missing_policy/sector_scope/availability_rule/economic_hypothesis/experiment_id/needs_data_probe） | `test_factor_registry_complete_and_valid` |
+| 避免加一个含糊综合分 | 登记表无综合分；缺失政策全部显式 UNKNOWN/NOT_APPLICABLE | `test_no_composite_score_in_specs` |
+| 旧六维按原口径显示 | 零改动 bz scorer（`git show --stat` 可证） | — |
+
+### 未完成条款（保持 TODO）
+
+- **同研究预算比较召回效果**（TASKS F4 验收条款）：实验比对类——挂 E4 实验执行/F7
+  接线后可测；F4 交付池本体（fingerprint 可作实验对账键）。审查 P1 指出本条款原记录
+  无声缺失，已补登记
+- 候选池生产接线（today 命令消费 CandidateSet）：属 F7 统一行动工作台（TASKS F7 文件
+  清单）；F4 交付池本体+窄适配构造函数，旧 scan/bz 命令零改动（回滚=关新路线，满足回滚条款）
+- 质量路自动准入数据源（长期质量筛选依赖财务因子）：needs_data_probe 因子在 F3 矩阵
+  探查前只登记不计算——质量路现以显式输入（如观察池/用户名单）为源
+- 相对趋势/执行容量两因子（行情天然 PIT，needs_data_probe=False）的计算函数：随 F5
+  策略层/组合预算接线时实现（F4 只登记定义）
+
+### 对抗审查记录（code-quality-guard，2026-09-25，1 P0+4 P1+8 P2）
+
+- 🔴 P0 from_theme_results 与 bz 法C 真实形态（{"code","name",...}）不兼容——INDUSTRY 路静默清零 → **已修**（双键回退 stock_code/code + name 回退 + 空码 skipped_invalid 计数留痕）+ 回归锁
+- 🔴 P1 截断原因断链（适配器收下 _truncation_reason 构造时丢弃，账本宣称不实）→ **已修**（RouteContribution.source_truncation_reason 透传 + 账本行改如实）+ 回归锁
+- 🔴 P1 配额按代码字典序截断=板块系统性偏置（与自述病根矛盾）→ **已修**（拍板：rank_in_source 优先，缺失排最后；同 rank 按 rule/code 定序）+ 回归锁
+- 🔴 P1 登记表与 DATA_COVERAGE 三处不一致（demand_change 幻影类别「行业数据」/relative_trend 行业指数未接线却 probe=False/trading_capacity 停牌状态未接线）→ **已修**（矩阵补行业数据/行业指数/停牌状态三行如实标注；relative_trend 降 probe=True；trading_capacity 停牌分量 UNKNOWN 说明）
+- 🔴 P1 测试恒真断言（or True）→ **已修**（改为真锁：登记模块仅 get_spec/validate_registry 两函数=「只登记不计算」机器化；弱兜底收紧为 UNKNOWN/NOT_APPLICABLE）
+- ⚠️ P2 同路多规则谱系保留（只计算一次≠只记录一次）/fingerprint filter 排序/空码静默/死导入/names 回填/子串级校验注明/dict 序测试——**全部已修**；账本隔离脚注 → 已补
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_candidate_lineage.py -q
+# 首版 10 passed → 审查修复后 17 passed
+.\.venv\Scripts\python.exe -m pytest -q
+# 943 passed, 2 skipped, 1 deselected（F3 后 926 + 净增 17；F5 预置文件 stash 隔离后实测提交树口径）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "candidate_pool\|factor_registry" src/ tests/` → 仅本模块+测试（无生产消费方）
+- bz/scorer/scan_rules 零改动（旧口径保真；CACHE_VERSION 红线不适用）
+
+### 用户可见变化
+
+无（候选池为 F7 today 命令的基建；旧命令行为零变化）。
+
+### 迁移/回滚验证
+
+- 回滚 = 删除两个新模块+测试即回 5d14727；旧 scan/bz 命令可用性不受影响（零接线）
+
+### 状态：REVIEW（待 quality-guard + 监督员核对）
+
+---
