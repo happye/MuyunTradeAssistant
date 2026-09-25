@@ -1701,3 +1701,78 @@ M5 批实证：test_tui 的 `_mock_engines` patch `portfolio.PortfolioManager`�
 - Recurrence-Count: 1
 - First-Seen: 2026-09-25
 - Last-Seen: 2026-09-25
+
+## [LRN-20260925-017] best_practice — 决策语义与研究证据分开验收
+
+**Logged**: 2026-09-25
+**Priority**: high
+**Status**: applied（2026-09-25 F0–F2 已实施：PROBES A/B 转真回归/终态统一/持仓分离落地并有测试锁；收益验证留 F8/F9）
+**Area**: architecture, research
+
+### Summary
+
+用户本任务只授权架构规划。对bdebf13进行只读探针，确认人话摘要可能与传入的最终策略动作相反；DecisionResult.score是动作强度，不能直接视为买入吸引力或上涨概率。分析建议与已确认持仓需分离；局部探针不能替代端到端或收益验证。
+
+### Suggested Action
+
+- 执行plan/fusion/F0–F2时，把PROBES中的案例接到真实Strategy/PlanGuard/Execution路径；所有界面只消费统一终态。
+- 当前bz规则代理、人工指定mode历史案例与live AI是不同信息集，分别标识，不能以旧收益证明自动选股能力。
+- 断点交接依赖仓库文件；已停止子任务的未落盘内容不能算已完成。恢复先核对HEAD与文档，再继续。
+
+### Metadata
+
+- Source: read_only_architecture_review
+- Related Files: plan/fusion/README.md, plan/fusion/PROBES.md, plan/fusion/RESUME.md
+- Pattern-Key: decision.final_state_and_evidence_semantics
+
+## [LRN-20260925-018] best_practice — pydantic v2 契约建模三坑（F0 实证）
+
+**Logged**: 2026-09-25
+**Priority**: high
+**Status**: applied（decision_contract.py 已按此实现并有测试锁）
+**Area**: pydantic, data-contract, test
+
+### Summary
+
+F0 写 DecisionPacket 契约踩中 pydantic v2 三个坑：① **默认值不校验**——`field_validator` 对缺省字段根本不跑（exchange 派生逻辑静默失效，36 测试里 6 个红灯才暴露），派生/归一逻辑必须放 `model_validator(mode="before")`；② **frozen 模型不能构造后赋值**——ADR-F02 要不可变记录，派生逻辑改成在 mode="before" 阶段改输入 dict（frozen 下 mode="after" 原地赋值直接炸 `Instance is frozen`）；③ **全角数字陷阱**——`str.isdigit()` 对 `'６００５１９'` 返回 True 产出垃圾 ID，必须 `isascii() and isdigit()`（全角字符是本项目登记在案的坑面）。
+
+### Suggested Action
+
+- 新契约/模型把"缺省时也要跑的逻辑"一律写进 model_validator(mode="before")；field_validator 只做显式传入值的校验。
+- 不可变契约（frozen=True）配套做三件事：禁 model_construct（重写抛 NotImplementedError 防绕过校验）、extra="allow" 保未知字段、全角字符显式拒收。
+
+### Metadata
+
+- Source: session_finding（F0 实施 + code-quality-guard 3 阻断审查）
+- Related Files: src/core/decision_contract.py, tests/core/test_decision_contract.py
+- Tags: pydantic-v2, frozen-model, validator-default-pitfall, fullwidth-digits
+- Pattern-Key: pydantic.contract-modeling
+- Recurrence-Count: 1
+- First-Seen: 2026-09-25
+- Last-Seen: 2026-09-25
+
+## [LRN-20260925-019] best_practice — 测试替身枚举比较恒 False + 提交树计数口径
+
+**Logged**: 2026-09-25
+**Priority**: medium
+**Status**: applied
+**Area**: test, discipline
+
+### Summary
+
+F1/F2 两课：① 测试替身用 `SimpleNamespace(value="FLAT")` 冒充 `TradeLifecycle` 枚举，生产代码 `new_state.lifecycle == TradeLifecycle.FLAT` 恒 False → 删除分支静默不触发（假绿）；替身涉及相等比较的字段必须用真枚举。② 批次 commit 的测试计数要按**提交树**口径——工作区混入下一批文件时，用 `git stash push -u -- <下一批文件>` 隔离后实测再提交（F1 提交树 873 passed 实测，与算术 852+21 精确吻合），消灭"分项加总对不上"的账本漂移温床。
+
+### Suggested Action
+
+- 替身里的枚举语义字段（lifecycle/decision/status）一律 import 真枚举，别用 SimpleNamespace(value=...) 冒充参与 == 比较。
+- 多批次并行实施时：提交前 stash 下一批文件 → pytest -q 实测 → commit → stash pop；计数进 commit message（L05）。
+
+### Metadata
+
+- Source: session_finding（F1 观察量测试红灯 + F2 提交树计数）
+- Related Files: tests/core/test_portfolio_observation.py, src/data/portfolio.py
+- Tags: test-double, enum-equality, commit-tree-count, L05, git-stash-isolation
+- Pattern-Key: test.double_enum_and_count_scope
+- Recurrence-Count: 2（枚举比较类问题本会话第二次出现）
+- First-Seen: 2026-09-25
+- Last-Seen: 2026-09-25

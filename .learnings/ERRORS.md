@@ -384,3 +384,12 @@ FETCH FAIL: fatal: unable to access 'https://github.com/happye/MuyunTradeAssista
 - Reproducible: no（瞬时网络抖动）
 - Related Files: .workbuddy/scripts/push_github.py
 - Tags: git-push, tls, transient, retry, proxy
+
+## [ERR-20260925-001] 只读架构探针的解释器访问与输出编码
+
+**Logged**: 2026-09-25
+**Status**: resolved（探针执行环境处理；非产品修复）
+
+沙箱内`.venv/Scripts/python.exe -`无法启动其引用的uv解释器；经自动审批允许后，同一仅用标准库的只读AST探针在沙箱外成功。未重装依赖或改PATH。第一次中文stdout经工具显示乱码，改用JSON ensure_ascii=True重跑确认结果。不要将环境访问或显示编码失败当成产品回归失败。
+
+研究网页个别PDF/DOI访问失败，改从作者机构或官方原文读取；未将失败页面当成已获取证据。详情与实际探针结果见plan/fusion/PROBES.md。
