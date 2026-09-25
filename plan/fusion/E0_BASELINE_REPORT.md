@@ -1,6 +1,6 @@
 # E0 正确性基线报告（plan/fusion EXPERIMENTS.md E0）
 
-生成：2026-09-26T01:07:11；样本口径 = 人工标注 mode 案例集（test_jumpA_backtest_5year.CASES，framework_strict，20万初始资金）
+生成：2026-09-26T01:51:56；样本口径 = 人工标注 mode 案例集（test_jumpA_backtest_5year.CASES，framework_strict，20万初始资金）
 
 **诚实 caveat**：
 1. 人工标注 mode 对 mode 层 bug 免疫（ISS-065）——本实验不测 mode 判定；
