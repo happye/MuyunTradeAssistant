@@ -185,11 +185,19 @@ class RankingLayer:
         直接映射 DecisionResult.score (0-1) → 0-100。
         score 已经是 base信号投票 + regulator修正 + AI/事件调节后的综合分数。
 
+        F2（plan/fusion TASKS F2 验收"SELL强度不再被当买入吸引力"）：排名层只服务
+        scan 买入候选榜——SELL 决策的 score 是卖出强度（探针 D：SELL .9→90 分被当
+        买入排序依据的病根），记 0 分不入排序，原始强度留 detail 供诊断。
+
         Returns:
             (score, detail)
         """
         if dr is None:
             return 50.0, "无决策数据"
+
+        # F2：SELL 强度不是买入吸引力
+        if dr.decision.value == "SELL":
+            return 0.0, f"SELL(score={dr.score:.2f})——卖出强度不计入买入技术分"
 
         score = self._clip(dr.score * 100, 0, 100)
         decision = dr.decision.value

@@ -153,10 +153,10 @@
 | `src/data/proposals.py` | 新增：Proposal/FillRecord/ProposalStore（~/.muyun/proposals.json，原子写+内容指纹冲突拒绝+惰性过期 TTL 7 天+同股同日幂等合并） |
 | `src/data/portfolio.py` | 删除 `update_from_strategy_decision`（建议整包当事实回写的病根）；新增 `record_analysis_observation`（观察量白名单原地更新）/`record_proposal`/`confirm_fill`/`pending_proposals`/`reject_pending_proposal`；PositionRecord 加 `holding_verification`（LEGACY_UNVERIFIED 迁移+一次提示）；M5 保护原样保留 |
 | `src/chat/tools.py` / `src/web/app.py` / `src/tui/app.py` | 回写→观察量+建议（chat 保留重读+防外部删仓门） |
-| `src/cli/main.py` | l/la 观察量+建议落盘（la 的 high_since_entry 此前仅内存更新，现持久化）；manage_positions 加 confirm 动作 + pos list 待确认建议区；ratio 签名 float\|None（add 兜底 0.20 内移） |
+| `src/cli/main.py` | l/la 观察量+建议落盘（la 的 high_since_entry 此前仅内存更新，现持久化）；manage_positions 加 confirm 动作 + pos list 待确认建议区 + LEGACY 记录核对提示；ratio 签名 float\|None（add 兜底 0.20 内移） |
 | `start.py` | pos confirm 解析/run_cli/帮助菜单 |
-| `src/cli/plain_errors.py` + `docs/报错速查手册.md` | 新告警人话映射 6 条（三处同步纪律） |
-| `tests/core/test_portfolio_observation.py` / `test_confirmed_fill.py` | 新增 13+13 测试；`test_iss078_portfolio_safety.py` 4 测试迁移新方法（语义锁保留） |
+| `src/cli/plain_errors.py` + `docs/报错速查手册.md` | 新告警人话映射 5 条（另有 2 条由既有通用映射命中；三处同步纪律） |
+| `tests/core/test_portfolio_observation.py` / `test_confirmed_fill.py` | 新增 8+13 测试；`test_iss078_portfolio_safety.py` 4 测试迁移新方法（语义锁保留） |
 | `AGENTS.md` §五 / `docs/chat模块架构文档.md` | update_from_strategy_decision 表述 → 三拆语义（P1-7 文档同步） |
 
 ### 已完成条款（对照 TASKS.md F1）
@@ -187,7 +187,7 @@
 - 🔴 P1-3 ADD 确认后永不转 CONFIRMED → **已修**：BUY 分支同样匹配建议+回归锁
 - 🔴 P1-4 REDUCE 恰达目标误标 PARTIAL → **已修**：partial 按"是否达建议目标"判+回归锁
 - 🔴 P1-5 pos rm 后 pos confirm 崩溃 → **已修**：先查持仓记录，None 时作废建议（REJECTED）+人话提示
-- 🔴 P1-6 六条新 WARNING 零映射 → **已修**（审查运行期间先行补齐）：plain_errors 6 条+手册新节
+- 🔴 P1-6 新 WARNING 零映射 → **已修**（审查运行期间先行补齐）：plain_errors 5 条新映射（另 2 条由既有通用条命中）+手册新节
 - 🔴 P1-7 AGENTS.md/chat架构文档仍教调已删方法 → **已修**：三处改写三拆语义
 - ⚠️ P2-1 价格校验双标 → **已修**（两分支统一 _validate_price→FillResult）；⚠️ P2-2 冷却期记录加仓不重置 → **已修**（空仓再建仓重置 lifecycle+state+回归锁）；⚠️ P2-3 观察量测试未注入账本路径 → **已修**（_pm 注入，脚本直跑安全）；⚠️ P2-4 成交日冷却多扣一天 → **已修**（写 last_tick_date=成交日+回归锁）；⚠️ P2-5 僵尸记录 → 登记不修（见未完成条款）；⚠️ P2-6 账本坐标 → 已随本记录更新
 
@@ -197,7 +197,7 @@
 .\.venv\Scripts\python.exe -m pytest tests/core/test_confirmed_fill.py tests/core/test_portfolio_observation.py tests/core/test_iss078_portfolio_safety.py -q
 # 34 passed（修复后含 8 个审查回归锁）
 .\.venv\Scripts\python.exe -m pytest -q
-# 872 passed, 2 skipped, 1 deselected（F0 后 852 + F1 新增 20：obs 8+fill 13-1迁移口径按净增算，ISS-078 迁移净 0）
+# 873 passed, 2 skipped, 1 deselected（F0 后 852 + F1 净增 21：obs 8 + fill 13；ISS-078 4 测试迁移净 0）
 ```
 
 ### 同类调用点扫描
@@ -221,5 +221,79 @@
 - 回滚：回到 e99b280 可恢复旧建议流（回写调用方在旧 commit 自洽）；**不能恢复"分析自动当成交"**（TASKS F1 回滚条款原文满足）
 
 ### 状态：REVIEW（7 阻断已修 + 全量待终验，commit 后由监督员核对转 VERIFIED）
+
+---
+## F2 — 最终裁决与所有输出一致
+
+- **任务**：F2 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`83698f2`（F1 持仓事实分离）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/analysis_service.py` | 新增：`build_decision_packet`——末端 Strategy+Execution → 唯一 DecisionPacket（防御钳制：旧七层非法组合转合法包+reason_code 留痕，绝不丢弃退出意图） |
+| `src/cli/action_view.py` | 新增：`terminal_verdict`（终态行动判定，七 bucket）+ `render_action_card`（人话行动卡） |
+| `src/core/orchestrator.py` | ① `analyze_packet` 适配出口（ADR-F01：旧 analyze 协议保留）；② AI/事件调节方向感知 helper `_apply_sentiment_to_decision` + 三处合并点接线（AI 分支/事件合并增量/事件独立）+ `ai.direction_aware_adjustment` 开关 |
+| `src/core/ranking_layer.py` | `_calc_technical_score`：SELL 强度记 0 分不入买入候选排名（探针 D 病根；原始强度留 detail 诊断） |
+| `src/cli/main.py` | `_print_plain_summary` 终态化：第一节由 `terminal_verdict` 驱动（execution_eval 新参数）；l/la 构造 packet 传证据；原始卖点被压制时仅作诊断注解 |
+| `src/chat/tools.py` | 构造 packet 传证据（chat 层） |
+| `src/cli/evidence.py` | `record_evidence` 追加终态字段（decision_id/desired_action/target_weight/execution_status/research_status/policy_id，缺字段=当时未记录）；`diff_evidence` 同步消费 desired_action/execution_status/target_weight |
+| `configs/settings.yaml` | `ai.direction_aware_adjustment: true`（false=回 legacy 统一加减口径，A/B 对照开关，满足 TASKS"改变行为的要 A/B 不混同等价适配"） |
+| `src/core/decision_contract.py` | 契约窄缝补（监督员 F0 报告）：confirmed 未知时 delta 必须 None + 回归测试 |
+| `tests/core/test_action_view.py` / `test_analysis_service.py` / `test_ai_direction.py` / `test_decision_contract.py` | 新增 8+16+8+1 测试 |
+
+### 已完成条款（对照 TASKS.md F2）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| PROBES A/B 转真正的 PlanGuard/Execution 接线回归 | terminal_verdict 用真实 StrategyDecision/ExecutionEvaluation 对象；摘要级全链测试 | `test_probe_a_suppressed_sell_shows_hold`（压制 HOLD 不得播报卖出）/ `test_probe_b_forced_exit_shows_exit`（强制退出不得播报无事）/ `test_plain_summary_probe_a/b`（经 _print_plain_summary 全链） |
+| 所有强制退出路径与压制路径覆盖 | verdict 映射表全覆盖 6 position_action × blocked；摘要三分支（EXIT/BLOCKED/注解） | `test_action_mapping_table` / `test_exit_blocked_keeps_exit_intent` / `test_plain_summary_exit_blocked` |
+| 行情同快照各入口输出相同终态 | build_decision_packet 唯一构造 + terminal_verdict 唯一判定（REPL/chat 同源）；packet 构造期不变量锁非法包 | `test_analysis_service` 13 测试 + action_view 8 测试 |
+| SELL 强度不再被当买入吸引力 | ranking 技术分 SELL→0 + 接线哨兵测试（三合并点必须走 helper、无裸加法残留） | `test_ranking_sell_strength_not_buy_attractiveness` / `test_orchestrator_merge_sites_use_direction_aware_helper` |
+| AI score 语义独立小批：明确 direction/strength，禁止看空降低卖出强度 | `_apply_sentiment_to_decision`：SELL+负调节→跳过分数调节（仓位上限/强制状态照常）；开关可回 legacy | `test_bearish_does_not_weaken_sell` / `test_black_swan_does_not_weaken_sell` / `test_legacy_switch_restores_old_behavior` |
+| 原 buy/sell 路径原因仍可查，legacy 安全网不退化 | legacy_trace 投影（decision/action_strength/position_action/position_ratio/sell_path 全保留）+ 摘要"未采纳"诊断注解；安全网代码零改动（FORCE_EXIT_SCORE/PlanGuard/force_exit 原样） | `test_policy_id_is_legacy_and_trace_projection`；diff 审查可证零裁决逻辑改动 |
+| 证据卡/diff/排名消费终态 | evidence 终态字段追加 + diff 消费 + ranking SELL→0 + 摘要终态化 | `tests/core/test_evidence.py` 既有锁全绿（追加式不破坏） |
+| BUY机会榜与持仓风险榜分开 | ranking 层只服务买入候选（scan 唯一消费方），SELL 不再入榜排序 | ranking_layer 改动 + 测试 |
+| 回滚条款：统一输出与事实修复保留；新 AI 调节语义可单独关闭 | direction_aware_adjustment=false 即回 legacy 口径；摘要/证据/排名统一为正确性修复保留 | `test_legacy_switch_restores_old_behavior` |
+
+### 未完成条款（保持 TODO）
+
+- chat/Web/TUI 直接消费 DecisionPacket 渲染：chat formatter 已展示终态 position_action（双列并存：原始决策+终态动作），行动卡（action_view.render_action_card）进 chat/Web/TUI 视图留给 F7 统一行动工作台（TASKS F7 文件清单）
+- **display_result 详版（l 全版/a/json 入口）未终态化**：展示原始 result.decision/position_action（任务卡允许"原始信号在详版报告"，但缺"原始信号非终态"标注）——F7 统一行动卡时补标注
+- watch 准入消费研究资格（ADR-F08 自动 watch 准入定义）：现维持 v0.8.12 语义，F7 随 today 服务重定义
+- **confirmed_ratio 三入口口径统一**（F2 审查 P2）：现 l/chat"无持仓记录=0.0"、la 同——portfolio 读取异常时应传 None（组合未知）而非 0.0（钳制基于错误事实）；随 F3 数据资格层贯通
+- **reason_codes 码化**（F2 审查 P2）：当前混入中文人话钳制说明（如"适配钳制: 已持仓时 OPEN 转 ADD"），F7 机器消费前改结构化码+人话字典
+- "AI 已结合技术背景再调节=证据重复计权"（RESEARCH §3.1）：prompt 层重构属 F6 范围，F2 只修方向语义——登记不修
+
+### 用户可见变化（v0.8.18 同批）
+
+1. `l` 人话摘要不再自相矛盾：PlanGuard 压制后说"继续持有"（附原始卖点诊断注解），强制退出救回后说"按纪律卖出"——不再出现"卖出信号"与"继续持有"同时出现的打架文案（PROBES A/B 实证的两个病根）
+2. 退出受阻（跌停/停牌）时摘要明说"现在卖不出，持仓记录不变，下个时段再检查"——不再误读为"继续看好"
+3. `diff <代码>` 新增终态对比（建议动作/执行状态/目标仓位变化）
+4. 看空新闻不再软化卖出信号（方向感知调节，可在 settings.yaml `ai.direction_aware_adjustment: false` 回旧口径对照）
+5. scan 排名不再把强卖出信号当高技术分买入候选
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_action_view.py tests/core/test_analysis_service.py tests/core/test_ai_direction.py -q
+# 32 passed
+.\.venv\Scripts\python.exe -m pytest -q
+# 906 passed, 2 skipped, 1 deselected（F1 后 873 + F2 净增 33：action_view 8（含摘要全链 3）+ analysis 16 + ai_direction 8 + contract 1）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "decision_result.score +" src/` → 仅 `_apply_sentiment_to_decision` 内部一处（三合并点全部接线，哨兵测试锁死）
+- `grep -rn "score \* 100" src/core/ranking_layer.py` → 仅 BUY 路径；SELL 提前返回 0
+- 摘要旧口径完整保留在降级分支（strategy_decision=None 时）——watch 池文案测试未破坏
+
+### 迁移/回滚验证
+
+- evidence.jsonl 旧记录零迁移（终态字段追加，缺字段=当时未记录，diff 不误报）
+- 回滚：ai.direction_aware_adjustment=false 回 AI legacy 口径；摘要/证据/排名/统一终态为正确性修复不随回滚撤销（TASKS F2 回滚条款）
+
+### 状态：REVIEW（待 quality-guard + 监督员核对）
 
 ---

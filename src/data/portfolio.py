@@ -825,6 +825,8 @@ class PortfolioManager:
                 if was_empty:
                     rec["lifecycle"] = "OPEN"
                     rec["entry_date"] = today
+                    # 重新建仓：成本基线取本次成交价；未传价则置 None（不残留旧持有期价）
+                    rec["entry_price"] = price if price is not None else None
                     rec["strategy_state"] = self._fresh_strategy_state(
                         min_hold_days=self.DEFAULT_MIN_HOLD_DAYS)
                 rec["current_ratio"] = new_ratio

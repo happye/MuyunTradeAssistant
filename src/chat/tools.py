@@ -332,9 +332,20 @@ def _analyze_stock_single(stock_code: str) -> str:
             logger.debug(f"chat 观察池入池失败(不影响分析): {e}")
 
         # C1：分析证据落盘（JSONL + 证据卡），失败不影响分析
+        # F2：构造 DecisionPacket → 证据卡携带终态字段
+        _packet = None
+        try:
+            from src.core.analysis_service import build_decision_packet
+            _packet = build_decision_packet(
+                decision_result, strategy_decision, execution_eval,
+                confirmed_ratio=(pos.current_ratio if pos is not None else 0.0),
+                source="chat")
+        except Exception as e:
+            logger.info(f"chat DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
         try:
             from src.cli.evidence import record_evidence
-            record_evidence(decision_result, strategy_decision, source="chat")
+            record_evidence(decision_result, strategy_decision, source="chat",
+                            packet=_packet)
         except Exception as e:
             logger.debug(f"chat 分析证据钩子异常(不影响主流程): {e}")
 

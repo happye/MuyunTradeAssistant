@@ -154,16 +154,29 @@ def test_touch_ignores_buy_sell_and_positions(monkeypatch, tmp_path):
 
 # ── 人话摘要两态文案 ─────────────────────────────────────
 
+def _real_watch_sd():
+    """真实末端 StrategyDecision（F2 后摘要走终态分支——测试必须锁真实路径）。"""
+    from src.data.models import (
+        PositionAction, SignalType, StrategyDecision, StrategyState, TradeLifecycle,
+    )
+    return StrategyDecision(
+        decision=SignalType.WATCH, position_action=PositionAction.STAY_OUT,
+        lifecycle_before=TradeLifecycle.FLAT, lifecycle_after=TradeLifecycle.FLAT,
+        new_state=StrategyState(),
+    )
+
+
 def test_summary_watch_added_and_in_pool(monkeypatch, tmp_path, capsys):
     _redirect_state(monkeypatch, tmp_path)
     sd = _FakeSD(price=1250.0)
     result = _FakeDecision("WATCH")
 
-    cli_main._print_plain_summary(result, None, sd, watch_info={"status": "added", "item": {"code": "600519", "price": 1250.0}})
+    cli_main._print_plain_summary(result, _real_watch_sd(), sd,
+                                  watch_info={"status": "added", "item": {"code": "600519", "price": 1250.0}})
     out1 = capsys.readouterr().out
     assert "已放进观察池" in out1 and "入池价 1250.0" in out1
 
-    cli_main._print_plain_summary(result, None, _FakeSD(price=1300.0),
+    cli_main._print_plain_summary(result, _real_watch_sd(), _FakeSD(price=1300.0),
                                   watch_info={"status": "in_pool",
                                               "entry": {"timestamp": "2026-09-20T10:00:00",
                                                         "item": {"code": "600519", "price": 1250.0}}})
@@ -174,7 +187,7 @@ def test_summary_watch_added_and_in_pool(monkeypatch, tmp_path, capsys):
 def test_summary_watch_without_pool_info_falls_back(monkeypatch, tmp_path, capsys):
     """入池失败（watch_info=None）→ 措辞不再承诺「放进观察池」。"""
     _redirect_state(monkeypatch, tmp_path)
-    cli_main._print_plain_summary(_FakeDecision("WATCH"), None, _FakeSD(), watch_info=None)
+    cli_main._print_plain_summary(_FakeDecision("WATCH"), _real_watch_sd(), _FakeSD(), watch_info=None)
     out = capsys.readouterr().out
     assert "适合观望" in out and "已放进观察池" not in out
 

@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.17"  # v0.8.17=分析证据层+diff对比命令(plan/C1)+ADR-02装配统一；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.18"  # v0.8.18=持仓事实分离(plan/fusion F1)+终态统一输出(F2)+pos confirm；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

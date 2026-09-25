@@ -354,7 +354,9 @@ class DecisionPacket(BaseModel):
         if self.delta_weight is not None:
             if tgt is None:
                 raise ValueError("delta_weight 有值但 target_weight 为 None，语义矛盾")
-            if cur is not None and abs(self.delta_weight - (tgt - cur)) > 1e-6:
+            if cur is None:
+                raise ValueError("已确认权重未知时 delta_weight 必须为 None（未知则 null，DESIGN §2.2）")
+            if abs(self.delta_weight - (tgt - cur)) > 1e-6:
                 raise ValueError(
                     f"delta_weight={self.delta_weight} 与 target-confirmed={tgt - cur} 不一致")
 

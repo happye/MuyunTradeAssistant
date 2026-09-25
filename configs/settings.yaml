@@ -97,6 +97,7 @@ ai:
   enabled: true
   debug: false               # debug模式：打印AI交互的完整输入输出
   provider: "deepseek"       # deepseek / kimi
+  direction_aware_adjustment: true  # F2（plan/fusion）：看空消息不削弱卖出强度（方向感知调节）；false=回 legacy 统一加减口径供 A/B 对照
   deepseek:
     api_key: ""                   # 留空；key 放 configs/settings.local.yaml 或环境变量 DEEPSEEK_API_KEY（ISS-042）
     base_url: "https://api.deepseek.com"

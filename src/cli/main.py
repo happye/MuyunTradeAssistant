@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.17[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.18[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -532,8 +532,19 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
             # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
+            # F2：构造 DecisionPacket → 证据卡携带终态字段
+            _packet = None
             try:
-                _evidence.record_evidence(decision_result, strategy_decision, source="analyze_live")
+                from src.core.analysis_service import build_decision_packet
+                _packet = build_decision_packet(
+                    decision_result, strategy_decision, execution_eval,
+                    confirmed_ratio=pos.current_ratio if pos is not None else None,
+                    source="la")
+            except Exception as e:
+                logger.info(f"DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
+            try:
+                _evidence.record_evidence(decision_result, strategy_decision,
+                                          source="analyze_live", packet=_packet)
             except Exception as e:
                 logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
@@ -891,8 +902,19 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         except Exception as e:
             logger.debug(f"观察池钩子异常(不影响主流程): {e}")
         # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
+        # F2：构造 DecisionPacket（唯一终态）→ 证据卡携带终态字段
+        _packet = None
         try:
-            _evidence.record_evidence(result, strategy_decision, source="live_multi")
+            from src.core.analysis_service import build_decision_packet
+            _packet = build_decision_packet(
+                result, strategy_decision, execution_eval,
+                confirmed_ratio=(pos.current_ratio if pos is not None else 0.0),
+                source="l")
+        except Exception as e:
+            logger.info(f"DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
+        try:
+            _evidence.record_evidence(result, strategy_decision, source="live_multi",
+                                      packet=_packet)
         except Exception as e:
             logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             _watch_info = None
@@ -909,8 +931,10 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             except Exception as e:
                 logger.warning(f"观察量/建议记录失败(不影响分析主流程，持仓文件未改动): {e}")
         # v0.8.7.1: 人话摘要面板（白话结论在最前；渲染失败不影响主流程）
+        # F2：传 execution_eval——摘要第一节以终态+执行可行性判定（PROBES A/B 修复）
         try:
-            _print_plain_summary(result, strategy_decision, stock_data, pos, watch_info=_watch_info)
+            _print_plain_summary(result, strategy_decision, stock_data, pos,
+                                 watch_info=_watch_info, execution_eval=execution_eval)
         except Exception as e:
             logger.debug(f"人话摘要渲染失败(不影响主流程): {e}")
 
@@ -1591,63 +1615,137 @@ def _watch_pool_touch(result, strategy_decision, sd, pos=None):
         return None
 
 
-def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None) -> None:
+def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None, execution_eval=None) -> None:
     """l 输出顶部的白话结论面板：该做什么/为什么/什么阶段/笨总怎么看。
 
     纯展示层翻译，不改任何决策逻辑；渲染失败静默降级（调用方包 try）。
+    F2（plan/fusion ADR-F02）：有末端 StrategyDecision 时，第一节以
+    **position_action（PlanGuard/force_exit 已应用）+ execution_eval** 为唯一
+    判定来源（action_view.terminal_verdict）——原始信号与买卖点只作原因注解。
+    病根（PROBES A/B 实证）：旧版读原始 DecisionResult/entry_exit，PlanGuard
+    压制后的 HOLD 被播报成"卖出信号"、后置强制退出被播报成"什么都不用做"。
+    strategy_decision=None（旧调用方/降级）才回退原始信号口径（含观察池文案）。
     """
     ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
     has_pos = pos is not None and pos.current_ratio > 0
     decision = result.decision.value if result is not None else "?"
     lines: list[tuple] = []  # (color|None, text)
 
-    # 1) 今天该做什么
-    if ee.get("exit_triggered") and has_pos:
-        action_cn = _exit_action_cn(ee.get("exit_action", ""), ee.get("exit_ratio", 0), ee.get("exit_type", ""))
-        lines.append(("red", f"今天出现【卖出信号：{action_cn}】。按纪律次日开盘执行，别拖。"))
-        if ee.get("exit_reason"):
-            lines.append((None, f"原因：{ee['exit_reason']}"))
-    elif ee.get("entry_triggered"):
-        pct = int(ee.get("entry_ratio", 0) * 100)
-        if decision == "BUY":
-            lines.append(("green", f"今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，系统建议先建 {pct}% 仓位。"))
-        elif decision == "SELL":
-            lines.append(("red", "虽然形态够到了买点，但综合判断当前是卖出环境——别接，观望。"))
-        else:
-            lines.append(("yellow", "形态上够到了买点，但综合评分还没到买入线——再等等，不着急。"))
-        if ee.get("entry_reason"):
-            lines.append((None, f"原因：{ee['entry_reason']}"))
-    elif has_pos and decision == "SELL":
-        lines.append(("yellow", "综合判断偏卖出，但买卖点没触发硬信号——持仓纪律优先，细节看下方报告。"))
-    elif has_pos:
-        mode_note = ""
-        tp = getattr(pos, "trade_plan", None)
-        if tp is not None and getattr(tp, "mode", None) == "qizong":
-            mode_note = "（气宗模式：持有期内的日常波动不用管，有止损和见顶信号兜底）"
-        lines.append(("cyan", f"没有买卖信号：继续持有，今天什么都不用做。{mode_note}"))
-    elif decision == "BUY":
-        lines.append(("yellow", "综合倾向买入但买点条件未齐：再等等，别追高。"))
-    elif decision == "SELL":
-        lines.append(("yellow", "综合判断偏空：今天不碰，继续观察。"))
-    else:
-        # 观察池（v0.8.12）：watch_info 由 _watch_pool_touch 在分析后生成，措辞与事实一致
-        if watch_info and watch_info.get("status") == "added":
-            it = watch_info.get("item") or {}
-            lines.append(("dim", f"已放进观察池（入池价 {it.get('price')}，watch 可查看）。等信号出现再动手。"))
-        elif watch_info and watch_info.get("status") == "in_pool":
-            entry = watch_info.get("entry") or {}
-            e_ts = (entry.get("timestamp") or "")[:10]
-            e_item = entry.get("item") or {}
-            e_price = e_item.get("price")
-            if e_price and sd is not None and sd.price:
-                chg_txt = f"，现 {(sd.price - e_price) / e_price * 100:+.1f}%"
-                price_txt = f"当时 {e_price}"
+    # 1) 今天该做什么——终态判定优先（F2）
+    if strategy_decision is not None:
+        from src.cli.action_view import terminal_verdict
+        v = terminal_verdict(strategy_decision, execution_eval, has_position=has_pos)
+        if v["bucket"] == "EXIT" and v["blocked"]:
+            # G03：受阻退出——保留退出意图，不写成"继续看好"
+            lines.append(("red", f"退出条件已触发，但现在卖不出（{v['blocked_reason'] or '执行受阻'}）。"
+                                 "持仓记录不变，退出待办保留，下个交易时段再检查可成交性。"))
+        elif v["bucket"] == "EXIT":
+            lines.append(("red", "退出条件已触发：按纪律卖出，别拖。"))
+            if ee.get("exit_reason"):
+                lines.append((None, f"原因：{ee['exit_reason']}"))
+            elif v["reason"]:
+                lines.append((None, f"原因：{v['reason']}"))
+        elif v["bucket"] == "REDUCE":
+            lines.append(("red", "减仓纪律触发：按计划减一部分仓位。"))
+            if v["reason"]:
+                lines.append((None, f"原因：{v['reason']}"))
+        elif v["bucket"] == "ADD":
+            lines.append(("yellow", "加仓条件成立：按计划加仓（注意总仓位纪律，别打满）。"))
+        elif v["bucket"] == "OPEN":
+            lines.append(("green", "今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。"))
+            if ee.get("entry_reason"):
+                lines.append((None, f"原因：{ee['entry_reason']}"))
+        elif v["bucket"] == "HOLD":
+            mode_note = ""
+            tp = getattr(pos, "trade_plan", None)
+            if tp is not None and getattr(tp, "mode", None) == "qizong":
+                mode_note = "（气宗模式：持有期内的日常波动不用管，有止损和见顶信号兜底）"
+            lines.append(("cyan", f"继续持有，今天什么都不用做。{mode_note}"))
+            if ee.get("exit_triggered") and has_pos:
+                # PROBES A：原始卖点被压制/未采纳——只作诊断注解，不播报为卖出信号
+                lines.append(("dim", f"注：买卖点出现过卖出形态（{ee.get('exit_reason') or '技术信号'}），"
+                                     "终局未采纳——细节看下方报告。"))
+        else:  # WAIT / REVIEW
+            if v["bucket"] == "REVIEW":
+                # F2 审查 P1 修复：真实 l 路径走这里（STAY_OUT+WATCH）——观察池文案
+                # 必须在终态分支消费（v0.8.12 承诺），与降级分支同款
+                if watch_info and watch_info.get("status") == "added":
+                    it = watch_info.get("item") or {}
+                    lines.append(("dim", f"已放进观察池（入池价 {it.get('price')}，watch 可查看）。等信号出现再动手。"))
+                elif watch_info and watch_info.get("status") == "in_pool":
+                    entry = watch_info.get("entry") or {}
+                    e_ts = (entry.get("timestamp") or "")[:10]
+                    e_item = entry.get("item") or {}
+                    e_price = e_item.get("price")
+                    if e_price and sd is not None and sd.price:
+                        chg_txt = f"，现 {(sd.price - e_price) / e_price * 100:+.1f}%"
+                        price_txt = f"当时 {e_price}"
+                    else:
+                        chg_txt = ""
+                        price_txt = "当时未取到价"
+                    lines.append(("dim", f"已在观察池（{e_ts} 加入，{price_txt}{chg_txt}，watch 查看）。等信号出现再动手。"))
+                else:
+                    lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
+            elif ee.get("entry_triggered") and strategy_decision.decision.value == "SELL":
+                lines.append(("yellow", "虽然形态够到了买点，但综合判断当前是卖出环境——别接，观望。"))
+            elif ee.get("entry_triggered"):
+                lines.append(("yellow", "形态上够到了买点，但综合评分还没到买入线——再等等，不着急。"))
+                if ee.get("entry_reason"):
+                    lines.append((None, f"原因：{ee['entry_reason']}"))
+            elif strategy_decision.decision.value == "BUY":
+                lines.append(("yellow", "综合倾向买入但买点条件未齐：再等等，别追高。"))
+            elif strategy_decision.decision.value == "SELL" and not has_pos:
+                lines.append(("yellow", "综合判断偏空：今天不碰，继续观察。"))
             else:
-                chg_txt = ""
-                price_txt = "当时未取到价"
-            lines.append(("dim", f"已在观察池（{e_ts} 加入，{price_txt}{chg_txt}，watch 查看）。等信号出现再动手。"))
+                lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
+    else:
+        # 降级：无末端结果，维持旧原始信号口径（观察池文案不变）
+        if ee.get("exit_triggered") and has_pos:
+            action_cn = _exit_action_cn(ee.get("exit_action", ""), ee.get("exit_ratio", 0), ee.get("exit_type", ""))
+            lines.append(("red", f"今天出现【卖出信号：{action_cn}】。按纪律次日开盘执行，别拖。"))
+            if ee.get("exit_reason"):
+                lines.append((None, f"原因：{ee['exit_reason']}"))
+        elif ee.get("entry_triggered"):
+            pct = int(ee.get("entry_ratio", 0) * 100)
+            if decision == "BUY":
+                lines.append(("green", f"今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，系统建议先建 {pct}% 仓位。"))
+            elif decision == "SELL":
+                lines.append(("red", "虽然形态够到了买点，但综合判断当前是卖出环境——别接，观望。"))
+            else:
+                lines.append(("yellow", "形态上够到了买点，但综合评分还没到买入线——再等等，不着急。"))
+            if ee.get("entry_reason"):
+                lines.append((None, f"原因：{ee['entry_reason']}"))
+        elif has_pos and decision == "SELL":
+            lines.append(("yellow", "综合判断偏卖出，但买卖点没触发硬信号——持仓纪律优先，细节看下方报告。"))
+        elif has_pos:
+            mode_note = ""
+            tp = getattr(pos, "trade_plan", None)
+            if tp is not None and getattr(tp, "mode", None) == "qizong":
+                mode_note = "（气宗模式：持有期内的日常波动不用管，有止损和见顶信号兜底）"
+            lines.append(("cyan", f"没有买卖信号：继续持有，今天什么都不用做。{mode_note}"))
+        elif decision == "BUY":
+            lines.append(("yellow", "综合倾向买入但买点条件未齐：再等等，别追高。"))
+        elif decision == "SELL":
+            lines.append(("yellow", "综合判断偏空：今天不碰，继续观察。"))
         else:
-            lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
+            # 观察池（v0.8.12）：watch_info 由 _watch_pool_touch 在分析后生成，措辞与事实一致
+            if watch_info and watch_info.get("status") == "added":
+                it = watch_info.get("item") or {}
+                lines.append(("dim", f"已放进观察池（入池价 {it.get('price')}，watch 可查看）。等信号出现再动手。"))
+            elif watch_info and watch_info.get("status") == "in_pool":
+                entry = watch_info.get("entry") or {}
+                e_ts = (entry.get("timestamp") or "")[:10]
+                e_item = entry.get("item") or {}
+                e_price = e_item.get("price")
+                if e_price and sd is not None and sd.price:
+                    chg_txt = f"，现 {(sd.price - e_price) / e_price * 100:+.1f}%"
+                    price_txt = f"当时 {e_price}"
+                else:
+                    chg_txt = ""
+                    price_txt = "当时未取到价"
+                lines.append(("dim", f"已在观察池（{e_ts} 加入，{price_txt}{chg_txt}，watch 查看）。等信号出现再动手。"))
+            else:
+                lines.append(("dim", "今天不是买点：适合观望，等信号出现再动手。"))
 
     # 2) 股票现在处于什么阶段
     lines.append((None, f"当前阶段：{_plain_stage(sd)}"))
@@ -2052,6 +2150,12 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             )
 
         console.print(table)
+
+        # F1（plan/fusion ADR-F03）：旧记录来源标记核对提示——数值未改动，仅提示核对
+        legacy = [p for p in positions if p.holding_verification == "LEGACY_UNVERIFIED"]
+        if legacy:
+            console.print(f"  [yellow]⚠ {len(legacy)} 条旧持仓无成交来源标记（升级前录入）——"
+                          f"数值未改动，建议核对一遍实际持仓[/yellow]")
 
         # v0.8.5 TradePlan：列出所有有计划的持仓，让用户跑 pos 时看见计划核心字段
         with_plan = [p for p in positions if p.trade_plan is not None]
@@ -3503,13 +3607,15 @@ def diff_evidence_cmd(stock_code: str):
     old, new = d["old"], d["new"]
     console.print(f"\n[bold cyan]🔍 分析对比 - {code} {new.get('name') or ''}[/bold cyan]")
     console.print(f"  上次: {old['ts']}（{old.get('source')}）  ｜  本次: {new['ts']}（{new.get('source')}）")
-    for field, label, fmt in (("price", "价格", "{:.2f}"), ("score", "评分", "{:.3f}")):
+    for field, label, fmt in (("price", "价格", "{:.2f}"), ("score", "评分", "{:.3f}"),
+                              ("target_weight", "目标仓位", "{:.0%}")):
         ch = d["changes"].get(field)
         if ch:
             a, b, delta = ch
             st = "red" if delta > 0 else "green" if delta < 0 else "white"
             console.print(f"  {label}: {fmt.format(a)} → [{st}]{fmt.format(b)}（Δ{delta:+.2f}）[/{st}]")
-    for field, label in (("decision", "决策"), ("position_action", "仓位动作"), ("sell_path", "卖出路径")):
+    for field, label in (("decision", "决策"), ("position_action", "仓位动作"), ("sell_path", "卖出路径"),
+                         ("desired_action", "建议动作"), ("execution_status", "执行状态")):
         ch = d["changes"].get(field)
         if ch:
             console.print(f"  {label}: [yellow]{ch[0] or '-'} → {ch[1] or '-'}[/yellow]")
@@ -4508,7 +4614,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.17 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        version="%(prog)s v0.8.18 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态)"
     )
     parser.add_argument(
         "--verbose",

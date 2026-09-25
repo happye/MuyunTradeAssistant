@@ -23,7 +23,8 @@ _EVIDENCE_FILE = _STATE_DIR / "analysis_evidence.jsonl"
 _REPORT_DIR = Path(__file__).resolve().parents[2] / "分析报告" / "analysis"
 
 
-def record_evidence(decision_result, strategy_decision, *, source: str) -> Optional[dict]:
+def record_evidence(decision_result, strategy_decision, *, source: str,
+                    packet=None) -> Optional[dict]:
     """从一次深分析结果提取证据：JSONL 追加 + 人话证据卡落盘。
 
     失败不抛异常（返回 None，分析主流程不受影响——证据是附属产出）。
@@ -32,6 +33,9 @@ def record_evidence(decision_result, strategy_decision, *, source: str) -> Optio
         decision_result: DecisionResult（决策/评分/信号/警告）
         strategy_decision: StrategyDecision（sell_path/position_action；可 None）
         source: 触发来源（如 "l 600519" / "la" / "live_multi" / "chat"）
+        packet: DecisionPacket（F2 终态，可选；传入时追加 decision_id/desired_action/
+                target_weight/execution_status/research_status/policy_id 终态字段——
+                旧记录缺这些字段=「当时未记录」，diff 侧同步消费）
     """
     try:
         stock = decision_result.stock
@@ -57,6 +61,16 @@ def record_evidence(decision_result, strategy_decision, *, source: str) -> Optio
             ],
             "warnings": list(decision_result.warnings or [])[:6],
         }
+        if packet is not None:
+            # F2 终态字段：追加式，不改旧字段语义（ADR-F09 缺字段=未记录）
+            rec.update({
+                "decision_id": packet.decision_id,
+                "desired_action": packet.desired_action.value,
+                "target_weight": packet.target_weight,
+                "execution_status": packet.execution_status.value,
+                "research_status": packet.research_status.value,
+                "policy_id": packet.policy_id,
+            })
         _STATE_DIR.mkdir(parents=True, exist_ok=True)
         with _EVIDENCE_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -165,10 +179,11 @@ def diff_evidence(code: str) -> Optional[dict]:
             return None
 
     changes = {}
-    for field in ("decision", "position_action", "sell_path"):
+    for field in ("decision", "position_action", "sell_path",
+                  "desired_action", "execution_status"):
         if (old.get(field) or None) != (new.get(field) or None):
             changes[field] = (old.get(field), new.get(field))
-    for field in ("price", "score"):
+    for field in ("price", "score", "target_weight"):
         a, b = _f(old.get(field)), _f(new.get(field))
         if a is not None and b is not None and abs(b - a) > 1e-9:
             changes[field] = (a, b, b - a)

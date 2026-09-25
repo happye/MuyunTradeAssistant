@@ -69,6 +69,12 @@ class Orchestrator:
         # v0.8.1: RAG服务（可选，用于策略知识增强）
         self.rag_service = rag_service
 
+        # F2（plan/fusion TASKS）：方向感知的 AI/事件分数调节——看空消息不得削弱
+        # 卖出强度。settings.yaml ai.direction_aware_adjustment，默认开；关=legacy 口径
+        self.direction_aware_ai = True
+        if ai_config and isinstance(ai_config, dict):
+            self.direction_aware_ai = bool(ai_config.get("direction_aware_adjustment", True))
+
         # 初始化技能引擎（Signal Layer）
         self.skill_engine = SkillEngine(skills_dir, skill_types)
         self.skill_engine.load_skills(enabled_skills)
@@ -122,6 +128,30 @@ class Orchestrator:
         event_status = "enabled" if self.event_layer else "disabled"
         rag_status = "enabled" if self.rag_service else "disabled"
         logger.info(f"Orchestrator initialized (v0.8.1: Signal→Decision→Event({event_status})→AI Modifier({ai_status})→Strategy→Execution, RAG={rag_status})")
+
+    def _apply_sentiment_to_decision(self, decision_result, adjustment: float, source: str) -> None:
+        """F2（plan/fusion TASKS）：方向感知的负向分数调节——看空消息不得削弱卖出强度。
+
+        病根（RESEARCH §3.1 探针 C）：bearish 统一产生负 adjustment 直接加到 score，
+        作用于 SELL 决策时把卖出强度从 0.8 削到 0.56，再被策略层确认/反转成本闸门
+        降级成 HOLD——看空反而软化卖出。现：SELL 决策 + 负向调节 → 跳过**分数**调节
+        （仓位上限/强制状态等风险控制不受影响，照常应用），理由注明留痕。
+        正向调节与 BUY/HOLD 决策行为不变。
+
+        开关：settings.yaml ai.direction_aware_adjustment（默认开；false=回 legacy 口径，
+        供 A/B 对照——TASKS F2"改变行为的部分要A/B，不能混同等价适配"）。
+        """
+        if (self.direction_aware_ai
+                and decision_result.decision == SignalType.SELL
+                and adjustment < 0):
+            decision_result.reason.append(
+                f"[{source}] 看空调节({adjustment:+.2f})未削弱卖出强度（方向感知，F2）")
+            return
+        original_score = decision_result.score
+        decision_result.score = max(0.0, min(1.0, decision_result.score + adjustment))
+        logger.info(
+            f"{source} adjusted score: {original_score:.3f} → {decision_result.score:.3f} "
+            f"(adjustment={adjustment:+.3f})")
 
     @staticmethod
     def _compute_fundamental_alert(data, has_position: bool, is_backtest: bool, trade_plan) -> Optional[str]:
@@ -229,13 +259,9 @@ class Orchestrator:
         if ai_enabled and not is_backtest and self.ai_modifier and self.ai_modifier.is_available():
             ai_result = self.ai_modifier.analyze(data)
             if ai_result.adjusted:
-                # 应用信号调节
-                original_score = decision_result.score
-                decision_result.score = max(0.0, min(1.0, decision_result.score + ai_result.score_adjustment))
-                logger.info(
-                    f"AI Modifier adjusted score: {original_score:.3f} → {decision_result.score:.3f} "
-                    f"(adjustment={ai_result.score_adjustment:.3f})"
-                )
+                # 应用信号调节（F2：方向感知——看空不削弱卖出强度）
+                self._apply_sentiment_to_decision(
+                    decision_result, ai_result.score_adjustment, "AI Modifier")
 
                 # 应用仓位调节（传递给Strategy Layer通过decision_result）
                 if ai_result.position_cap < 1.0:
@@ -266,12 +292,9 @@ class Orchestrator:
                 # v0.8.7.6 审计修复 B07：AI 分支此前已把 AI 自己的调节应用到 decision_result，
                 # 本合并块原先只改 ai_result 字段不重新应用 → 事件层的分数压制/仓位上限/
                 # 强制状态在 AI 开启时被静默丢弃。此处只补应用"事件层增量"（AI 部分已应用过，勿二次叠加）。
-                _orig = decision_result.score
-                decision_result.score = max(0.0, min(1.0, decision_result.score + event_ai_result.score_adjustment))
-                logger.info(
-                    f"Event Layer merged adjustment: {_orig:.3f} → {decision_result.score:.3f} "
-                    f"(event adjustment={event_ai_result.score_adjustment:.3f})"
-                )
+                # F2：方向感知——看空事件增量不削弱卖出强度
+                self._apply_sentiment_to_decision(
+                    decision_result, event_ai_result.score_adjustment, "Event Layer")
                 if event_ai_result.position_cap < 1.0:
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, event_ai_result.position_cap
@@ -290,13 +313,9 @@ class Orchestrator:
                 # 事件层独立调节
                 ai_result = event_ai_result
 
-                # 应用信号调节
-                original_score = decision_result.score
-                decision_result.score = max(0.0, min(1.0, decision_result.score + ai_result.score_adjustment))
-                logger.info(
-                    f"Event Layer adjusted score: {original_score:.3f} → {decision_result.score:.3f} "
-                    f"(adjustment={ai_result.score_adjustment:.3f})"
-                )
+                # 应用信号调节（F2：方向感知——看空不削弱卖出强度）
+                self._apply_sentiment_to_decision(
+                    decision_result, ai_result.score_adjustment, "Event Layer")
 
                 # 应用仓位调节
                 if ai_result.position_cap < 1.0:
@@ -542,6 +561,23 @@ class Orchestrator:
             logger.info(f"Execution blocked: {execution_eval.block_reason}")
 
         return decision_result, strategy_decision, execution_eval, ai_result
+
+    def analyze_packet(self, data, *, confirmed_ratio=None, source: str = "analyze_packet",
+                       **analyze_kwargs):
+        """F2 适配出口（DESIGN ADR-F01）：旧 analyze 返回协议保留，新消费方走这里拿唯一终态。
+
+        Returns:
+            (DecisionPacket, DecisionResult, StrategyDecision, ExecutionEvaluation, ai_result)
+            packet 是构造期校验过的唯一终态（所有入口必须消费它保持一致）；
+            后四项为旧七层全量结果（legacy_trace 同源，供诊断/详版报告）。
+        """
+        from src.core.analysis_service import build_decision_packet
+        decision_result, strategy_decision, execution_eval, ai_result = self.analyze(
+            data, **analyze_kwargs)
+        packet = build_decision_packet(
+            decision_result, strategy_decision, execution_eval,
+            confirmed_ratio=confirmed_ratio, source=source)
+        return packet, decision_result, strategy_decision, execution_eval, ai_result
 
     def get_available_skills(self) -> list[str]:
         """获取已加载的技能列表"""

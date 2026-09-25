@@ -165,6 +165,19 @@ def test_delta_without_target_rejected():
         DecisionPacket(**_pkt(delta_weight=0.1))
 
 
+def test_delta_with_unknown_confirmed_rejected():
+    """F0 监督窄缝修复回归锁：confirmed 未知时 delta 必须为 None（未知则 null）。"""
+    with pytest.raises(ValidationError, match="delta"):
+        DecisionPacket(**_pkt(desired_action=DesiredAction.EXIT,
+                              confirmed_weight=None, target_weight=0.0,
+                              delta_weight=-0.2))
+    # delta=None 组合合法
+    p = DecisionPacket(**_pkt(desired_action=DesiredAction.EXIT,
+                              confirmed_weight=None, target_weight=0.0,
+                              delta_weight=None))
+    assert p.delta_weight is None
+
+
 def test_unknown_portfolio_with_precise_add_target_rejected():
     """缺组合信息：可给有条件方向，不允许精确目标（不能默认推荐 20%/50%）。"""
     with pytest.raises(ValidationError, match="target_weight"):
