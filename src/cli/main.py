@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.18[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.19[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -3636,6 +3636,27 @@ def diff_evidence_cmd(stock_code: str):
     console.print(f"  [dim]证据卡: 分析报告/analysis/ ｜ 口径说明：评分口径变化由 benzong CACHE_VERSION 标注[/dim]")
 
 
+def today_command():
+    """today 统一行动工作台（F7，plan/fusion ADR-F08）：先持仓风险，再等条件。
+
+    分"需要处理（待确认建议）""继续持有""等待条件"三组；无操作是合法结果。
+    纯读取（持仓事实+建议账本+观察池计数），零写入零网络。
+    """
+    from src.cli.today_service import build_today_view, render_today
+    watch_count = None
+    watch_failed = False
+    try:
+        from src.cli import session_state as _ss
+        watch_count = len(_ss.get_watch_active())
+    except Exception:
+        watch_failed = True  # F7 审查 P2-7：读取失败显式告知，不静默消失
+    pm = PortfolioManager()
+    view = build_today_view(pm, watch_count=watch_count)
+    if watch_failed:
+        view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
+    console.print(render_today(view))
+
+
 def batch_tasks_cmd():
     """批量任务账本（C2，v0.8.17）：最近批量任务的进度与失败项——中断后续跑可见。"""
     from src.cli import session_state as _ss
@@ -4614,7 +4635,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.18 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态)"
+        version="%(prog)s v0.8.19 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台)"
     )
     parser.add_argument(
         "--verbose",

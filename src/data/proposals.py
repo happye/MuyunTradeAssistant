@@ -297,3 +297,12 @@ class ProposalStore:
 
     def has_fill(self, fill_id: str) -> bool:
         return any(f.fill_id == fill_id for f in self._fills)
+
+    def count_recently_expired(self, days: int = 7) -> int:
+        """近 N 天内被判定 EXPIRED 的建议数（today 提示用；不含更早的历史过期，
+        防常驻噪声——F7 审查 P2-8：替代私有双跳访问）。"""
+        cutoff = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+        # 按 created_at 判定（建议本身属于近 N 天）——decided_at 在陈旧账本首次加载
+        # 时会被 _expire_stale 设为加载时刻，会误把更早的过期计入"近 N 天"（F7-F9 审查）
+        return sum(1 for p in self._proposals
+                   if p.status is ProposalStatus.EXPIRED and p.created_at >= cutoff)

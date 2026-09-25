@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.18"  # v0.8.18=持仓事实分离(plan/fusion F1)+终态统一输出(F2)+pos confirm；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.19"  # v0.8.19=融合架构 F3-F7（证据快照/候选池/周期决策表/claim提取/组合预算+today工作台）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -85,8 +85,11 @@ def show_help():
     L = []
     L.append("┌" + "─" * (W + 2) + "┐")
     L.append(_row("暮云思辨投资助手 · 命令菜单"))
-    L.append(_row("典型流程: scan / bz scan 选股 → l all 深分析 → pos add 建仓"))
+    L.append(_row("典型流程: today 看待办 → scan / bz scan 选股 → l all 深分析 → pos add 建仓"))
     L.append(_row("          → diff 看变化 → scan review 复盘检验"))
+    L.append(_row())
+    L.append(_row("● 每日入口"))
+    L.append(_cmd("today", "今日工作台（待办/持仓/等待——建议≠成交）"))
     L.append(_row())
     L.append(_row("● 分析"))
     L.append(_cmd("l <代码>", "实时深分析（自动落证据卡）"))
@@ -408,6 +411,10 @@ def parse_input(user_input: str):
     if cmd in ("tasks", "任务"):
         return ("batch_tasks", {})
 
+    # ── 今日工作台（v0.8.19，plan/fusion F7）：先持仓风险，再等条件 ──
+    if cmd in ("today", "今日"):
+        return ("today", {})
+
     # ── 市场恐慌指数（v0.8.10）──
     if cmd == "fear":
         rest = parts[1:]
@@ -701,6 +708,7 @@ _COMMAND_HINTS = {
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
     "diff": "diff <代码> 分析对比：同股最近两次深分析的价格/决策/信号变化",
     "tasks": "tasks 批量任务账本：l all/la/ba 的进度与失败项，中断续跑可见",
+    "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1541,7 +1549,7 @@ def run_cli(mode: str, args: dict):
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
         scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
-        batch_tasks_cmd,
+        batch_tasks_cmd, today_command,
     )
 
     ai_overrides = {}
@@ -1835,6 +1843,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "batch_tasks":
         # v0.8.17：批量任务账本——进度与失败项可见（plan/ C2）
         batch_tasks_cmd()
+
+    elif mode == "today":
+        # v0.8.19：今日工作台——先持仓风险，再等条件（plan/fusion F7）
+        today_command()
 
     elif mode == "noai":
         _no_ai = not _no_ai

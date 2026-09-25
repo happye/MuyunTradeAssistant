@@ -622,3 +622,191 @@ TASKS F3 定位为研究可信基建）。
 ### 状态：REVIEW（5 P1 已修，数字待提交树实测回填，待监督员核对转 VERIFIED）
 
 ---
+## F7 — 组合预算与统一行动工作台
+
+- **任务**：F7 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：`69c39f7`（F6 证据型 AI 基建）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/portfolio_policy.py` | 新增：solve_budget 确定性约束分配（计划目标/单股/周期/行业聚合/现金/可交易额/损失预算取 min；压力损失率未知不给精确额度；sell_eligible_nav 只计可成交卖出；稳定排序+排列不变 fingerprint） |
+| `src/cli/today_service.py` | 新增：build_today_view 三组分类（需要处理/继续持有/等待条件）+ render_today（LEGACY 核对提示全量可见） |
+| `src/cli/main.py` | 新增 today_command 接线 |
+| `start.py` | today/今日 解析 + run_cli 派发 + 帮助菜单"每日入口"组 + 命令说明字典 |
+| `tests/core/test_portfolio_policy.py` / `test_today_service.py` | 新增：10+6 测试 |
+| `start.py`/`main.py`/`AGENTS.md`/`README.md` | 版本 v0.8.19 五处同步 |
+
+### 已完成条款（对照 TASKS.md F7）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 同快照批量分配风险预算 | solve_budget 单次求解（现金/单股/行业/周期/损失预算约束） | `test_basic_allocation_meets_target` 等 |
+| 资金不足时只给可行计划 | 超限提案 rejected 带明确原因（受限约束名） | `test_cash_constraint_trims_and_rejects` |
+| 卖不出不得提前花卖出现金 | sell_eligible_nav 参数语义（受阻卖出不计入） | `test_sell_cash_not_counted_unless_eligible` |
+| 同主题风险合并 | industries 多标签聚合暴露（最紧约束） | `test_industry_cap_aggregates_multiple_tags` |
+| 排列不变性 | 确定序排序 + fingerprint | `test_permutation_invariance` |
+| 持仓版本变更使缓存失效 | F1 指纹冲突拒绝已覆盖 portfolio 侧；预算求解无缓存（每次现算——无失效问题） | 设计保证 |
+| today 优先持仓风险，硬风险全部可见 | needs_action 全量展示（不截断）+ LEGACY 提示 | `test_grouping_needs_action_and_holding` / `test_legacy_notice_all_vs_partial` |
+| l/la/chat 复用同一包 | build_today_view 服务函数可注入任意 PM（chat/Web 接线留 TODO） | 服务函数签名 |
+| 推荐与实际成交分离，未知资金不发精确股数 | F1 语义 + 压力损失率未知不给精确额度 | `test_unknown_pressure_loss_rate_no_precise_budget` |
+| 风险更高候选不自动增总预算 | 损失预算封顶与候选数无关 | `test_higher_risk_candidate_does_not_grow_budget` |
+
+### 未完成条款（保持 TODO）
+
+- **VALIDATION 八类用户任务走查**（含"受阻退出不能看成继续看好"误解记录）：用户验收类
+  ——需用户参与，登记待用户走查（本轮以 test_today_service 文案断言为前置保障）
+- chat/Web 复用 build_today_view 的展示接线：服务函数已可注入，UI 壳随各端迭代
+- 用户风险档（BudgetConstraints）的持久化与设置入口：现由调用方构造传入，设置命令
+  随 F9 收尾评估是否立项
+- today 的 DecisionPacket 深度消费（当前消费 F1 建议+持仓事实；packet 级卡片随
+  analyze_packet 进入常规分析路径后接）
+
+### 红灯→绿灯证据与命令
+
+```text
+.\.venv\Scripts\python.exe -m pytest tests/core/test_portfolio_policy.py tests/core/test_today_service.py -q
+# 初版 3 failed（损失预算单位换算错误：预算/损失率=可承载权重；排序测试现金预算写错）
+# → 修：单位换算 + 测试预算更正 → 16 passed
+.\.venv\Scripts\python.exe -m pytest -q
+# 1012 passed, 2 skipped, 1 deselected（F6 后 996 + 净增 16）
+```
+
+### 同类调用点扫描
+
+- `grep -rn "solve_budget\|build_today_view" src/ tests/` → today_command 消费 today_service；
+  solve_budget 无生产消费方（组合预算随计划/候选接入后启用——F8 影子）
+- `pos`/`diff`/`watch` 命令行为零变化（today 为新增入口）
+
+### 对抗审查记录（code-quality-guard，2026-09-25，2 P1+11 P2）
+
+- 🔴 P1-1 tradeable_nav 容量约束不随分配递减（N 只候选可成交 N×容量）→ **已修**（remaining_tradeable 逐笔扣减 + 回归锁）
+- 🔴 P1-2 cash_nav=None 被当 0 现金（拒绝理由假称"可用现金不足"——DESIGN：没有可用配置不假装知道承受能力）→ **已修**（None 跳过现金约束）+ 回归锁
+- ⚠️ P2-1 八项公式缺"个股损失预算/压力损失率"单股维度未登记 → **已补登记**（docstring 脚注 + 本段）
+- ⚠️ P2-2 exits_first docstring 承诺与签名不符 → **已修**（改"返回后自行填充，不参与 fingerprint"）
+- ⚠️ P2-3 trimmed_to 并列约束只显示第一个 → **已修**（并列拼接）
+- ⚠️ P2-4 __none__ 哨兵泄漏进公开行业暴露 → **已修**（哨兵不入账）+ 回归锁
+- ⚠️ P2-5 BudgetConstraints extra=allow 约束拼错静默放松 → **已修**（extra=forbid）+ 回归锁
+- ⚠️ P2-6 score 未禁 NaN（破坏排列不变性）→ **已修**（allow_inf_nan=False）+ 回归锁
+- ⚠️ P2-7 观察池读取失败静默 → **已修**（notices 显式告知）
+- ⚠️ P2-8 过期计数私有双跳+文案不实 → **已修**（ProposalStore.count_recently_expired 公开 API + 近 7 天口径 + 文案更正）
+- ⚠️ P2-9 跨批交接项 dropped（F2 的 watch 准入 TODO 未接续；action_view 收敛未登记）→ **已补登记**（见下）
+- ⚠️ P2-10 today 接线测试非密闭（DEFAULT_PORTFOLIO_PATH 按 __file__ 推导不受 HOME 隔离，读到真实持仓）→ **已修**（monkeypatch 注入临时文件）
+- ⚠️ P2-11 持仓损坏时 today 静默空态 → **已修**（notices 显式提示"显示的不是真实持仓"）
+
+### 未完成条款补充（F7 审查 P2 登记）
+
+- **action_view 渲染收敛**：F2 的 render_action_card 与 F7 的 render_today 为两套
+  渲染语义（近似并行）——包收敛随 chat/Web 接线迭代（跨批 TODO 接续登记）
+- **F2 登记的"watch 准入消费研究资格"**：F7 未落地，接续登记（随 F8 影子/候选池
+  准入定义）
+- chat/Web 复用 build_today_view 展示壳
+- 用户风险档持久化（BudgetConstraints 设置入口）
+
+### 用户可见变化（v0.8.19）
+
+🆕 **`today` / `今日` 命令**：每天打开 REPL 先跑 today——三组视图（需要处理的待确认
+建议[含"建议≠成交"提示与确认指引]/继续持有/等待条件[观察池]）+ 旧记录核对提示全量
+可见；帮助菜单新增"每日入口"组与典型流程更新。
+
+### 迁移/回滚验证
+
+- 回滚 = 删除两个新模块+测试+revert 接线 commit 即回 69c39f7；today 为纯读取命令
+  （零写入，不影响持仓/建议数据）
+
+### 状态：REVIEW（2 P1 已修，待监督员核对转 VERIFIED）
+
+---
+## F8 — 严格回放、制度模型与消融报告（基建批）
+
+- **任务**：F8 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：F7 批次提交（见 git log）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/core/experiment.py` | 新增：E0–E7 注册（信息集标签强制）/ExperimentManifest（VALIDATION §2 字段缺一不可，样本集空拒跑）/PortfolioReplay（固定组合资金纯模型）/ReplayChecks（T+1/整手/一字板/未来数据探针） |
+| `tests/core/test_experiment_replay.py` | 新增：10 测试 |
+| `plan/fusion/EXPERIMENTS.md` | 新增：E0–E7 计划 + 场景覆盖清单 + 统计硬门摘要 |
+
+### 已完成条款（对照 TASKS.md F8——离线可验证部分）
+
+| 条款 | 落点 | 证据 |
+|---|---|---|
+| 离线重放可复现 | PortfolioReplay 确定性（同输入同 fingerprint） | `test_replay_deterministic_fingerprint` |
+| 未来数据探针红灯 | validate_no_future_bars（回放前强制调用语义） | `test_future_bar_probe_red_light` |
+| 成本加大不会无解释提高净收益 | 成本单调性性质测试 | `test_cost_increase_never_improves_return` |
+| 制度模型核对（T+1/数量单位/一字板） | ReplayChecks 纯函数 | `test_t_plus_1_enforced` / `test_lot_size_rounding` / `test_limit_board_blocked` |
+| 固定组合资金回放≠独立满仓均值 | 共享现金池语义锁死 | `test_replay_portfolio_semantics_shared_cash` |
+| E0–E7 完成VALIDATION | **基建完成、真实执行未发生**（E1/E6 runnable，其余 blocked_on_data 如实标注）——真实跑批为 external opt-in 操作 | EXPERIMENTS.md + E_SPEC 注册 |
+| 严格区分信息集 | InfoSetTag 三标签强制（E5=ai_lookahead 显式） | `test_e_matrix_registered_with_source_tags` |
+| 已有DataFeeder等价基准不得删除 | backtest_engine/data_feeder 零文件改动 | `git show --stat` 可证 |
+
+### 未完成条款（保持 TODO）
+
+- **E0–E7 真实执行**：需外源数据建库（DATA_COVERAGE 矩阵探查先行）+ external 入口
+  manifest 落盘——逐实验解锁，不混默认 pytest
+- 除权/分红/IPO/停牌/退市场景的真实数据跑批：检查函数骨架已备（场景表见
+  EXPERIMENTS.md §3），DataFeeder 复权口径核对随 external 阶段
+- backtest_engine/execution_layer 的窄适配改写：本轮零改动（独立模块消费其输出概念；
+  改写随 E0 基线设计定稿后进行）
+
+### 用户可见变化
+
+无（实验基建；external 跑批入口随数据资格解锁）。
+
+### 状态：REVIEW（待 quality-guard + 监督员核对）
+
+---
+## F9 — 影子运行、验收与简化（收口批）
+
+- **任务**：F9 / 实现者：Claude Code（Opus 5.1）/ 监督者：进度对齐监督员 + code-quality-guard
+- **基线提交**：F8 批次提交
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `plan/fusion/ROLLOUT.md` | 新增：四级启用阶梯（legacy_only→capture_only→shadow→opt_in→default）+ 各能力当前开关位置 + 停止/回滚条件 + 影子观察清单 + 源码简化纪律 |
+| `使用手册.md` | 新增「今日工作台（today）」章节 |
+| `AGENTS.md`/`README.md`/`start.py`/`main.py` | 版本 v0.8.19 同步（F7 批已起） |
+
+### 已完成条款（对照 TASKS F9）
+
+| 条款 | 落点 | 状态 |
+|---|---|---|
+| 实验开关 | 阶梯与开关位置登记（ROLLOUT.md §2）；ai.direction_aware_adjustment（F2）唯一运行时开关 | ✅ 登记完整 |
+| capture_only→shadow→opt_in→default 按门槛推进 | ROLLOUT.md §1 门槛表：当前 capture_only（F1 记录 live），shadow 门槛=E0 基线+差异报告 | ✅ 框架就位，未晋级（诚实） |
+| 先收集同日数据完整性与动作差异 | F1 建议/观察量记录即 capture 层数据；差异报告随 shadow 接线 | 部分（登记） |
+| 达到正确性但未达投资证据门槛时只发布相应能力 | ROLLOUT.md：当前发布=正确性（F1/F2）+可用性（today）+基建；无收益声称 | ✅ |
+| 用户手册 | 使用手册.md today 章节 | ✅ |
+| **所有入口覆盖**（TASKS F9 验收首句） | today 当前仅 REPL+chat 命令桥（chat 经 parse_input/run_cli 实证可跑）；**web/tui 未接** | ⚠️ 缺口登记（随各端迭代） |
+| 回滚说明 | ROLLOUT.md §3 停止/回滚条件（四触发器）+ 事实修复独立保留声明 | ✅ |
+| 源码简化（删重复裁决须消费者扫描+回放等价证据） | 扫描完成：无满足三条件（空消费者/回放等价/登记）的删除对象——本批零删除 | ✅（零删除即合规） |
+| 风险事件无静默吞掉 | F1-F7 各批告警映射三处同步 + F2 受阻退出文案 + F5 硬退出先于激活门 | ✅（各批已锁） |
+| 性能基线实测 | **未做**（today/l/la p50-p95 与重复 AI 费用实测需 live 环境） | ❌ 登记待测 |
+
+### 未完成条款（保持 TODO——诚实收口）
+
+- **shadow/opt_in 阶段推进**：门槛未达（E0 基线需数据资格解锁）——TASKS F9 的
+  "长期跟踪净值、未成交、AI 费用与人工覆盖"为**运行期活动**，非代码交付；框架
+  （ROLLOUT.md 观察清单）已备
+- 性能基线实测（p50/p95/AI 费用）：需 live 环境多次运行采样——登记待测
+- VALIDATION 八类用户任务走查（F7 段已登记）：需用户参与
+- 源码简化：零删除（无满足删除证据的对象）；后续删除须按 ROLLOUT.md §5 三条件
+
+### 用户可见变化（F9 收口批次）
+
+- 使用手册新增 today 章节（命令文档化）
+- 无其他行为变化（零删除零开关翻转）
+
+### 迁移/回滚验证
+
+- 全部新能力按 ROLLOUT.md 阶梯就位：legacy 默认行为除安全性修复外不变
+- 回滚说明落 ROLLOUT.md §3（四停止触发器 + 事实修复独立保留）
+
+### 状态：REVIEW（待 quality-guard + 监督员核对）
+
+---
