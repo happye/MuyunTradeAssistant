@@ -404,7 +404,7 @@ volume_ratio:
 - 🆕 **bz 输出透出行业景气数据来源**：商品锚/需求端/新闻等来源一目了然（v0.8.8.7 三级桥接成果可视化；无来源不显示假行）
 - 🆕 **ADR-02 装配统一**：`src/core/runtime.py` 工厂收敛 6 处手写 Orchestrator 装配（漏传 entry_exit/rag 的 H2/ISS-032 同族事故病根）；配置加载迁 `src/config.py`（路径不依赖 cwd）；回测装配独立（守卫测试）
 - 🆕 **ADR-06/07 收口**：超时资源测量工具实跑基线（防冻结无卡死/孤儿线程自然消亡/退出不等待）；维度元数据注册表集中（与 scorer 权重键一致性有测试锁）
-- 测试 +24（按版本累计：runtime 6 + evidence 7 + batch 6 + doctor C3 1 + C4 metrics 4 + ba 时序锁 1 + C6 3 + registry 2）；全量 **806 passed / 0 failed**
+- 测试 +30（按版本累计：runtime 6 + evidence 7 + batch 6 + doctor C3 1 + C4 metrics 4 + ba 时序锁 1 + C6 3 + registry 2）；全量 **806 passed / 0 failed**
 
 ### v0.8.16 (运行诊断+安装事实源统一) - 2026-09-25
 
