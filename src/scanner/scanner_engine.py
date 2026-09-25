@@ -77,13 +77,13 @@ class ScannerEngine:
 
         # 深度分析用的Orchestrator（延迟初始化，只在deep_analyze时创建）
         self._orchestrator = None
-        self._orchestrator_args = {
-            "skills_dir": skills_dir,
-            "enabled_skills": enabled_skills,
-            "signal_weights": signal_weights,
-            "skill_types": skill_types,
-            "ai_config": ai_config,
-            "entry_exit_config": entry_exit_config,
+        # ADR-02：以 config dict 形态持有装配参数，_get_orchestrator 统一走
+        # build_live_orchestrator 工厂（与 main/chat 同一装配契约）
+        self._orchestrator_config = {
+            "skills": {"dir": skills_dir, "enabled": enabled_skills, "types": skill_types},
+            "decision": {"signal_weights": signal_weights},
+            "ai": ai_config,
+            "entry_exit": entry_exit_config,
         }
 
     def _get_orchestrator(self) -> Orchestrator:
@@ -91,13 +91,15 @@ class ScannerEngine:
         if self._orchestrator is None:
             # ISS-090：scan 深析接入 RAG 门控——懒加载（深析真正发生时才
             # 触发模型加载），scan 启动阶段不吃 18s；MUYUN_CLI_RAG=0 关闭
-            args = dict(self._orchestrator_args)
+            from src.core.runtime import build_live_orchestrator
+            rag_service = None
             try:
                 from src.rag.service import get_cli_rag_service
-                args["rag_service"] = get_cli_rag_service()
+                rag_service = get_cli_rag_service()
             except Exception:
                 pass
-            self._orchestrator = Orchestrator(**args)
+            self._orchestrator = build_live_orchestrator(
+                self._orchestrator_config, rag_service=rag_service)
         return self._orchestrator
 
     def _init_match_client(self):

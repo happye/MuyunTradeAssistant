@@ -83,24 +83,33 @@ def test_rag_failure_memo(monkeypatch, _reset_rag_globals):
 
 
 def test_cli_main_four_sites_wired():
-    """cli/main.py 四处 Orchestrator 构造必须带 rag_service=_cli_rag()（结构断言）。"""
+    """cli/main.py 四处 Orchestrator 构造必须带 rag_service=_cli_rag()（结构断言）。
+
+    ADR-02 后构造统一走 build_live_orchestrator 工厂，rag_service 透传形态不变。
+    """
     from pathlib import Path
     src = (Path(__file__).resolve().parents[2] / "src" / "cli" / "main.py").read_text(encoding="utf-8")
     assert src.count("rag_service=_cli_rag()") == 4
     assert "def _cli_rag():" in src
+    assert src.count("build_live_orchestrator(config, rag_service=_cli_rag())") == 4
 
 
 def test_scanner_lazy_rag_wiring(monkeypatch):
-    """scanner 深析懒接线：_get_orchestrator 传入 rag_service 且来自门控。"""
+    """scanner 深析懒接线：_get_orchestrator 传入 rag_service 且来自门控。
+
+    ADR-02 后工厂内部 import src.core.orchestrator.Orchestrator——patch 点随迁。
+    """
     import src.scanner.scanner_engine as se
     captured = {}
 
     class FakeOrchestrator:
-        def __init__(self, **kwargs):
+        def __init__(self, *args, **kwargs):
             captured.update(kwargs)
+            captured["args"] = args
 
     sentinel = object()
-    monkeypatch.setattr(se, "Orchestrator", FakeOrchestrator)
+    import src.core.orchestrator as orch_mod
+    monkeypatch.setattr(orch_mod, "Orchestrator", FakeOrchestrator)
     import src.rag.service as svc_mod
     monkeypatch.setattr(svc_mod, "get_cli_rag_service", lambda: sentinel)
     engine = se.ScannerEngine(

@@ -64,7 +64,7 @@ def init_engines(config: dict):
     """
     global _orchestrator, _scanner_engine, _portfolio_manager, _rag_service
 
-    from src.core.orchestrator import Orchestrator
+    from src.core.runtime import build_live_orchestrator
     from src.scanner.scanner_engine import ScannerEngine
     from src.data.portfolio import PortfolioManager
 
@@ -105,12 +105,8 @@ def init_engines(config: dict):
 
     # 审查修复 H2：补 entry_exit_config（原漏传 -> chat 买卖点计算器=None，
     # 突破/Chandelier/止盈全不计算，chat 分析永不产生买卖点，与 CLI 不一致）
-    _orchestrator = Orchestrator(
-        skills_dir, enabled_skills, weights, skill_types,
-        ai_config=ai_config, event_config=event_config,
-        entry_exit_config=config.get("entry_exit"),
-        rag_service=_rag_service,  # v0.8.1: 传递RAG服务给子组件
-    )
+    # ——该教训即 ADR-02 工厂化的直接动因：装配契约收敛到单一入口
+    _orchestrator = build_live_orchestrator(config, rag_service=_rag_service)
 
     _scanner_engine = ScannerEngine(
         rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),

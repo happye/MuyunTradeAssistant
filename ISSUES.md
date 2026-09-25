@@ -2077,3 +2077,12 @@ P3（已取消）:
 - **已知剩余（本轮不修）**: review_*.md/watch_*.md 复盘报告分钟命名（沿 ISS-096）；TUI/web 回写失败日志级告警（沿 ISS-097）
 - **更新记录**:
   - 2026-09-25: 任务卡实施 + code-quality-guard 对抗审查（1×P0：run_cli 函数级导入清单漏 doctor → 命令运行时 NameError，直接调 cli_main.doctor 的单测抓不到接线断裂——补导入 + parse_input→run_cli 接线冒烟锁；1×P1 start.py 管道模式残留 uv sync 提示；1×P1 doctor 对 settings.local.yaml 缺失断言「AI 不可用」失实——key 有三个合法来源改条件式文案；5×P2 同批清扫：requirements.txt 自身头注释/archive 索引标题/docstring 多承诺/plan 措辞/⑤⑥节 glob OSError 兜底），commit 落地于本 commit
+
+---
+
+### ISS-099: ADR-02 装配统一——src/core/runtime.py 工厂 + 配置加载迁移 src/config.py
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/ARCHITECTURE ADR-02，阶段 B 收口项）
+- **病根**: 6 处手写 Orchestrator 装配（main×4/chat/scanner）契约散落——chat H2（漏 entry_exit_config=买卖点整体失效）、ISS-032 同族事故的结构性温床；load_config 相对路径依赖调用者 cwd
+- **修复**: src/config.py（路径项目根推导）+ src/core/runtime.py build_live_orchestrator（RAG 由调用方持有）+ 6 处收敛；回测装配独立守卫测试
+- **测试**: +6（test_runtime）；test_iss090 结构断言随工厂化更新；全量 782 passed / 0 failed
+- **更新记录**: 2026-09-25 commit 落地于本 commit

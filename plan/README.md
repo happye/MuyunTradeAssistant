@@ -71,6 +71,14 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / 批 1：ADR-02 装配统一（阶段 B 收口，内部重构无行为变化）
+
+- 新增 `src/config.py`（load_config + _deep_merge 自 main 迁入；**路径基于项目根推导，不依赖调用者 cwd**——ADR-02 验收项，test_chat_command_bridge 的 os.chdir 兜底不再必要）。
+- 新增 `src/core/runtime.py` `build_live_orchestrator(config, *, rag_service)`：live 装配单一入口，config 各键逐项映射 Orchestrator 参数（漏传 entry_exit/rag = chat H2/ISS-032 同族事故的病根收敛）。RAG 生命周期由调用方持有，工厂不偷加载。
+- 6 处手写装配收敛：main×4（`build_live_orchestrator(config, rag_service=_cli_rag())`，ai_debug 覆盖语义保持——先改 config 再传工厂）、chat init_engines、scanner_engine（_orchestrator_args dict → _orchestrator_config，懒 RAG 门控保留）。main.load_config 为兼容出口。
+- 回测装配独立守卫：test 断言 backtest_engine 源码不含 live 工厂调用。
+- 测试 +6（test_runtime：契约逐键映射/缺节容错/cwd 无关/深合并/自定义路径/回测隔离守卫）；test_iss090 结构断言随工厂化形态更新（4 处 build_live_orchestrator + patch 点随迁）。全量 **782 passed / 0 failed**。
+
 ### 2026-09-25 / Claude Code / M4 第二批实施（同构评估收敛，内部重构无行为变化）
 
 - 第二批按 ADR-01「首轮只收口已经存在多个调用方的逻辑」收敛真正重复的实现：scan_review 与 watch_pool 的 `_bench_point`（基准同窗对齐，15 行×2）、逐票 `chg/excess` 计算、`bench_paths` 组装全部同构——提取为 `src/core/review.py` 的 `bench_point`/`compute_chg_excess`/`bench_path`，两命令改调同一实现（复用增加、改动面缩小；两份维护变一份）。

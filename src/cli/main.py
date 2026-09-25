@@ -28,7 +28,7 @@ from rich import print as rprint
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle, AIModifierResult, MarketEvent
-from src.core.orchestrator import Orchestrator
+from src.core.runtime import build_live_orchestrator
 from src.data.portfolio import PortfolioManager
 
 # 配置日志（默认WARNING，只显示警告及以上；--verbose 开启INFO；--debug 开启DEBUG）
@@ -54,35 +54,10 @@ def normalize_stock_code(stock_code: str) -> str:
     return code.zfill(6) if code.isdigit() and len(code) < 6 else code
 
 
-def _deep_merge(base: dict, override: dict) -> dict:
-    """递归合并 override 到 base（override 同名键覆盖，dict 则继续深合并）。"""
-    if not isinstance(base, dict) or not isinstance(override, dict):
-        return override
-    merged = dict(base)
-    for k, v in override.items():
-        if k in merged and isinstance(merged[k], dict) and isinstance(v, dict):
-            merged[k] = _deep_merge(merged[k], v)
-        else:
-            merged[k] = v
-    return merged
-
-
-def load_config(config_path: str = "./configs/settings.yaml") -> dict:
-    """加载配置文件。
-
-    若存在 configs/settings.local.yaml（gitignored），深合并覆盖到基础配置之上——
-    用于存放 API key 等敏感项（ISS-042）。环境变量 DEEPSEEK_API_KEY / KIMI_API_KEY
-    仍由各 AI 入口自行兜底。
-    """
-    with open(config_path, 'r', encoding='utf-8') as f:
-        config = yaml.safe_load(f)
-    local_path = "./configs/settings.local.yaml"
-    if os.path.exists(local_path):
-        with open(local_path, 'r', encoding='utf-8') as f:
-            local = yaml.safe_load(f) or {}
-        if local:
-            config = _deep_merge(config, local)
-    return config
+def load_config(config_path: str = None) -> dict:
+    """加载配置文件（ADR-02 兼容出口：实现已迁 src/config.py，路径不依赖 cwd）。"""
+    from src.config import load_config as _load
+    return _load(config_path)
 
 
 def apply_ai_overrides(config: dict, ai_overrides: dict) -> dict:
@@ -181,7 +156,7 @@ def analyze_interactive():
 
     entry_exit_config = config.get("entry_exit", None)
     # 创建编排器（含AI调节层+事件层）
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, rag_service=_cli_rag())
+    orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
 
     console.print(f"[green]✓[/green] 已加载技能: {', '.join(orchestrator.get_available_skills())}")
     if orchestrator.ai_modifier and orchestrator.ai_modifier.is_available():
@@ -221,7 +196,7 @@ def analyze_json(json_path: str):
     ai_config = config.get("ai", None)
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, rag_service=_cli_rag())
+    orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
 
     decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(stock_data, ai_enabled=False)
 
@@ -463,7 +438,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         ai_config["debug"] = True
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
-    orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, rag_service=_cli_rag())
+    orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -881,7 +856,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             ai_config["debug"] = True
         event_config = config.get("event", None)
         entry_exit_config = config.get("entry_exit", None)
-        orchestrator = Orchestrator(skills_dir, enabled_skills, weights, skill_types, ai_config=ai_config, event_config=event_config, entry_exit_config=entry_exit_config, rag_service=_cli_rag())
+        orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
         has_position = pos is not None and pos.current_ratio > 0
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
