@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.16"  # v0.8.16=运行诊断doctor+安装事实源统一+Agent入口叙事压缩(plan/M6)；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.17"  # v0.8.17=分析证据层+diff对比命令(plan/C1)+ADR-02装配统一；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -103,6 +103,7 @@ def show_help():
     print("│  ★ 观察池 (v0.8.12)                                 │")
     print("│    watch                 看观察池(入池价→现价+走势) │")
     print("│    doctor                运行诊断(环境/依赖/配置/缓存)│")
+    print("│    diff <代码>           分析对比(较上次何变化)      │")
     print("│    watch add <代码|#N>   手动入池(缺省拉实时价)     │")
     print("│    watch rm <代码>       移出观察池                 │")
     print("│    分析出 WATCH 的票自动入池，scan review 标 ✓      │")
@@ -399,6 +400,13 @@ def parse_input(user_input: str):
     if cmd in ("doctor", "诊断"):
         return ("doctor", {})
 
+    # ── 分析对比（v0.8.17，plan/ C1）：同股最近两次深分析比较 ──
+    if cmd in ("diff", "对比"):
+        if len(parts) < 2 or not parts[1].strip():
+            print("  [!] 用法: diff <代码>（比较该股最近两次深分析的关键证据变化）")
+            return None
+        return ("diff_evidence", {"code": parts[1]})
+
     # ── 市场恐慌指数（v0.8.10）──
     if cmd == "fear":
         rest = parts[1:]
@@ -668,6 +676,7 @@ _COMMAND_HINTS = {
     "expect": "expect 未来事件日历+预期透支度",
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
+    "diff": "diff <代码> 分析对比：同股最近两次深分析的价格/决策/信号变化",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1507,7 +1516,7 @@ def run_cli(mode: str, args: dict):
         analyze_live, run_backtest, run_batch_validation,
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
-        scan_review, scan_review_import, watch_pool, doctor,
+        scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
     )
 
     ai_overrides = {}
@@ -1774,6 +1783,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "doctor":
         # v0.8.16：运行诊断——只读零 AI 环境体检（plan/ M6）
         doctor()
+
+    elif mode == "diff_evidence":
+        # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
+        diff_evidence_cmd(args.get("code", ""))
 
     elif mode == "noai":
         _no_ai = not _no_ai

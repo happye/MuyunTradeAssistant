@@ -41,6 +41,7 @@ logging.basicConfig(
 # 未命中原样透传。维护纪律：改告警必须同一 commit 同步 plain_errors.WARNING_PATTERNS
 # 与 docs/报错速查手册.md（AGENTS.md §五）。
 from src.cli.plain_errors import install as _install_plain_errors
+from src.cli import evidence as _evidence
 _install_plain_errors()
 logger = logging.getLogger(__name__)
 
@@ -127,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.16[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.17[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -530,6 +531,11 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
+            # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
+            try:
+                _evidence.record_evidence(decision_result, strategy_decision, source="analyze_live")
+            except Exception as e:
+                logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             if hasattr(strategy_decision,'entry_exit') and strategy_decision.entry_exit:
                 ee = strategy_decision.entry_exit
                 if ee.get('highest_since_entry'):
@@ -873,6 +879,11 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             _watch_info = _watch_pool_touch(result, strategy_decision, stock_data, pos)
         except Exception as e:
             logger.debug(f"观察池钩子异常(不影响主流程): {e}")
+        # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
+        try:
+            _evidence.record_evidence(result, strategy_decision, source="live_multi")
+        except Exception as e:
+            logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             _watch_info = None
         # v0.8.7.1: 人话摘要面板（白话结论在最前；渲染失败不影响主流程）
         try:
@@ -3243,6 +3254,53 @@ def doctor():
                   f"｜只读体检，不改任何状态[/dim]\n")
 
 
+def diff_evidence_cmd(stock_code: str):
+    """分析对比（C1，v0.8.17）：同股最近两次深分析的关键证据比较——较上次为何变化。
+
+    数据源 ~/.muyun/analysis_evidence.jsonl（record_evidence 在每次 l/la/l all/chat
+    分析后自动追加）。只列变化项；证据字段语义跨版本稳定（口径变化由评分域
+    CACHE_VERSION 标注），旧记录缺字段视为"当时未记录"不误报。
+    """
+    code = normalize_stock_code(str(stock_code or ""))
+    if not code or not code.isdigit():
+        console.print("  [yellow]用法: diff <代码>（比较该股最近两次深分析）[/yellow]")
+        return
+    d = _evidence.diff_evidence(code)
+    if d is None:
+        n = len(_evidence.load_evidence(code, limit=99))
+        console.print(f"  [yellow]{code} 的分析证据不足两次（现有 {n} 条）"
+                      f"——先跑 l {code} 积累，隔次再跑即可对比[/yellow]")
+        return
+    old, new = d["old"], d["new"]
+    console.print(f"\n[bold cyan]🔍 分析对比 - {code} {new.get('name') or ''}[/bold cyan]")
+    console.print(f"  上次: {old['ts']}（{old.get('source')}）  ｜  本次: {new['ts']}（{new.get('source')}）")
+    for field, label, fmt in (("price", "价格", "{:.2f}"), ("score", "评分", "{:.3f}")):
+        ch = d["changes"].get(field)
+        if ch:
+            a, b, delta = ch
+            st = "red" if delta > 0 else "green" if delta < 0 else "white"
+            console.print(f"  {label}: {fmt.format(a)} → [{st}]{fmt.format(b)}（Δ{delta:+.2f}）[/{st}]")
+    for field, label in (("decision", "决策"), ("position_action", "仓位动作"), ("sell_path", "卖出路径")):
+        ch = d["changes"].get(field)
+        if ch:
+            console.print(f"  {label}: [yellow]{ch[0] or '-'} → {ch[1] or '-'}[/yellow]")
+    for sc in d["signal_changes"]:
+        if sc["kind"] == "转向":
+            console.print(f"  信号转向: {sc['skill']} {sc['old'].get('signal')} → "
+                          f"[yellow]{sc['new'].get('signal')}[/yellow]"
+                          f"（置信度 {sc['old'].get('conf'):.2f} → {sc['new'].get('conf'):.2f}）")
+        elif sc["kind"] == "新增":
+            console.print(f"  信号新增: {sc['skill']} {sc['new'].get('signal')}"
+                          f"（置信度 {sc['new'].get('conf'):.2f}）")
+        else:
+            console.print(f"  信号消失: {sc['skill']}（原 {sc['old'].get('signal')}）")
+    for w in d["new_warnings"]:
+        console.print(f"  [dim]新增提示: {w}[/dim]")
+    if not d["changes"] and not d["signal_changes"] and not d["new_warnings"]:
+        console.print("  [dim]两次分析的关键证据无变化[/dim]")
+    console.print(f"  [dim]证据卡: 分析报告/analysis/ ｜ 口径说明：评分口径变化由 benzong CACHE_VERSION 标注[/dim]")
+
+
 def watch_pool(args: dict):
     """观察池（v0.8.12）：WATCH 语义自动入池 + watch add/rm 手动管理。
 
@@ -4191,8 +4249,8 @@ AI配置:
     parser.add_argument(
         "-v", "--version",
         action="version",
-        # v0.8.16：运行诊断+安装事实源统一；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.16 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
+        # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
+        version="%(prog)s v0.8.17 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池)"
     )
     parser.add_argument(
         "--verbose",

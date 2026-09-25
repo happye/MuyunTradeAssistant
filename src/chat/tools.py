@@ -331,6 +331,13 @@ def _analyze_stock_single(stock_code: str) -> str:
         except Exception as e:
             logger.debug(f"chat 观察池入池失败(不影响分析): {e}")
 
+        # C1：分析证据落盘（JSONL + 证据卡），失败不影响分析
+        try:
+            from src.cli.evidence import record_evidence
+            record_evidence(decision_result, strategy_decision, source="chat")
+        except Exception as e:
+            logger.debug(f"chat 分析证据钩子异常(不影响主流程): {e}")
+
         from src.chat.formatter import format_analysis_result
         result = format_analysis_result(
             stock_data, decision_result, strategy_decision,

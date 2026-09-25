@@ -2086,3 +2086,12 @@ P3（已取消）:
 - **修复**: src/config.py（路径项目根推导）+ src/core/runtime.py build_live_orchestrator（RAG 由调用方持有）+ 6 处收敛；回测装配独立守卫测试
 - **测试**: +6（test_runtime）；test_iss090 结构断言随工厂化更新；全量 782 passed / 0 failed
 - **更新记录**: 2026-09-25 commit 落地于本 commit
+
+---
+
+### ISS-100: 分析证据层 + diff 对比命令（v0.8.17，plan/ C1）
+- **状态**: ✅ 已解决（2026-09-25；来源=plan/ARCHITECTURE §四 C1，阶段 C）
+- **交付**: src/cli/evidence.py（record_evidence/load_evidence/diff_evidence）；l/la/l all/chat 四入口自动落证据（JSONL ~/.muyun/analysis_evidence.jsonl + 人话证据卡 分析报告/analysis/）；REPL `diff <代码>` 只列变化项
+- **关键实现决策**: 新旧记录按 JSONL **出现序**定先后（同秒两条 ts 排序不可靠，测试暴露）；旧记录缺字段视为"当时未记录"不误报（区分真实变化与口径变化，C1 验收项）；坏行逐行隔离（M2 同款）；证据写盘失败不影响分析主流程
+- **测试**: +7（test_evidence）；全量 789 passed / 0 failed
+- **更新记录**: 2026-09-25 commit 落地于本 commit
