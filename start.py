@@ -104,6 +104,7 @@ def show_help():
     print("│    watch                 看观察池(入池价→现价+走势) │")
     print("│    doctor                运行诊断(环境/依赖/配置/缓存)│")
     print("│    diff <代码>           分析对比(较上次何变化)      │")
+    print("│    tasks                 批量任务进度/失败项         │")
     print("│    watch add <代码|#N>   手动入池(缺省拉实时价)     │")
     print("│    watch rm <代码>       移出观察池                 │")
     print("│    分析出 WATCH 的票自动入池，scan review 标 ✓      │")
@@ -407,6 +408,10 @@ def parse_input(user_input: str):
             return None
         return ("diff_evidence", {"code": parts[1]})
 
+    # ── 批量任务账本（v0.8.17，plan/ C2）──
+    if cmd in ("tasks", "任务"):
+        return ("batch_tasks", {})
+
     # ── 市场恐慌指数（v0.8.10）──
     if cmd == "fear":
         rest = parts[1:]
@@ -677,6 +682,7 @@ _COMMAND_HINTS = {
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
     "diff": "diff <代码> 分析对比：同股最近两次深分析的价格/决策/信号变化",
+    "tasks": "tasks 批量任务账本：l all/la/ba 的进度与失败项，中断续跑可见",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1517,6 +1523,7 @@ def run_cli(mode: str, args: dict):
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
         scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
+        batch_tasks_cmd,
     )
 
     ai_overrides = {}
@@ -1546,6 +1553,9 @@ def run_cli(mode: str, args: dict):
             print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
         failed = []
         ok = 0
+        # C2：批量任务账本（tasks 命令可查进度与失败项）
+        _tk = f"手动多代码×{len(codes)}"
+        _ss.batch_task_start("l", _tk, codes)
         for i, code in enumerate(codes, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(codes)}] {code}")
@@ -1553,12 +1563,15 @@ def run_cli(mode: str, args: dict):
             try:
                 analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
                 _ss.mark_deep_analyzed([code], source="手动多代码")
+                _ss.batch_task_mark("l", _tk, code, True)
                 ok += 1
             except SystemExit:
                 print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
+                _ss.batch_task_mark("l", _tk, code, False, "数据获取失败")
                 failed.append(code)
             except Exception as e:
                 print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
+                _ss.batch_task_mark("l", _tk, code, False, f"{type(e).__name__}: {e}")
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(codes)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
@@ -1571,16 +1584,22 @@ def run_cli(mode: str, args: dict):
             print("\n  当前无持仓记录")
             return
         print(f"\n  一键分析所有持仓（{len(positions)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
+        from src.cli import session_state as _ss_la
+        _tk_la = f"持仓×{len(positions)}"
+        _ss_la.batch_task_start("la", _tk_la, [pos.stock_code for pos in positions])
         for i, pos in enumerate(positions, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")
             print(f"{'='*60}")
             try:
                 analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, True)
             except SystemExit:
                 print(f"  [!] {pos.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
+                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, False, "数据获取失败")
             except Exception as e:
                 print(f"  [!] 分析失败: {e}")
+                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, False, str(e)[:120])
 
     elif mode == "live_scan_all":
         # v0.8.7.9: l all —— 对最近一次扫描结果（bz scan / scan market）批量深度分析
@@ -1628,6 +1647,8 @@ def run_cli(mode: str, args: dict):
         src_label = last.get("source", "?")
         failed = []
         ok = 0
+        # C2：批量任务账本（tasks 命令可查进度与失败项）
+        session_state.batch_task_start("l all", src_label, [it["code"] for it in new_items])
         for i, it in enumerate(new_items, 1):
             code, name = it["code"], it.get("name", "")
             print(f"\n{'='*60}")
@@ -1637,12 +1658,15 @@ def run_cli(mode: str, args: dict):
                 analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
                 # 成功才记当日已析（失败下次自动重试）；逐只落盘，Ctrl-C 中断不丢记录
                 session_state.mark_deep_analyzed([code], source=src_label)
+                session_state.batch_task_mark("l all", src_label, code, True)
                 ok += 1
             except SystemExit:
                 print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
+                session_state.batch_task_mark("l all", src_label, code, False, "数据获取失败")
                 failed.append(code)
             except Exception as e:
                 print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
+                session_state.batch_task_mark("l all", src_label, code, False, f"{type(e).__name__}: {e}")
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
@@ -1686,7 +1710,7 @@ def run_cli(mode: str, args: dict):
         else:
             print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）\n")
         from src.cli.main import benzong_batch_analyze
-        benzong_batch_analyze(items)
+        benzong_batch_analyze(items, src_label=src_label)
 
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
@@ -1787,6 +1811,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "diff_evidence":
         # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
         diff_evidence_cmd(args.get("code", ""))
+
+    elif mode == "batch_tasks":
+        # v0.8.17：批量任务账本——进度与失败项可见（plan/ C2）
+        batch_tasks_cmd()
 
     elif mode == "noai":
         _no_ai = not _no_ai

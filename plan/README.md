@@ -71,6 +71,19 @@ BacktestEngine ── DataFeeder ── Orchestrator(is_backtest=True)
 
 ## 执行记录
 
+### 2026-09-25 / Claude Code / 批 3：C2 批量任务可续跑（阶段 C）+ 批 2 账本补齐
+
+- **C2 交付**：session_state 批量任务账本（batch_task_start/mark/get_recent_batch_tasks，`~/.muyun/batch_tasks.json` 原子写、坏账本重置、保留最近 5 个任务）；l 多代码/la/l all/ba 四个批量循环逐项记账（成功/失败+错误摘要）；REPL 新命令 `tasks`（进度 n/总数、失败项、续跑提示）。成功项复用沿用既有 deep_analyzed/评分缓存语义（核实过，未改变）；失败项自动重试语义保持。任务账本只做可见性，不引入通用工作流框架（C2 口径）。
+- **批 2 账本补齐**（监督员核对发现的缺口）：plan/README 补批 2 条目；README.md "787"→"789" 笔误更正。
+- **监督员建议采纳**：批 4（C3）将给 doctor 加 evidence 文件健康项（存在性/末条距今），把证据静默失败变成 doctor 可见症状。
+- 测试 +7（batch_tasks：记账/继承/no-op/保留 5 个/损坏重置/坏编码）；全量数字见 commit message。
+
+### 2026-09-25 / Claude Code / 批 2：C1 分析证据层 + diff 对比（v0.8.17，阶段 C）
+
+- 新增 `src/cli/evidence.py`：record_evidence（JSONL `~/.muyun/analysis_evidence.jsonl` 追加 + 人话证据卡 `分析报告/analysis/{时间}_{代码}_{名字}.md`）满足用户既有「分析输出落盘回看」诉求；diff_evidence 同股两次比较只列变化项。
+- 接线四入口（analyze_live/live_multi/chat/…）；REPL 新命令 `diff <代码>`（别名 对比）；版本 v0.8.17；ISS-100。
+- 测试 +7；全量 789 passed / 0 failed。关键实现决策：新旧按 JSONL 出现序（同秒 ts 排序不可靠）、旧记录缺字段视为"当时未记录"不误报、坏行逐行隔离、证据写盘失败不影响分析。
+
 ### 2026-09-25 / Claude Code / 批 1：ADR-02 装配统一（阶段 B 收口，内部重构无行为变化）
 
 - 新增 `src/config.py`（load_config + _deep_merge 自 main 迁入；**路径基于项目根推导，不依赖调用者 cwd**——ADR-02 验收项，test_chat_command_bridge 的 os.chdir 兜底不再必要）。

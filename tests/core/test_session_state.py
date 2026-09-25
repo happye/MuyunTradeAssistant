@@ -280,3 +280,63 @@ def test_save_last_scan_reports_partial_success(monkeypatch, tmp_path):
     assert r.snapshot is True
     assert r.history is False
     assert not r  # 整体不算成功（__bool__ = 两者都成）
+
+
+# ── C2（v0.8.17）：批量任务账本 ──────────────────────────────
+
+def _redirect_batch(monkeypatch, tmp_path):
+    monkeypatch.setattr(session_state, "_BATCH_TASKS_FILE", tmp_path / "batch_tasks.json")
+
+
+def test_batch_task_start_mark_and_progress(monkeypatch, tmp_path):
+    _redirect_batch(monkeypatch, tmp_path)
+    session_state.batch_task_start("l all", "scan market 健康", ["A", "B", "C"])
+    session_state.batch_task_mark("l all", "scan market 健康", "A", True)
+    session_state.batch_task_mark("l all", "scan market 健康", "B", False, "数据获取失败")
+    tasks = session_state.get_recent_batch_tasks()
+    assert len(tasks) == 1
+    t = tasks[0]
+    assert "A" in t["done"] and "B" in t["failed"] and "B" not in t["done"]
+    assert t["failed"]["B"] == "数据获取失败"
+    assert "C" not in t["done"] and "C" not in t["failed"]   # 未跑项
+
+
+def test_batch_task_reinherit_on_restart(monkeypatch, tmp_path):
+    """同名任务重启 → 继承既有逐项状态（done 保留，可继续记账）。"""
+    _redirect_batch(monkeypatch, tmp_path)
+    session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])
+    session_state.batch_task_mark("ba", "bz scan AI", "A", True)
+    session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])   # 中断后重跑
+    session_state.batch_task_mark("ba", "bz scan AI", "B", True)
+    t = session_state.get_recent_batch_tasks()[0]
+    assert "A" in t["done"] and "B" in t["done"]   # 继承 + 新增
+
+
+def test_batch_task_mark_unknown_is_noop(monkeypatch, tmp_path):
+    _redirect_batch(monkeypatch, tmp_path)
+    session_state.batch_task_mark("l", "不存在", "A", True)   # 不抛不建
+    assert session_state.get_recent_batch_tasks() == []
+
+
+def test_batch_tasks_keep_latest_five(monkeypatch, tmp_path):
+    _redirect_batch(monkeypatch, tmp_path)
+    for i in range(7):
+        session_state.batch_task_start("l all", f"任务{i}", ["A"])
+    assert len(session_state.get_recent_batch_tasks(99)) == 5
+    keys = [t["key"] for t in session_state.get_recent_batch_tasks(99)]
+    assert "任务6" in keys and "任务0" not in keys   # 最新的留下
+
+
+def test_batch_tasks_corrupt_file_resets(monkeypatch, tmp_path):
+    _redirect_batch(monkeypatch, tmp_path)
+    (tmp_path / "batch_tasks.json").write_text("{bad json", encoding="utf-8")
+    session_state.batch_task_start("l all", "k", ["A"])   # 不抛，账本重置
+    assert len(session_state.get_recent_batch_tasks()) == 1
+
+
+def test_batch_tasks_survives_bad_encoding_line(monkeypatch, tmp_path):
+    """坏编码字节 → 账本重置不崩（可见性数据的合理取舍，JSON 非逐行格式）。"""
+    _redirect_batch(monkeypatch, tmp_path)
+    (tmp_path / "batch_tasks.json").write_bytes(b"\xff\xfe\xff")
+    session_state.batch_task_start("l all", "k", ["A"])   # 不抛
+    assert len(session_state.get_recent_batch_tasks()) == 1

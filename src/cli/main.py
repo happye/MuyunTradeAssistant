@@ -1657,7 +1657,7 @@ def _ba_dim_cell(row: dict, key: str) -> str:
     return f"{(row.get('dim_scores') or {}).get(key, 0):.0f}"
 
 
-def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> None:
+def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_label: str = "?") -> None:
     """ba 命令：对最近一次扫描找到的股票批量笨总评分（缓存优先，排序输出白话点评）。
 
     Args:
@@ -1680,6 +1680,17 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False) -> Non
 
     ranked = res.get("ranked", [])
     failures = res.get("failures", [])
+    # C2：批量任务账本（tasks 命令可查进度与失败项）
+    try:
+        from src.cli import session_state as _ss_ba
+        _ss_ba.batch_task_start("ba", src_label, codes)
+        for _r in ranked:
+            _ss_ba.batch_task_mark("ba", src_label, _r.get("code"), True)
+        for _f in failures:
+            _ss_ba.batch_task_mark("ba", src_label, _f.get("code"), False,
+                                   str(_f.get("error", "失败"))[:120])
+    except Exception as e:
+        logger.debug(f"ba 任务账本更新失败(不影响主流程): {e}")
     if not ranked and not failures:
         console.print("[yellow]没有产出评分结果[/yellow]")
         return
@@ -3299,6 +3310,35 @@ def diff_evidence_cmd(stock_code: str):
     if not d["changes"] and not d["signal_changes"] and not d["new_warnings"]:
         console.print("  [dim]两次分析的关键证据无变化[/dim]")
     console.print(f"  [dim]证据卡: 分析报告/analysis/ ｜ 口径说明：评分口径变化由 benzong CACHE_VERSION 标注[/dim]")
+
+
+def batch_tasks_cmd():
+    """批量任务账本（C2，v0.8.17）：最近批量任务的进度与失败项——中断后续跑可见。"""
+    from src.cli import session_state as _ss
+    tasks = _ss.get_recent_batch_tasks(3)
+    console.print(f"\n[bold cyan]📋 最近批量任务[/bold cyan]")
+    if not tasks:
+        console.print("  [yellow]还没有批量任务记录[/yellow]（l all / la / ba / l 多代码 会自动记账）")
+        return
+    for t in tasks:
+        codes = t.get("codes") or []
+        done = t.get("done") or {}
+        failed = t.get("failed") or {}
+        ok_n = sum(1 for c in codes if c in done)
+        fail_n = sum(1 for c in codes if c in failed)
+        pending_n = len(codes) - ok_n - fail_n
+        console.print(f"\n  [cyan]{t.get('kind')}[/cyan] {t.get('key')}（{t.get('ts_updated', '?')}）")
+        console.print(f"  进度: {ok_n}/{len(codes)} 成功"
+                      + (f"，{fail_n} 失败" if fail_n else "")
+                      + (f"，{pending_n} 未跑" if pending_n else ""))
+        if failed:
+            for c, note in list(failed.items())[:5]:
+                console.print(f"    [red]✗ {c}[/red]: {note}")
+            if len(failed) > 5:
+                console.print(f"    [dim]…等 {len(failed)} 项[/dim]")
+        if pending_n:
+            console.print(f"  [dim]重跑同类命令即续跑（成功项由当日缓存复用，失败项自动重试）[/dim]")
+    console.print(f"  [dim]账本: ~/.muyun/batch_tasks.json（保留最近 5 个任务）[/dim]\n")
 
 
 def watch_pool(args: dict):

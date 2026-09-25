@@ -410,6 +410,76 @@ def get_watch_active() -> list[dict]:
     return sorted(active.values(), key=lambda r: str(r.get("timestamp") or ""))
 
 
+# ── 批量任务账本（v0.8.17，plan/ C2）────────────────────────
+# l all / la / ba / l 多代码 的任务清单与逐项状态：中断后 tasks 命令可见
+# 进度与失败项，重跑同类任务时成功项由既有 deep_analyzed/评分缓存语义复用。
+# 只做可见性记录，不引入通用工作流框架（ADR C2 口径）。保留最近 5 个任务。
+
+_BATCH_TASKS_FILE = _STATE_DIR / "batch_tasks.json"
+_BATCH_TASKS_KEEP = 5
+
+
+def _load_batch_tasks() -> dict:
+    """读批量任务账本。根类型/结构坏 → 重置（可见性数据，损坏不值得人工抢救）。"""
+    try:
+        if not _BATCH_TASKS_FILE.exists():
+            return {"tasks": []}
+        data = json.loads(_BATCH_TASKS_FILE.read_text(encoding="utf-8"))
+        if not isinstance(data, dict) or not isinstance(data.get("tasks"), list):
+            return {"tasks": []}
+        return data
+    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+        logger.debug(f"batch_tasks.json 读取失败(重置): {e}")
+        return {"tasks": []}
+
+
+def batch_task_start(kind: str, key: str, codes: list) -> None:
+    """批量任务启动：登记任务清单（同 kind+key 重启则继承既有逐项状态）。失败不抛。"""
+    try:
+        data = _load_batch_tasks()
+        tasks = data["tasks"]
+        task = next((t for t in tasks if t.get("kind") == kind and t.get("key") == key), None)
+        if task is None:
+            task = {"kind": kind, "key": key, "codes": list(codes),
+                    "done": {}, "failed": {}}
+            tasks.insert(0, task)
+        else:
+            task["codes"] = list(codes)   # 同名任务以最新清单为准
+        task["ts_updated"] = datetime.now().isoformat(timespec="seconds")
+        task.setdefault("ts_started", task["ts_updated"])
+        data["tasks"] = tasks[:_BATCH_TASKS_KEEP]
+        _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1)
+    except Exception as e:
+        logger.debug(f"batch_task_start 失败(不影响批量主流程): {e}")
+
+
+def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "") -> None:
+    """批量任务逐项状态更新。失败不抛（可见性记录不拖垮主流程）。"""
+    try:
+        data = _load_batch_tasks()
+        task = next((t for t in data["tasks"]
+                     if t.get("kind") == kind and t.get("key") == key), None)
+        if task is None:
+            return
+        code = str(code)
+        if ok:
+            task.setdefault("done", {})[code] = datetime.now().isoformat(timespec="seconds")
+            task.get("failed", {}).pop(code, None)
+        else:
+            task.setdefault("done", {}).pop(code, None)
+            task.setdefault("failed", {})[code] = (note or "失败")[:120]
+        task["ts_updated"] = datetime.now().isoformat(timespec="seconds")
+        _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1)
+    except Exception as e:
+        logger.debug(f"batch_task_mark 失败(不影响批量主流程): {e}")
+
+
+def get_recent_batch_tasks(n: int = 3) -> list:
+    """读最近 n 个批量任务（最新在前）。坏记录跳过。"""
+    tasks = _load_batch_tasks().get("tasks") or []
+    return [t for t in tasks if isinstance(t, dict)][:n]
+
+
 def watch_entry_of(code: str) -> Optional[dict]:
     """某股票的在池信息 {timestamp(入池时间), source, item}；不在池返回 None。"""
     code = str(code).strip()
