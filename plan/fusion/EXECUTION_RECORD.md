@@ -987,6 +987,43 @@ TASKS F3 定位为研究可信基建）。
 - ⚠️ P2 北交所季频财务不支持未登记 → **已修**（DATA_COVERAGE 范围限制补笔）
 - 审查确认：决策路径零侵入、CACHE_VERSION 红线不适用、告警三处同步命中、_FakeRS 契约正确、两臂公平性、报告-log-账本数字三方一致
 
-### 状态：VERIFIED（2026-09-26 通宵批对抗审查 2 P1+7 P2 全部修复；全量 1067 passed, 2 skipped, 1 deselected）
+### 状态：VERIFIED（2026-09-26 通宵批对抗审查 2 P1+7 P2 全部修复；全量 1118 passed, 2 skipped, 1 deselected）
+
+---
+## 收尾批 — 用户走查驱动修补 + RAG 硬件保护 + plan2 + 因子计算 + LLM 提取器（2026-09-26 日间至夜间，用户全程授权）
+
+- **任务**：走查修补 + 用户拍板落地 + 剩余可自主任务 / 实现者：Claude Code（Opus 5.1 1M）/ 监督者：code-quality-guard（plan2 批 1P0+3P1 修复闭环；factor/LLM/verify 批 2P1+7P2 修复闭环）
+
+### 文件所有权与实际改动
+
+| 文件 | 动作 |
+|---|---|
+| `src/rag/embedding.py` | RAG 加载线程上限保险丝（MUYUN_RAG_MAX_THREADS——用户 14700 缩肛硬件叮嘱；默认零变化）+ AGENTS §五硬件节 |
+| `src/cli/today_service.py` / `main.py` | today 等待条件逐只明细（ISS-104）+ 单股额度显示（风险档生产消费，ISS-108） |
+| `src/core/entry_exit/exit_rules.py` | 摘要术语源头中文化（Chandelier Exit→吊灯止损，ISS-105） |
+| `src/core/shadow_diff.py` | v2：报告中文+定位说明（ISS-106）；plan2 真计划消费（facts 逐周期作用，泄漏修复双侧断言）；plan_source 三态；归因 plan_source 感知（新标签 plan_draft_not_activated） |
+| `src/data/horizon_plans.py` + `main.py plan2_command` + `start.py` | **plan2 计划V2**：每股每周期一份（mid/long 正交）；M5 指纹判据=加载态快照（审查修正）；候选副本模式（失败不污染内存）；双序兼容（审查 P0）；损坏保护拒绝写 |
+| `src/cli/main.py` / `evidence.py` | diff 无参数可对比清单（走查需求）；diff --ai 可选解读层（ISS-110：事实层机械，AI ≤3 句只基于事实） |
+| `src/data/portfolio.py` / `main.py` / `start.py` | pos verify（ISS-111：旧记录核对确认；CONFIRMED_FILL 溯源不覆盖；保存失败回滚——审查 P1） |
+| `src/core/factor_compute.py` | 因子计算层 v1（6 因子纯函数；登记口径漂移登记 ISS-112） |
+| `src/core/claim_llm_extractor.py` + `tests/ai_eval/run_llm_extractor_eval.py` | **真实 LLM claim 提取器**（引用强制归属/注入三层防御/容错降级）+ 冻结标注集评测 **8/8**（费用 8 次/4276 tokens；llm_expect f6.v2 校准） |
+| `tests/core/test_batch_quotes.py` | 时钟冻结修复（17:30 后必挂的预先存在时间依赖缺陷，stash 二分确认） |
+| `ISSUES.md` | ISS-104~113 登记/闭环 |
+| `使用手册.md` / `README.md` / `AGENTS.md` | shadow/plan2/diff 章节 + 版本描述 + 术语表两行 + 硬件节 |
+
+### 用户可见变化（v0.8.20 累计）
+
+today 等待条件明细+单股额度 / `shadow` 中文报告 / `plan2`（立计划→影子真判断）/ `diff` 列表+--ai / `pos verify` / 摘要术语中文 / 全量测试 1031→1118。
+
+### 未完成条款（保持 TODO——结构性后续批）
+
+- **E1 候选召回**：需历史市场快照建库（全市场逐日 bar 拉取，数小时 external 跑批）+ 三路召回 harness——独立批
+- **E5 本体三臂消融**：提取器已就绪并过冻结评测；决策路径 A/B 接线（须 shadow 期验证）+ 预算口径确认——独立批；前置=ISS-113 告警映射
+- **E7 完整系统**：待 E1–E6
+- **影子数据积累 → opt_in**：时间积累；用户 plan2 立计划后影子出真判断
+- **三张卡补走查**（退出受阻/周期冲突/预算不足）：周期冲突卡现可经 plan2 双计划触发——待用户补走查
+- **E6 v2 口径升级**：行业映射（industry_max 消费前置）/批次 T+1 回放/费率对齐
+
+### 状态：VERIFIED（两轮对抗审查修复闭环；全量 1118 passed；LLM 评测 8/8 真实跑；plan2/pos verify 生命周期实跑）
 
 ---
