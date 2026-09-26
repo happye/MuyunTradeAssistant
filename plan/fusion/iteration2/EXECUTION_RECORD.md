@@ -93,7 +93,7 @@ task_id: R1
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: 26de693（R0 后）
-delivered_commit: （commit 后回填）
+delivered_commit: 5c0fda2
 ```
 
 ### owned_files / 变更面
