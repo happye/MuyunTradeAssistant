@@ -278,7 +278,7 @@ task_id: R5
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: 9b93d3f（R3 后）
-delivered_commit: （commit 后回填）
+delivered_commit: 12fecbc（与 R6 同批）
 ```
 
 ### owned_files / 变更面
@@ -319,7 +319,7 @@ task_id: R6
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: 9b93d3f（R3 后）
-delivered_commit: （commit 后回填）
+delivered_commit: 12fecbc（与 R5 同批）
 ```
 
 ### owned_files / 变更面
