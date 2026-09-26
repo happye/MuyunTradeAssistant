@@ -1,9 +1,9 @@
 # E0–E7 实验矩阵与场景覆盖计划（plan/fusion F8 交付）
 
-2026-09-25。VALIDATION.md §2/§3 的落地文件。**诚实声明：本文件是实验基建的冻结计划，
-E0–E7 的真实执行未发生**（需外源数据/长时回测，单独入口 opt-in）；基建的离线可验证
-部分（组合回放纯模型/制度检查/未来数据探针/manifest 机制）已落地并有 10 测试锁
-（`src/core/experiment.py` + `tests/core/test_experiment_replay.py`）。
+2026-09-25 交付；2026-09-26 更新：**E0/E1/E5(证据层)/E6/E7(烟测) 已真实执行**（v1/v2
+口径见各行状态与对应 REPORT）；E2/E3/E4 及 E1 历史版/E5 本体/E7 完整版登记后续批
+（前置条件见各行）。基建的离线可验证部分（组合回放纯模型/制度检查/未来数据探针/
+manifest 机制）有 10+ 测试锁（`src/core/experiment.py` + `tests/core/test_experiment_replay.py`）。
 
 ## 1. 实验注册（src/core/experiment.py E_SPEC，机器化 VALIDATION §3）
 
@@ -15,7 +15,7 @@ E0–E7 的真实执行未发生**（需外源数据/长时回测，单独入口
 | E3 | 持有纪律 | 同一事前候选与入场日 | legacy/fusion_mid/fusion_long 分别报告 | rule_bz_proxy | blocked_on_data |
 | E4 | 技术择时 | 同一投资逻辑和预算 | 固定周期分批/技术触发/混合门控 | rule_bz_proxy | blocked_on_data |
 | E5 | AI | 同一证据、计划、预算 | 无AI/结构化提取/提取+反证（旧 modifier 独立对照） | **ai_lookahead** | **证据层 v1 已执行（2026-09-26）**：真实 LLM 提取器冻结评测 8/8 + 三臂消融（无AI 6/LLM 11/反证标记 5）；报告 E5_REPORT.md；决策路径 A/B（本体）须影子期验证——后续批 |
-| E6 | 组合 | 同一单股动作集合 | 逐股建议 vs 统一资金与集中度约束 | rule_bz_proxy | **已执行（2026-09-26，v1）**：E0 臂 A 动作集 420万两臂对照——统一预算最大单股权重 78.5%→30.0%、拒绝全部有因；报告 E6_REPORT.md（v1 口径 caveat 见报告） |
+| E6 | 组合 | 同一单股动作集合 | 逐股建议 vs 统一资金与集中度约束 | rule_bz_proxy | **已执行（2026-09-26，v2）**：E0 臂 A 动作集 420万两臂——批次 T+1 回放+行业约束（50% 用户档）+费率对齐；统一预算最大单股权重 78.5%→46.9%、求解拒绝 38/执行拒绝 37 分计；报告 E6_REPORT.md |
 | E7 | 完整系统 | 同一PIT全集、成本、研究资源预算 | 修正后基线 vs 完整融合漏斗 | rule_bz_proxy | **漏斗烟测 v1 已执行（2026-09-26）**：候选 35→研究完备 5→资格 5→决策表→预算全链端到端可跑、逐级存活可计量；报告 E7_REPORT.md；真正 E7（历史 PIT 全集+收益对照）待 E1 历史版 |
 
 信息集标签强制：rule_bz_proxy / ai_lookahead / human_mode 三类不混记（信息集来源
