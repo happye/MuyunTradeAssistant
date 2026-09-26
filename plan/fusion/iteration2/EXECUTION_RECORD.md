@@ -13,7 +13,7 @@ task_id: R0
 owner: 实施方（Claude Code，集成负责人口径一次完成）
 status: REVIEW
 baseline_commit: 00ec84f（HEAD 交接核对一致；工作区仅 portfolio.yaml 用户实盘状态 + 本地未跟踪文件，未动）
-delivered_commit: 841b45d
+delivered_commit: d21b341（amend 回填账本后终哈希）
 ```
 
 ### 基线记录（实现条款①：记录 HEAD/dirty tree 与现有外部变更）
