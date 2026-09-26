@@ -257,6 +257,10 @@ docs/               # 详细文档
 - **系统代理 `127.0.0.1:7890` 会干扰东方财富 API 和 GitHub**：金融数据需 `_without_proxy()` 绕过。Git 推送注意：全局 .gitconfig 配的是 **URL 级代理** `http.https://github.com.proxy`，`-c http.proxy=` 覆盖不了它，要绕过须用 `git -c http.https://github.com.proxy= push`；若报 'via 127.0.0.1 ... Could not connect' 说明代理客户端没开，此时直连通常也被墙，先开代理再推
 - **THS 板块 API 可能超时**：`get_stocks_by_industry/concept` 有 15 秒超时保护
 
+### 硬件
+
+- **用户机器 i7 14700 缩肛（Intel 已知退化），RAG 首次加载嵌入模型有蓝屏/死机风险**（2026-09-26 用户叮嘱）：模型加载时 torch 默认吃满全部核心 → 功耗峰值是主嫌疑（用户靠 Intel XTU 限频压制）。软件侧保险丝：设环境变量 `MUYUN_RAG_MAX_THREADS=N` 可把加载线程压到 N（`src/rag/embedding.py::_apply_thread_cap`，默认不设=行为零变化）。**任何会提高加载期 CPU 并行度/重复触发模型加载的改动都要先想这条**；跑批脚本避免无谓的多进程 RAG 冷启动
+
 ### Git
 
 - **Git 操作需用 `cmd /c` 前缀**：PowerShell 直接执行 git 可能因中文路径出错

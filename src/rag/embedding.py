@@ -75,6 +75,31 @@ def _resolve_local_snapshot(model_name: str) -> Optional[str]:
     return None
 
 
+def _apply_thread_cap() -> None:
+    """模型加载的 CPU 峰值保护（2026-09-26 用户硬件叮嘱）。
+
+    背景：用户的 i7 14700 存在缩肛退化（Intel 已知问题），RAG 首次加载嵌入模型时
+    torch 默认吃满全部核心 → 瞬时功耗峰值 → 蓝屏/死机；用户目前靠 Intel XTU 限频
+    压制。本开关给一个软件侧保险丝：设 MUYUN_RAG_MAX_THREADS=N 时把 torch 线程数
+    压到 N，降低加载峰值（代价：加载变慢）。默认不设=行为零变化。
+    """
+    cap = os.environ.get("MUYUN_RAG_MAX_THREADS")
+    if not cap:
+        return
+    try:
+        n = max(1, int(cap))
+        import torch
+        torch.set_num_threads(n)
+        try:
+            # interop 线程只能在并行开始前设一次，失败不碍事（尽力而为）
+            torch.set_num_interop_threads(n)
+        except RuntimeError:
+            pass
+        logger.info(f"RAG 线程上限已设为 {n}（MUYUN_RAG_MAX_THREADS——硬件峰值保护，加载会变慢）")
+    except Exception as e:
+        logger.warning(f"MUYUN_RAG_MAX_THREADS 设置失败（忽略，按默认线程数加载）: {e}")
+
+
 class Embedder(ABC):
     """嵌入器抽象基类"""
 
@@ -144,6 +169,8 @@ class SentenceEmbedder(Embedder):
 
         try:
             from sentence_transformers import SentenceTransformer
+
+            _apply_thread_cap()  # 硬件峰值保护（14700 缩肛，见函数 docstring）
 
             # 设置HuggingFace镜像（如果未配置）
             if not os.environ.get("HF_ENDPOINT"):
