@@ -212,3 +212,8 @@ chat:
 # 融合架构开关（plan/fusion，v0.8.19 影子阶段前置）
 fusion:
   shadow_capture: true  # 影子差异捕获：l/la/chat 分析持仓时额外用 fusion_mid/long 决策表出对照包落 ~/.muyun/shadow_diff.jsonl（纯读零 AI 不改主结论）；false=关闭
+  # 用户风险档（2026-09-26 用户拍板，组合预算求解的约束输入；后续接 today/组合建议）
+  risk_profile:
+    per_stock_max: 0.20              # 单只股票最多占总资金 20%（2 成）
+    industry_max: 0.50               # 同一行业/主题最多 50%（5 成）
+    default_pressure_loss_rate: 0.40 # 单笔买入最大可承受压力亏损 40%（睡得着线）

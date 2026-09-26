@@ -133,3 +133,37 @@ def test_evidence_survives_corrupt_lines(monkeypatch, tmp_path):
         + b'{"ts": "2026-09-03' + b"\n" + good_new.encode("utf-8") + b"\n")
     d = ev.diff_evidence("600519")
     assert d is not None and d["changes"]["decision"] == ("HOLD", "BUY")
+
+
+# ── list_diffable（用户走查 2026-09-26：diff 无参数列可对比股票）──
+
+def test_list_diffable_groups_by_code(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    _EVIDENCE = tmp_path / "analysis_evidence.jsonl"
+    rows = [
+        {"ts": "2026-09-01T10:00:00", "code": "600519", "name": "贵州茅台", "source": "l",
+         "price": 100.0, "decision": "HOLD", "score": 0.5, "position_action": None,
+         "position_ratio": 0.0, "sell_path": None, "signals": [], "warnings": []},
+        {"ts": "2026-09-02T10:00:00", "code": "600519", "name": "贵州茅台", "source": "l",
+         "price": 101.0, "decision": "HOLD", "score": 0.5, "position_action": None,
+         "position_ratio": 0.0, "sell_path": None, "signals": [], "warnings": []},
+        {"ts": "2026-09-03T10:00:00", "code": "000001", "name": "平安银行", "source": "l",
+         "price": 10.0, "decision": "BUY", "score": 0.6, "position_action": None,
+         "position_ratio": 0.0, "sell_path": None, "signals": [], "warnings": []},
+        {"ts": "2026-09-04T10:00:00", "code": "300750", "name": "宁德时代", "source": "l",
+         "price": 200.0, "decision": "HOLD", "score": 0.5, "position_action": None,
+         "position_ratio": 0.0, "sell_path": None, "signals": [], "warnings": []},
+    ]
+    _EVIDENCE.write_text("\n".join(json.dumps(r, ensure_ascii=False) for r in rows) + "\n",
+                         encoding="utf-8")
+    out = ev.list_diffable()
+    # 只有 600519 有两条 ≥2；000001/300750 各一条不入选；按最近时间降序
+    assert [e["code"] for e in out] == ["600519"]
+    assert out[0]["count"] == 2 and out[0]["latest_ts"] == "2026-09-02T10:00:00"
+
+
+def test_list_diffable_empty_and_missing_file(monkeypatch, tmp_path):
+    _redirect(monkeypatch, tmp_path)
+    assert ev.list_diffable() == []  # 文件不存在
+    (tmp_path / "analysis_evidence.jsonl").write_text("{broken\n", encoding="utf-8")
+    assert ev.list_diffable() == []  # 只有坏行

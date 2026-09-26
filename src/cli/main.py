@@ -3652,6 +3652,20 @@ def diff_evidence_cmd(stock_code: str):
     console.print(f"  [dim]证据卡: 分析报告/analysis/ ｜ 口径说明：评分口径变化由 benzong CACHE_VERSION 标注[/dim]")
 
 
+def diff_list_cmd():
+    """diff（无参数）→ 列出可对比的股票（证据 ≥2 条；用户走查 2026-09-26 需求）。"""
+    from src.cli.evidence import list_diffable
+    rows = list_diffable()
+    console.print("\n[bold cyan]🔍 可对比的股票（至少有两次深分析记录）[/bold cyan]")
+    if not rows:
+        console.print("  [yellow]还没有可对比的股票[/yellow]——同一只股跑两次 l（不同时间），"
+                      "之后就能 diff 它了")
+        return
+    for r in rows:
+        console.print(f"  {r['code']} {r['name']:<8s} {r['count']:>3d} 次  最近: {r['latest_ts'][:16]}")
+    console.print("  [dim]用法: diff <代码>（对比该股最近两次深分析的变化点）[/dim]")
+
+
 def today_command():
     """today 统一行动工作台（F7，plan/fusion ADR-F08）：先持仓风险，再等条件。
 

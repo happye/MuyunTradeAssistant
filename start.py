@@ -99,6 +99,7 @@ def show_help():
     L.append(_cmd("la", "一键分析所有持仓（简明卡）"))
     L.append(_cmd("<6位代码>", "直接输代码，等同 l <代码>"))
     L.append(_cmd("#N", "取最近扫描第 N 只（l/bz/pos 通用）"))
+    L.append(_cmd("diff", "列出可对比的股票（要两次分析记录）"))
     L.append(_cmd("diff <代码>", "同股最近两次分析对比（变化点）"))
     L.append(_row())
     L.append(_row("● 扫描与复盘"))
@@ -404,8 +405,7 @@ def parse_input(user_input: str):
     # ── 分析对比（v0.8.17，plan/ C1）：同股最近两次深分析比较 ──
     if cmd in ("diff", "对比"):
         if len(parts) < 2 or not parts[1].strip():
-            print("  [!] 用法: diff <代码>（比较该股最近两次深分析的关键证据变化）")
-            return None
+            return ("diff_list", {})  # 无参数 → 列出可对比股票（用户走查 2026-09-26 需求）
         return ("diff_evidence", {"code": parts[1]})
 
     # ── 批量任务账本（v0.8.17，plan/ C2）──
@@ -711,7 +711,7 @@ _COMMAND_HINTS = {
     "expect": "expect 未来事件日历+预期透支度",
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
-    "diff": "diff <代码> 分析对比：同股最近两次深分析的价格/决策/信号变化",
+    "diff": "diff 列出可对比股票 | diff <代码> 同股最近两次深分析对比",
     "tasks": "tasks 批量任务账本：l all/la/ba 的进度与失败项，中断续跑可见",
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
@@ -1555,7 +1555,7 @@ def run_cli(mode: str, args: dict):
         manage_positions, load_config, analyze_portfolio,
         console, scan_market, scan_events, show_expect, show_fear,
         scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
-        batch_tasks_cmd, today_command, shadow_command,
+        diff_list_cmd, batch_tasks_cmd, today_command, shadow_command,
     )
 
     ai_overrides = {}
@@ -1845,6 +1845,10 @@ def run_cli(mode: str, args: dict):
     elif mode == "diff_evidence":
         # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
         diff_evidence_cmd(args.get("code", ""))
+
+    elif mode == "diff_list":
+        # 用户走查 2026-09-26：diff 无参数 → 可对比股票清单
+        diff_list_cmd()
 
     elif mode == "batch_tasks":
         # v0.8.17：批量任务账本——进度与失败项可见（plan/ C2）

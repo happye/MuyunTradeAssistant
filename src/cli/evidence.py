@@ -132,6 +132,34 @@ def _write_card(rec: dict, decision_result) -> None:
     logger.debug(f"分析证据卡同名冲突超限: {base}")
 
 
+def list_diffable() -> list[dict]:
+    """证据里至少有两条记录的股票（`diff` 无参数时的可对比清单；用户走查 2026-09-26：
+    「我不知道哪些股票能用 diff」）。返回 [{code, name, count, latest_ts}] 按最近时间降序。"""
+    if not _EVIDENCE_FILE.exists():
+        return []
+    by_code: dict[str, dict] = {}
+    with _EVIDENCE_FILE.open("r", encoding="utf-8") as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                r = json.loads(line)
+            except json.JSONDecodeError:
+                continue  # 坏行隔离（既有纪律）
+            code = str(r.get("code") or "")
+            if not code:
+                continue
+            ent = by_code.setdefault(code, {"code": code, "name": "", "count": 0, "latest_ts": ""})
+            ent["count"] += 1
+            if not ent["name"]:
+                ent["name"] = str(r.get("name") or "")
+            if str(r.get("ts") or "") > ent["latest_ts"]:
+                ent["latest_ts"] = str(r.get("ts") or "")
+    return sorted((e for e in by_code.values() if e["count"] >= 2),
+                  key=lambda e: e["latest_ts"], reverse=True)
+
+
 def load_evidence(code: str, limit: int = 2) -> list:
     """读某股最近 limit 条证据（按文件出现序取尾部——JSONL 追加序即时间序，
     同秒两条记录 ts 相同时 ts 排序无法定先后，出现序才是真序）。
