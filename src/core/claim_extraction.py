@@ -36,6 +36,8 @@ from src.core.decision_contract import FactStatus
 logger = logging.getLogger(__name__)
 
 CLAIM_SCHEMA_VERSION = "f6.v1"
+# R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2 标签和结果保留，新协议单独命名
+CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv2"
 
 
 class ClaimVerificationError(ValueError):
@@ -71,6 +73,15 @@ class ClaimRecord(BaseModel):
     citation_uri: str = Field(default="", description="来源定位（URL/公告ID/文件路径#锚点）")
     citation_hash: str = Field(default="", description="来源内容 sha256（须与证据库/原文一致）")
     excerpt_locator: str = Field(default="", description="原文定位（页码/段落）")
+    # R2 内容核验扩展（DATA_TRUST §4；缺省空=未提供，内容检查按缺失处理不进 FACT_CHECKED）
+    quote_text: str = Field(default="", description="摘录原文片段（EXCERPT_GROUNDED 的依据——标题不能冒充已读全文）")
+    quote_span: Optional[list[int]] = Field(default=None, description="摘录在正文中的字符区间 [start, end]（给了则精确校验）")
+    fact_stage: str = Field(
+        default="", description="事实阶段：intention(意向/框架)/signed(签约)/delivering(交付)/"
+                                "revenue_recognized(收入确认)/unknown——框架意向不得当已确认收入")
+    negation_flag: Optional[bool] = Field(default=None, description="主张是否为否定性事实（如『未获得订单』）；None=未声明")
+    conditional_flag: bool = Field(default=False, description="主张是否带条件（如『拟』『预计』）")
+    relation_basis: str = Field(default="", description="support/refute 判断的依据注记——研究推论与原始事实分开存（DATA_TRUST §4）")
     # 谱系与诊断
     extracted_by: str = Field(default="", description="提取器标识（deterministic/<model>@<version>）")
     model_confidence: Optional[float] = Field(
@@ -154,16 +165,21 @@ class VerifiedClaim(BaseModel):
     checks: list[str] = Field(default_factory=list, description="通过的核验项（审计用）")
 
 
-def verify_claim(claim: ClaimRecord, evidence_pool: Optional[list] = None) -> VerifiedClaim:
-    """规则核验（DESIGN ADR-F06 失败规则，全部通过才返回 VerifiedClaim）：
+def verify_claim(claim: ClaimRecord, evidence_pool: Optional[list] = None,
+                 as_of: Optional[datetime] = None) -> VerifiedClaim:
+    """规则核验（结构层，DATA_TRUST §4：R2 起调用方应消费 verify_claim_tiered 的分级结果，
+    本函数保留为底层结构检查）：
     ① 必须带引用（citation_uri 或 citation_hash）；
     ② 引用必须存在（evidence_pool 提供时：条目按 uri/hash 匹配，且条目带 security_id
        时必须与 claim 主体一致——**错误实体**（把别家公告安到自家头上）在此拦截）。
+       **无 evidence_pool 时不声称 citation_resolves**（R2 修正探针 P3：未执行的来源
+       解析不得记为通过；无池结果只有结构检查，内容核验无从谈起）。
        ⚠️ 拦截强度的诚实边界（F6 审查 P1-2）：条目只有来源级 uri（无 hash/无
        security_id）时为**弱验证**——uri 是"巨潮公告"这类来源名时，伪造归属可穿透。
        强验证要求文档级引用（每份公告独立 uri 或带内容 hash + 归属方）；claim 引用
        带 citation_hash 时按 hash 精确匹配，不受此限；
-    ③ 公开时点不得晚于当前（未来日期拒收）；
+    ③ 公开时点不得晚于截止（as_of 显式传入用 as_of——回放必须传；缺省用当前时刻，
+       仅 live 语义合法）；
     ④ 单位合法（G15 白名单）；
     ⑤ statement 非空；正文注入防护=核验只依赖结构化字段与引用，statement 中的
        指令性文字不改变任何核验结果（标注集用例锁定）。
@@ -196,12 +212,18 @@ def verify_claim(claim: ClaimRecord, evidence_pool: Optional[list] = None) -> Ve
             raise ClaimVerificationError(
                 f"引用不存在（uri={claim.citation_uri!r} hash={claim.citation_hash[:12]!r} "
                 f"不在证据库或归属不符）——拒收")
-    checks.append("citation_resolves")
-    now = datetime.now(timezone.utc)
-    if claim.published_at is not None and claim.published_at > now:
+        checks.append("citation_resolves")
+    # 无池时**不**追加 citation_resolves——结构层未执行来源解析，如实缺项（R2/探针 P3）
+    cutoff = as_of or datetime.now(timezone.utc)
+    if getattr(cutoff, "tzinfo", None) is None:
+        raise ClaimVerificationError("as_of 必须带时区（naive datetime 拒收——回放资格比较需要）")
+    if claim.published_at is not None and claim.published_at > cutoff:
         raise ClaimVerificationError(
-            f"未来日期拒收：published_at={claim.published_at.isoformat()} 晚于当前")
-    checks.append("no_future_date")
+            f"未来日期拒收：published_at={claim.published_at.isoformat()} "
+            f"晚于截止 {cutoff.isoformat()}")
+    # 无时间不声称 no_future_date 已证实（DATA_TRUST §4 明文——审查 P1：与 P3 同原则）
+    checks.append("no_future_date" if claim.published_at is not None
+                  else "no_future_date_unchecked")
     if not _unit_allowed(claim.unit):
         raise ClaimVerificationError(f"单位不合法拒收: {claim.unit!r}")
     checks.append("unit_allowed")
@@ -222,14 +244,20 @@ class ClaimExtractor:
         self._cache: dict[str, list[ClaimRecord]] = {}
         self.calls = 0  # 付费次数计数（评测费用/耗时对比用）
 
+    def _cache_key(self, source_doc: dict) -> str:
+        """缓存键（R2 版本化，DATA_TRUST §4）：协议版本 + 提取器标识 + 输入内容 hash。
+        子类可叠加 prompt/model 版本（换提示词即换键——旧缓存不冒充新语义）。"""
+        return "|".join([CLAIM_SCHEMA_VERSION, self.name,
+                         hashlib.sha256(json.dumps(
+                             source_doc, ensure_ascii=False, sort_keys=True,
+                             default=str).encode("utf-8")).hexdigest()])
+
     def extract(self, source_doc: dict) -> list[ClaimRecord]:
         """source_doc: {title, content, date, source, security_id, ...}。
 
-        缓存键 = self.name + 输入内容 hash（实例级缓存；调用方应复用同一实例——
+        缓存键 = 协议版本 + name + 输入内容 hash（实例级缓存；调用方应复用同一实例——
         每次 new 实例缓存即失效，F6 审查 P2 备案）。"""
-        key = self.name + "|" + hashlib.sha256(json.dumps(
-            source_doc, ensure_ascii=False, sort_keys=True,
-            default=str).encode("utf-8")).hexdigest()
+        key = self._cache_key(source_doc)
         if key in self._cache:
             return self._cache[key]  # 同输入不重复付费
         self.calls += 1
@@ -242,6 +270,311 @@ class ClaimExtractor:
 
     def reset_cache(self):
         self._cache.clear()
+
+
+# ──────────────── R2 分级核验（DATA_TRUST §4：从「格式合法」到「内容有依据」）────────────────
+
+class VerificationLevel(str, Enum):
+    """核验等级（逐级递进；停在已达等级并给 failures；语义类缺口 NEEDS_REVIEW）。
+
+    PARSED          JSON/字段合法（结构层通过）
+    SOURCE_RESOLVED 文档级引用、hash、实体均匹配（在 as_of 截止前已公开）
+    EXCERPT_GROUNDED 摘录定位准确，原文片段确实存在（quote_text 在正文中）
+    FACT_CHECKED    主体、否定词、数值/单位、阶段与**摘录原文**一致（确定性检查全过）
+    NEEDS_REVIEW    无法核实/人工判断（正文不可得、摘录不符、数值未定位、阶段错位、
+                    更正混用——TASKS R2 暂停点：正文不可得/语义复杂保留 NEEDS_REVIEW）
+    REJECTED        已发现错误（主体不符、hash 与文档版本冲突、与摘录正文相反、单位错位）
+    """
+
+    PARSED = "PARSED"
+    SOURCE_RESOLVED = "SOURCE_RESOLVED"
+    EXCERPT_GROUNDED = "EXCERPT_GROUNDED"
+    FACT_CHECKED = "FACT_CHECKED"
+    NEEDS_REVIEW = "NEEDS_REVIEW"
+    REJECTED = "REJECTED"
+
+
+class SourceDocument(BaseModel):
+    """证据库中的一份来源文档（核验池条目——标题不能冒充已读取全文）。
+
+    content_hash 只对 **body 正文** 计算（LLM 提取器历史用 title+content hash——
+    两者不同键不互认，文档级强验证以 body hash 为准）。"""
+    model_config = ConfigDict(extra="allow")
+
+    canonical_uri: str = Field(description="文档级唯一来源定位（每份公告独立 uri——弱来源名不算）")
+    content_hash: str = Field(description="**正文 body** 内容 sha256")
+    security_ids: list[str] = Field(default_factory=list, description="归属主体（归属方元数据）")
+    published_at: Optional[datetime] = Field(default=None, description="发表/版本时点（as_of 资格判定）")
+    body: str = Field(default="", description="正文全文（或能取回原文的定位引用，见 body_locator）")
+    body_locator: str = Field(default="", description="归档对象引用（research/raw sha256 等——正文不在内存时）")
+    title: str = Field(default="", description="标题（不参与内容 hash，不作已读全文的证据）")
+    is_correction: bool = Field(default=False, description="是否更正/修订公告（后发更正对抗案例）")
+
+    @field_validator("published_at")
+    @classmethod
+    def _aware_published(cls, v):
+        if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
+            raise ValueError("SourceDocument.published_at 必须带时区")
+        return v
+
+    @staticmethod
+    def body_hash(body: str) -> str:
+        return hashlib.sha256(body.encode("utf-8")).hexdigest()
+
+    @classmethod
+    def from_source_doc(cls, doc: dict) -> "SourceDocument":
+        """从提取器输入的 source_doc 构造（hash 约定与 LLM/确定性提取器一致：
+        sha256(title+content)）——同一文档在 claim.citation_hash 与池条目两侧
+        用同一算法，uri+hash 双匹配才不误触版本冲突（R3 接线用此构造）。"""
+        title = str(doc.get("title") or "")
+        content = str(doc.get("content") or "")
+        h = hashlib.sha256((title + content).encode("utf-8")).hexdigest()
+        pub = None
+        if doc.get("date"):
+            try:
+                from datetime import datetime as _dt, timedelta as _td, timezone as _tz
+                pub = _dt.fromisoformat(f"{doc['date']}T23:59:00+08:00")
+                if pub.tzinfo is None:
+                    pub = pub.replace(tzinfo=_tz(_td(hours=8)))
+            except ValueError:
+                pub = None
+        return cls(canonical_uri=str(doc.get("source") or ""),
+                   content_hash=h, security_ids=([str(doc["security_id"])]
+                                                  if doc.get("security_id") else []),
+                   body=content, title=title, published_at=pub)
+
+    @classmethod
+    def from_legacy_pool_entry(cls, e: dict) -> "SourceDocument":
+        """旧 dict 池条目（{uri, hash, security_id|security_ids, body?, published_at?}）
+        → SourceDocument（兼容适配）。
+        无 body 的旧条目=纯来源级弱引用——只能到 SOURCE_RESOLVED，内容核验不可达；
+        naive published_at 降为 None（不让适配崩——核验器契约是返回结果不抛）。"""
+        sids = e.get("security_ids") or ([e["security_id"]] if e.get("security_id") else [])
+        pub = e.get("published_at")
+        if pub is not None:
+            try:
+                if getattr(pub, "tzinfo", None) is None:
+                    pub = None  # naive → 按缺失处理（不让 validator 在核验器内炸）
+            except AttributeError:
+                pub = None
+        return cls(canonical_uri=str(e.get("uri") or ""),
+                   content_hash=str(e.get("hash") or ""),
+                   security_ids=[str(s) for s in sids],
+                   body=str(e.get("body") or ""),
+                   published_at=pub)
+
+
+class ClaimVerificationResult(BaseModel):
+    """分级核验结果（levels 通过 checks 呈现阶梯；failures 人话原因，用户可见）。"""
+    model_config = ConfigDict(extra="allow")
+
+    claim: ClaimRecord
+    level: VerificationLevel
+    checks: list[str] = Field(default_factory=list, description="已通过的阶梯检查（审计）")
+    failures: list[str] = Field(default_factory=list, description="未达/失败项（人话——用户可见的具体原因）")
+    verified_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
+    protocol_version: str = CLAIM_VERIFICATION_PROTOCOL_VERSION
+    as_of: Optional[datetime] = None
+    fact_status: FactStatus = FactStatus.MODEL_INFERRED
+
+
+_NEGATION_MARKERS = ("无新", "没有新", "未获", "未取得", "未签", "取消", "终止", "并无", "不存在",
+                     "no new order", "not won", "did not")
+_FRAMEWORK_MARKERS = ("框架协议", "意向", "拟签", "拟与", "合作备忘", "战略协议", "框架合作")
+
+
+def _numeric_text_variants(value: float, unit: str) -> list[str]:
+    """(value, unit) 在原文中的候选文本形态（金额单位换算族 + 千分位）。
+    非有限值（NaN/inf——JSON 非标扩展可产生）返回空（不做数值检查，审查 P2）。"""
+    import math
+    if not isinstance(value, (int, float)) or isinstance(value, bool) \
+            or not math.isfinite(value):
+        return []
+    out: list[str] = []
+    to_yuan = {"元": 1.0, "万元": 1e4, "亿元": 1e8}
+    base_forms = [f"{value:g}"]
+    if value == int(value):
+        base_forms.append(f"{int(value):,}")
+    if unit in to_yuan:
+        yuan = value * to_yuan[unit]
+        for u, k in to_yuan.items():
+            v = yuan / k
+            if v == int(v) and v > 0:
+                out.append(f"{int(v):,}{u}")
+                out.append(f"{int(v)}{u}")
+                if v < 1:  # 小数元值（0.5亿）
+                    out.append(f"{v:g}{u}")
+    for f in base_forms:
+        out.append(f"{f}{unit}" if unit else f)
+        if unit:
+            out.append(f"{f} {unit}")
+    return [s for s in out if s.strip()]
+
+
+def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
+                        *, as_of: datetime) -> ClaimVerificationResult:
+    """分级核验（R2 主入口，DATA_TRUST §4 五级；**强制显式 as_of** 且必须带时区——
+    回放资格不依赖机器当前日期，R3 回放调用方传 naive 直接拒收不崩）。
+
+    阶梯：PARSED → SOURCE_RESOLVED → EXCERPT_GROUNDED → FACT_CHECKED；
+    停在已达等级并给 failures；语义类缺口落 NEEDS_REVIEW（正文不可得/摘录不符/
+    数值未定位/阶段错位/更正混用——TASKS R2 暂停点）；发现错误落 REJECTED
+    （主体不符/hash 版本冲突/与摘录相反/单位错位——**纯时点未到不算错误**，
+    统一停 PARSED 给回放话术）。
+
+    确定性内容检查（**只在 quote_text 内判定**——quote 是主张自选的支撑摘录，
+    正文其余部分可能是套话/澄清/无关段落，全文扫描会误杀真实主张，审查 P1）：
+    - 引用解析：文档级 uri 匹配 + **hash 与文档版本一致**（冲突=篡改/版本错配→
+      REJECTED，审查 P1）+ 归属主体一致 + 文档在 as_of 前已公开
+    - 摘录定位：quote_text 必须真实存在于正文（quote_span 给了则按区间精确校验）
+    - 数值一致：value+unit 的原文形态须出现在摘录内；差 100 倍的形态出现在摘录
+      而原值形态缺席 → 单位错位 REJECTED；否则数值未定位 → NEEDS_REVIEW
+    - 否定一致：摘录内否定标记 vs 主张否定旗标冲突 → REJECTED（否定丢失）
+    - 阶段一致：摘录内框架/意向标记 + 主张带数值且非意向阶段 → NEEDS_REVIEW
+    - 后发更正：来源是更正公告而 claim.revision==1 → NEEDS_REVIEW
+    - 注入免疫：全部检查是确定性字符串/数值比较，正文指令不进入任何判定路径
+
+    documents：SourceDocument 列表（旧 dict 池条目自动适配；适配失败按缺失处理）。
+    documents=None/空 → 停在 PARSED（无池不声称引用与内容已核实——探针 P3 语义）。
+    """
+    if as_of is None or getattr(as_of, "tzinfo", None) is None:
+        raise ClaimVerificationError(
+            "as_of 必须显式传入且带时区（回放资格不依赖机器当前日期；naive datetime 拒收）")
+    checks: list[str] = ["parsed"]
+    failures: list[str] = []
+    level = VerificationLevel.PARSED
+
+    def _reject(reason: str) -> ClaimVerificationResult:
+        failures.append(reason)
+        return ClaimVerificationResult(claim=claim, level=VerificationLevel.REJECTED,
+                                       checks=checks, failures=failures, as_of=as_of)
+
+    def _review(reason: str) -> ClaimVerificationResult:
+        failures.append(reason)
+        return ClaimVerificationResult(claim=claim, level=VerificationLevel.NEEDS_REVIEW,
+                                       checks=checks, failures=failures, as_of=as_of)
+
+    if not claim.citation_uri and not claim.citation_hash:
+        return _reject("无引用（citation_uri/citation_hash 均空）")
+    if not claim.statement.strip():
+        return _reject("statement 为空")
+    if not _unit_allowed(claim.unit):
+        return _reject(f"单位不合法: {claim.unit!r}")
+
+    docs: list[SourceDocument] = []
+    for d in (documents or []):
+        if not d:
+            continue
+        if isinstance(d, SourceDocument):
+            docs.append(d)
+        else:
+            try:
+                docs.append(SourceDocument.from_legacy_pool_entry(d))
+            except Exception:  # 旧条目字段非法（如 naive 时点）→ 按缺失处理，不让核验器崩
+                continue
+    if not docs:
+        failures.append("无证据库——引用与内容均未核实（不声称 citation_resolves）")
+        return ClaimVerificationResult(claim=claim, level=level, checks=checks,
+                                       failures=failures, as_of=as_of)
+
+    # 阶梯 2：来源解析（文档级 + hash 版本一致 + 归属 + 截止资格）
+    matched: Optional[SourceDocument] = None
+    subject_conflict = False
+    hash_conflict = False
+    cited_soon = False
+    for d in docs:
+        uri_ok = bool(claim.citation_uri) and d.canonical_uri == claim.citation_uri
+        hash_ok = bool(claim.citation_hash) and bool(d.content_hash) \
+            and d.content_hash == claim.citation_hash
+        if not (uri_ok or hash_ok):
+            continue
+        # uri 命中但 hash 属于另一版本（更正前后/被篡改引用）——已知错误（审查 P1）
+        if uri_ok and claim.citation_hash and d.content_hash \
+                and claim.citation_hash != d.content_hash:
+            hash_conflict = True
+            continue
+        if claim.security_id and d.security_ids and claim.security_id not in d.security_ids:
+            subject_conflict = True  # 引用命中但归属别家——已知错误（REJECTED），不是未解析
+            continue
+        if d.published_at is not None and d.published_at > as_of:
+            cited_soon = True  # 文档在截止时未公开——对本 as_of 不存在（回放资格）
+            continue
+        matched = d
+        break
+    if matched is None:
+        if hash_conflict:
+            return _reject("引用 hash 与文档内容版本不符（更正前后混用或引用被篡改）")
+        if subject_conflict:
+            return _reject("主体不符：引用命中的公告归属别家（错公司对抗案例）")
+        reason = ("引用文档晚于回放截止（as_of 时未公开——同一主张在截止后可解析）"
+                  if cited_soon else "引用不在证据库或归属不符")
+        failures.append(reason)
+        return ClaimVerificationResult(claim=claim, level=level, checks=checks,
+                                       failures=failures, as_of=as_of)
+    if claim.published_at is not None and claim.published_at > as_of:
+        failures.append("主张公开时点晚于回放截止（as_of 时该主张尚不存在）")
+        return ClaimVerificationResult(claim=claim, level=level, checks=checks,
+                                       failures=failures, as_of=as_of)
+    if claim.published_at is not None:
+        checks.append("no_future_date")  # 有时点才声称时点已核（无时间不声称——DATA_TRUST §4）
+    checks.append("source_resolved")
+    level = VerificationLevel.SOURCE_RESOLVED
+
+    # 阶梯 3：摘录定位（标题不算已读全文）。doc 侧正文缺失 → NEEDS_REVIEW（TASKS
+    # R2 暂停点「正文不可得」）；claim 侧未提供摘录 → 停 SOURCE_RESOLVED（已达等级
+    # +失败项——材料缺口属提取侧，不是人工判断不了内容）
+    if not matched.body:
+        return _review(f"来源文档无正文（body 缺失，locator={matched.body_locator or '未登记'}）"
+                       "——摘录与内容核验不可达，人工核对或补归档")
+    if not claim.quote_text.strip():
+        failures.append("主张无摘录（quote_text 缺失）——引用形式匹配≠内容有据，摘录由提取侧补齐")
+        return ClaimVerificationResult(claim=claim, level=level, checks=checks,
+                                       failures=failures, as_of=as_of)
+    if claim.quote_span is not None and len(claim.quote_span) != 2:
+        return _review("quote_span 非法（须 [start, end] 两元素）——摘录定位不可靠")
+    span_ok = True
+    if claim.quote_span is not None:
+        s, e = claim.quote_span
+        span_ok = (0 <= s <= e <= len(matched.body)
+                   and matched.body[s:e] == claim.quote_text)
+    if claim.quote_text not in matched.body or not span_ok:
+        return _review("摘录未在原文定位到（quote_text/quote_span 与正文不符）"
+                       "——可能摘录错误或引用错版，人工核对")
+    checks.append("excerpt_grounded")
+    level = VerificationLevel.EXCERPT_GROUNDED
+
+    # 阶梯 4：确定性内容检查——**只在 quote_text 内判定**（摘录是主张自选的支撑；
+    # 正文其他部分的套话/澄清段不参与，防误杀真实主张，审查 P1）
+    if (claim.security_id and matched.security_ids
+            and claim.security_id not in matched.security_ids):
+        return _reject("主体不符（别家公司的公告不能支撑本主体主张）")
+    has_negation_quote = any(m in claim.quote_text for m in _NEGATION_MARKERS)
+    if has_negation_quote and claim.negation_flag is not True:
+        return _reject("与摘录正文相反：支撑摘录含否定表述而主张为肯定性事实（否定丢失）")
+    if claim.negation_flag is True and not has_negation_quote:
+        return _review("主张为否定性事实但摘录未见否定表述——需人工复核")
+    if claim.value is not None:
+        direct = [s for s in _numeric_text_variants(claim.value, claim.unit)
+                  if s in claim.quote_text]
+        scaled = [s for s in _numeric_text_variants(claim.value * 100, claim.unit)
+                  + _numeric_text_variants(claim.value / 100, claim.unit)
+                  if s in claim.quote_text]
+        if not direct and scaled:
+            return _reject("数值与摘录相差 100 倍（单位错位）——按摘录应为 "
+                           f"{scaled[0]!r}（若非同一事项请人工修正摘录）")
+        if not direct and not scaled:
+            return _review("关键数值未能在摘录定位（数值/单位组合未出现）——需人工复核")
+        checks.append("numeric_consistent")
+    if (any(m in claim.quote_text for m in _FRAMEWORK_MARKERS)
+            and claim.value is not None
+            and claim.fact_stage not in ("intention",)):
+        return _review("摘录为框架/意向表述而主张按已确认数值处理（阶段错位）——需人工核对合同性质")
+    if matched.is_correction and claim.revision == 1:
+        return _review("来源为更正/修订公告而主张未声明版本（revision=1）——新旧版本混用待人工定版")
+    checks.append("content_consistent")
+    level = VerificationLevel.FACT_CHECKED
+    return ClaimVerificationResult(claim=claim, level=level, checks=checks,
+                                   failures=failures, as_of=as_of)
 
 
 class DeterministicExtractor(ClaimExtractor):
@@ -296,6 +629,8 @@ class DeterministicExtractor(ClaimExtractor):
                 unit=str(source_doc.get("unit") or ""),
                 citation_uri=str(source_doc.get("source") or ""),
                 citation_hash=content_hash,
+                # R2：正文即摘录（确定性转写可定位原文——无 content 的输入留空）
+                quote_text=content[:500],
                 extracted_by="deterministic",
             )
         except Exception as e:

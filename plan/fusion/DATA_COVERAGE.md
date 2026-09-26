@@ -11,11 +11,13 @@
 
 | 契约 | 语义 |
 |---|---|
-| `EvidenceRecord` | published_at（来源公布）/ available_at（系统可用，**严格PIT唯一判据**）/ fetched_at（本次抓取）三分立；`period_end ≠ available_at`；unit/currency/period_kind（累计/单季）显式；revision_id 支持后发重述；extra=allow 未知字段保留 |
-| `EvidenceSnapshot.build(strict=True)` | PIT 闸门：available_at 缺失或 > as_of 一律拒收（未来公告/后发重述不进旧快照），被拒数量与 id 如实记录 |
-| `snapshot_id` | 内容 hash（evidence_id/fetched_at/入序无关）——同快照重放稳定，同股重放可比 |
-| `qualify(required)` | 按必需清单判 COMPLETE/INCOMPLETE/CONFLICTED；缺失/过期/冲突显式命名；**默认排除 source_kind=rag**（方法文本不当公司事实） |
+| `EvidenceRecord` | published_at（来源公布）/ available_at（系统可用）/ fetched_at（本次抓取）三分立；`period_end ≠ available_at`；unit/currency/period_kind（累计/单季）显式；revision_id 支持后发重述；**R1 版本化扩展**：knowledge_basis（历史版本可得性四级）/document_version_id/first_seen_at/version_available_at/semantic_status（SUSPECT 隔离）/raw_value/raw_unit/value_kind/period_basis 等——三轴分离（来源类别/内容核验/版本可得性）；extra=allow 未知字段保留 |
+| `EvidenceSnapshot.build(strict=True)` | **统一资格算法 assess_evidence_eligibility**（R1，DATA_TRUST §1）：SUSPECT 隔离；档案按 version_available_at 入选；当时捕获按 first_seen_at；latest-only/UNKNOWN 不进 strict 历史（live 可用）；有效时点晚于 as_of 拒收；被拒数量/id/原因码如实记录 |
+| `snapshot_id` | 内容 hash（evidence_id/fetched_at/first_seen_at/入序无关）——同快照重放稳定，同股重放可比 |
+| `qualify(required)` | 按必需清单判 COMPLETE/INCOMPLETE/CONFLICTED；缺失/过期/冲突显式命名；**默认排除 source_kind=rag**（方法文本不当公司事实）；**排除 SUSPECT** 并给「证据可疑/版本不可追溯/版本资格未知」具体话术（R1） |
 | `normalize_amount` | 元/万元/亿元 显式换算；未登记单位拒猜（G15 红线） |
+| `verify_claim`（结构层，保留） | 引用存在/归属/截止/单位/非空五检查；**无池不产生 citation_resolves**（R2 修正探针 P3）；无时间记 no_future_date_unchecked（不声称已证实）；as_of 可选（缺省当前时刻=live 语义）——**回放路径必须改用 verify_claim_tiered（语言级强制 as_of）** |
+| `verify_claim_tiered`（R2 主入口，协议 cv2） | 分级核验 PARSED→SOURCE_RESOLVED→EXCERPT_GROUNDED→FACT_CHECKED（未达 NEEDS_REVIEW、发现错误 REJECTED）；quote_text/quote_span 原文定位（标题不算已读全文）；数值/否定/阶段/更正/主体确定性检查；显式 as_of（回放资格不依赖机器时钟）；SourceDocument 内容 hash 只对正文；注入免疫（确定性检查不解释文本）。语料 tests/ai_eval/claim_verification_corpus.json（cv2 冻结）+ 运行器报告 tests/artifacts/claim_verification_report.json；f6.v1/v2 历史标注集保留 |
 | `financial_record` | period_kind 必填（累计/单季）——缺口径拒绝构造 |
 
 ## 2. 可得性矩阵（按证据类别）

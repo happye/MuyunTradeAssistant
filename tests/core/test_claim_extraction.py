@@ -16,6 +16,7 @@ import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from pydantic import ValidationError
@@ -334,3 +335,211 @@ def test_value_none_not_clustered():
     same = _claim(statement="订单事件甲（金额未披露）", value=None, unit="")
     out2, dropped2 = dedup_claims([a, same])
     assert dropped2 == 1, "同文档重发仍被第一阶段去重"
+
+
+# ── R2：分级核验协议（cv2，DATA_TRUST §4）──────────────────
+
+def test_verify_claim_without_pool_does_not_claim_resolves():
+    """探针 P3 回归：无 evidence_pool 时不产生 citation_resolves（未执行的来源解析
+    不得记为通过）。"""
+    v = verify_claim(_claim())
+    assert "citation_resolves" not in v.checks
+    v2 = verify_claim(_claim(), evidence_pool=EVIDENCE_POOL)
+    assert "citation_resolves" in v2.checks, "带池行为不变（E5 兼容）"
+
+
+def test_tiered_rejects_contradictory_claim_with_quote():
+    """探针 P2 回归：正文「no new order」与正面主张 → REJECTED（结构核验≠内容核验）。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    body = "Company reports no new order."
+    doc = SourceDocument(canonical_uri="probe://doc",
+                         content_hash=SourceDocument.body_hash(body),
+                         security_ids=["600000"], body=body,
+                         published_at=datetime(2024, 1, 1, tzinfo=timezone.utc))
+    c = _claim(security_id="600000", subject="600000", citation_uri="probe://doc",
+               citation_hash=doc.content_hash,
+               statement="Company won a new order worth 9000000 yuan.",
+               value=9000000, unit="元",
+               published_at=datetime(2024, 1, 1, tzinfo=timezone.utc),
+               quote_text="no new order")
+    r = verify_claim_tiered(c, [doc], as_of=datetime(2024, 6, 1, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.REJECTED
+    assert any("摘录正文相反" in f for f in r.failures)
+
+
+def test_tiered_title_never_counts_as_body():
+    """SourceDocument 内容 hash 只对正文——标题不冒充已读全文；无正文时内容核验不可达。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    body = "正文内容：与某客户签订 900 万元销售订单。"
+    doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
+                         security_ids=["600519"], body=body,
+                         published_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
+    c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+               quote_text="900 万元销售订单", value=900, unit="万元")
+    r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.FACT_CHECKED
+    # 空 body（doc 侧正文缺失）→ NEEDS_REVIEW（TASKS 暂停点：正文不可得保留人工通道）
+    bare = doc.model_copy(update={"body": ""})
+    r2 = verify_claim_tiered(c, [bare], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r2.level is VerificationLevel.NEEDS_REVIEW
+    assert any("无正文" in f for f in r2.failures)
+
+
+def test_tiered_replay_as_of_explicit():
+    """验收3：核验必须显式 as_of（回放截止）——截止前后同一主张资格不同。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    body = "正文：签订 900 万元订单。"
+    doc = SourceDocument(canonical_uri="cninfo://x",
+                         content_hash=SourceDocument.body_hash(body),
+                         security_ids=["600519"],
+                         published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
+                         body=body)
+    c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+               quote_text="900 万元订单", value=900, unit="万元",
+               published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc))
+    before = verify_claim_tiered(c, [doc], as_of=datetime(2026, 8, 1, tzinfo=timezone.utc))
+    after = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert before.level is VerificationLevel.PARSED
+    assert after.level is VerificationLevel.FACT_CHECKED
+
+
+def test_deterministic_claim_reaches_excerpt_grounded():
+    """确定性通道产出带 quote_text 的 claim——配原文文档可达摘录级（无 AI 的核验阶梯可用）。
+    池文档经 from_source_doc 构造（hash 约定与提取器一致——uri+hash 双匹配）。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    content = "公司公告：与某客户签订销售订单，订单金额 900 万元。"
+    source = {"title": "订单公告", "content": content, "date": "2026-09-01",
+              "source": "cninfo://ann/x", "security_id": "600519",
+              "event_type": "order", "value": 900.0, "unit": "万元"}
+    ext = DeterministicExtractor()
+    claims = ext.extract(source)
+    doc = SourceDocument.from_source_doc(source)
+    r = verify_claim_tiered(claims[0], [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.FACT_CHECKED, \
+        f"确定性转写（数值可定位）应走完全阶梯: {r.failures}"
+    assert "excerpt_grounded" in r.checks and "numeric_consistent" in r.checks
+
+
+def test_extractor_cache_key_versioned_by_schema_and_prompt():
+    """R2 缓存版本化：键含 schema 版本 + prompt hash——换提示词=换键（旧缓存不冒充新语义）。"""
+    import src.core.claim_llm_extractor as llm_mod
+    doc = {"title": "t", "content": "c"}
+    base = ClaimExtractor()
+    k1 = base._cache_key(doc)
+    assert k1.startswith("f6.v1|base|")
+    fake = object()
+    e1 = llm_mod.LLMClaimExtractor(client=fake, model="test-model")
+    e2 = llm_mod.LLMClaimExtractor(client=fake, model="test-model")
+    k_before = e1._cache_key(doc)  # 补丁前取值（行内重比较会在补丁后重求值——测试逻辑坑）
+    assert k_before == e2._cache_key(doc)
+    old_prompt = llm_mod.SYSTEM_PROMPT
+    try:
+        llm_mod.SYSTEM_PROMPT = old_prompt + "（改动提示词）"
+        e3 = llm_mod.LLMClaimExtractor(client=fake, model="test-model")
+        assert e3._cache_key(doc) != k_before, "prompt 变更必须换缓存键"
+    finally:
+        llm_mod.SYSTEM_PROMPT = old_prompt
+    assert e1._cache_key(doc) == k_before, "恢复后键回到原值（不残留污染）"
+
+
+def test_llm_extractor_failure_and_truncation_accounted():
+    """R2 成本留痕：API 失败/JSON 非法计 failures；finish_reason=length 计 truncations
+    （失败/拒识/截断入分母——评测报告不只成功数）。"""
+    import src.core.claim_llm_extractor as llm_mod
+    from src.core.claim_llm_extractor import LLMClaimExtractor
+
+    class _Resp:
+        def __init__(self, content, finish_reason="stop"):
+            self.choices = [SimpleNamespace(message=SimpleNamespace(content=content),
+                                            finish_reason=finish_reason)]
+            self.usage = SimpleNamespace(total_tokens=100)
+
+    class _Client:
+        def __init__(self, content, finish_reason="stop", boom=False):
+            self._content, self._fr, self._boom = content, finish_reason, boom
+
+        def error(self):
+            raise RuntimeError("api down")
+
+        @property
+        def chat(self):
+            if self._boom:
+                raise RuntimeError("api down")
+            return SimpleNamespace(completions=SimpleNamespace(
+                create=lambda **kw: _Resp(self._content, self._fr)))
+
+    e = LLMClaimExtractor(client=_Client("bad json {", "stop"), model="t")
+    assert e.extract({"title": "t", "content": "c"}) == []
+    assert e.failures == 1 and e.calls == 1 and e.last_usage_tokens == 100
+    e.extract({"title": "t", "content": "c"})
+    assert e.calls == 1, "同输入缓存命中不重复付费"
+
+    e2 = LLMClaimExtractor(client=_Client("", "stop", boom=True), model="t2")
+    assert e2.extract({"title": "t", "content": "c"}) == []
+    assert e2.failures == 1
+
+    e3 = LLMClaimExtractor(client=_Client('{"claims": []}', "length"), model="t3")
+    assert e3.extract({"title": "t", "content": "c"}) == []
+    assert e3.truncations == 1, "截断留痕（拒识/截断成本进评测分母）"
+
+
+def test_legacy_pool_entry_adapter():
+    """旧 dict 池条目 → SourceDocument 适配；无 body 的弱引用只能到 SOURCE_RESOLVED。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    c = _claim(citation_uri="巨潮公告", quote_text="x")
+    legacy = {"uri": "巨潮公告", "hash": "abc123", "security_id": "600519"}
+    r = verify_claim_tiered(c, [legacy], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.NEEDS_REVIEW
+    assert any("无正文" in f for f in r.failures), "旧弱引用无 body → 摘录/内容核验不可达（人工通道）"
+    adapted = SourceDocument.from_legacy_pool_entry(legacy)
+    assert adapted.canonical_uri == "巨潮公告" and adapted.security_ids == ["600519"]
+
+
+def test_negation_boilerplate_in_body_does_not_kill_real_claim():
+    """监督员 P1 回归：否定检查只在摘录内判定——正文其他部分的披露套话
+    （「不存在应披露未披露事项」）不得误杀真实主张（REJECTED 是对用户的错误指控）。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    body = ("公司公告：与某客户签订销售订单，订单金额 900 万元。"
+            "本公司目前不存在应披露而未披露的重大事项。")
+    doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
+                         security_ids=["600519"],
+                         published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
+                         body=body)
+    c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+               quote_text="订单金额 900 万元", value=900, unit="万元")
+    r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.FACT_CHECKED, f"套话误杀: {r.failures}"
+
+
+def test_hash_conflict_with_uri_match_rejected():
+    """监督员 P1 回归：uri 命中但 citation_hash 属另一版本（更正前后/篡改）→ REJECTED
+    （SOURCE_RESOLVED 的「hash 均匹配」承诺不弱于旧函数）。"""
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    body = "更正后订单金额 900 万元。"
+    doc = SourceDocument(canonical_uri="cninfo://same", content_hash=SourceDocument.body_hash(body),
+                         security_ids=["600519"],
+                         published_at=datetime(2026, 9, 5, 23, 59, tzinfo=timezone.utc),
+                         body=body)
+    c = _claim(citation_uri="cninfo://same", citation_hash="hash_of_old_version",
+               quote_text="订单金额 900 万元", value=900, unit="万元")
+    r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+    assert r.level is VerificationLevel.REJECTED
+    assert any("hash" in f for f in r.failures)
+
+
+def test_naive_as_of_rejected_at_entry():
+    """监督员 P1 回归：as_of naive → 构造期 ClaimVerificationError（不在比较处 TypeError 崩）。"""
+    from src.core.claim_extraction import verify_claim_tiered
+    c = _claim()
+    with pytest.raises(ClaimVerificationError, match="时区"):
+        verify_claim_tiered(c, [], as_of=datetime(2026, 9, 15))  # naive
+    with pytest.raises(ClaimVerificationError, match="时区"):
+        verify_claim(c, evidence_pool=EVIDENCE_POOL, as_of=datetime(2026, 9, 15))  # legacy 同口径
+
+
+def test_no_time_does_not_claim_no_future_date():
+    """监督员 P1 回归：published_at=None → 记 no_future_date_unchecked（无时间不声称已证实，
+    DATA_TRUST §4 明文）。"""
+    v = verify_claim(_claim(published_at=None), evidence_pool=EVIDENCE_POOL)
+    assert "no_future_date_unchecked" in v.checks
+    assert "no_future_date" not in v.checks

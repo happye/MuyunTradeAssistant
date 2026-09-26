@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 
 _ALLOWED_UNITS = {"元", "万元", "亿元", "%", "股", "万股", "亿股", "倍"}
 _ALLOWED_RELATIONS = {"SUPPORTS", "REFUTES", "NEUTRAL"}
+# 调用参数常量——缓存键签名由此生成（改参数必须改这里，单一来源，审查 P2）
+CALL_MAX_TOKENS = 1200
+CALL_TEMPERATURE = 0.1
 
 SYSTEM_PROMPT = (
     "你是财经公告的结构化事实提取器。规则：\n"
@@ -79,7 +82,10 @@ def _parse_aware_dt(raw) -> Optional[datetime]:
 
 
 class LLMClaimExtractor(ClaimExtractor):
-    """DeepSeek/OpenAI 兼容 LLM 提取器（协议实现；client 可注入供测试）。"""
+    """DeepSeek/OpenAI 兼容 LLM 提取器（协议实现；client 可注入供测试）。
+
+    R2 成本留痕（DATA_TRUST §4）：calls/last_usage_tokens/failures/truncations——
+    调用、失败、拒识（空输出）、截断全部计数，进评测报告（不只成功数）。"""
 
     def __init__(self, client=None, model: Optional[str] = None, config: Optional[dict] = None):
         super().__init__()
@@ -89,6 +95,17 @@ class LLMClaimExtractor(ClaimExtractor):
         self._model = model or "deepseek-flash"
         self.name = f"llm:{self._model}"
         self.last_usage_tokens = 0  # 评测费用口径（累计 prompt+completion tokens）
+        self.failures = 0  # API 失败 / JSON 非法（失败与拒识入分母——DATA_TRUST §4）
+        self.truncations = 0  # finish_reason=length（截断成本留痕）
+
+    def _cache_key(self, source_doc: dict) -> str:
+        """缓存键加 prompt hash（DATA_TRUST §4：换提示词/换调用参数=换键，
+        旧缓存不冒充新语义；签名从参数常量生成——单一来源）。"""
+        import hashlib as _h
+        prompt_sig = _h.sha256(
+            f"{SYSTEM_PROMPT}|max_tokens={CALL_MAX_TOKENS}|t={CALL_TEMPERATURE}".encode("utf-8")
+        ).hexdigest()[:12]
+        return f"{super()._cache_key(source_doc)}|p:{prompt_sig}"
 
     @staticmethod
     def _build_client(config: Optional[dict]):
@@ -115,7 +132,7 @@ class LLMClaimExtractor(ClaimExtractor):
             logger.warning(f"LLM 提取器 client 构造失败: {e}")
             return None, None
 
-    def _call_llm(self, source_doc: dict) -> str:
+    def _call_llm(self, source_doc: dict, track_truncation: bool = False) -> str:
         """一次 LLM 调用，返回原始文本；失败抛给上层（_extract_impl 统一降级）。"""
         title = str(source_doc.get("title") or "")
         content = str(source_doc.get("content") or "")
@@ -128,13 +145,19 @@ class LLMClaimExtractor(ClaimExtractor):
                 {"role": "user", "content": f"公告元信息: {json.dumps(meta, ensure_ascii=False)}\n"
                                             f"标题: {title}\n公告正文:\n{content}"},
             ],
-            max_tokens=1200,
-            temperature=0.1,
+            max_tokens=CALL_MAX_TOKENS,
+            temperature=CALL_TEMPERATURE,
             extra_body=self._extra_body(),
         )
         usage = getattr(resp, "usage", None)
         if usage is not None:
             self.last_usage_tokens += (getattr(usage, "total_tokens", 0) or 0)
+        if track_truncation:
+            try:
+                if getattr(resp.choices[0], "finish_reason", None) == "length":
+                    self.truncations += 1
+            except (IndexError, TypeError, AttributeError):
+                pass
         return resp.choices[0].message.content or ""
 
     def _extra_body(self) -> dict:
@@ -149,12 +172,14 @@ class LLMClaimExtractor(ClaimExtractor):
             logger.warning("LLM 提取器无可用 client（未配置 key）——返回空列表（不硬凑）")
             return []
         try:
-            raw = self._call_llm(source_doc)
+            raw = self._call_llm(source_doc, track_truncation=True)
         except Exception as e:
+            self.failures += 1
             logger.warning(f"LLM claim 提取调用失败（降级空列表，不影响分析）: {e}")
             return []
         obj = _parse_json_tolerant(raw)
         if not obj or not isinstance(obj.get("claims"), list):
+            self.failures += 1
             logger.warning("LLM claim 提取输出非法 JSON——降级空列表（宁缺勿假）")
             return []
         # 引用强制归属：citation = 本次输入文档本身（模型不能发明引用）
@@ -178,6 +203,10 @@ class LLMClaimExtractor(ClaimExtractor):
                 relation = "NEUTRAL"
             try:
                 value = float(item["value"]) if item.get("value") is not None else None
+                # NaN/inf（JSON 非标扩展如 NaN/1e400）按缺失处理——不进核验器炸
+                # （同 confidence 的 NaN 防护口径，审查 P2 同类扫描）
+                if value is not None and (value != value or value in (float("inf"), float("-inf"))):
+                    value = None
             except (TypeError, ValueError):
                 value = None
             try:
