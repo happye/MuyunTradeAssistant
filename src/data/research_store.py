@@ -25,6 +25,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
+from pydantic import BaseModel, Field
+
 logger = logging.getLogger(__name__)
 
 RESEARCH_DIR = Path.home() / ".muyun" / "research"
@@ -165,3 +167,50 @@ class ResearchStore:
                 continue
             out.append(r)
         return out
+
+
+# ──────────────── R4：行业成员双时间轴（DATA_TRUST §5）────────────────
+
+class IndustryMembership(BaseModel):
+    """行业成员记录（双时间轴——经济归属生效期 × 本系统知晓期）。
+
+    - effective_from/effective_to：**经济归属**生效区间（公司真实行业归属期间）
+    - known_from/known_to：**本系统何时知道**该版本（当前值接口只有 known_from=
+      first_seen 起的前瞻能力——不可回填到上市日）
+    strict 历史资格（R4 验收2 后半）：as_of 时点的行业归属要求
+    known_from ≤ as_of ≤ known_to 且 effective_from ≤ as_of ≤ effective_to——
+    只有当前查询值（known_from=今天）时，任何历史 as_of 都查不到 → 不宣称 strict。"""
+
+    security_id: str
+    industry_id: str
+    source_version: str = ""
+    effective_from: Optional[str] = None
+    effective_to: Optional[str] = None
+    known_from: str = Field(default="", description="本系统知晓该版本的起始时点（ISO；不可回拨）")
+    known_to: Optional[str] = None
+    note: str = ""
+
+    def strict_eligible_at(self, as_of: str) -> bool:
+        """该成员记录能否支撑 as_of 的**严格历史**行业归属判定。"""
+        if not self.known_from:
+            return False
+        if self.known_from > as_of:
+            return False  # 截止时本系统还不知道该版本——不能宣称当时已知
+        if self.known_to and as_of > self.known_to:
+            return False
+        if self.effective_from and as_of < self.effective_from:
+            return False
+        if self.effective_to and as_of > self.effective_to:
+            return False
+        return True
+
+
+def industry_membership_from_current(security_id: str, industry_id: str, *,
+                                     known_from: str, source_version: str = "",
+                                     note: str = "") -> IndustryMembership:
+    """「当前查询值」构造成员记录——effective_from 未知（不回填），known_from=first_seen：
+    只支持 known_from 之后的决策，任何历史 as_of 均不 strict（DATA_TRUST §5 原文）。"""
+    return IndustryMembership(
+        security_id=security_id, industry_id=industry_id,
+        source_version=source_version, known_from=known_from, note=note or "当前值接口——"
+        "经济归属生效期未知，不回填历史（strict 历史行业归属不可宣称）")

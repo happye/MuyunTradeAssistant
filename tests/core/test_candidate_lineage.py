@@ -145,10 +145,18 @@ def test_unprobed_factors_registered_not_computed():
     assert funcs == {"get_spec", "validate_registry"}, \
         f"登记模块出现计算类函数（未探查因子不得计算）: {funcs - {'get_spec', 'validate_registry'}}"
     # 探查已通过（2026-09-26，tests/data_sources/probe_fin_pubdate.py：财务季频 pubDate
-    # 实证 + 申万指数日线可用）→ 翻转 False；接线批前仍只登记
-    for fid in ("earnings_quality_v1", "capital_return_v1", "balance_risk_v1",
-                "valuation_range_v1", "relative_trend_v1"):
+    # 实证 + 申万指数日线可用）→ 翻转 False；接线批前仍只登记。
+    # R4 更新：capital_return_v1（ROIC）/valuation_range_v1（区间）**回归不可计算态**
+    # （needs_data_probe=True）——ROE/trailing PE 拆为独立真实能力ID，代理不再自动满足。
+    computable = ("earnings_quality_v1", "balance_risk_v1", "relative_trend_v1",
+                  "cash_conversion_v1", "roe_observed_v1", "pe_ttm_v1",
+                  "relative_return_v2")
+    for fid in computable:
+        assert get_spec(fid) is not None, f"{fid} 未登记"
         assert get_spec(fid).needs_data_probe is False, f"{fid} 探查已通过仍标未验证"
+    for fid in ("capital_return_v1", "valuation_range_v1"):
+        assert get_spec(fid).needs_data_probe is True, \
+            f"{fid} 数据源未取得必须保持不可计算态（代理不自动满足，A08）"
     # 上游仍未取得：分部营收（business_exposure）无自动接口、行业量价库存（demand_change）未探查
     for fid in ("business_exposure_v1", "demand_change_v1"):
         assert get_spec(fid).needs_data_probe is True, f"{fid} 上游未验证不得翻转"

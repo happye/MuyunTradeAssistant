@@ -270,3 +270,105 @@ def from_theme_results(codes: list, rule_name: str, rule_version: str) -> list[d
             "missing_filters": [],
         })
     return out
+
+
+# ──────────────── R4：漏斗机器核对 + 法C 分片预算 ────────────────
+
+def funnel_report(cs: CandidateSet, route_inputs: dict) -> dict:
+    """候选漏斗机器核对报告（R4 验收4：「原始 130、配额后 35」可机器核对——不再人抄）。
+
+    各阶段计数全部由输入重算，不信任展示层：
+    - raw_total：各路输入条目总数（含路内重复/非法）
+    - invalid_skipped：空/非法代码
+    - after_route_quota：路内配额后保留的贡献数（含同路多规则追加）
+    - union_dedup_merged：跨路并入既有候选次数
+    - final_unique：最终唯一候选数
+    - per_route：{route: raw / after_quota / excluded_quota}——来源侧截断透明
+    - completeness：候选 missing_filters/截断标注汇总——缺字段明确完成度，
+      不作为「成功执行全部过滤」（R4 验收4 后半）
+    """
+    raw_total = 0
+    per_route: dict[str, dict] = {}
+    for route in CandidateRoute:
+        items = route_inputs.get(route) or []
+        raw = len(items)
+        invalid = sum(1 for d in items
+                      if not _norm_code(d.get("stock_code") or d.get("code")))
+        excluded = sum(1 for e in cs.excluded_by_quota if e.get("route") == route.value)
+        per_route[route.value] = {"raw": raw, "invalid": invalid,
+                                  "excluded_quota": excluded,
+                                  "after_quota": raw - invalid - excluded}
+        raw_total += raw
+    candidates_with_gaps = [c.stock_code for c in cs.candidates
+                            if c.missing_filters
+                            or any(not ct.rank_complete for ct in c.contributions)]
+    return {
+        "raw_total": raw_total,
+        "invalid_skipped": cs.skipped_invalid,
+        "after_route_quota": raw_total - cs.skipped_invalid - len(cs.excluded_by_quota),
+        "union_dedup_merged": cs.dedup_count,
+        "final_unique": len(cs.candidates),
+        "per_route": per_route,
+        "candidates_with_gaps": candidates_with_gaps,
+        "completeness_note": (f"{len(candidates_with_gaps)} 个候选带缺口"
+                              "（缺数据过滤/来源截断——明确完成度，不算全部过滤成功）"
+                              if candidates_with_gaps else "全部候选过滤完整"),
+    }
+
+
+class ShardRecallBudgetExhausted(RuntimeError):
+    """法C 分片召回预算耗尽（不静默重试到无上限——VALIDATION E1b）。"""
+
+
+def run_sharded_recall(shards: list[dict], call_shard, *, max_requests: int,
+                       max_retries_per_shard: int = 1) -> dict:
+    """分片召回编排（R4 验收5，RESEARCH_LOOP §3/VALIDATION E1b）：纯编排，调用方注入。
+
+    - shards：[{shard_id, coverage(覆盖范围描述), ...}]——按产业链环节/证据任务切分
+    - call_shard(shard) -> {"entities": [{code, name, ...}], "truncated": bool,
+                            "coverage": str}：单分片调用（AI/抓取），失败抛异常
+    - 预算：总请求 ≤ max_requests（每分片失败重试 ≤ max_retries_per_shard，重试计入
+      总预算）；**预算耗尽抛 ShardRecallBudgetExhausted**——不重试到无上限
+    - 失败隔离：单分片最终失败只丢该分片，已核实实体保留；返回带 coverage_gaps
+      （覆盖缺口显式登记——「部分覆盖」不能冒充全链路完成）
+    - 结构非法/截断的实体由 call_shard 侧过滤后返回（本层不解释实体内容）
+
+    返回 {"entities": [...], "coverage_gaps": [{shard_id, coverage, error}],
+          "requests_used": int, "retries_used": int}
+    """
+    entities: list[dict] = []
+    gaps: list[dict] = []
+    requests = 0
+    retries = 0
+    for shard in shards:
+        attempts = 0
+        ok = False
+        last_err: str = ""
+        while attempts <= max_retries_per_shard:
+            if requests >= max_requests:
+                raise ShardRecallBudgetExhausted(
+                    f"分片召回预算耗尽（max_requests={max_requests}，已用 {requests}）——"
+                    f"已核实 {len(entities)} 实体保留，缺口见 coverage_gaps")
+            attempts += 1
+            requests += 1
+            if attempts > 1:
+                retries += 1
+            try:
+                res = call_shard(shard)
+            except Exception as e:  # noqa: BLE001 —— 失败留痕，预算内重试
+                last_err = f"{type(e).__name__}: {e}"
+                continue
+            ents = res.get("entities") or []
+            entities.extend(ents)
+            if res.get("truncated"):
+                gaps.append({"shard_id": shard.get("shard_id"),
+                             "coverage": shard.get("coverage") or "",
+                             "error": "输出截断——本片覆盖不完整（截断实体不进入已验证集）"})
+            ok = True
+            break
+        if not ok:
+            gaps.append({"shard_id": shard.get("shard_id"),
+                         "coverage": shard.get("coverage") or "",
+                         "error": last_err or "unknown failure"})
+    return {"entities": entities, "coverage_gaps": gaps,
+            "requests_used": requests, "retries_used": retries}

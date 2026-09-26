@@ -1835,3 +1835,43 @@ ISS-114（万科 liabilityToAsset ≈÷100）最初像是公司财务异动。�
 - Source: r1_probe_fin_semantics
 - Pattern-Key: data.supplier_unit_drift_crosscheck_and_scoped_mapping
 - Related Files: src/data/financial_data.py, src/data/research_snapshot.py, tests/data_sources/probe_fin_semantics.py, plan/fusion/iteration2/evidence/
+
+## [LRN-20260927-R2-VERIFY] lesson — 结构核验≠内容核验：等级阶梯要「未达降级」而不是「缺项通过」
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（R2 分级核验 cv2 落地）
+**Area**: claim, verification, evidence
+
+F6 的 verify_claim 把「引用格式合法」当「引用已解析」（无池也记 citation_resolves——探针
+P3），且结构匹配后不再看正文（与正文相反的主张全过——探针 P2）。根因：**检查清单是
+「通过项累计」而不是「资格阶梯」**——没做的检查不该记为通过，做到了哪一级要说清楚。
+
+R2 模板（可复用）：分级核验 PARSED→SOURCE_RESOLVED→EXCERPT_GROUNDED→FACT_CHECKED，
+未达=NEEDS_REVIEW、发现错误=REJECTED；摘录必须在正文定位到（quote_text/quote_span）；
+数值做 100 倍错位探测；显式 as_of（回放资格不依赖机器时钟）；冻结语料先冻后跑、报告
+等级覆盖与失败分布而非单一通过数。
+
+- Source: r2_tiered_claim_verification
+- Pattern-Key: verification.ladder_not_checklist_and_quote_grounded
+- Related Files: src/core/claim_extraction.py, tests/ai_eval/claim_verification_corpus.json, tests/core/test_claim_verification_corpus.py
+
+## [LRN-20260927-R4-CAPABILITY] lesson — 能力ID=真实计算：代理不得顶名，资格按ID匹配
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（R4 拆分落地）
+**Area**: factor, capability, qualification
+
+A08：capital_return_v1 的登记名义是 ROIC，计算实际是 ROE——note 写了降级但机器分不清，
+研究资格会拿 ROE 数字冒充 ROIC 资格通过。同病：valuation_range_v1 名义是区间，算的是单点
+PE。**「note 不足以让机器识别能力降级」**（架构师原话）。
+
+修法：真实计算给独立ID（roe_observed_v1/pe_ttm_v1/cash_conversion_v1/relative_return_v2），
+名义能力回归不可计算态（needs_data_probe=True 如实登记）；研究资格（R3）按能力ID匹配——
+roe_observed_v1 ≠ capital_return_v1，缺就是缺。旧函数名留弃用委托（E 脚本迁移期兼容），
+迁移完删除。同构教训：LRN-20260927-R2-VERIFY（阶梯≠清单）。
+
+- Source: r4_capability_split
+- Pattern-Key: capability.id_must_equal_computation
+- Related Files: src/core/factor_registry.py, src/core/factor_compute.py, src/core/candidate_pool.py, src/data/research_store.py
