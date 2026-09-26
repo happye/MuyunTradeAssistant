@@ -402,7 +402,8 @@ plan/fusion 影子阶段前置批（账本 plan/fusion/EXECUTION_RECORD.md）。
 - 🆕 **`shadow` 影子对照报告**：l/la/chat 分析持仓时自动用 fusion 中期/长期决策表出对照包（shadow 模拟计划，非用户确认），差异按原因分组落 `~/.muyun/shadow_diff.jsonl`——不改任何主结论，开关 `fusion.shadow_capture`
 - 🔧 **E0 正确性基线真实执行**：21 案例双臂回测（legacy vs T+1 批次份额口径），差异全部在项目噪声阈内（单股<2pp、整体<1pp）——旧回测基线可视为与修正后基线等价；报告 `plan/fusion/E0_BASELINE_REPORT.md`
 - 🔧 **数据资格探查落地**：baostock 财务季频五接口 pubDate 官方公布日实证可得（财务证据可进严格 PIT 快照，E2/E4 解锁）；申万指数日线/停牌状态 tradestatus 可用（`plan/fusion/DATA_COVERAGE.md` 已回写，因子登记表 5 项翻转）
-- 质量：测试 1031→**1059**（+28）
+- 🔧 **用户走查首轮修补**：`diff` 无参数列可对比股票；today「等待条件」展开观察池逐只明细；摘要术语中文化（Chandelier Exit→吊灯止损）；shadow 报告中文化+定位说明；用户风险档落配置（单股 2 成/行业 5 成/单笔压力亏损 4 成）
+- 质量：测试 1031→**1069**（+38）
 
 ### v0.8.19 (融合架构基建 F3-F7) - 2026-09-25
 

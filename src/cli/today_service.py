@@ -47,8 +47,11 @@ class TodayView(BaseModel):
         return len(self.needs_action)
 
 
-def build_today_view(pm: PortfolioManager, *, watch_count: Optional[int] = None) -> TodayView:
-    """从持仓事实+待确认建议构建 today 视图（纯读取，零写入零网络）。"""
+def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]] = None) -> TodayView:
+    """从持仓事实+待确认建议构建 today 视图（纯读取，零写入零网络）。
+
+    watch_entries: 观察池在池明细 [{code, name, price, ts, source}]（ISS-104：
+    用户走查——只给数量用户不知道「在等什么」，需逐只列出）。"""
     from datetime import datetime
     view = TodayView(as_of=datetime.now().strftime("%Y-%m-%d %H:%M"))
     positions = {p.stock_code: p for p in pm.list_positions()}
@@ -95,11 +98,21 @@ def build_today_view(pm: PortfolioManager, *, watch_count: Optional[int] = None)
         card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
         view.holding.append(card)
 
-    # 等待条件：观察池（数量入口；完整列表 watch 命令看）
-    if watch_count:
+    # 等待条件：观察池逐只明细（ISS-104：在等的是「这些股的买入条件触发」）
+    if watch_entries:
         view.waiting.append(TodayCard(
             stock_code="", bucket="waiting",
-            lines=[f"观察池 {watch_count} 只在池（watch 查看入池价→现价）"]))
+            lines=[f"观察池 {len(watch_entries)} 只——在等它们的买入条件触发"
+                   f"（watch 看入池价→现价涨跌）"]))
+        for e in watch_entries:
+            line = f"{e.get('code')} {e.get('name') or ''}  ｜ 入池 {str(e.get('ts') or '')[:10]}"
+            if e.get("source"):
+                line += f"（来自 {e['source']}）"
+            if e.get("price"):
+                line += f"  入池价 {e['price']}"
+            view.waiting.append(TodayCard(
+                stock_code=str(e.get("code") or ""), stock_name=str(e.get("name") or ""),
+                bucket="waiting", lines=[line]))
 
     # 全组提示（紧急/核对类不隐藏）
     total = len(positions)
@@ -138,9 +151,11 @@ def render_today(view: TodayView) -> str:
         for card in view.holding:
             out.append(f"  [cyan]{card.stock_code}[/cyan] {card.stock_name} ｜ {card.lines[0]}")
     if view.waiting:
-        out.append(f"\n[dim]⏳ 等待条件（{len(view.waiting)}）[/dim]")
+        n_stocks = sum(1 for c in view.waiting if c.stock_code)
+        out.append(f"\n[dim]⏳ 等待条件（观察池 {n_stocks} 只）[/dim]")
         for card in view.waiting:
-            out.append(f"  [dim]{card.lines[0]}[/dim]")
+            for line in card.lines:
+                out.append(f"  [dim]{line}[/dim]")
     for n in view.notices:
         out.append(f"\n[yellow]{n}[/yellow]")
     out.append("\n[dim]无操作是合法结果——没有信号就不动。完整依据: l <代码> / pos / watch[/dim]")

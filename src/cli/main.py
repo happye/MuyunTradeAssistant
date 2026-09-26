@@ -3673,15 +3673,21 @@ def today_command():
     纯读取（持仓事实+建议账本+观察池计数），零写入零网络。
     """
     from src.cli.today_service import build_today_view, render_today
-    watch_count = None
+    watch_entries = []
     watch_failed = False
     try:
         from src.cli import session_state as _ss
-        watch_count = len(_ss.get_watch_active())
+        for rec in _ss.get_watch_active():
+            for it in rec.get("items") or []:
+                if isinstance(it, dict) and it.get("code"):
+                    watch_entries.append({
+                        "code": str(it["code"]), "name": it.get("name") or "",
+                        "price": it.get("price"), "ts": rec.get("timestamp", ""),
+                        "source": rec.get("source", "")})
     except Exception:
         watch_failed = True  # F7 审查 P2-7：读取失败显式告知，不静默消失
     pm = PortfolioManager()
-    view = build_today_view(pm, watch_count=watch_count)
+    view = build_today_view(pm, watch_entries=watch_entries)
     if watch_failed:
         view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
     console.print(render_today(view))

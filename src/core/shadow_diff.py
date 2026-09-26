@@ -297,18 +297,32 @@ _REASON_CN = {
 }
 
 
+_ACTION_CN = {
+    "OPEN": "建仓", "ADD": "加仓", "REDUCE": "减仓", "EXIT": "清仓退出",
+    "HOLD": "继续持有", "WAIT": "等条件", "REVIEW": "需人工复核",
+}
+
+
+def _action_cn(action: str) -> str:
+    """动作英文枚举 → 人话（ISS-106：用户走查——报告不能全是英文）。"""
+    return _ACTION_CN.get(action, action)
+
+
 def render_shadow_report(report: dict) -> str:
-    """报告渲染（rich markup，供 console.print；仅观察用途声明前置）。"""
+    """报告渲染（rich markup，供 console.print；定位说明前置——ISS-106）。"""
     if not report["total"]:
         return (
             "[bold cyan]🔍 影子对照报告[/bold cyan]\n"
+            "  [dim]这是干什么的：你分析持仓时，系统会用一套还在试验的新决策思路把这只股"
+            "也评一遍，把两边的差异记下来——你的分析结论一个字都不会变。攒几周后看新思路"
+            "和旧思路常在哪里意见不一致，用真实使用数据决定它能不能转正。[/dim]\n"
             f"  近期无影子记录（捕获开关 fusion.shadow_capture，账本 {report['store']}）\n"
-            "  持仓股经 l/la/chat 分析时自动累积对比：legacy 终态 vs fusion_mid/long 决策表"
+            "  持仓股经 l/la/chat 分析时自动累积对比，无需手动触发"
         )
     lines = ["[bold cyan]🔍 影子对照报告[/bold cyan]",
              "  [dim]shadow 模拟计划（非用户确认，仅对照观察）——不改变任何主结论[/dim]"]
     lines.append(f"  近 7 天捕获 {report['total']} 条（{report['stocks']} 只持仓）"
-                 f"｜差异率 {report['diff_rate']:.0%}（非 agree 占比）")
+                 f"｜差异率 {report['diff_rate']:.0%}（非一致占比）")
     reason_labels = {"hard_exit_divergence": _REASON_CN[REASON_HARD_EXIT],
                      "thesis_unestablished": _REASON_CN[REASON_THESIS],
                      "research_gap": _REASON_CN[REASON_RESEARCH],
@@ -318,11 +332,13 @@ def render_shadow_report(report: dict) -> str:
         n = report["by_reason"].get(tag, 0)
         if n:
             lines.append(f"  · {label}: {n}")
-    lines.append("  最近记录（legacy → MID/LONG ｜ 原因）:")
+    lines.append("  最近记录（旧方法 → 新思路中期/长期 ｜ 差异原因）:")
     for r in report["records"][-8:]:
+        tags = "、".join(_REASON_CN.get(t, t) for t in (r.get("delta_reasons") or []))
         lines.append(
-            f"   {r['as_of'][:16]} {r['security_id']} {r['legacy_desired']} → "
-            f"{r['fusion_mid_action']}/{r['fusion_long_action']}"
-            f"  ｜ {'; '.join(r.get('delta_reasons', []))}")
+            f"   {r['as_of'][:16]} {r['security_id']} "
+            f"{_action_cn(r['legacy_desired'])} → "
+            f"{_action_cn(r['fusion_mid_action'])}/{_action_cn(r['fusion_long_action'])}"
+            f"  ｜ {tags}")
     lines.append(f"  [dim]账本: {report['store']}（追加式）｜ 映射版本 {SHADOW_DERIVATION_VERSION}[/dim]")
     return "\n".join(lines)

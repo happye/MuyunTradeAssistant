@@ -262,6 +262,7 @@ def test_report_aggregates_reasons_no_returns(tmp_path):
     assert "影子对照报告" in text
     assert "模拟计划" in text  # 披露前置
     assert "收益" not in text  # 报告不比较总收益（DESIGN 硬要求）
+    assert "需人工复核" in text  # ISS-106：动作/原因中文化
 
 
 def test_report_empty_store(tmp_path):
@@ -269,6 +270,8 @@ def test_report_empty_store(tmp_path):
     assert report["total"] == 0
     text = render_shadow_report(report)
     assert "无影子记录" in text
+    assert "这是干什么的" in text  # ISS-106：定位说明前置
+    assert "一个字都不会变" in text  # 不改主结论的人话声明
 
 
 def test_report_skips_old_records(tmp_path):

@@ -100,7 +100,9 @@ def check_chandelier(
         exit_price=data.price,
         exit_action=exit_action,
         exit_ratio=exit_ratio,
-        reason=f"Chandelier Exit触发: 价格{data.price:.2f}<=止损价{stop_price:.2f} "
+        # ISS-105（用户走查）：摘要面向普通用户——术语用中文（吊灯止损=从持仓最高点
+        # 回撤固定幅度就走的移动止损），英文原名只在括号留档对照术语表
+        reason=f"吊灯止损触发: 价格{data.price:.2f}<=止损价{stop_price:.2f} "
                f"(最高{highest:.2f}-{n_mult:.1f}×ATR{atr:.2f}){ma_info}",
         atr_value=atr,
         highest_since_entry=highest,

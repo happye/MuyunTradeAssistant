@@ -68,11 +68,11 @@ def test_grouping_needs_action_and_holding():
     }) as (path, ledger):
         pm = _pm(path, ledger)
         pm.record_proposal("601318", "中国平安", _reduce_decision(), source="l")
-        view = build_today_view(pm, watch_count=3)
+        view = build_today_view(pm, watch_entries=[{'code': '300750', 'name': '宁德时代', 'price': 210.0, 'ts': '2026-09-20T10:00:00', 'source': 'l'}])
         assert [c.stock_code for c in view.needs_action] == ["601318"], "有待办的进需要处理"
         assert "尚未记为成交" in view.needs_action[0].lines[-1], "建议≠成交主线文案"
         assert [c.stock_code for c in view.holding] == ["000001"], "无待办的继续持有"
-        assert view.waiting and "观察池 3 只" in view.waiting[0].lines[0]
+        assert view.waiting and "观察池 1 只" in view.waiting[0].lines[0] and "300750" in view.waiting[1].lines[0]
 
 
 def test_no_pending_means_nothing_to_do():
@@ -82,7 +82,7 @@ def test_no_pending_means_nothing_to_do():
         "000001": {"stock_name": "平安银行", "current_ratio": 0.1, "lifecycle": "HOLD",
                    "strategy_state": {}},
     }) as (path, ledger):
-        view = build_today_view(_pm(path, ledger), watch_count=0)
+        view = build_today_view(_pm(path, ledger), watch_entries=None)
         assert view.needs_action == []
         assert len(view.holding) == 1
 
@@ -104,7 +104,7 @@ def test_partial_proposal_stays_visible():
                                       cooldown_remaining=5, cooldown_reason="close_all",
                                       current_position_ratio=0.0)), source="l")
         pm.confirm_fill("601318", "SELL", 0.1, date="2026-09-25")  # 部分成交
-        view = build_today_view(pm, watch_count=0)
+        view = build_today_view(pm, watch_entries=None)
         assert len(view.needs_action) == 1, "PARTIAL 剩余待办可见"
         assert "PARTIAL" in view.needs_action[0].lines[0], "状态如实标注"
 
@@ -117,7 +117,7 @@ def test_legacy_notice_all_vs_partial():
         "000001": {"stock_name": "平安银行", "current_ratio": 0.1, "lifecycle": "HOLD",
                    "strategy_state": {}},
     }) as (path, ledger):
-        view = build_today_view(_pm(path, ledger), watch_count=0)
+        view = build_today_view(_pm(path, ledger), watch_entries=None)
         assert any("全部 1 条旧持仓" in n for n in view.notices), "全量 LEGACY 提示"
     # 部分确认（CONFIRMED_FILL）+ 部分 LEGACY
     with _tmp_env({
@@ -126,7 +126,7 @@ def test_legacy_notice_all_vs_partial():
         "000002": {"stock_name": "B", "current_ratio": 0.1, "lifecycle": "HOLD",
                    "holding_verification": "CONFIRMED_FILL", "strategy_state": {}},
     }) as (path, ledger):
-        view = build_today_view(_pm(path, ledger), watch_count=0)
+        view = build_today_view(_pm(path, ledger), watch_entries=None)
         assert any("1/2 条旧持仓" in n for n in view.notices), "部分 LEGACY 提示"
 
 
@@ -164,7 +164,7 @@ def test_render_contains_all_groups(monkeypatch, tmp_path):
     }) as (path, ledger):
         pm = _pm(path, ledger)
         pm.record_proposal("601318", "中国平安", _reduce_decision(), source="l")
-        view = build_today_view(pm, watch_count=2)
+        view = build_today_view(pm, watch_entries=[{'code': '600519', 'name': '贵州茅台', 'price': None, 'ts': '2026-09-21T10:00:00', 'source': 'l'}])
         text = render_today(view)
         assert "需要处理" in text and "继续持有" in text and "等待条件" in text
         assert "没有信号就不动" in text
