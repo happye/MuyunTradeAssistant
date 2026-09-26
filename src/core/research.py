@@ -29,6 +29,10 @@ class ThesisRecord(BaseModel):
     expected_window: str = Field(default="", description="预期实现区间（研究语境，不是到天数清仓）")
     facts_observed: list[str] = Field(default_factory=list, description="已经发生的事实（带证据引用）")
     facts_pending: list[str] = Field(default_factory=list, description="尚待发生的事实（下一验证节点）")
+    fact_evidence_refs: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="事实→可解析证据引用（键=去空白事实原文；值=evidence_id/原文hash/URI）。"
+                    "R0 资格门：无可解析引用的事实文本不作为逻辑成立依据（A03 止血）；R3 自动研究正式化")
     counter_evidence: list[str] = Field(default_factory=list, description="关键反证")
     valuation_assumption: str = Field(default="", description="估值假设（可审计情景；LONG 用）")
     next_checkpoint: str = Field(default="", description="下一可验证节点（财报/交付/事件）")
@@ -47,16 +51,34 @@ def evaluate_invalidation_rules(rules) -> TruthValue:
     return TruthValue.FALSE
 
 
+def fact_has_resolvable_reference(fact: str, refs: dict[str, list[str]]) -> bool:
+    """事实是否带可解析证据引用（R0 资格门，A03 止血）。
+
+    规则：键=去空白事实原文**精确匹配**；值中任一引用串去空白后非空才算可解析。
+    空白事实、空引用串、键不匹配一律 False——文字存在≠逻辑成立（探针 P1 同根）。"""
+    key = str(fact).strip()
+    if not key:
+        return False
+    return any(str(r).strip() for r in (refs.get(key) or []))
+
+
 def assess_thesis(thesis: ThesisRecord,
                   invalidation_value: Optional[TruthValue] = None,
                   counter_evidence_verified: bool = False) -> ThesisStatus:
     """证据驱动的逻辑状态转移（AI 不改状态；状态由事实与明确条件驱动）。
 
-    规则（DESIGN §5.2 + §4.2）：
+    规则（DESIGN §5.2 + §4.2 + R0 资格止血）：
     - 失效条件求值 TRUE 或 已核实反证存在 → INVALID（技术反弹不能抵消）
     - 失效条件求值 UNKNOWN（给了规则但未验证）→ REVIEW_REQUIRED（需要核对）
     - invalidation_value=None（未给规则）或 FALSE → 按事实评估：
-      有关键反证未核实 → REVIEW_REQUIRED；有已观察事实 → VALID；否则 UNESTABLISHED
+      有关键反证未核实 → REVIEW_REQUIRED；
+      有**带可解析证据引用**的已观察事实 → VALID；
+      否则（含无引用的纯文本事实/空白串）→ UNESTABLISHED
+
+    R0 资格门（A03，架构师裁决②）：「一条 facts 文本即 VALID」不成立——VALID 需要
+    fact_evidence_refs 里可解析的证据引用；用户确认的是目标与风险意愿，不是把一句话
+    变成客观事实。兼容读策略：旧序列化记录无该字段 → 默认 {} → 保守 UNESTABLISHED。
+    R3 自动研究给事实挂证据后这是正式路径，不是永久封锁。
 
     注意：状态只是**评估结果**；真正进入决策表的是调用方把 status 传给
     decision_policy.HorizonFacts.thesis_status。
@@ -67,7 +89,8 @@ def assess_thesis(thesis: ThesisRecord,
         return ThesisStatus.REVIEW_REQUIRED
     if thesis.counter_evidence:
         return ThesisStatus.REVIEW_REQUIRED
-    if thesis.facts_observed:
+    if any(fact_has_resolvable_reference(f, thesis.fact_evidence_refs)
+           for f in thesis.facts_observed):
         return ThesisStatus.VALID
     return ThesisStatus.UNESTABLISHED
 

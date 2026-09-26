@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.20"  # v0.8.20=影子阶段前置（shadow 影子对照/E0 正确性基线/数据资格探查）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.21"  # v0.8.21=第二轮R0资格止血（事实证据资格门/latest-only历史快照门/shadow逐周期标来源）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

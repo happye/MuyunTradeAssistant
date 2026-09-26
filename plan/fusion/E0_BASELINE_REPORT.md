@@ -1,5 +1,7 @@
 # E0 正确性基线报告（plan/fusion EXPERIMENTS.md E0）
 
+> **2026-09-26 R0 措辞修正注记**：下文「旧回测基线可视为与修正后基线等价」以架构裁决限定——21 个人工 mode 案例集内差异较小（敏感性），**不能统计证明等价**；AI 修正等价、自动 mode 等价、T+1 风险全覆盖均不能据此声称（[iteration2/README.md](iteration2/README.md) §1/§3.4）。原始数值与运行文件保留不改。
+
 生成：2026-09-26T01:51:56；样本口径 = 人工标注 mode 案例集（test_jumpA_backtest_5year.CASES，framework_strict，20万初始资金）
 
 **诚实 caveat**：

@@ -26,6 +26,7 @@ from src.core.analysis_service import build_decision_packet
 from src.core.execution_layer import ExecutionEvaluation
 from src.core.shadow_diff import (
     REASON_AGREE,
+    REASON_FACTS_UNVERIFIED,
     REASON_HARD_EXIT,
     REASON_RESEARCH,
     REASON_THESIS,
@@ -164,6 +165,9 @@ def test_record_schema_and_version(tmp_path):
     assert rec.derivation_version == SHADOW_DERIVATION_VERSION
     assert rec.shadow_disclosure == "shadow 模拟计划（非用户确认，仅对照观察）"
     assert rec.thesis_status == "UNESTABLISHED"
+    # v3：来源逐周期标注（simulated 显式落字段）
+    assert rec.mid_plan_source == "simulated" and rec.long_plan_source == "simulated"
+    assert rec.mid_thesis_status == "UNESTABLISHED" and rec.long_thesis_status == "UNESTABLISHED"
     assert rec.legacy_action == "HOLD_POSITION"
     assert rec.legacy_desired == "HOLD"
     assert rec.fusion_mid_reason and rec.fusion_long_reason
@@ -315,17 +319,38 @@ def plan_policy_long():
     return POLICY_ID_LONG
 
 
-def test_accepted_plan_with_facts_gives_real_verdict(tmp_path):
-    """已激活计划+已发生事实 → thesis VALID → MID 技术退出落行5 REDUCE（不再全 REVIEW）。"""
+def test_accepted_plan_plain_facts_no_longer_valid(tmp_path):
+    """R0 资格止血（A03）：已激活计划+纯文本事实（无证据引用）→ thesis UNESTABLISHED
+    → 行10 REVIEW——「一条 facts 文本即 VALID」不再成立。"""
     from src.data.horizon_plans import HorizonPlanStore
     store = HorizonPlanStore(tmp_path / "plans.json")
     store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"]))
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
     assert rec.plan_source == "user_plan_accepted"
-    assert rec.thesis_status == "VALID"
+    assert rec.mid_plan_source == "user_plan_accepted"
+    assert rec.mid_thesis_status == "UNESTABLISHED"
+    assert rec.fusion_mid_action == "REVIEW"  # 行10（原 v2 误升级行5 REDUCE）
+    assert REASON_FACTS_UNVERIFIED in rec.delta_reasons
+    text = render_shadow_report(build_shadow_report(store_path=tmp_path / "shadow.jsonl"))
+    assert "事实未挂证据引用" in text  # R0 验收3：具体原因，不是笼统错误
+
+
+def test_accepted_plan_with_evidence_refs_gives_real_verdict(tmp_path):
+    """带可解析证据引用的事实 → 真判断路径保持：MID VALID → 技术退出落行5 REDUCE
+    （资格门只拦无引用文本，不关整个研究系统）。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    plan = _mk_plan(tmp_path, facts=["6月订单环比+30%"])
+    plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}  # extra 字段（R3 正式化）
+    store.save(plan)
+    rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                   plans_store=store)
+    assert rec.mid_thesis_status == "VALID"
     assert rec.fusion_mid_action == "REDUCE"  # 行5：MID VALID+技术退出 → REDUCE
-    assert rec.shadow_disclosure == "对照评估（用户已确认计划——真判断）"
+    # 仅 MID 有计划（LONG 模拟）→ 混合来源披露逐周期明示，不再整行盖「真判断」
+    assert "MID=用户已确认计划——真判断" in rec.shadow_disclosure
+    assert "LONG=模拟计划" in rec.shadow_disclosure
     assert "决策表行5" in rec.fusion_mid_reason
 
 
@@ -337,8 +362,11 @@ def test_draft_plan_stays_review(tmp_path):
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
     assert rec.plan_source == "user_plan_draft"
+    assert rec.mid_plan_source == "user_plan_draft"
     assert rec.fusion_mid_action == "REVIEW" and rec.fusion_long_action == "REVIEW"
-    assert "对照评估（草稿计划未激活" in rec.shadow_disclosure
+    # 仅 MID 草稿（LONG 模拟）→ 混合披露逐周期明示
+    assert "MID=草稿计划未激活" in rec.shadow_disclosure
+    assert "LONG=模拟计划" in rec.shadow_disclosure
 
 
 def test_hard_exit_still_wins_with_user_plan(tmp_path):
@@ -352,12 +380,33 @@ def test_hard_exit_still_wins_with_user_plan(tmp_path):
     assert REASON_HARD_EXIT in rec.delta_reasons
 
 
-def test_accepted_plan_long_side_stays_unestablished(tmp_path):
-    """泄漏修复的 accepted 侧断言（审查 P2）：MID 计划的事实不得让 LONG 模拟计划变 VALID。"""
+def test_accepted_plan_long_side_stays_simulated_and_unestablished(tmp_path):
+    """R0 验收2：同股仅 MID 接受时——LONG 影子明确模拟（long_plan_source=simulated、
+    thesis UNESTABLISHED），不计真计划样本；MID 真判断不受累。"""
     from src.data.horizon_plans import HorizonPlanStore
     store = HorizonPlanStore(tmp_path / "plans.json")
-    store.save(_mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"]))
+    plan = _mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"])
+    plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}
+    store.save(plan)
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
-    assert rec.fusion_mid_action == "REDUCE"  # 用户 MID 真判断
-    assert rec.fusion_long_action == "REVIEW"  # LONG 无用户计划 → 模拟+UNESTABLISHED → 行10
+    assert rec.mid_plan_source == "user_plan_accepted" and rec.mid_thesis_status == "VALID"
+    assert rec.long_plan_source == "simulated" and rec.long_thesis_status == "UNESTABLISHED"
+    assert rec.fusion_mid_action == "REDUCE"   # MID 真判断（行5）
+    assert rec.fusion_long_action == "REVIEW"  # LONG 模拟 → 行10
+    assert REASON_THESIS in rec.delta_reasons  # LONG 模拟侧如实打「逻辑未立」
+
+
+def test_report_counts_plan_source_per_horizon(tmp_path):
+    """报告按周期计数来源：仅 MID 接受时 LONG 计入模拟（不再整行聚合——R0 验收2）。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    plan = _mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"])
+    plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}
+    store.save(plan)
+    _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+             plans_store=store)
+    report = build_shadow_report(store_path=tmp_path / "shadow.jsonl")
+    text = render_shadow_report(report)
+    assert "真计划对照 MID 1 条" in text and "LONG 0 条" in text
+    assert "模拟计划 MID 0 条｜LONG 1 条" in text

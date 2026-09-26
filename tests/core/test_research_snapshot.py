@@ -267,6 +267,64 @@ def test_snapshot_id_stable_across_replay_and_order():
     assert s3.snapshot_id != s1.snapshot_id
 
 
+# ── 5b. R0 资格止血：latest-only 财务证据不入严格历史快照（A01）──
+
+def _fin_rec(metric="netProfit", value=999.0, *, revision="", fetched=None):
+    """latest-only 财务证据（financial_record 默认 fetched_at=现在，即今天抓的）。"""
+    rec = financial_record("600519", {
+        "metric": metric, "value": value, "unit": "CNY",
+        "period_kind": "cumulative", "period_end": "2023-12-31",
+        "published_at": "2024-04-01", "source_uri": "probe://latest-only",
+        "source_version": "baostock_financial_v1", "revision_id": revision,
+    })
+    if fetched is not None:
+        return rec.model_copy(update={"fetched_at": fetched})
+    return rec
+
+
+_HISTORY_AS_OF = _dt(2024, 5, 1)
+
+
+def test_latest_only_financial_excluded_from_strict_history():
+    """探针 P4 反例回归：今天抓的 latest-only 财务（旧 pubDate、无 revision）
+    不能进历史 strict 快照——「版本不可追溯」≠「当时已发布该版本」（A01 止血）。"""
+    rec = _fin_rec()
+    assert rec.fetched_at is not None and rec.fetched_at > _HISTORY_AS_OF
+    snap = EvidenceSnapshot.build("600519", _HISTORY_AS_OF, [rec], strict=True)
+    assert snap.records == [] and snap.dropped_pit == 1
+    assert snap.drop_reasons.get("latest_only_unverifiable") == ["netProfit"]
+    assert rec.evidence_id in snap.dropped_ids
+
+
+def test_latest_only_exclusion_surfaces_specific_qualify_problem():
+    """R0 验收3：用户看到具体「版本不可追溯」，不是笼统「缺失必需证据」。"""
+    snap = EvidenceSnapshot.build("600519", _HISTORY_AS_OF, [_fin_rec()], strict=True)
+    status, problems = snap.qualify([RequiredEvidence(metric="netProfit")])
+    assert status is ResearchStatus.INCOMPLETE
+    assert any("版本不可追溯" in p and "netProfit" in p for p in problems)
+
+
+def test_versioned_financial_with_revision_enters_strict():
+    """带 revision（版本可区分）不触 latest-only 门——R1 版本分级的临时合法路径。"""
+    snap = EvidenceSnapshot.build("600519", _HISTORY_AS_OF,
+                                  [_fin_rec(revision="r20240401")], strict=True)
+    assert len(snap.records) == 1
+
+
+def test_financial_fetched_before_asof_enters_strict():
+    """当时抓取（fetched_at ≤ as_of）正常入快照——门只拦「晚抓的 latest-only」。"""
+    snap = EvidenceSnapshot.build("600519", _HISTORY_AS_OF,
+                                  [_fin_rec(fetched=_dt(2024, 4, 5))], strict=True)
+    assert len(snap.records) == 1
+
+
+def test_market_bars_unaffected_by_latest_only_gate():
+    """行情天然 PIT（bar 自带日期）——晚抓不触发 latest-only 门（防矫枉过正）。"""
+    bar = market_bar_record("600519", {"date": "2024-04-10", "close": 1500.0})
+    snap = EvidenceSnapshot.build("600519", _HISTORY_AS_OF, [bar], strict=True)
+    assert len(snap.records) == 1
+
+
 # ── 6. 回测路径零实时网络（源码守卫）─────────────────────
 
 def test_module_import_is_network_free():

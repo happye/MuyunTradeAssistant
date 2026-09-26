@@ -1791,3 +1791,27 @@ F1/F2 两课：① 测试替身用 `SimpleNamespace(value="FLAT")` 冒充 `Trade
 - Source: read_only_architecture_review
 - Pattern-Key: fusion.semantic_qualification_and_nonvacuous_validation
 - Related Files: plan/fusion/iteration2/README.md, plan/fusion/iteration2/TASKS.md, plan/fusion/RESUME.md
+
+## [LRN-20260926-R0-QUAL01] lesson — 资格语义不能退化成存在性检查
+
+**Logged**: 2026-09-26
+**Priority**: high
+**Status**: fixed（R0 已修，回归锁死）
+**Area**: fusion, research, evidence
+
+F5 实现 `assess_thesis` 时把「facts_observed（带证据引用）」的资格语义写成了 `if facts: VALID`
+存在性检查；shadow 又复制了一份同样判断而不是调用唯一入口——两处同时漂移（探针 P1：
+空白串 VALID）。latest-only 财务同病：记录带了 pubDate 就当 PIT 合格，没人检查「这个值
+是不是当时发布的那版」（探针 P4）。
+
+教训：**字段文档括号里的资格语义（带证据/带版本/带来源）必须机器化成独立判据，
+不能让「非空」冒充「合格」；同一判定只能有一个入口，影子/旁路必须复用而不是抄写。**
+
+R0 修复：research.py `fact_evidence_refs` + `fact_has_resolvable_reference`（键=去空白
+事实原文精确匹配）；research_snapshot strict 门 `_is_latest_only_unverifiable`（financial
++ fetched_at>as_of + 无 revision → 拒，行情/公告不受累防矫枉过正）；shadow v3 全部经
+assess_thesis。回归 8 条进 tests/core 四文件。
+
+- Source: r0_qualification_stopbleeding
+- Pattern-Key: qualification.exists_check_masquerade_and_single_entry
+- Related Files: src/core/research.py, src/data/research_snapshot.py, src/core/shadow_diff.py, plan/fusion/iteration2/PROBES.md

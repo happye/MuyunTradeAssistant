@@ -163,21 +163,33 @@ def test_login_failure_returns_empty(monkeypatch):
 
 
 def test_evidence_integration_and_pit_gate(monkeypatch):
+    """F3 集成 + R0 资格止血（A01）：live 抓取的 latest-only 财务证据——
+    历史严格快照必须拒（版本不可追溯，探针 P4 反例）；当时抓取/带版本才可入；
+    公布前不可见的原 F3 语义保持。"""
     _install_fakes(monkeypatch, _MOUTAI_2023Q4)
     out = fd.get_financial_quarterly("600519", 2023, 4)
     records = [financial_record("600519", d) for d in out]
     np_rec = next(r for r in records if r.metric_or_claim == "netProfit")
     assert np_rec.source_kind == "financial"
     assert np_rec.available_at == datetime(2024, 4, 3, 23, 59, tzinfo=timezone(timedelta(hours=8)))
-    # 严格快照：公布后可见
+    # 历史严格快照（2024-04-10）：今天抓的 latest-only 财务全部拒——版本不可追溯
     snap = EvidenceSnapshot.build("600519",
                                   datetime(2024, 4, 10, tzinfo=timezone(timedelta(hours=8))),
                                   records, strict=True)
-    assert snap.latest("netProfit") is not None
-    assert snap.dropped_pit == 0
-    # 公布前不可见（未来证据不进旧快照）
+    assert snap.records == []
+    assert snap.drop_reasons.get("latest_only_unverifiable")
+    # 同批证据「当时抓取」（fetched_at=公布次日）→ 正常入快照（合规历史路径不受累）
+    backthen = [r.model_copy(update={
+        "fetched_at": datetime(2024, 4, 5, tzinfo=timezone(timedelta(hours=8)))})
+        for r in records]
+    snap_ok = EvidenceSnapshot.build("600519",
+                                     datetime(2024, 4, 10, tzinfo=timezone(timedelta(hours=8))),
+                                     backthen, strict=True)
+    assert snap_ok.latest("netProfit") is not None
+    assert snap_ok.dropped_pit == 0
+    # 公布前不可见（未来证据不进旧快照——原 F3 语义保持）
     snap_old = EvidenceSnapshot.build("600519",
                                       datetime(2024, 3, 1, tzinfo=timezone(timedelta(hours=8))),
-                                      records, strict=True)
+                                      backthen, strict=True)
     assert snap_old.latest("netProfit") is None
     assert snap_old.dropped_pit == len(records)

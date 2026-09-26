@@ -6,7 +6,9 @@
    与累计/单季口径显式字段；来源 hash 与 revision 支持后发重述
 2. **EvidenceSnapshot**：某证券某截止时点的证据集合——**strict 构建强制 PIT 资格**：
    available_at 缺失（不可信公布时间）或晚于 as_of 的证据一律不进快照（未来公告和
-   后发重述不进入旧快照，DESIGN §5.1）；snapshot_id 内容 hash（同快照重放稳定）
+   后发重述不进入旧快照，DESIGN §5.1）；**latest-only 财务证据（晚抓+无版本）同样
+   不进历史 strict 快照**（版本不可追溯≠当时已发布——R0 A01 止血门，R1 版本分级
+   正式化后收编）；snapshot_id 内容 hash（同快照重放稳定）
 3. **qualify**：按必需证据清单判定研究资格（COMPLETE/INCOMPLETE/CONFLICTED）——
    缺失是显式状态，不落 0 或 50；RAG 方法文本不当公司事实（默认排除 source_kind=rag）
 
@@ -117,6 +119,10 @@ class EvidenceSnapshot(BaseModel):
     records: list[EvidenceRecord] = Field(default_factory=list)
     dropped_pit: int = Field(default=0, description="strict 构建时被拒的未来/不可信时点证据数")
     dropped_ids: list[str] = Field(default_factory=list, description="被拒证据的 id（可追溯）")
+    drop_reasons: dict[str, list[str]] = Field(
+        default_factory=dict,
+        description="被拒原因代码→去重 metric 名（R0 临时细化：no_trustworthy_time/after_as_of/"
+                    "latest_only_unverifiable；R1 版本可得性分级正式化后收编）")
     snapshot_id: str = Field(default="", description="内容 hash（同输入重放必相同）")
 
     @field_validator("as_of")
@@ -130,23 +136,36 @@ class EvidenceSnapshot(BaseModel):
     def build(cls, security_id: str, as_of: datetime, records: list[EvidenceRecord],
               strict: bool = True) -> "EvidenceSnapshot":
         """构建快照。strict=True（回放/回测/历史决策）执行 PIT 资格闸门：
-        available_at 缺失或晚于 as_of 的证据一律不进——未来公告与后发重述不会
-        污染旧快照；被拒数量与 id 如实记录（不静默丢弃）。
-        strict=False 仅用于 live 现场诊断视图（当前 as_of=now 时两者等价）。"""
+        available_at 缺失、晚于 as_of，以及 **latest-only 财务证据（R0 临时保守门，
+        A01）** 一律不进——未来公告、后发重述与「版本不可追溯的财务」不会污染旧
+        快照；被拒数量、id 与原因如实记录（不静默丢弃）。
+        strict=False 仅用于 live 现场诊断视图（当前 as_of=now 时 latest-only 门
+        天然不触发：抓取不晚于截止）。"""
         kept: list[EvidenceRecord] = []
         dropped, dropped_ids = 0, []
+        drop_reasons: dict[str, list[str]] = {}
+
+        def _drop(r: EvidenceRecord, reason: str) -> None:
+            nonlocal dropped
+            dropped += 1
+            dropped_ids.append(r.evidence_id)
+            if r.metric_or_claim and r.metric_or_claim not in drop_reasons.setdefault(reason, []):
+                drop_reasons[reason].append(r.metric_or_claim)
+
         for r in records:
             if strict and not r.pit_confident:
-                dropped += 1
-                dropped_ids.append(r.evidence_id)
+                _drop(r, "no_trustworthy_time")
                 continue
             if strict and r.available_at > as_of:
-                dropped += 1
-                dropped_ids.append(r.evidence_id)
+                _drop(r, "after_as_of")
+                continue
+            if strict and _is_latest_only_unverifiable(r, as_of):
+                _drop(r, "latest_only_unverifiable")
                 continue
             kept.append(r)
         snap = cls(security_id=str(security_id), as_of=as_of, records=kept,
-                   dropped_pit=dropped, dropped_ids=dropped_ids)
+                   dropped_pit=dropped, dropped_ids=dropped_ids,
+                   drop_reasons=drop_reasons)
         snap.snapshot_id = snap._content_hash()
         return snap
 
@@ -214,6 +233,13 @@ class EvidenceSnapshot(BaseModel):
                      and r.quality_status not in (FactStatus.MISSING, FactStatus.NOT_APPLICABLE)
                      and (req.period_kind is None or r.period_kind == req.period_kind)]
             if not cands:
+                # R0：区分「确实没有」与「有证据但版本不可追溯被严格门拒掉」——
+                # 用户看到具体原因，不是笼统缺失（A01 止火）
+                if req.metric in self.drop_reasons.get("latest_only_unverifiable", []):
+                    problems.append(
+                        f"版本不可追溯: {req.metric}（latest-only 财务证据无法证明 as_of 时点"
+                        "已发布该版本——不进严格判定；待原始历史文档或版本分级后恢复）")
+                    continue
                 kind_cn = {"cumulative": "累计", "single": "单季"}.get(req.period_kind, "")
                 problems.append(f"缺失必需证据: {req.metric}"
                                 + (f"（要求口径={kind_cn}）" if kind_cn else ""))
@@ -266,6 +292,23 @@ class EvidenceSnapshot(BaseModel):
         if req.max_age_days is None:
             return False
         return (self.as_of - r.available_at) > timedelta(days=req.max_age_days)
+
+
+# ──────────────── R0 临时资格门（A01 止血；R1 版本分级正式化后收编）────────────────
+
+def _is_latest_only_unverifiable(r: EvidenceRecord, as_of: datetime) -> bool:
+    """latest-only 财务证据不能证明「as_of 时点已发布该版本」。
+
+    探针 P4（A01）：今天抓的 latest-only 财务（旧 pubDate、无 revision）此前能进
+    历史 strict 快照——但接口只返回最新一版（financial_data.py docstring 已登记
+    「后发重述与首发不可区分」），数值可能是后发重述的，版本不可追溯 ≠ 当时已发布。
+    临时保守门（只对 financial 类）：fetched_at 晚于截止 且 无 revision_id → 不进
+    严格快照。不受累的合法路径：当时抓取（fetched_at ≤ as_of）、带版本（revision_id）、
+    以及行情/公告/预告等非 financial 来源（行情 bar 自带日期天然 PIT——防矫枉过正）。
+    """
+    return (r.source_kind == "financial"
+            and r.fetched_at is not None and r.fetched_at > as_of
+            and not r.revision_id)
 
 
 # ──────────────── 单位与口径 helper ────────────────

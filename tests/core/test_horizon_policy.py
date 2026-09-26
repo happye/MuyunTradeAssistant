@@ -323,17 +323,38 @@ def test_mid_invalidation_true_forces_exit():
 
 def test_assess_thesis_driven_by_evidence():
     """状态转移由证据与明确条件驱动：反证核实 → INVALID；UNKNOWN → REVIEW_REQUIRED；
-    无观察事实 → UNESTABLISHED；有观察事实 → VALID。"""
+    带**可解析证据引用**的观察事实 → VALID（R0 资格门，A03）；无引用文本 → UNESTABLISHED。"""
     t = ThesisRecord(thesis_id="t1", horizon="MID",
                      beneficiary_business="氮化镓快充", profit_mechanism="订单→营收")
     assert assess_thesis(t) is ThesisStatus.UNESTABLISHED
     t2 = t.model_copy(update={"facts_observed": ["Q2 订单落地（公告 P3）"]})
-    assert assess_thesis(t2) is ThesisStatus.VALID
-    assert assess_thesis(t2, invalidation_value=TruthValue.UNKNOWN) is ThesisStatus.REVIEW_REQUIRED
-    assert assess_thesis(t2, invalidation_value=TruthValue.TRUE) is ThesisStatus.INVALID
-    assert assess_thesis(t2, counter_evidence_verified=True) is ThesisStatus.INVALID
-    t3 = t2.model_copy(update={"counter_evidence": ["竞品降价 20%（新闻）"]})
+    # R0 资格止血（A03）：纯文本事实无可解析证据引用——文字存在≠逻辑成立，
+    # 不再「一条 facts 文本即 VALID」（探针 P1 同根）
+    assert assess_thesis(t2) is ThesisStatus.UNESTABLISHED
+    t2_ref = t2.model_copy(update={
+        "fact_evidence_refs": {"Q2 订单落地（公告 P3）": ["cninfo://ann/p3"]}})
+    assert assess_thesis(t2_ref) is ThesisStatus.VALID
+    assert assess_thesis(t2_ref, invalidation_value=TruthValue.UNKNOWN) is ThesisStatus.REVIEW_REQUIRED
+    assert assess_thesis(t2_ref, invalidation_value=TruthValue.TRUE) is ThesisStatus.INVALID
+    assert assess_thesis(t2_ref, counter_evidence_verified=True) is ThesisStatus.INVALID
+    t3 = t2_ref.model_copy(update={"counter_evidence": ["竞品降价 20%（新闻）"]})
     assert assess_thesis(t3, invalidation_value=TruthValue.FALSE) is ThesisStatus.REVIEW_REQUIRED
+
+
+def test_assess_thesis_blank_and_unresolvable_refs_not_valid():
+    """R0 资格门反例回归（探针 P1）：空白事实串、空引用串、引用键不匹配都不能 VALID。"""
+    t = ThesisRecord(thesis_id="p1", horizon="LONG", beneficiary_business="",
+                     profit_mechanism="", facts_observed=["   "])
+    assert assess_thesis(t) is ThesisStatus.UNESTABLISHED
+    t2 = ThesisRecord(thesis_id="p2", horizon="LONG", beneficiary_business="x",
+                      profit_mechanism="y", facts_observed=["事实A"],
+                      fact_evidence_refs={"事实A": ["", "   "]})
+    assert assess_thesis(t2) is ThesisStatus.UNESTABLISHED
+    # 键=去空白事实原文精确匹配——键对不上等于没引用
+    t3 = ThesisRecord(thesis_id="p3", horizon="LONG", beneficiary_business="x",
+                      profit_mechanism="y", facts_observed=["事实A"],
+                      fact_evidence_refs={"事实B": ["ev-1"]})
+    assert assess_thesis(t3) is ThesisStatus.UNESTABLISHED
 
 
 def test_mid_to_long_requires_explicit_assessment():
