@@ -167,3 +167,35 @@ def test_list_diffable_empty_and_missing_file(monkeypatch, tmp_path):
     assert ev.list_diffable() == []  # 文件不存在
     (tmp_path / "analysis_evidence.jsonl").write_text("{broken\n", encoding="utf-8")
     assert ev.list_diffable() == []  # 只有坏行
+
+
+# ── diff --ai 解读层（ISS-110 评估通过：可选 AI 解读，事实层保持机械）──
+
+def test_diff_change_text_compact():
+    from src.cli.main import _diff_change_text
+    d = {"changes": {"decision": ("HOLD", "SELL"), "price": (100.0, 105.0, 5.0)},
+         "signal_changes": [{"kind": "新增", "skill": "趋势", "new": {"signal": "SELL", "conf": 0.7}}],
+         "new_warnings": ["新闻获取失败"]}
+    text = _diff_change_text(d)
+    assert "决策: HOLD → SELL" in text
+    assert "信号转向" not in text and "信号新增: 趋势 SELL" in text
+    assert "新增提示: 新闻获取失败" in text
+
+
+def test_ai_diff_interpretation_no_key_returns_empty(monkeypatch, tmp_path):
+    import src.cli.main as M
+    monkeypatch.setattr(M, "load_config", lambda: {"ai": {"provider": "deepseek",
+                                                          "deepseek": {"api_key": ""}}})
+    # 环境变量兜底也要清掉（本机有 DEEPSEEK_API_KEY——否则测试会发真实 API 调用）
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
+    d = {"changes": {"decision": ("HOLD", "SELL")}, "signal_changes": [], "new_warnings": []}
+    assert M._ai_diff_interpretation(d) == ""  # 无 key 静默空串，事实对比不受影响
+
+
+def test_ai_diff_interpretation_empty_changes_skips_call(monkeypatch):
+    import src.cli.main as M
+    calls = []
+    monkeypatch.setattr(M, "load_config", lambda: {"ai": {"provider": "deepseek",
+                                                          "deepseek": {"api_key": "sk-x"}}})
+    d = {"changes": {}, "signal_changes": [], "new_warnings": []}
+    assert M._ai_diff_interpretation(d) == ""  # 无变化不发请求

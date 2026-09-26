@@ -404,9 +404,12 @@ def parse_input(user_input: str):
 
     # ── 分析对比（v0.8.17，plan/ C1）：同股最近两次深分析比较 ──
     if cmd in ("diff", "对比"):
-        if len(parts) < 2 or not parts[1].strip():
+        rest = [p for p in parts[1:] if p.strip()]
+        use_ai = "--ai" in rest
+        rest = [p for p in rest if p != "--ai"]
+        if not rest or not rest[0].strip():
             return ("diff_list", {})  # 无参数 → 列出可对比股票（用户走查 2026-09-26 需求）
-        return ("diff_evidence", {"code": parts[1]})
+        return ("diff_evidence", {"code": rest[0], "ai": use_ai})
 
     # ── 批量任务账本（v0.8.17，plan/ C2）──
     if cmd in ("tasks", "任务"):
@@ -1844,7 +1847,7 @@ def run_cli(mode: str, args: dict):
 
     elif mode == "diff_evidence":
         # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
-        diff_evidence_cmd(args.get("code", ""))
+        diff_evidence_cmd(args.get("code", ""), use_ai=bool(args.get("ai")))
 
     elif mode == "diff_list":
         # 用户走查 2026-09-26：diff 无参数 → 可对比股票清单

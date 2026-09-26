@@ -47,11 +47,14 @@ class TodayView(BaseModel):
         return len(self.needs_action)
 
 
-def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]] = None) -> TodayView:
+def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]] = None,
+                     risk_profile: Optional[dict] = None) -> TodayView:
     """从持仓事实+待确认建议构建 today 视图（纯读取，零写入零网络）。
 
     watch_entries: 观察池在池明细 [{code, name, price, ts, source}]（ISS-104：
-    用户走查——只给数量用户不知道「在等什么」，需逐只列出）。"""
+    用户走查——只给数量用户不知道「在等什么」，需逐只列出）。
+    risk_profile: 用户风险档（settings.yaml fusion.risk_profile，ISS-108）——
+    逐只显示单股额度占用；行业映射未接线，industry_max 暂不核对（如实标注）。"""
     from datetime import datetime
     view = TodayView(as_of=datetime.now().strftime("%Y-%m-%d %H:%M"))
     positions = {p.stock_code: p for p in pm.list_positions()}
@@ -83,6 +86,13 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
 
     # 继续持有：无待办的持仓
     legacy_count = 0
+    cap = None
+    if risk_profile:
+        try:
+            cap = float(risk_profile.get("per_stock_max")) if risk_profile.get("per_stock_max") is not None else None
+        except (TypeError, ValueError):
+            cap = None
+    over_cap: list[str] = []
     for code in sorted(positions):
         if code in pending_by_code:
             continue
@@ -95,8 +105,16 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
             detail += f" ｜ 成本 {pos.entry_price}"
         if pos.lifecycle:
             detail += f" ｜ {pos.lifecycle}"
+        if cap is not None and cap > 0:
+            detail += f" ｜ 单股额度 {pos.current_ratio:.0%}/{cap:.0%}"
+            if pos.current_ratio > cap + 1e-9:
+                over_cap.append(f"{code} {pos.stock_name} {pos.current_ratio:.0%}")
         card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
         view.holding.append(card)
+    if over_cap:
+        view.notices.append(
+            f"⚠ 单股额度超限（用户档 {cap:.0%}）：{'、'.join(over_cap)}"
+            "——多为价格上涨漂移所致，注意集中度；行业额度需行业映射（未接线，暂不核对）")
 
     # 等待条件：观察池逐只明细（ISS-104：在等的是「这些股的买入条件触发」）
     if watch_entries:

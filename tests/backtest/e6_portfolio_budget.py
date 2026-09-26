@@ -41,7 +41,22 @@ E0_TRADES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "
 REPORT_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..",
                            "plan", "fusion", "E6_REPORT.md")
 
-PER_STOCK_CAP = 0.10   # 统一臂单股权重上限（用户风险档 v1 默认档位）
+def _risk_profile() -> tuple[float, str]:
+    """用户风险档（settings.yaml fusion.risk_profile，2026-09-26 用户拍板三数）。
+
+    返回 (per_stock_max, 来源说明)；配置缺失/读取失败回退保守默认 0.10 并标注。"""
+    try:
+        from src.cli.main import load_config
+        rp = (load_config().get("fusion") or {}).get("risk_profile") or {}
+        v = rp.get("per_stock_max")
+        if v is not None:
+            return float(v), "settings.yaml fusion.risk_profile（用户拍板）"
+    except Exception as e:
+        print(f"  ⚠ 风险档读取失败，回退默认 0.10: {e}", flush=True)
+    return 0.10, "回退默认（配置未配置）"
+
+
+PER_STOCK_CAP, _RISK_SOURCE = _risk_profile()
 INITIAL_NAV = 21 * 200000.0
 WINDOW_END_FORCE = "[回测结束强制清仓]"
 
@@ -322,7 +337,7 @@ def main():
         f"生成：{datetime.now().isoformat(timespec='seconds')}｜NAV=420万（两臂同）｜"
         f"动作集=E0 臂 A 逐笔交易（{len(stream) + len(empty)} 案例，同股多年窗合并为 "
         f"{len(stream)} 只标的，零交易剔除 {len(empty)} 例）｜统一臂 per_stock_max="
-        f"{PER_STOCK_CAP:.0%}（约束买入时点，不约束价格漂移后的权重变化）",
+        f"{PER_STOCK_CAP:.0%}（{_RISK_SOURCE}；约束买入时点，不约束价格漂移后的权重变化）",
         "",
         "**v1 口径 caveat**：回放 T+1 为整仓锁（F8 P1-B 登记）；回放费率与回测略异；无行业"
         "暴露约束（行业映射未接线）；同日多股按账户相对仓位直译 → 超额认购是真实现象（G09）；"

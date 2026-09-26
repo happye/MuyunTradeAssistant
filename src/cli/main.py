@@ -3603,7 +3603,77 @@ def _bz_industry_sources_line(bz_score) -> str:
         return ""
 
 
-def diff_evidence_cmd(stock_code: str):
+def _diff_change_text(d: dict) -> str:
+    """diff 结果 → 紧凑变化清单文本（AI 解读的输入；只给事实不给解读）。"""
+    lines = []
+    for field, label, fmt in (("price", "价格", "{:.2f}"), ("score", "评分", "{:.3f}"),
+                              ("target_weight", "目标仓位", "{:.0%}")):
+        ch = d["changes"].get(field)
+        if ch:
+            a, b, delta = ch
+            lines.append(f"{label}: {fmt.format(a)} → {fmt.format(b)}")
+    for field, label in (("decision", "决策"), ("position_action", "仓位动作"), ("sell_path", "卖出路径"),
+                         ("desired_action", "建议动作"), ("execution_status", "执行状态")):
+        ch = d["changes"].get(field)
+        if ch:
+            lines.append(f"{label}: {ch[0] or '-'} → {ch[1] or '-'}")
+    for sc in d["signal_changes"]:
+        if sc["kind"] == "转向":
+            lines.append(f"信号转向: {sc['skill']} {sc['old'].get('signal')}→{sc['new'].get('signal')}")
+        elif sc["kind"] == "新增":
+            lines.append(f"信号新增: {sc['skill']} {sc['new'].get('signal')}")
+        else:
+            lines.append(f"信号消失: {sc['skill']}")
+    for w in d["new_warnings"]:
+        lines.append(f"新增提示: {w}")
+    return "\n".join(lines)
+
+
+def _ai_diff_interpretation(d: dict) -> str:
+    """diff 变化清单 → 一次性 AI 人话解读（可选层；失败/未配 key 返回空串不影响事实对比）。
+
+    只喂机械对比出的事实清单，要求 ≤3 句、只基于给定变化、不确定就说不确定——
+    不给 AI 重算空间（diff 的事实层仍是写死规则，AI 只做综合表达）。"""
+    text = _diff_change_text(d)
+    if not text.strip():
+        return ""
+    try:
+        cfg = load_config()
+        ai_cfg = cfg.get("ai", {})
+        provider = ai_cfg.get("provider", "deepseek")
+        provider_cfg = ai_cfg.get(provider, {})
+        api_key = provider_cfg.get("api_key") or os.environ.get(f"{provider.upper()}_API_KEY", "")
+        if not api_key:
+            return ""
+        from openai import OpenAI
+        from src.core.ai_model import thinking_disabled_body
+        client_kwargs = {"api_key": api_key,
+                         "timeout": float(ai_cfg.get("request_timeout", 60)),
+                         "max_retries": 1}
+        if provider_cfg.get("base_url"):
+            client_kwargs["base_url"] = provider_cfg["base_url"]
+        client = OpenAI(**client_kwargs)
+        model = provider_cfg.get("model", "deepseek-flash")
+        prompt = (
+            "下面是同一只股票相邻两次分析的关键变化清单（机械对比产出，全部是事实）。"
+            "请用不超过3句中文大白话向个人投资者综合解读：这些变化合在一起意味着什么、"
+            "下一步值得注意什么。只基于给定变化，不要臆测清单之外的信息；"
+            "信息不足以给方向就明说。\n\n变化清单：\n" + text)
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            max_tokens=400,
+            temperature=0.3,
+            extra_body=thinking_disabled_body(model),
+        )
+        content = (resp.choices[0].message.content or "").strip() if resp.choices else ""
+        return content[:600]
+    except Exception as e:
+        logger.debug(f"diff AI 解读失败（不影响事实对比）: {e}")
+        return ""
+
+
+def diff_evidence_cmd(stock_code: str, use_ai: bool = False):
     """分析对比（C1，v0.8.17）：同股最近两次深分析的关键证据比较——较上次为何变化。
 
     数据源 ~/.muyun/analysis_evidence.jsonl（record_evidence 在每次 l/la/l all/chat
@@ -3649,7 +3719,25 @@ def diff_evidence_cmd(stock_code: str):
         console.print(f"  [dim]新增提示: {w}[/dim]")
     if not d["changes"] and not d["signal_changes"] and not d["new_warnings"]:
         console.print("  [dim]两次分析的关键证据无变化[/dim]")
+    if use_ai:
+        interp = _ai_diff_interpretation(d)
+        if interp:
+            console.print("  [bold magenta]🤖 AI 解读（可选层，仅基于上述事实）:[/bold magenta]")
+            console.print(f"  {interp}")
+        else:
+            console.print("  [dim]AI 解读未生成（未配置 key / 调用失败）——上方事实对比不受影响[/dim]")
     console.print(f"  [dim]证据卡: 分析报告/analysis/ ｜ 口径说明：评分口径变化由 benzong CACHE_VERSION 标注[/dim]")
+
+
+def _fusion_risk_profile() -> dict:
+    """用户风险档（settings.yaml fusion.risk_profile，ISS-108）——today 单股额度显示用。"""
+    try:
+        cfg = load_config()
+        rp = (cfg.get("fusion") or {}).get("risk_profile") or {}
+        return rp if isinstance(rp, dict) else {}
+    except Exception as e:
+        logger.debug(f"风险档读取失败（today 按未配置处理）: {e}")
+        return {}
 
 
 def diff_list_cmd():
@@ -3687,7 +3775,8 @@ def today_command():
     except Exception:
         watch_failed = True  # F7 审查 P2-7：读取失败显式告知，不静默消失
     pm = PortfolioManager()
-    view = build_today_view(pm, watch_entries=watch_entries)
+    view = build_today_view(pm, watch_entries=watch_entries,
+                            risk_profile=(_fusion_risk_profile() or None))
     if watch_failed:
         view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
     console.print(render_today(view))

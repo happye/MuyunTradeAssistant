@@ -168,3 +168,34 @@ def test_render_contains_all_groups(monkeypatch, tmp_path):
         text = render_today(view)
         assert "需要处理" in text and "继续持有" in text and "等待条件" in text
         assert "没有信号就不动" in text
+
+
+# ── 用户风险档单股额度显示（ISS-108 生产消费 v1）──
+
+def test_risk_profile_shows_headroom_and_over_cap():
+    from src.cli.today_service import build_today_view
+    with _tmp_env({
+        "601318": {"stock_name": "中国平安", "current_ratio": 0.25, "lifecycle": "HOLD",
+                   "strategy_state": {}},
+        "000001": {"stock_name": "平安银行", "current_ratio": 0.1, "lifecycle": "HOLD",
+                   "strategy_state": {}},
+    }) as (path, ledger):
+        pm = _pm(path, ledger)
+        view = build_today_view(pm, watch_entries=None,
+                                risk_profile={"per_stock_max": 0.20})
+        held = {c.stock_code: c for c in view.holding}
+        assert "单股额度 25%/20%" in held["601318"].lines[0]
+        assert "单股额度 10%/20%" in held["000001"].lines[0]
+        # 超限（价格上涨漂移）进 notices 且行业映射未接线如实标注
+        assert any("601318" in n and "未接线" in n for n in view.notices)
+
+
+def test_risk_profile_missing_cap_no_line():
+    from src.cli.today_service import build_today_view
+    with _tmp_env({
+        "000001": {"stock_name": "平安银行", "current_ratio": 0.1, "lifecycle": "HOLD",
+                   "strategy_state": {}},
+    }) as (path, ledger):
+        view = build_today_view(_pm(path, ledger), watch_entries=None,
+                                risk_profile={})
+        assert "单股额度" not in view.holding[0].lines[0]  # 未配置不显示
