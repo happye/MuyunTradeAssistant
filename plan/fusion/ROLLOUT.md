@@ -1,6 +1,8 @@
 # 融合架构发布阶梯与回滚说明（plan/fusion F9 交付）
 
 > **2026-09-26 架构裁决：保持融合主决策 shadow，不支持据当前报告晋级 opt_in/default。** 最新门槛见 [iteration2/VALIDATION.md](iteration2/VALIDATION.md) §6–7。本文其余内容为第一轮实施期说明，其中“无生产接线”“E0等价”“差异连续稳定即可晋级”等描述有滞后；现已有影子决策表和工作台部分接线，但不能据此称全部主流程闭环。`fusion.shadow_capture` 是当前捕获开关；本文示例 `fusion.shadow` 不是已验证存在的 opt_in 设置，不应照抄启用。
+>
+> **2026-09-27 R9 更新**：当前阶梯位置 = **capture_only**（v0.8.22；`fusion.mode` 单一解析器落地——旧布尔开关迁移，opt_in/default 仅意愿登记不晋级）。晋级条件以 [iteration2/VALIDATION.md](iteration2/VALIDATION.md) §7 为准（R1–R6 正确性门 + R8 八类走查 + 真实接受计划观察下限 20 交易日/30 证券-计划版本/10 次复评——影子 v3 逐周期记录当前 0 条，0/0 不是通过）。
 
 2026-09-25。DESIGN ADR-F09 推荐启用阶梯的落地文件。**当前状态：全部新能力处于
 基建/可选接入阶段，默认行为 = legacy（v0.8.18 语义的终态修复除外——那是正确性

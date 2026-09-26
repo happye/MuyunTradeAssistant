@@ -12,7 +12,7 @@ manifest 机制）有 10+ 测试锁（`src/core/experiment.py` + `tests/core/tes
 | ID | 名称 | 固定 | 改变 | 信息集标签 | 当前状态 |
 |---|---|---|---|---|---|
 | E0 | 正确性基线 | 同一历史快照、旧策略参数 | 仅终态/事实持仓/执行正确性修正 | rule_bz_proxy | **已执行（2026-09-26，首个真实执行）**：21 案例双臂（legacy vs T+1 批次份额），差异全部在项目噪声阈内——本人工案例集内差异较小（不能统计证明等价，2026-09-26 裁决）；报告 E0_BASELINE_REPORT.md + manifest tests/artifacts/e0_baseline/ |
-| E1 | 候选召回 | 同时点市场全集、研究预算 | 技术/产业/质量单路 vs 并集配额 | rule_bz_proxy | **已执行（2026-09-26，v1）**：live 快照 5568 只三路召回——技术 50/产业 100/质量 5，跨路重叠 0（当前截面重叠低；35 为配额后并集，经济互补待 E1b，2026-09-26 裁决）；报告 E1_REPORT.md；历史 PIT 版登记后续批（ISS-114 balance 字段漂移一并处理） |
+| E1 | 候选召回 | 同时点市场全集、研究预算 | 技术/产业/质量单路 vs 并集配额 | rule_bz_proxy | **已执行（2026-09-26，v1）**：live 快照 5221 只三路召回——技术 50/产业 75/质量 5（原始条目 130），跨路重叠 0（当前截面重叠低；35 为配额后并集，经济互补待 E1b，2026-09-26 裁决；数字按 e1_run.log/detail.json 修正——R9 审查）；报告 E1_REPORT.md；历史 PIT 版登记后续批（ISS-114 balance 字段漂移一并处理） |
 | E2 | 投资逻辑资格 | 同一候选集合、相同入场/退出 | 无资格过滤/bz旧分/证据资格 | rule_bz_proxy | blocked_on_data（2026-09-26 探查后财务 pubDate 已实证可 PIT——财务因子接线批是前置） |
 | E3 | 持有纪律 | 同一事前候选与入场日 | legacy/fusion_mid/fusion_long 分别报告 | rule_bz_proxy | blocked_on_data |
 | E4 | 技术择时 | 同一投资逻辑和预算 | 固定周期分批/技术触发/混合门控 | rule_bz_proxy | blocked_on_data |

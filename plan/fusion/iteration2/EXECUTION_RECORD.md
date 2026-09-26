@@ -356,7 +356,7 @@ task_id: R7
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: dc7f12a（R5/R6 后）
-delivered_commit: （commit 后回填）
+delivered_commit: 980e925
 ```
 
 ### owned_files / 变更面
@@ -394,7 +394,7 @@ task_id: R8
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: dc7f12a（R5/R6 后）
-delivered_commit: （commit 后回填）
+delivered_commit: 980e925
 ```
 
 ### owned_files / 变更面
@@ -403,7 +403,7 @@ delivered_commit: （commit 后回填）
 |---|---|
 | `src/cli/main.py` | 新增 `research` 命令（单股研究工作台：MID/LONG 各一句资格结论+理由；系统草稿未激活；缺口逐条点名；已核验主张带引用可打开原文；`--capture` 真实网络采集财务→留样→筛查→因子能力→研究链）；版本 v0.8.22 |
 | `start.py` | research 命令路由+帮助（REPL 入口） |
-| `plan/fusion/iteration2/R8_WALKTHROUGH.md` | 八类走查记录（①④⑤⑥⑦⑧ 合成走查实测证据；②③ live 依赖如实待真实试用；性能基线 p50<0.1ms/p95 0.2ms） |
+| `plan/fusion/iteration2/R8_WALKTHROUGH.md` | 八类走查记录（①④⑤⑥⑦⑧ 合成走查实测证据；②③ live 依赖如实待真实试用；性能基线亚毫秒级——R9 审查校正口径） |
 
 ### 验收条款逐条
 
@@ -414,7 +414,7 @@ delivered_commit: （commit 后回填）
 | 3 CLI/chat/Web/TUI 同输入一致 | **仅 CLI 接线本批完成**；chat/Web/TUI 适配随 R9 前接线批 | **PARTIAL**（如实） |
 | 4 新用户无需手填事实得草稿；不反复重填风险档/现金 | research 命令实测（无 --facts 生成草稿）+ 风险档/账户落配置（F7 既有） | PASS |
 | 5 today 不隐藏重大风险；变化不足不刷重复分析 | today 先持仓风险序（F7 既有）+ 同股同分钟影子幂等（既有）；融合风险上限三卡内不隐藏——design 承接 | PASS（既有语义回归）/ 新增验证随 R9 走查 |
-| 6 性能基线 p50/p95；缓存/AI 失败降级实测 | research 核心链路 p50<0.1ms/p95 0.2ms（n=20）+ LLM 失败/截断计数（R2） | PASS（核心链路）/ today 全渲染基线随 R9 |
+| 6 性能基线 p50/p95；缓存/AI 失败降级实测 | research 核心链路亚毫秒级（独立复测 p50 0.008–0.125ms / p95 0.135–0.300ms，n=20 冷热混合）+ LLM 失败/截断计数（R2） | PASS（核心链路）/ today 全渲染基线随 R9 |
 
 ### remaining / next_owner
 
@@ -423,6 +423,95 @@ delivered_commit: （commit 后回填）
   修复并重跑；「使用已归档证据」虚假话术改为如实降级 + 快照拒收摘要展示）+ P2×5
   （死变量/对照臂/静默失败提示/E1b 精确匹配/E_SPEC_V2 注册表测试）全部修复。
 - next_owner：R9（独立验收——本表不得自证 VERIFIED，交独立审查者逐条裁决）。
+
+---
+
+## R9｜独立验收、发布与代码收敛
+
+```text
+task_id: R9
+owner: 独立审查者（裁决）+ 实施方（按裁决改模式解析/消费者收口/文档）
+status: REVIEW
+baseline_commit: 980e925（R7/R8 后）
+delivered_commit: （commit 后回填）
+```
+
+### 实施方交付（待独立裁决确认）
+
+| 文件 | 变更 |
+|---|---|
+| `src/core/shadow_diff.py` | **fusion.mode 单一解析器** `resolve_fusion_mode`（legacy_only/capture_only/shadow/opt_in/default；旧布尔开关 fusion.shadow_capture 迁移映射——两套语义不并存；opt_in/default 配置附「晋级门未过」警示——模式登记≠晋级决定）；_load_capture_switch 消费解析器 |
+| `tests/core/test_shadow_diff.py` | 解析器回归（迁移映射/未知回退/晋级警示/缺省） |
+| `使用手册.md` | research 命令使用说明（用户视角：离线口径/--capture/与 plan2 的关系） |
+| `plan/fusion/iteration2/R9_INDEPENDENT_REVIEW.md` | 独立审查者裁决报告（独立会话产出，实施方原样收录） |
+
+### 旁路/兼容分支删除条件登记（R9 验收4——「只在等价/预期差证据具备时删」）
+
+| 旁路/兼容项 | 消费者 | 删除条件（三者同时满足） | 现状 |
+|---|---|---|---|
+| ShadowDiffRecord v2 兼容聚合字段（plan_source/thesis_status） | 旧报告读取（无仓库内消费者）；render 已改分周期 | R3/R8 评估接线完成 + 覆盖反例测试 + 预期行为差报告 | 保留（登记于字段 description） |
+| factor_compute 弃用委托（capital_return_v1/earnings_quality_v1/valuation_pe_v1） | tests/backtest/e1_route_recall.py、e7_funnel_smoke.py | R7 迁移脚本至新能力ID + 回放等价证据 | 保留（委托内标注「请改用新ID」） |
+| verify_claim 结构层（verify_claim_tiered 之外的旧入口） | e5_claim_arms.py:81 | E5b 真跑后改消费分级结果 | 保留 |
+| legacy 决策表 DecisionPacket 直出（vs PolicyIntent） | evaluate_horizon 全部既有调用方（shadow/测试） | R8/R9 界面全面消费 PolicyIntent + 决策表行证据引用接通 | 保留 |
+| 旧 E_SPEC（E0–E7 原表） | test_experiment_replay 锁定 | E_SPEC_V2 独立验收通过后保留历史、标注 superseded | 保留（V2 另表） |
+
+### 全库扫描结论（统一资格/终态入口——R9 验收4）
+
+- 资格唯一入口：`research.assess_thesis`（R0 资格门）+ `research.assess_thesis_by_assertions`
+  （R3 命题级）——shadow 已消费，CLI plan2 提示对齐；无第二处「非空→VALID」实现（grep 扫描）。
+- 终态唯一入口：DecisionPacket 仍由 evaluate_horizon 产出（PolicyIntent 为中间值对象）——
+  chat/Web/TUI 消费一致性未接线（R8 验收3 PARTIAL 如实）。
+- 证据资格唯一入口：`assess_evidence_eligibility`（R1）——shadow/CLI 均经 EvidenceSnapshot.build。
+
+### 发布建议（实施方提交独立裁决的底稿——最终以 R9_INDEPENDENT_REVIEW.md 为准）
+
+| 能力 | 建议 | 依据 |
+|---|---|---|
+| 可信数据提示/资格门/缺口话术 | **可发布**（已在 live 路径可见：plan2/research 提示） | R0/R1 反例回归 + 探针复现 |
+| 研究工作台 research 命令 | **可发布（实验性）**——离线口径诚实，--capture 真实网络 | R8 走查 6/8 |
+| shadow 捕获（capture_only 缺省） | **维持**（数据积累中——opt_in 观察下限未达） | R3/R9 影子统计未满 20 交易日 |
+| 融合主决策 opt_in | **不晋级**（VALIDATION §7 门未过：影子观察期/真实计划样本不足） | 架构裁决 + R9 独立确认 |
+| default | **不晋级** | 同上 |
+
+### 阻断与未完成清单（独立审查合并后——含审查★新增项）
+
+- 严格历史财务实验（E2b/E3b/E4b）BLOCKED_DATA——原始档案路径或前瞻采集未积累（R1 暂停点）。
+- E1b/E5b 真跑（AI opt-in 预算）NOT_RUN。
+- ISS-114 其余 balance 字段单位漂移待逐字段核定；映射待逐份原始财报确认升级。
+- R3 步骤级缓存/失败恢复、R5 释放再分配——随 R9 后接线批。
+- **【审查★新增登记】R5→R8 承接缺口：today「可行数量/唯一阻塞字段」显示、pos confirm 流→AccountEventLog 联动——此前脱账，本节补登**。
+- R8 chat/Web/TUI 三端一致性、②③ 真实用户试用——随 R9 后接线批。
+- factor_compute 弃用委托删除债（依赖 e1/e7 迁移——R4/R7 未迁移，见 R9 旁路表）；ShadowDiffRecord v2 兼容字段删除债。
+- DATED_RULES 全市场现行规则官方复核（规则表当前只喂回放/场景，不下真实单）。
+- research CLI 缺口列表截断显示（cosmetic——本批已加省略号提示）。
+
+### R2–R8 五维判定汇总（独立审查者裁定——补 VALIDATION §1 要求；实施方自评见各卡节）
+
+| 卡 | implemented | connected | scenario_validated | empirically_validated | release_ready |
+|---|---|---|---|---|---|
+| R2 | PASS | PARTIAL | PASS | NOT_RUN（LLM 层） | PARTIAL |
+| R3 | PASS | PARTIAL | PASS | NOT_RUN | PARTIAL |
+| R4 | PASS | PARTIAL | PASS | NOT_RUN | PARTIAL |
+| R5 | PASS | **PARTIAL（零生产消费方）** | PASS | NOT_RUN | PARTIAL |
+| R6 | PASS | PARTIAL | PASS | NOT_RUN | PARTIAL |
+| R7 | PASS | PARTIAL | PASS | NOT_RUN | PARTIAL |
+| R8 | PASS | **PARTIAL（仅 CLI）** | PARTIAL | NOT_RUN | PARTIAL |
+
+（R0/R1 五维表见各卡节；R1 connected PARTIAL——`l` 主分析路径尚不展示证据资格。）
+
+### 独立裁决结论（R9_INDEPENDENT_REVIEW.md 摘录）
+
+> **第二轮 R0–R8 交付验收通过（有条件）**：八张卡账本声称的测试、场景、探针经独立实跑
+> 全部复现，无一处「账本 PASS 但代码做不到」；五处★均为账本形式缺陷或承接登记缺口而非
+> 语义造假；发布口径——资格门/提示/缺口话术与 research CLI（实验性）可发布，影子维持
+> capture_only，opt_in/default 因影子数据 0/0/0 明确不晋级，R9 收尾须完成文档收敛、承接
+> 缺口登记与哈希回填后方可关账。
+
+**R9 收尾执行记录（实施方按裁决逐项完成）**：文档收敛 7 项（RESUME/iteration2 README/
+DATA_TRUST/RESEARCH_LOOP/EXPERIMENTS E1 数字修正 5221-50-75-5/ROLLOUT 现状行/使用手册
+research 表述）；R3/R7/R8 哈希回填；R2–R8 五维表补齐（本节）；R5/R8 承接缺口补登（本清单）；
+R4 迁移未发生注记；性能口径降格「亚毫秒级」（R8_WALKTHROUGH.md 同步）；cosmetic 截断提示。
+五处★全部清偿。
 
 ---
 

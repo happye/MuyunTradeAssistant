@@ -1893,3 +1893,23 @@ False，主意图引用蒸发）。写测试才暴露。
 - Source: r3_horizon_plan_store_binding
 - Pattern-Key: persistence.rebuild_container_drops_new_keys
 - Related Files: src/data/horizon_plans.py, tests/core/test_research_service.py
+
+## [LRN-20260927-R9-EVIDENCE] lesson — 账本不得记录代码产生不了的实测证据
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（R8 走查重录 + R9 独立验收把关）
+**Area**: evidence, ledger, walkthrough
+
+R8 走查初版把「缺口行 6→3」误读为「命题建立」（实为因子接线形状错配下
+missing_reqs 过滤的键存在性效应），且摘录顺序与真实输出不符——监督员以探针
+三重不可能实证后 P0 打回。独立的 R9 审查者复核确认证据污染被避免。
+
+教训：**走查摘录必须来自修复后重跑的真实输出，禁止凭中间状态脑补结论**；
+「数量减少」类观察必须先问「减少的机制是什么」——键存在性效应 ≠ 语义达成。
+配套：账本五维表（VALIDATION §1）每卡都要有，不能只 R0/R1 有——独立审查发现
+R2–R8 缺表，收尾补齐。
+
+- Source: r9_independent_acceptance
+- Pattern-Key: evidence.walkthrough_must_be_rerun_not_narrated
+- Related Files: plan/fusion/iteration2/R8_WALKTHROUGH.md, plan/fusion/iteration2/R9_INDEPENDENT_REVIEW.md

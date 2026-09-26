@@ -1,8 +1,8 @@
 # 融合架构研究：恢复入口
 
-更新：2026-09-26｜本轮架构复核基线 `5b2e262` / v0.8.20。**恢复先读 [iteration2/README.md](iteration2/README.md) 和 [iteration2/TASKS.md](iteration2/TASKS.md)**。
+更新：2026-09-26｜**2026-09-27 更新：R0–R8 已实施**（逐卡账本与五维判定见 [iteration2/EXECUTION_RECORD.md](iteration2/EXECUTION_RECORD.md)；独立验收裁决见 [iteration2/R9_INDEPENDENT_REVIEW.md](iteration2/R9_INDEPENDENT_REVIEW.md)——有条件通过，opt_in/default 不晋级）｜本轮架构复核基线 `5b2e262` / v0.8.20。**恢复先读 [iteration2/EXECUTION_RECORD.md](iteration2/EXECUTION_RECORD.md)（R0–R9 账本）**。
 
-第一轮 F0–F9 实施方报告全部 VERIFIED，另有四批接线和 E 实验。架构师已核对报告、相关源码和关键实验，作出**工程交付有条件接受，融合主决策暂不晋级 opt_in/default**的裁决。第二轮六份设计已落盘，R0–R9 均 TODO；历史实施证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)，原始汇报见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)。
+第一轮 F0–F9 实施方报告全部 VERIFIED，另有四批接线和 E 实验。架构师已核对报告、相关源码和关键实验，作出**工程交付有条件接受，融合主决策暂不晋级 opt_in/default**的裁决。第二轮六份设计已落盘，R0–R8 已交付、R9 收尾中；历史实施证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)，原始汇报见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)。
 
 ## 用户授权与目标
 
