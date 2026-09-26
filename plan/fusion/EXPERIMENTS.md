@@ -10,13 +10,13 @@ E0–E7 的真实执行未发生**（需外源数据/长时回测，单独入口
 | ID | 名称 | 固定 | 改变 | 信息集标签 | 当前状态 |
 |---|---|---|---|---|---|
 | E0 | 正确性基线 | 同一历史快照、旧策略参数 | 仅终态/事实持仓/执行正确性修正 | rule_bz_proxy | **已执行（2026-09-26，首个真实执行）**：21 案例双臂（legacy vs T+1 批次份额），差异全部在项目噪声阈内——旧基线与修正后基线等价；报告 E0_BASELINE_REPORT.md + manifest tests/artifacts/e0_baseline/ |
-| E1 | 候选召回 | 同时点市场全集、研究预算 | 技术/产业/质量单路 vs 并集配额 | rule_bz_proxy | blocked_on_data（机制可跑：候选池 fingerprint 对账键；**数据未备**——同时点市场全集需历史快照） |
+| E1 | 候选召回 | 同时点市场全集、研究预算 | 技术/产业/质量单路 vs 并集配额 | rule_bz_proxy | **已执行（2026-09-26，v1）**：live 快照 5568 只三路召回——技术 50/产业 100/质量 5，跨路重叠 0（互补实证）；报告 E1_REPORT.md；历史 PIT 版登记后续批（ISS-114 balance 字段漂移一并处理） |
 | E2 | 投资逻辑资格 | 同一候选集合、相同入场/退出 | 无资格过滤/bz旧分/证据资格 | rule_bz_proxy | blocked_on_data（2026-09-26 探查后财务 pubDate 已实证可 PIT——财务因子接线批是前置） |
 | E3 | 持有纪律 | 同一事前候选与入场日 | legacy/fusion_mid/fusion_long 分别报告 | rule_bz_proxy | blocked_on_data |
 | E4 | 技术择时 | 同一投资逻辑和预算 | 固定周期分批/技术触发/混合门控 | rule_bz_proxy | blocked_on_data |
-| E5 | AI | 同一证据、计划、预算 | 无AI/结构化提取/提取+反证（旧 modifier 独立对照） | **ai_lookahead** | blocked_on_data |
+| E5 | AI | 同一证据、计划、预算 | 无AI/结构化提取/提取+反证（旧 modifier 独立对照） | **ai_lookahead** | **证据层 v1 已执行（2026-09-26）**：真实 LLM 提取器冻结评测 8/8 + 三臂消融（无AI 6/LLM 11/反证标记 5）；报告 E5_REPORT.md；决策路径 A/B（本体）须影子期验证——后续批 |
 | E6 | 组合 | 同一单股动作集合 | 逐股建议 vs 统一资金与集中度约束 | rule_bz_proxy | **已执行（2026-09-26，v1）**：E0 臂 A 动作集 420万两臂对照——统一预算最大单股权重 78.5%→30.0%、拒绝全部有因；报告 E6_REPORT.md（v1 口径 caveat 见报告） |
-| E7 | 完整系统 | 同一PIT全集、成本、研究资源预算 | 修正后基线 vs 完整融合漏斗 | rule_bz_proxy | blocked_on_data |
+| E7 | 完整系统 | 同一PIT全集、成本、研究资源预算 | 修正后基线 vs 完整融合漏斗 | rule_bz_proxy | **漏斗烟测 v1 已执行（2026-09-26）**：候选 35→研究完备 5→资格 5→决策表→预算全链端到端可跑、逐级存活可计量；报告 E7_REPORT.md；真正 E7（历史 PIT 全集+收益对照）待 E1 历史版 |
 
 信息集标签强制：rule_bz_proxy / ai_lookahead / human_mode 三类不混记（信息集来源
 在 E_SPEC 注册时锁定，报告输出必须带标签）。

@@ -164,6 +164,7 @@ def main():
         json.dumps({**m.model_dump(), "fingerprint": m.fingerprint()}, ensure_ascii=False, indent=1),
         encoding="utf-8")
     detail = {"universe": len(universe), "routes": {k: len(v) for k, v in route_inputs.items()},
+              "quality_pass": [c["stock_code"] for c in qual],
               "union": len(cs.candidates), "dedup_count": cs.dedup_count,
               "excluded_by_quota": len(cs.excluded_by_quota),
               "per_route_after_quota": {k: len(v) for k, v in per_route.items()},
