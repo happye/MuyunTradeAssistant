@@ -1,6 +1,6 @@
 # 融合架构研究：恢复入口
 
-更新：2026-09-25。初查：v0.8.17 / `449bbfb`；恢复时HEAD：`bdebf13`（仅start.py帮助菜单变动）。状态：**本轮研究与架构设计已交付；F0–F9全部待实施**。
+更新：2026-09-25。初查：v0.8.17 / `449bbfb`；恢复时HEAD：`bdebf13`（仅start.py帮助菜单变动）。状态：~~F0–F9全部待实施~~ → **F0–F9 已全部实施 VERIFIED + 四批计划外实施 + E 矩阵 E0/E1/E5/E6/E7 v1 已执行**（2026-09-26，v0.8.20；实施证据 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)，致架构师汇报 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)——恢复后先读这两份）。
 
 ## 用户授权与目标
 
