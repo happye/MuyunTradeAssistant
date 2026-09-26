@@ -1,5 +1,7 @@
 # 数据契约与可得性覆盖报告（plan/fusion F3 交付）
 
+> **2026-09-26 架构复核限定**：下文是实施期接口探查记录；“行情天然PIT”“财务pubDate可PIT”不构成严格历史资格证明。latest-only 财务、复权行情、行业历史归属须按 [iteration2/DATA_TRUST.md](iteration2/DATA_TRUST.md) 验证版本与语义，缺证明者不得进入严格效果实验；原始探查记录保留。
+
 2026-09-25。对应 DESIGN §5.1（EvidenceRecord/EvidenceSnapshot）与 TASKS.md F3。
 **诚实声明：本报告基于源码核对与既有纪律记录（ISS-052/053），未做真实接口现场探查**；
 标「待现场探查」的行由 `tests/data_sources/test_all_api.py`（external，opt-in）扩展验证，

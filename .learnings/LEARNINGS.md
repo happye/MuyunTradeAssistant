@@ -1776,3 +1776,18 @@ F1/F2 两课：① 测试替身用 `SimpleNamespace(value="FLAT")` 冒充 `Trade
 - Recurrence-Count: 2（枚举比较类问题本会话第二次出现）
 - First-Seen: 2026-09-25
 - Last-Seen: 2026-09-25
+
+## [LRN-20260926-FUSION-ARCH01] correction — 接通、资格与效果不能互相替代
+
+**Logged**: 2026-09-26
+**Priority**: high
+**Status**: pending（架构师只交付设计；R0–R9 待实施，不冒充代码修复）
+**Area**: fusion, evidence, validation
+
+只读架构复核确认：latest-only 数值带旧 pubDate 可进 strict；facts 非空可使 thesis VALID；引用匹配但正文相反的 claim 可通过结构核验；未知现金仍有数学分配额度。局部探针不代表已发生错误交易，详见 plan/fusion/iteration2/PROBES.md。
+
+后续门禁：时间过滤另需历史版本证明；用户事实文本另需内容与命题资格；数学额度另需账户/交易可行性；全 WAIT / 零预算输入 / 风险 0/0 不算目标路径验证。完成状态按 implemented/connected/scenario_validated/empirically_validated/release_ready 分开登记，保留原实验而限定结论。
+
+- Source: read_only_architecture_review
+- Pattern-Key: fusion.semantic_qualification_and_nonvacuous_validation
+- Related Files: plan/fusion/iteration2/README.md, plan/fusion/iteration2/TASKS.md, plan/fusion/RESUME.md

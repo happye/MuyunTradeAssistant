@@ -393,3 +393,12 @@ FETCH FAIL: fatal: unable to access 'https://github.com/happye/MuyunTradeAssista
 沙箱内`.venv/Scripts/python.exe -`无法启动其引用的uv解释器；经自动审批允许后，同一仅用标准库的只读AST探针在沙箱外成功。未重装依赖或改PATH。第一次中文stdout经工具显示乱码，改用JSON ensure_ascii=True重跑确认结果。不要将环境访问或显示编码失败当成产品回归失败。
 
 研究网页个别PDF/DOI访问失败，改从作者机构或官方原文读取；未将失败页面当成已获取证据。详情与实际探针结果见plan/fusion/PROBES.md。
+
+## [ERR-20260926-ARCH01] 文档补丁上下文核验与外源正文不可得
+
+**Logged**: 2026-09-26
+**Status**: resolved（补丁重读真实标题后成功；外源缺正文保留为研究限制）
+
+一次多文件 apply_patch 使用未核实的占位标题 `#`，上下文校验失败，未写入该批改动；读取各文件真实标题后重新应用成功。以后补丁上下文只取实际读到的原文，不放待替换占位锚点。
+
+Baostock 官方主页/API文档在本轮 web 工具仅返回 `×`，未取得字段定义；没有用搜索到的第三方转载确认全字段单位/PIT资格。待 R1 取得可核验原始定义与发行人报告。

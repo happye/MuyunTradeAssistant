@@ -1,6 +1,8 @@
 # 融合架构研究：恢复入口
 
-更新：2026-09-25。初查：v0.8.17 / `449bbfb`；恢复时HEAD：`bdebf13`（仅start.py帮助菜单变动）。状态：~~F0–F9全部待实施~~ → **F0–F9 已全部实施 VERIFIED + 四批计划外实施 + E 矩阵 E0/E1/E5/E6/E7 v1 已执行**（2026-09-26，v0.8.20；实施证据 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)，致架构师汇报 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)——恢复后先读这两份）。
+更新：2026-09-26｜本轮架构复核基线 `5b2e262` / v0.8.20。**恢复先读 [iteration2/README.md](iteration2/README.md) 和 [iteration2/TASKS.md](iteration2/TASKS.md)**。
+
+第一轮 F0–F9 实施方报告全部 VERIFIED，另有四批接线和 E 实验。架构师已核对报告、相关源码和关键实验，作出**工程交付有条件接受，融合主决策暂不晋级 opt_in/default**的裁决。第二轮六份设计已落盘，R0–R9 均 TODO；历史实施证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)，原始汇报见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)。
 
 ## 用户授权与目标
 
@@ -9,40 +11,35 @@
 - 同时支持中期、长期持有，不能被迫只选一种；不得把亏损的中期交易自动解释为长期投资。
 - 角色为总架构师；既有 plan/ 的 M1–M6、C1–C6 已有其他 Agent 实施记录，本轮是新的能力设计。
 
-## 中断后的实际状态
+## 本轮已核实事实
 
-2026-09-25恢复检查时，探索摘要仍在，三个研究子任务已不存在、尚无文档落盘；由主任务接续核对和写作，现已完成本目录八份文档。没有把已中断子任务冒充完成成果。
+1. latest-only 财务值配旧 pubDate 可进入 strict 快照；日期过滤不等于版本可得性证明。
+2. 核心逻辑评估 facts 列表非空即可 VALID；shadow 另写同类判断。CLI虽去空白，也没有核验任意事实文本的证据。
+3. claim 引用匹配但正文相反仍通过现有检查；无 evidence_pool 仍报告 citation_resolves。返回仍为 MODEL_INFERRED，不夸大为已发生错误交易。
+4. cash_nav=None 仍可求出数学新增权重，需要区分理论预算与可执行数量；计划双周期研究还需一个实际持仓主意图与完整版本历史。
+5. E0未触发T+1批次拦截、AI关闭；E1单截面/不同预算；E5是提取层；E6使用非严格行业/未来压力输入；E7全WAIT且无预算动作。不能把运行成功等同全部策略有效。
 
-## 已核对的关键事实（证据层级见RESEARCH与PROBES）
+实际只读函数探针5项已完成，复现脚本及边界见 [iteration2/PROBES.md](iteration2/PROBES.md)。ISS-114财务真值本轮未独立核定；官方Baostock网页未取得可读字段正文，不把第三方转载当定义证据。
 
-1. `Orchestrator.analyze` 没有 bz 评分输入，主要通过 TradePlan.mode 间接参与持仓纪律，三方尚非同一个决策契约。
-2. `DecisionEngine.make_decision` 的 score 是选定动作的强度；AI Modifier 却按看多加分/看空减分修改它，存在方向语义不一致线索。
-3. `main._print_plain_summary` 同时读取中间 DecisionResult 和原始 entry_exit；最终 Strategy/PlanGuard/Execution 的动作不一定成为人话摘要唯一依据。
-4. `evidence.record_evidence` 混存中间 decision/score/position_ratio 与末端 position_action，缺少统一终态。
-5. AI 已看技术摘要，再与技术分及事件增量相加，有证据重复计权风险；bz 的产业新闻也需要事件去重。
-6. 既有 scan review 是选股观察结果，不等于有成本、T+1、涨跌停可成交性与资金约束的策略收益证明。
+## 第二轮成果与下一步
 
-## 设计方向（提案，未实现）
+- iteration2/README：验收矩阵、对五项实施选择的裁决、S0–S3里程碑。
+- iteration2/DATA_TRUST：历史版本、财务字段语义、异常隔离、claim内容核验、增量快照。
+- iteration2/RESEARCH_LOOP：自动研究与计划草稿、中长期独立评估、共享事实、账户预算与统一用户体验。
+- iteration2/VALIDATION：E0–E7分层实验、有效场景命中、真实计划影子、发布门。
+- iteration2/TASKS：R0–R9主责文件、依赖、验收与回退，全部待实施。
+- iteration2/PROBES：本轮实际探针与限制。
 
-保留模块化单体；统一最终决策契约；区分选股/投资逻辑/择时/组合预算/可执行性。bz 负责产业与投资逻辑，scan 负责候选与技术状态，AI 负责有来源的事实提取、反证和解释。中期与长期分别定义计划、退出原因、复核时点。避免三方简单投票或把不同语义的分数加权。
+执行下一步 R0，再按接口分工 R1/R2/R5/R6；R3/R4完善自动研究后接 R8，R7/R9负责效果验证与发布验收。不要先做E2/E4严格财务收益调参、先加总评分或默认启用融合主决策。
 
-## 已落盘成果与剩余工作
-
-- README：产品目标、三方职责、中长期双意图、交付顺序。
-- RESEARCH：bz公式与定模式、scan因子、AI语义、历史收益证据限制、参数治理判断。
-- MARKET_EVIDENCE：2026交易规则变化与论文原始来源；尚未穷尽所有市场制度附件。
-- DESIGN：DecisionPacket、事实持仓分离、PlanV2、周期决策表、证据时点、因子定义、AI与组合预算、迁移回滚。
-- VALIDATION：PIT资格、E0–E7消融、G01–G15工程场景、统计/用户验收与发布门槛。
-- TASKS：F0–F9文件职责、依赖、验收与回滚；全部TODO。
-- PROBES：5组只读局部探针，复现摘要冲突、AI分数方向、排名分量、bz同分异等级；非完整回测。
-- 未做：产品实现、真实数据源覆盖盘点、全量回归、新收益回测、用户产品验收。当前源码问题仍未修复。
-
-下一次架构工作：优先审查执行Agent的F0–F2结果；若尚无实施授权，仅继续设计评审。不要直接重新跑旧人工标注回测宣布融合成功。
+第一轮 RESEARCH/PROBES 保留为旧基线证据，不能当作当前缺陷清单。第二轮验收结论限制实施报告中的扩大表述，不改写历史运行数据。
 
 ## 恢复指令
 
-“先读 plan/fusion/RESUME.md 和该目录设计文件，核对 git 状态与相关源码，继续融合架构工作。只写设计，不改产品代码。中期和长期都要支持。”
+“先读 plan/fusion/RESUME.md、plan/fusion/iteration2/README.md 与 TASKS.md，核对 git 状态、执行账本和相关源码。继续作为架构师设计和验收，不直接改产品代码。中期和长期都支持。”
 
-仓库文件是跨工具交接依据；文件仍未提交，需保留当前工作区。无需靠定时重发对话保存研究进度；不保证额度耗尽时后台任务仍继续运行。
+仓库文件是跨工具交接依据；本轮架构设计未提交，需保留当前工作区。恢复时以文件和新HEAD重新核对，不假定旧工具过程一直存在。未建立定时重试对话任务。
 
-交付检查：8份设计文档的本地Markdown链接、代码围栏配对已检查；`git diff --check`通过。上级plan三份历史入口已标明状态并链接新方案；`.learnings`记录发现与探针环境问题。未运行全量pytest（仅文档变化），未提交Git。既有用户portfolio与Claude配置改动保持原样。
+范围：只修改plan文档及相关交接记忆。未运行全量pytest、真实AI实验或新收益回测，未提交Git。既有用户portfolio与Claude配置等外部改动保持原样；第一轮实施方的1121 tests计数未由本轮重跑。
+
+交付检查：第二轮6份新文档及7份更新入口共13份已检查，47个本地链接有效、围栏配对、R0–R9编号齐全，文档内探针脚本编译通过；`git diff --check`通过。5项只读函数探针执行成功，详细结果在第二轮PROBES中；未以文档检查冒充产品测试。
