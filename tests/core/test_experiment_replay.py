@@ -145,10 +145,11 @@ def test_full_weight_buy_no_fee_margin_crash():
 
 
 def test_oversell_rejected_not_truncated():
-    """P2 回归锁：严格回放超卖拒绝（不静默截断伪造成交）。"""
+    """P2 回归锁：严格回放超卖拒绝（不静默截断伪造成交）。
+    E6 v2 批次份额语义后，超卖与 T+1 批次限制走同一拒绝路径（可卖上限=旧批次和）。"""
     r = PortfolioReplay(100_000.0)
     r.buy("600519", "2026-01-05", 100.0, 0.5)
-    with pytest.raises(ValueError, match="超卖"):
+    with pytest.raises(ValueError, match="T\\+1 批次限制"):
         r.sell("600519", "2026-01-06", 110.0, shares=999_900)
 
 
@@ -165,3 +166,37 @@ def test_manifest_commit_fallback_offline():
     m = ExperimentManifest.build("E0", config_hash="x", as_of="2026-09-25",
                                  sample_set=["600519"], code_commit="unknown")
     assert m.code_commit == "unknown"
+
+
+# ── E6 v2：批次份额 T+1（G11 正确答案，F8 P1-B 收口）─────────
+
+def test_lot_t_plus_1_old_shares_sellable_same_day():
+    """G11：当天加仓后，旧份额当日可卖、新份额锁到次日——不再整仓锁死。"""
+    r = PortfolioReplay(1_000_000.0)
+    r.buy("600519", "2026-01-05", 100.0, 0.4)   # 旧批次 ~4000 股
+    old_shares = r.positions["600519"].shares
+    r.buy("600519", "2026-01-06", 105.0, 0.1)   # 当日新批次
+    total = r.positions["600519"].shares
+    t = r.sell("600519", "2026-01-06", 106.0, shares=old_shares)  # 只卖旧份额——当日合法
+    assert t.shares == old_shares
+    assert r.positions["600519"].shares == total - old_shares
+    # 当日新买份额请求超卖 → 拒绝
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+        r.sell("600519", "2026-01-06", 106.0, shares=1)
+
+
+def test_lot_t_plus_1_same_day_full_sell_blocked():
+    """建仓当日全卖仍被拒（当日批次全部不可卖）。"""
+    r = PortfolioReplay(1_000_000.0)
+    r.buy("600519", "2026-01-05", 100.0, 0.4)
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+        r.sell("600519", "2026-01-05", 105.0)
+
+
+def test_lot_t_plus_1_next_day_all_sellable():
+    """次日全部批次可卖（默认全仓=卖全部可卖）。"""
+    r = PortfolioReplay(1_000_000.0)
+    r.buy("600519", "2026-01-05", 100.0, 0.4)
+    r.buy("600519", "2026-01-06", 105.0, 0.1)
+    t = r.sell("600519", "2026-01-07", 106.0)  # 次日全卖
+    assert r.positions.get("600519") is None

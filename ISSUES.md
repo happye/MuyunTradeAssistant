@@ -2171,14 +2171,14 @@ P3（已取消）:
 - **更新**: 2026-09-26 完成
 
 ### ISS-112: 因子登记表口径与 factor_compute 实现漂移（对抗审查 P1 发现，2026-09-26）
-- **状态**: 待办（**E2/E4 因子接线消费数值前必须解决**）
+- **状态**: ✅ 已解决（选定修法一：FactorSpec 定义对齐 v1 实际口径 + version 1→2 bump + 修订注记——earnings_quality/capital_return/balance_risk/valuation_range 四因子；冻结历史 git 保留）
 - **优先级**: P1
 - **描述**: earnings_quality 登记为 TTM 口径、实现为 baostock 年初累计；balance_risk 登记净债务/利息保障/到期分布、实现输出流动比率族（仅到期分布 UNKNOWN 重叠）；valuation_range 登记可比倍数区间、实现为 trailing PE（note 已带内披露）。今日无消费方（纯研究层）无害，但登记表是 E2/E4 的冻结契约——按登记口径消费会静默错口径。修法二选一：改 FactorSpec 定义对齐 v1 实际口径并 bump version+修订注记，或实现登记口径。
 - **来源**: 对抗审查（收尾批）
 - **更新**: 2026-09-26 登记
 
 ### ISS-113: LLM 提取器 6 条 logger.warning 未进人话映射（对抗审查 P2，2026-09-26）
-- **状态**: 待办（**E5 接进 live 分析前必须补**——今日无消费者，用户会话看不到）
+- **状态**: ✅ 已解决（plain_errors 6 条 + 速查手册 N+5 节，同 commit 三处同步）
 - **优先级**: P2
 - **描述**: claim_llm_extractor.py 的调用失败/非法 JSON/单位丢弃/构造失败/client 构造失败/无 key 六条告警未进 plain_errors.py + 报错速查手册。评测脚本直印控制台不受影响。
 - **来源**: 对抗审查（收尾批）

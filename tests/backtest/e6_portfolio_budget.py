@@ -3,7 +3,7 @@
 回答的问题（E_SPEC）：同一单股动作集合下，「逐股建议对照」vs「统一资金与集中度约束」
 ——是否减少不可实现仓位和集中风险。
 
-v1 口径（诚实登记，报告必须带）：
+v2 口径（2026-09-26 升级，诚实登记）：
 - 动作集 = E0 臂 A（legacy）的 21 案例逐笔交易（tests/artifacts/e0_baseline/trades/
   *_A_legacy.json，--dump-trades 导出）——同一动作集合固定
 - 语义映射：BUY position_ratio_after=r → 「该股目标仓位 r（账户相对）」；SELL
@@ -11,12 +11,13 @@ v1 口径（诚实登记，报告必须带）：
   超额认购是真实现象（G09：十股均建议增仓现金只够两股）——正是组合预算存在的理由
 - 资本：两臂同 NAV=420万（=21×20万，与 E0 各自账户总资本一致）
 - 臂 N（逐股建议）：共享现金池按 (日期,代码) 到达序足额成交，现金不足即拒——无预算协调
-- 臂 U（统一预算）：solve_budget（per_stock_max=0.10 + 现金约束；排列无关、拒绝原因明确）
+- 臂 U（统一预算）：solve_budget（per_stock_max=用户档 20% + industry_max=50% 行业约束
+  + 现金约束；排列无关、拒绝原因明确）
 - 盯市：baostock 前复权收盘（adjustflag=2，与 DataFeeder A05 同基）；执行价用 E0 交易
   自带价格（两臂一致）
-- v1 已知缺口：PortfolioReplay 的 T+1 为整仓锁（F8 审查 P1-B 登记，批次份额模型已在
-  backtest_engine 落地、回放模型待跟进）；费率用回放默认（佣金 0.03% + 卖出印花税
-  0.1%），与回测费率略异；无行业暴露约束（行业映射未接线）； sell 受阻计数如实报告
+- v2 升级：批次份额 T+1（F8 P1-B 收口）；行业约束启用（baostock 当前归属，历史回溯
+  caveat 已登记）；费率对齐（佣金 0.025% + 印花税保守 0.1% 全程——减半未反映）
+- 遗留缺口：solve_budget 不知整手约束（批准额不足一手被拒，报告分计执行拒绝）
 
 跑法（external，opt-in；K线走 baostock）：
     PYTHONUTF8=1 PYTHONPATH=. python tests/backtest/e6_portfolio_budget.py
@@ -34,6 +35,7 @@ os.environ["TQDM_DISABLE"] = "1"
 
 import json
 from datetime import datetime
+from typing import Optional
 
 ART_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "artifacts", "e6_baseline")
 E0_TRADES_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "artifacts",
@@ -57,8 +59,47 @@ def _risk_profile() -> tuple[float, str]:
 
 
 PER_STOCK_CAP, _RISK_SOURCE = _risk_profile()
+
+
+def _industry_max() -> Optional[float]:
+    try:
+        from src.cli.main import load_config
+        v = ((load_config().get("fusion") or {}).get("risk_profile") or {}).get("industry_max")
+        return float(v) if v is not None else None
+    except Exception:
+        return None
+
+
+INDUSTRY_MAX = _industry_max()
 INITIAL_NAV = 21 * 200000.0
 WINDOW_END_FORCE = "[回测结束强制清仓]"
+
+
+def get_industry_map(codes: list) -> dict:
+    """行业归属（baostock query_stock_industry 当前值——历史回溯 caveat 已登记
+    DATA_COVERAGE；E6 v1 对照用途可接受）。失败 → 空 tag（该股不受行业约束）。"""
+    from src.data.financial_data import _to_baostock_code
+    from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
+    import baostock as bs
+    _ensure_baostock_login()
+    out = {}
+    for code in codes:
+        try:
+            bs_code = _to_baostock_code(code)
+
+            def _read(bc=bs_code):
+                rs = bs.query_stock_industry(code=bc)
+                while rs.error_code == "0" and rs.next():
+                    row = rs.get_row_data()
+                    if len(row) >= 4:
+                        return row[3]  # industry 字段
+                return ""
+
+            out[code] = _call_with_timeout(_read, timeout=20) or ""
+        except Exception as e:
+            print(f"  ⚠ {code} 行业归属获取失败（不设行业约束）: {e}", flush=True)
+            out[code] = ""
+    return out
 
 
 def load_action_stream() -> dict:
@@ -136,7 +177,10 @@ class _ArmState:
 
     def __init__(self):
         from src.core.experiment import PortfolioReplay
-        self.replay = PortfolioReplay(initial_cash=INITIAL_NAV)
+        # v2 费率对齐：佣金与回测同口径 0.025%；印花税保守取 0.1% 全程
+        # （2023-08-28 后实际减半未反映——保守口径高估成本，登记）
+        self.replay = PortfolioReplay(initial_cash=INITIAL_NAV,
+                                      fee_rate=0.00025, stamp_rate=0.001)
         self.buy_requested_w = 0.0
         self.buy_filled_w = 0.0
         self.rejected_solve: list[tuple[str, str, str]] = []   # 预算求解拒绝/搁置（原因明确）
@@ -152,7 +196,8 @@ class _ArmState:
         return pos.shares * pos.last_price / nav if nav > 0 else 0.0
 
 
-def run_arm(mode: str, stream: dict, closes: dict, dd_estimates: dict) -> _ArmState:
+def run_arm(mode: str, stream: dict, closes: dict, dd_estimates: dict,
+            industry_map: dict) -> _ArmState:
     """mode: naive（逐股建议无协调）/ unified（solve_budget 统一预算）。"""
     from src.core.portfolio_policy import AddProposal, BudgetConstraints, HoldingWeight, solve_budget
 
@@ -208,13 +253,16 @@ def run_arm(mode: str, stream: dict, closes: dict, dd_estimates: dict) -> _ArmSt
                 except ValueError as e:
                     st.rejected_exec.append((d, code, f"执行拒绝: {e}"))
         else:
-            holdings = [HoldingWeight(stock_code=c, weight=st.weight(c, nav))
+            holdings = [HoldingWeight(stock_code=c, weight=st.weight(c, nav),
+                                      industries=([industry_map[c]] if industry_map.get(c) else []))
                         for c in st.replay.positions]
             props = [AddProposal(stock_code=c, target_weight=tw,
+                                 industries=([industry_map[c]] if industry_map.get(c) else []),
                                  pressure_loss_rate=dd_estimates.get(c))
                      for c, tw, _ in proposals]
             sol = solve_budget(props, holdings,
                                BudgetConstraints(per_stock_max=PER_STOCK_CAP,
+                                                 industry_max=INDUSTRY_MAX,
                                                  cash_nav=st.replay.cash / nav if nav > 0 else None),
                                sell_eligible_nav=0.0)
             adds_by_code = {a.stock_code: a for a in sol.adds}
@@ -290,6 +338,9 @@ def main():
     dd_estimates = load_drawdown_estimates()
     print(f"压力损失率估计（各股自身回测期最大回撤，下限 0.10）：{len(dd_estimates)} 只就绪",
           flush=True)
+    industry_map = get_industry_map(codes)
+    n_ind = sum(1 for v in industry_map.values() if v)
+    print(f"行业归属就绪：{n_ind}/{len(codes)}（industry_max={INDUSTRY_MAX}）", flush=True)
 
     sample = sorted(f"{c}|{min(t['date'] for t in s)}~{max(t['date'] for t in s)}"
                     for c, s in stream.items())
@@ -306,8 +357,8 @@ def main():
               "w", encoding="utf-8") as f:
         json.dump({**m.model_dump(), "fingerprint": m.fingerprint()}, f, ensure_ascii=False, indent=2)
 
-    st_n = run_arm("naive", stream, closes, dd_estimates)
-    st_u = run_arm("unified", stream, closes, dd_estimates)
+    st_n = run_arm("naive", stream, closes, dd_estimates, industry_map)
+    st_u = run_arm("unified", stream, closes, dd_estimates, industry_map)
     last_date = max(t["date"] for s in stream.values() for t in s)
 
     def _summary(st: _ArmState, label: str) -> dict:
@@ -339,8 +390,10 @@ def main():
         f"{len(stream)} 只标的，零交易剔除 {len(empty)} 例）｜统一臂 per_stock_max="
         f"{PER_STOCK_CAP:.0%}（{_RISK_SOURCE}；约束买入时点，不约束价格漂移后的权重变化）",
         "",
-        "**v1 口径 caveat**：回放 T+1 为整仓锁（F8 P1-B 登记）；回放费率与回测略异；无行业"
-        "暴露约束（行业映射未接线）；同日多股按账户相对仓位直译 → 超额认购是真实现象（G09）；"
+        "**v2 口径 caveat**：批次份额 T+1 已实现（当日新买不可卖、旧份额当日可卖——F8 P1-B "
+        "收口）；费率=佣金 0.025% + 印花税 0.1% 全程（保守——2023-08-28 后减半未反映）；"
+        "行业约束已启用（baostock 当前归属，历史回溯 caveat 见 DATA_COVERAGE）；"
+        "同日多股按账户相对仓位直译 → 超额认购是真实现象（G09）；"
         "压力损失率以各股自身回测期最大回撤登记（组合损失预算约束未启用——该估计仅用于越过"
         "「未知不给精确额度」门，不参与额度计算）；E0 的窗口末日强平在组合臂中先于当日买入执行"
         "（exits-first），与回测内部顺序略有重排，两臂同口径。",
@@ -371,7 +424,7 @@ def main():
                 f"部分被批准额度因不足一手被拒（{s_u['exec_rejected']} 笔，登记为口径缺口）")
     else:
         conc = "本样本下统一预算未显示集中度收益——登记观察"
-    lines += ["", f"- **E6 结论（v1 初步）**：{conc}",
+    lines += ["", f"- **E6 结论（v2）**：{conc}",
               "- ⚠️ 两臂收益差异**不构成策略优劣证据**——naive 臂的收益来自「先到先得」路径"
               "与同窗高集中持仓，E6 主指标是实现可行性与集中度（VALIDATION §1：不把执行口径"
               "差异算成策略优劣）",

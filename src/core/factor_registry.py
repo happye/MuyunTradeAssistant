@@ -78,63 +78,67 @@ FACTOR_SPECS: list[FactorSpec] = [
     ),
     FactorSpec(
         factor_id="earnings_quality_v1",
-        version="1",
+        version="2",  # ISS-112：定义对齐 v1 实际口径（baostock CFOToNP 年初累计；TTM 差分留待），bump 版本留痕
         horizon="LONG",
-        definition="TTM经营现金流/TTM净利润；另报利润为负、非经常损益占比、应收增速",
-        inputs=["financial.cashflow_ttm（待现场探查）", "financial.netprofit_ttm（待现场探查）"],
-        unit="比值",
+        definition="经营现金流/净利润（baostock CFOToNP，年初累计口径）；v1 无 TTM 差分"
+                   "（相邻累计差分留待）；利润为负走风险解释不比值",
+        inputs=["financial.cash_flow CFOToNP（baostock，pubDate 可 PIT）",
+                "financial.profit netProfit（baostock）"],
+        unit="倍",
         missing_policy="分母≤0 不用比值排名，改专门风险解释（sector_growth_guard）；分项缺失各自 UNKNOWN",
         sector_scope="非金融",
-        availability_rule="DATA_COVERAGE「财务三表」（探查通过，接线待做；TTM 需至少4个季度披露，公布日可信）",
+        availability_rule="DATA_COVERAGE「财务三表」（探查通过，financial_data.py 已接；年初累计口径）",
         economic_hypothesis="利润有现金流支撑的公司盈利质量更高——长期持有的核心筛选之一",
         experiment_id="",
-        needs_data_probe=False,  # 2026-09-26 探查通过（pubDate 实证）；接线批前仍只登记
+        needs_data_probe=False,  # 2026-09-26 探查通过（pubDate 实证）；计算在 factor_compute.py
         sector_growth_guard="净利润≤0 时改输出『利润为负+现金流方向』的风险解释，不做比值",
     ),
     FactorSpec(
         factor_id="capital_return_v1",
-        version="1",
+        version="2",  # ISS-112：v1 实际口径=ROE（ROIC 投入资本分项数据源不可得），bump 留痕
         horizon="LONG",
-        definition="适用行业 NOPAT/平均投入资本（ROIC），或经核对的 ROE；保留计算构成（分母口径必须可审计）",
-        inputs=["financial（baostock 季频 pubDate 已探查可 PIT，2026-09-26）", "user_asserted"],
-        unit="%（或比值）",
-        missing_policy="投入资本或 NOPAT 分项缺失 → UNKNOWN；不把高杠杆 ROE 当质量",
+        definition="ROE（baostock roeAvg，平均净资产收益率）；ROIC 的投入资本分项数据源"
+                   "不可得→口径降级 ROE 并显式登记（高杠杆抬高 ROE，跨行业比较需结合杠杆分量）",
+        inputs=["financial.profit roeAvg（baostock，pubDate 可 PIT）"],
+        unit="倍（小数比值）",
+        missing_policy="ROE 缺失 → UNKNOWN；不把高杠杆 ROE 当质量",
         sector_scope="非金融（金融与负投入资本不硬套 ROIC）",
-        availability_rule="DATA_COVERAGE「财务三表」（探查通过，接线待做）",
+        availability_rule="DATA_COVERAGE「财务三表」（探查通过，financial_data.py 已接）",
         economic_hypothesis="持续资本回报率高于资本成本的企业创造长期价值",
         experiment_id="",
-        needs_data_probe=False,  # 2026-09-26 探查通过（pubDate 实证）；接线批前仍只登记
+        needs_data_probe=False,
         sector_growth_guard="投入资本≤0 时输出 UNKNOWN 并注明口径异常",
     ),
     FactorSpec(
         factor_id="balance_risk_v1",
-        version="1",
+        version="2",  # ISS-112：定义对齐 v1 实际分量（baostock balance 可得字段；净债务/利息保障不可得），bump 留痕
         horizon="LONG",
-        definition="净债务、现金/短债、利息保障、到期分布——各自独立输出，不合成单一分",
-        inputs=["financial.balance（baostock query_balance_data pubDate 已探查可 PIT，2026-09-26）"],
-        unit="各分量原生单位",
+        definition="流动比率/速动比率/资产负债率（baostock balance 现成字段）——各自独立输出，"
+                   "不合成单一分；净债务/利息保障/到期分布数据源不可得→该分量 UNKNOWN",
+        inputs=["financial.balance currentRatio/quickRatio/liabilityToAsset（baostock，pubDate 可 PIT）"],
+        unit="各分量原生单位（倍）",
         missing_policy="缺到期分布数据不认定无偿债压力——该分量 UNKNOWN 并注明",
         sector_scope="非金融工业企业口径（金融行业规则未适配，禁套）",
-        availability_rule="DATA_COVERAGE「财务三表」",
+        availability_rule="DATA_COVERAGE「财务三表」（探查通过，financial_data.py 已接）",
         economic_hypothesis="资产负债结构约束是硬风险/复核触发源，独立于盈利质量",
         experiment_id="",
-        needs_data_probe=False,  # 2026-09-26 探查通过；接线批前仍只登记
+        needs_data_probe=False,  # 2026-09-26 探查通过；计算在 factor_compute.py
     ),
     FactorSpec(
         factor_id="valuation_range_v1",
-        version="1",
+        version="2",  # ISS-112：v1 实际口径=trailing PE 位置（可比倍数区间待样本接线），bump 留痕
         horizon="LONG",
-        definition="正常化每股盈利×可比倍数区间（同行业同时点样本），或经审核的现金流情景；"
-                   "记录盈利定义、倍数参照、净债务/股数调整；亏损企业不用普通 PE；"
-                   "价值区间不是确定目标价",
-        inputs=["financial（baostock 季频 pubDate 已探查可 PIT，2026-09-26）", "market.close（天然PIT）", "user_asserted（可比样本）"],
-        unit="元/股（区间）",
-        missing_policy="盈利为负/可比样本不足 → NOT_APPLICABLE + 保留研究（不强填区间）",
+        definition="v1=trailing PE 位置（price/epsTTM，亏损企业不用普通 PE）；登记的原口径"
+                   "「正常化盈利×可比倍数区间（同行业同时点样本）」待可比样本集接线后升级；"
+                   "PE 是位置维度不是确定目标价",
+        inputs=["financial.profit epsTTM（baostock，pubDate 可 PIT）", "market.close（天然PIT）"],
+        unit="倍",
+        missing_policy="盈利为负/样本不足 → NOT_APPLICABLE + 保留研究（不强填区间）",
         sector_scope="先支持盈利稳定的普通非金融企业；高增长亏损/金融未适配显式标 NOT_APPLICABLE",
-        availability_rule="财务三表（探查通过，接线待做）+ 同日行情样本；倍数参照集必须同时点",
+        availability_rule="财务三表（探查通过，financial_data.py 已接）+ 同日行情",
         economic_hypothesis="价格位置只是风险维度；真实估值区间决定『好公司≠现在适合买』",
         experiment_id="",
-        needs_data_probe=False,  # 2026-09-26 探查通过；接线批前仍只登记
+        needs_data_probe=False,  # 2026-09-26 探查通过；计算在 factor_compute.py
         sector_growth_guard="正常化盈利≤0 时不用普通 PE，转专门研究",
     ),
     FactorSpec(

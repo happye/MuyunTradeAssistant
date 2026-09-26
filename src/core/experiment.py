@@ -143,13 +143,17 @@ class ExperimentManifest(BaseModel):
 # ──────────────── 固定组合资金回放（纯模型；与独立满仓均值严格区分）────────────────
 
 class PortfolioPosition(BaseModel):
-    """组合回放中的持仓（组合级：共享现金，非逐股独立账户）。"""
+    """组合回放中的持仓（组合级：共享现金，非逐股独立账户）。
+
+    lots：买入批次 [{"date","shares"}]——T+1 按批次（G11 正确答案：可卖量按交易批次，
+    不能整仓当日锁住也不允许卖当日新买份额；F8 审查 P1-B 的收口实现）。"""
 
     stock_code: str
     shares: int = Field(ge=0, description="股数（非手）")
     cost_per_share: float = Field(ge=0.0)
     last_price: float = Field(ge=0.0)
-    buy_date: str = Field(description="最近一次买入日 YYYY-MM-DD（T+1 检查用）")
+    buy_date: str = Field(description="首次建仓日 YYYY-MM-DD（展示用；T+1 判定看 lots）")
+    lots: list = Field(default_factory=list, description='买入批次 [{"date","shares"}]')
 
 
 class ReplayTrade(BaseModel):
@@ -256,16 +260,33 @@ class PortfolioReplay:
         return self._fill(stock_code, date, "BUY", shares, price)
 
     def sell(self, stock_code: str, date: str, price: float, shares: Optional[int] = None) -> ReplayTrade:
-        """卖出（默认全仓；部分成交按股数）。T+1 与跌停检查在先。"""
+        """卖出（默认全仓=卖出全部可卖批次；部分成交按股数）。
+
+        T+1 按批次（G11）：可卖 = 各批次中 date 早于当日的份额和——当日新买份额不可卖，
+        旧份额当日可卖（不再整仓锁死）。请求超过可卖 → 拒绝（严格回放不伪造成交）。"""
         pos = self.positions.get(stock_code)
         if pos is None:
             raise ValueError(f"无持仓不可卖出：{stock_code}")
-        ReplayChecks.check_t_plus_1(pos.buy_date, date)
+        sellable = sum(l["shares"] for l in pos.lots if l["date"] < date)
         n = pos.shares if shares is None else shares
-        if n > pos.shares:
-            raise ValueError(f"超卖拒绝（严格回放不伪造成交）：请求 {n} > 持有 {pos.shares}")
+        if n > sellable:
+            raise ValueError(
+                f"T+1 批次限制：{stock_code} 可卖 {sellable} 股（当日买入 {pos.shares - sellable} "
+                f"股不可卖），请求 {n}")
         if n <= 0:
             raise ValueError(f"卖出股数非法：{stock_code} {n}")
+        # FIFO 消耗最旧批次（可卖批次必然 date < 当日）
+        remaining = n
+        new_lots = []
+        for l in pos.lots:
+            if remaining > 0 and l["date"] < date:
+                take = min(l["shares"], remaining)
+                remaining -= take
+                if l["shares"] - take > 0:
+                    new_lots.append({"date": l["date"], "shares": l["shares"] - take})
+            else:
+                new_lots.append(dict(l))
+        pos.lots = new_lots
         return self._fill(stock_code, date, "SELL", n, price)
 
     def _fill(self, stock_code: str, date: str, action: str, shares: int, price: float) -> ReplayTrade:
@@ -280,13 +301,14 @@ class PortfolioReplay:
             if pos is None:
                 self.positions[stock_code] = PortfolioPosition(
                     stock_code=stock_code, shares=shares, cost_per_share=price,
-                    last_price=price, buy_date=date)
+                    last_price=price, buy_date=date,
+                    lots=[{"date": date, "shares": shares}])
             else:
                 total_cost = pos.cost_per_share * pos.shares + amount
                 pos.shares += shares
                 pos.cost_per_share = total_cost / pos.shares
                 pos.last_price = price
-                pos.buy_date = date  # T+1 基准更新为最近买入
+                pos.lots.append({"date": date, "shares": shares})  # 批次登记（T+1 按批次）
         else:
             pos = self.positions[stock_code]
             proceeds = amount - fee
