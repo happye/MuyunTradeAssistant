@@ -1,6 +1,6 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付，尚未实施**。
+日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付 → F0–F9 已全部实施 VERIFIED**（v0.8.20，1121 tests；实施状态与证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)；**致架构师汇报与下一轮设计议题见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)**）。
 
 两提交间仅`start.py`帮助菜单变化，本轮所查核心源码一致；已保留该外部改动。后续执行仍须复核最新HEAD与工作区。
 

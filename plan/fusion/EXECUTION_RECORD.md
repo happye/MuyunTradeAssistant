@@ -1055,3 +1055,15 @@ today 等待条件明细+单股额度 / `shadow` 中文报告 / `plan2`（立计
 - 三张卡补走查：周期冲突卡现可经 plan2 双计划触发——待用户
 
 ### 状态：VERIFIED（全量 1121 passed；E1/E5/E6/E7 真实跑批产物落盘；两轮对抗审查闭环）
+
+### 使用期回看清单（用户进入实际使用留痕期——回看时看这些）
+
+1. **影子账本**（`shadow` 命令 / ~/.muyun/shadow_diff.jsonl）：条数、差异率（分原因）、
+   `plan_source=user_plan_accepted` 真判断占比——占比上升=plan2 采纳在转化
+2. **plan2 采纳**：立计划数/激活数（`plan2` 列表）；真判断动作是否与用户实际操作一致
+3. **硬风险零误判**：影子记录中 hard_exit_divergence 用例的复核（G02 对照质量）
+4. **三张补测卡**：周期冲突卡（同一只股立 mid+long 双计划触发）/退出受阻/预算不足
+   ——遇到即记录走查结果（ISS-109 延续）
+5. **告警卫生**：使用期新增 WARNING 是否被人话映射命中（plain_errors 覆盖面检验）
+6. **致架构师汇报**：[ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)——数据积累到位后，
+   opt_in 晋级决策与架构师下一轮设计迭代同时启动
