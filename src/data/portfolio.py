@@ -50,6 +50,7 @@ DEFAULT_PORTFOLIO_PATH = os.path.join(
 VERIFICATION_LEGACY_UNVERIFIED = "LEGACY_UNVERIFIED"
 VERIFICATION_USER_ENTERED = "USER_ENTERED"
 VERIFICATION_CONFIRMED_FILL = "CONFIRMED_FILL"
+VERIFICATION_USER_VERIFIED = "USER_VERIFIED"  # 用户肉眼核对旧记录后确认（2026-09-26 走查缺口）
 
 # 进程级一次性提示标记（LEGACY_UNVERIFIED 核对提醒只打一次，不刷屏）
 _legacy_notice_shown = False
@@ -607,6 +608,30 @@ class PortfolioManager:
             "add_protection_remaining": 0,
             "last_tick_date": None,
         }
+
+    def verify_holding(self, stock_code: str) -> bool:
+        """用户核对确认（2026-09-26 走查缺口 ISS-111）：LEGACY_UNVERIFIED 旧记录经
+        用户核对后标记 USER_VERIFIED（消除「建议核对」提醒）。
+
+        不改任何数值（数量/成本/日期原样）；CONFIRMED_FILL 的成交溯源不覆盖；
+        无记录返回 False；已核对幂等返回 True。
+        Returns: True=已核对且保存成功；False=无记录或保存失败（M5 冲突/IO，
+        失败时恢复内存旧值——否则 CLI「重试一次」会撞幂等短路假成功，审查 P1）。
+        """
+        rec = self._data.get("positions", {}).get(stock_code)
+        if rec is None:
+            return False
+        old = rec.get("holding_verification")
+        if old == VERIFICATION_USER_VERIFIED:
+            return True
+        if old == VERIFICATION_CONFIRMED_FILL:
+            return True  # 成交溯源已确认——核对标记不覆盖（溯源语义保留）
+        rec["holding_verification"] = VERIFICATION_USER_VERIFIED
+        result = self._save()
+        if bool(getattr(result, "ok", result)):
+            return True
+        rec["holding_verification"] = old  # 保存失败恢复旧值（IO 路径不自动回滚）
+        return False
 
     def record_analysis_observation(
         self,

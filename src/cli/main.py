@@ -2214,6 +2214,21 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                     f"[yellow]{p.position_action}[/yellow]{tgt} ｜ {p.reason[:40]}{stale}")
                 console.print(f"    [dim]实际成交后确认: pos confirm {p.stock_code} [实际仓位变化] [成交价][/dim]")
 
+    elif action == "verify":
+        # 用户走查缺口（ISS-111）：旧记录肉眼核对后的确认动作——数值不变，消除提醒
+        if not stock_code:
+            console.print("[red]请指定股票代码（pos verify <代码>）[/red]")
+            return
+        pos_now = pm.get_position(stock_code)
+        if pos_now is None:
+            console.print(f"[yellow]⚠ {stock_code} 无持仓记录[/yellow]")
+            return
+        if pm.verify_holding(stock_code):
+            console.print(f"[green]✓ {stock_code} 已标记为「用户核对确认」——"
+                          f"数量/成本/日期未改动，旧记录提醒消除[/green]")
+        else:
+            console.print("[red]核对标记保存失败（文件冲突或 IO 错误）——重试一次[/red]")
+
     elif action == "confirm":
         # F1：确认实际成交——唯一把建议变成持仓事实的入口
         if not stock_code:

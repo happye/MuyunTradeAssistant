@@ -41,11 +41,16 @@ class FactorResult:
 
 
 def _get(records: list[dict], metric: str, period_end: Optional[str] = None) -> Optional[float]:
-    """从 financial_data.get_financial_quarterly 产出里取最新值（可限报告期）。"""
+    """从 financial_data.get_financial_quarterly 产出里取最新值（可限报告期）。
+
+    「最新」按 published_at 排序判定（审查 P2：多期拼接顺序无契约，不依赖入参顺序）。"""
     cands = [r for r in records if r.get("metric") == metric
-             and (period_end is None or r.get("period_end") == period_end)]
-    vals = [r["value"] for r in cands if r.get("value") is not None]
-    return vals[-1] if vals else None
+             and (period_end is None or r.get("period_end") == period_end)
+             and r.get("value") is not None]
+    if not cands:
+        return None
+    cands.sort(key=lambda r: str(r.get("published_at") or ""))
+    return cands[-1]["value"]
 
 
 def earnings_quality_v1(financial_records: list[dict]) -> FactorResult:
@@ -137,6 +142,10 @@ def relative_trend_v1(stock_closes: list[float], industry_index_closes: Optional
                             note="个股收盘序列缺失——不猜")
     n_stock = min(window + 1, len(stock_closes))
     n_idx = min(window + 1, len(industry_index_closes))
+    if stock_closes[-n_stock] <= 0 or industry_index_closes[-n_idx] <= 0:
+        # 审查 P2：坏上游数据（零价/负价）除零防护
+        return FactorResult(factor_id="relative_trend_v1", status=UNKNOWN,
+                            note="序列含零/负价（坏数据）——不猜")
     r_stock = (stock_closes[-1] / stock_closes[-n_stock] - 1) * 100
     r_idx = (industry_index_closes[-1] / industry_index_closes[-n_idx] - 1) * 100
     if n_stock < window + 1 or n_idx < window + 1:
@@ -163,6 +172,6 @@ def trading_capacity_v1(avg_amount_20d: Optional[float], trade_amount: Optional[
                             components={"status": status_note})
     ratio = trade_amount / avg_amount_20d
     note = "容量充足（<1% 拟交易额占日均成交）" if ratio < 0.01 else \
-           "容量一般（1%-5%）" if ratio < 0.05 else "容量紧张（>5% 拟交易额/日均成交——注意冲击成本）"
+           "容量一般（1%-5%）" if ratio < 0.05 else "容量紧张（≥5% 拟交易额/日均成交——注意冲击成本）"
     return FactorResult(factor_id="trading_capacity_v1", value=round(ratio, 6), unit="倍",
                         note=note, components={"status": status_note})

@@ -90,7 +90,9 @@ def test_illegal_json_returns_empty():
     assert ext.extract(dict(_DOC)) == []
 
 
-def test_no_client_returns_empty():
+def test_no_client_returns_empty(monkeypatch):
+    # 本机 DEEPSEEK_API_KEY 环境变量会兜底构造真实 client（审查 P1 实测发真实网络调用）
+    monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     assert LLMClaimExtractor(client=None, model="t", config={"ai": {"provider": "deepseek",
                                                                     "deepseek": {"api_key": ""}}}
                              ).extract(dict(_DOC)) == []

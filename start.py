@@ -557,6 +557,12 @@ def parse_input(user_input: str):
                     print(f"  [!] 成交价无效: '{parts[4]}'（需数字），pos confirm 取消")
                     return None
             return ("pos_confirm", args)
+        elif sub in ("verify", "vz"):
+            # 用户走查缺口（ISS-111）：旧记录肉眼核对后的确认动作
+            if len(parts) < 3:
+                print("  [!] 用法: pos verify <代码>（核对数量/成本/日期无误后消除提醒）")
+                return None
+            return ("pos_verify", {"stock_code": parts[2]})
         elif sub in ("plan", "p"):
             # v0.8.5：pos plan <代码> 查看/生成计划；v0.8.6.3：--update 更新，all 批量
             if len(parts) < 3:
@@ -1926,6 +1932,10 @@ def run_cli(mode: str, args: dict):
         # F1：确认实际成交（建议→事实的唯一入口）
         manage_positions("confirm", stock_code=args.get("stock_code", ""),
                          ratio=args.get("ratio"), price=args.get("price", 0.0))
+
+    elif mode == "pos_verify":
+        # ISS-111：旧记录核对确认（数值不变，消除提醒）
+        manage_positions("verify", stock_code=args.get("stock_code", ""))
 
     elif mode == "pos_plan":
         manage_positions("plan", stock_code=args.get("stock_code", ""),

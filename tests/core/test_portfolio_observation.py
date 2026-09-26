@@ -238,3 +238,58 @@ def test_record_deleted_after_cooldown_expires():
                           lifecycle=TradeLifecycle.FLAT)
         pm.record_analysis_observation("600519", "贵州茅台", _decision(exit_state=done_state), _STOCK)
         assert pm.get_position("600519") is None, "冷却结束且已清仓的记录应删除"
+
+
+# ── pos verify：旧记录核对确认（ISS-111，2026-09-26 走查缺口）──
+
+def test_verify_holding_marks_verified_values_untouched(tmp_path, monkeypatch):
+    """核对确认只改 holding_verification，数量/成本/日期原样；幂等。"""
+    from src.data import portfolio as pf_mod
+    pfile = tmp_path / "portfolio.yaml"
+    pfile.write_text(
+        "positions:\n"
+        "  600519:\n"
+        "    stock_name: 贵州茅台\n"
+        "    entry_price: 1450.0\n"
+        "    current_ratio: 0.2\n"
+        "    lifecycle: HOLD\n",
+        encoding="utf-8")
+    pm = pf_mod.PortfolioManager(str(pfile))
+    rec = pm.get_position("600519")
+    assert rec.holding_verification == "LEGACY_UNVERIFIED"
+    assert pm.verify_holding("600519") is True
+    after = pm.get_position("600519")
+    assert after.holding_verification == "USER_VERIFIED"
+    assert after.entry_price == 1450.0 and after.current_ratio == 0.2  # 数值原样
+    assert pm.verify_holding("600519") is True  # 幂等
+    assert pm.verify_holding("000001") is False  # 无记录
+
+
+def test_verify_holding_save_failure_restores_old_value(tmp_path, monkeypatch):
+    """审查 P1：IO 保存失败必须恢复内存旧值——否则重试撞幂等短路假成功。"""
+    from src.data import portfolio as pf_mod
+    pfile = tmp_path / "portfolio.yaml"
+    pfile.write_text(
+        "positions:\n  600519:\n    stock_name: 贵州茅台\n    entry_price: 1450.0\n"
+        "    current_ratio: 0.2\n    lifecycle: HOLD\n", encoding="utf-8")
+    pm = pf_mod.PortfolioManager(str(pfile))
+    orig_save = pm._save
+    pm._save = lambda: pf_mod.SaveResult(ok=False, conflict=False)  # 通用 IO 失败（不回滚内存）
+    assert pm.verify_holding("600519") is False
+    assert pm.get_position("600519").holding_verification == "LEGACY_UNVERIFIED"  # 旧值恢复
+    pm._save = orig_save  # 重试真成功
+    assert pm.verify_holding("600519") is True
+    assert pm.get_position("600519").holding_verification == "USER_VERIFIED"
+
+
+def test_verify_holding_does_not_overwrite_confirmed_fill(tmp_path):
+    """审查 P2：CONFIRMED_FILL 的成交溯源不被核对标记覆盖。"""
+    from src.data import portfolio as pf_mod
+    pfile = tmp_path / "portfolio.yaml"
+    pfile.write_text(
+        "positions:\n  600519:\n    stock_name: 贵州茅台\n    entry_price: 1450.0\n"
+        "    current_ratio: 0.2\n    lifecycle: HOLD\n    holding_verification: CONFIRMED_FILL\n",
+        encoding="utf-8")
+    pm = pf_mod.PortfolioManager(str(pfile))
+    assert pm.verify_holding("600519") is True  # 已有更高确认态，幂等放行
+    assert pm.get_position("600519").holding_verification == "CONFIRMED_FILL"

@@ -182,7 +182,14 @@ class LLMClaimExtractor(ClaimExtractor):
                 value = None
             try:
                 conf = item.get("confidence")
-                conf = max(0.0, min(1.0, float(conf))) if conf is not None else None
+                if conf is None:
+                    conf = None
+                else:
+                    conf = float(conf)
+                    if conf != conf:  # NaN（json 非标扩展）——审查 P2：钳位会反升 1.0
+                        conf = None
+                    else:
+                        conf = max(0.0, min(1.0, conf))
             except (TypeError, ValueError):
                 conf = None
             try:
