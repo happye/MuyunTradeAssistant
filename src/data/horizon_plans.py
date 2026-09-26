@@ -49,7 +49,8 @@ class HorizonPlanStore:
             return self._data
         self._loaded_fingerprint = None
         if not self.path.exists():
-            self._data = {"version": PLANS_VERSION, "plans": {}}
+            self._data = {"version": PLANS_VERSION, "plans": {},
+                          "accepted_refs": {}, "active_refs": {}}
             self._loaded_fingerprint = _fingerprint(self._data)
             return self._data
         try:
@@ -57,6 +58,8 @@ class HorizonPlanStore:
             if not isinstance(data, dict) or not isinstance(data.get("plans"), dict):
                 raise ValueError("根结构不是 {version, plans}")
             data.setdefault("version", PLANS_VERSION)
+            data.setdefault("accepted_refs", {})  # R3：接受绑定（旧文件兼容读）
+            data.setdefault("active_refs", {})    # R3：持仓主意图引用（旧文件兼容读）
             self._data = data
             self._loaded_fingerprint = _fingerprint(data)
         except Exception as e:
@@ -139,8 +142,10 @@ class HorizonPlanStore:
         old = data["plans"].get(key)
         if old and old.get("plan_id") == plan.plan_id:
             plan = plan.model_copy(update={"revision": int(old.get("revision") or 1) + 1})
-        candidate = {"version": data.get("version", PLANS_VERSION),
-                     "plans": dict(data["plans"])}
+        # 保留全部顶层键（version/accepted_refs/active_refs——审查修正：只带
+        # version+plans 会把接受绑定与主意图引用静默丢掉）
+        candidate = dict(data)
+        candidate["plans"] = dict(data["plans"])
         candidate["plans"][key] = plan.model_dump(mode="json")
         if self._save(candidate):
             self._data = candidate
@@ -148,8 +153,10 @@ class HorizonPlanStore:
         return False
 
     def accept(self, security_id: str, horizon: Optional[str] = None) -> tuple:
-        """用户确认激活。返回 (ok, msg)：ok=False 时 msg 说明原因（无计划/多份需指定/
-        写入被拒）——CLI 端不猜原因。"""
+        """用户确认激活（R3 验收4：接受绑定 plan_id+revision+content_hash——
+        草稿改变后不能沿用旧接受状态）。**单次写事务**：accepted_at 与绑定
+        同一 candidate 一次落盘（监督员 P1：拆两次写，第二写失败时绑定静默丢失）。
+        返回 (ok, msg)。"""
         plans = self._load()["plans"]
         sid = str(security_id)
         keys = [k for k in plans if k.split(":")[0] == sid]
@@ -162,9 +169,68 @@ class HorizonPlanStore:
         plan = self._parse(plans[keys[0]])
         if plan is None:
             return False, "no_plan"
+        key = keys[0]
         plan.accepted_at = datetime.now().isoformat(timespec="seconds")
-        ok = self.save(plan)
-        return (True, plan.accepted_at) if ok else (False, "write_rejected")
+        old = self._load()["plans"].get(key)
+        if old and old.get("plan_id") == plan.plan_id:
+            plan = plan.model_copy(update={"revision": int(old.get("revision") or 1) + 1})
+        data = self._load()
+        candidate = dict(data)
+        candidate["plans"] = dict(data["plans"])
+        candidate["plans"][key] = plan.model_dump(mode="json")
+        candidate.setdefault("accepted_refs", {})[key] = {
+            "plan_id": plan.plan_id, "revision": plan.revision,
+            "content_hash": plan.content_hash(), "accepted_at": plan.accepted_at}
+        if self._save(candidate):
+            self._data = candidate
+            return True, plan.accepted_at
+        return False, "write_rejected"
+
+    def is_accepted_version(self, plan) -> bool:
+        """该 plan 实例是否仍是用户接受的精确版本（R3 验收4）：
+        plan_id+revision+content_hash 三者与接受绑定一致；任一变化（新事实生成修订
+        草稿）→ False——草稿不能沿用旧接受状态。"""
+        self._load()
+        key = self._key(plan.security_id, plan.horizon.value)
+        ref = (self._data or {}).get("accepted_refs", {}).get(key)
+        if not ref:
+            return False
+        return (ref.get("plan_id") == plan.plan_id
+                and ref.get("revision") == plan.revision
+                and ref.get("content_hash") == plan.content_hash())
+
+    # ── R3 验收5：持仓主意图引用（active_holding_plan_ref；账户状态接线在 R5，
+    # 此处先落计划侧生命周期：一账户一股一个；清仓后再建仓不沿用旧轮授权）──
+
+    def set_active_ref(self, security_id: str, plan, *, account: str = "default") -> tuple:
+        """设置持仓主意图引用。只接受**当前已被接受的精确版本**（is_accepted_version）；
+        另一周期计划标「比较方案，不驱动持仓动作」。返回 (ok, msg)——写盘被拒如实
+        上报（监督员 P1：不得返回 (True, False) 让调用方误判成功）。"""
+        if not self.is_accepted_version(plan):
+            return False, "not_accepted_version"
+        data = self._load()
+        refs = data.setdefault("active_refs", {})
+        refs[f"{account}:{security_id}"] = {
+            "plan_id": plan.plan_id, "revision": plan.revision,
+            "content_hash": plan.content_hash(), "horizon": plan.horizon.value,
+            "security_id": str(security_id), "set_at": datetime.now().isoformat(timespec="seconds")}
+        if self._save(data):
+            self._data = data
+            return True, "ok"
+        return False, "write_rejected"
+
+    def get_active_ref(self, security_id: str, *, account: str = "default") -> Optional[dict]:
+        self._load()
+        return (self._data or {}).get("active_refs", {}).get(f"{account}:{security_id}")
+
+    def clear_active_ref(self, security_id: str, *, account: str = "default") -> bool:
+        """清仓/退出时清除主意图引用（重新建仓需重新接受+重新设置——不沿用旧轮授权）。"""
+        refs = self._load().setdefault("active_refs", {})
+        key = f"{account}:{security_id}"
+        if key not in refs:
+            return False
+        del refs[key]
+        return self._save(self._load())
 
     def remove(self, security_id: str, horizon: Optional[str] = None) -> bool:
         data = self._load()
@@ -173,8 +239,16 @@ class HorizonPlanStore:
                 and (horizon is None or k.endswith(f":{str(horizon).upper()}"))]
         if not keys:
             return False
-        candidate = {"version": data.get("version", PLANS_VERSION),
-                     "plans": {k: v for k, v in data["plans"].items() if k not in keys}}
+        candidate = dict(data)  # 保留全部顶层键（accepted_refs/active_refs 不丢）
+        candidate["plans"] = {k: v for k, v in data["plans"].items() if k not in keys}
+        # 级联清理：被删计划的接受绑定与主意图引用一并移除（不留悬挂引用——监督员 P2）
+        refs = candidate.setdefault("accepted_refs", {})
+        for k in keys:
+            refs.pop(k, None)
+        active = candidate.setdefault("active_refs", {})
+        for ak in [a for a, v in active.items() if v.get("security_id") == sid
+                   and (horizon is None or v.get("horizon") == str(horizon).upper())]:
+            active.pop(ak, None)
         if self._save(candidate):
             self._data = candidate
             return True

@@ -15,6 +15,8 @@ shadow/opt_in 回滚口径：本模块是纯函数策略层，接入由调用方
 不反写旧计划、不删除历史。
 """
 
+import json
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import List, Optional
 
@@ -61,11 +63,28 @@ class HorizonPlan(BaseModel):
     max_hold_until: Optional[str] = Field(default=None, description="催化/资金期限；仅确实有期限才填（不是到天数机械清仓）")
     buy_zone: Optional[str] = Field(default="", description="预先定义买价区间描述（LONG 入场判据的人话+可计算形式）")
     legacy_mode: Optional[str] = Field(default=None, description="仅兼容与对照（气宗/剑宗），不参与 horizon 裁决")
+    # ── R3 研究契约字段（此前经 extra 隐式携带——正式声明；旧 JSON 缺省兼容）──
+    fact_evidence_refs: dict = Field(default_factory=dict, description="事实→证据引用（R0 资格门数据源正式化：statement→claim_id/原文引用）")
+    assessment_id: str = Field(default="", description="关联 ThesisAssessment（horizon:snapshot_id）")
+    snapshot_id: str = Field(default="", description="研究依据的证据快照 id")
+    policy_version: str = Field(default="", description="研究服务/方法版本（草稿生成方登记）")
+    supersedes_ref: Optional[str] = Field(default=None, description="被本草稿取代的旧版本引用（版本沿革）")
 
     @property
     def activated(self) -> bool:
         """空串视为未激活（激活门是安全关键路径，F5 审查 P2）。"""
         return bool(self.accepted_at and self.accepted_at.strip())
+
+    def content_hash(self) -> str:
+        """计划内容 hash（不含 accepted_at/created_at——激活状态与创建时刻都不是
+        内容；版本身份由 revision 承担。监督员 P2：含 created_at 会让 store 外重建的
+        同逻辑计划 hash 假阴性）。绑定精确版本用：plan_id+revision+content_hash。"""
+        import hashlib as _h
+        d = self.model_dump(mode="json")
+        d.pop("accepted_at", None)
+        d.pop("created_at", None)
+        return _h.sha256(json.dumps(d, ensure_ascii=False, sort_keys=True,
+                                    default=str).encode("utf-8")).hexdigest()[:16]
 
     @field_validator("horizon")
     @classmethod
@@ -302,3 +321,47 @@ def _packet(plan: HorizonPlan, facts: HorizonFacts, desired: DesiredAction,
         invalidation_rules=list(invalidations or []),
     )
     return packet
+
+
+# ──────────────── R3：中间策略意图与最终执行资格分离（RESEARCH_LOOP §5）────────────────
+
+@dataclass
+class PolicyIntent:
+    """周期决策表的中间输出（内部值对象）——**不是可展示终态**。
+
+    desired_action/reason_codes/计划目标/证据引用归这里；execution_status/
+    executable_action/target 不在这里——最终 DecisionPacket 由账户预算与交易规则
+    （R5/R8）完成后才生成。新实现不得把中间 ELIGIBLE 透传为已通过全部执行门。"""
+
+    desired_action: DesiredAction
+    reason_codes: List[str]
+    plan_id: str
+    horizon: Horizon
+    policy_id: str
+    research_status: ResearchStatus
+    thesis_status: ThesisStatus
+    target_weight: Optional[float] = None
+    evidence_ids: List[str] = field(default_factory=list)  # R3 期恒空——决策表行接通证据引用后填充（R8）
+    blockers: List[str] = field(default_factory=list)      # R3 期恒空——同上
+
+
+def evaluate_horizon_intent(plan: HorizonPlan, facts: HorizonFacts, security_id: str,
+                            *, confirmed_ratio: Optional[float] = None,
+                            as_of: Optional[datetime] = None) -> PolicyIntent:
+    """周期决策表 → PolicyIntent（与 evaluate_horizon 同一张表裁决，剥执行语义：
+    execution_status/executable_action 不产出——影子/工作台展示意图，执行资格由
+    账户预算+交易规则后的 DecisionPacket 单独给出，R3 验收7）。"""
+    pkt = evaluate_horizon(plan, facts, security_id, confirmed_ratio=confirmed_ratio,
+                           as_of=as_of)
+    return PolicyIntent(
+        desired_action=pkt.desired_action,
+        reason_codes=list(pkt.reason_codes),
+        plan_id=pkt.plan_id or plan.plan_id,
+        horizon=pkt.horizon,
+        policy_id=pkt.policy_id,
+        research_status=pkt.research_status,
+        thesis_status=pkt.thesis_status,
+        target_weight=pkt.target_weight if pkt.desired_action is DesiredAction.EXIT else None,
+        evidence_ids=list(pkt.evidence_ids),
+        blockers=[b.detail for b in pkt.blockers],
+    )

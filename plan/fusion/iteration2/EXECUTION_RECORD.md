@@ -229,4 +229,46 @@ delivered_commit: cddd191
 
 ---
 
+## R3｜自动研究服务与双周期计划版本
+
+```text
+task_id: R3
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: 474df8c（R2/R4 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/core/research.py` | 命题级评估层（RESEARCH_LOOP §2）：ThesisAssertion/ThesisAssessment + evaluate_assertion（能力ID匹配，A08 呼应）+ assess_thesis_by_assertions（状态优先级链：INVALID→失效UNKNOWN→未核实重大反证→UNESTABLISHED→必需命题被反驳→VALID；周期隔离——MID VALID 不使 LONG 自动 VALID） |
+| `src/core/research_service.py` | 新增：单服务编排（snapshot→extract→verify→factor→assess→draft；步骤缓存幂等——同输入同 run_id）；ResearchBundle（研究结论包，**不是第二个 DecisionPacket**——无动作/仓位/执行资格）；MID 4 命题/LONG 5 命题模板（evidence_requirements 引用 R4 能力ID——valuation_range_v1 不可计算→LONG 诚实带缺口）；系统草稿生成（facts_observed=已核验主张+fact_evidence_refs=claim 引用——R0 资格门正式数据源；不填 --facts 可生成）；纯注入无 IO |
+| `src/core/decision_policy.py` | HorizonPlan 研究契约字段正式声明（fact_evidence_refs/assessment_id/snapshot_id/policy_version/supersedes_ref——旧 JSON 缺省兼容）；content_hash（不含激活态）；PolicyIntent + evaluate_horizon_intent（同表裁决剥执行语义——中间 ELIGIBLE 不透传，验收7） |
+| `src/data/horizon_plans.py` | 接受绑定（accepted_refs：plan_id+revision+content_hash——is_accepted_version 判定草稿不得沿用旧接受）；持仓主意图引用（active_refs 生命周期：设置需已接受精确版本、清除后重建不沿用旧轮授权）；save/remove 保留全部顶层键（审查修正：原实现会静默丢 accepted_refs/active_refs） |
+| `tests/core/test_research_service.py` | R3 回归 10 条（七条验收逐条） |
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1 无 --facts 生成草稿；缺资料带具体缺口不强行 VALID | test_auto_draft_without_user_facts / test_missing_data_gives_gaps_not_valid（valuation_range_v1 点名） | PASS |
+| 2 共享事实分别评估；MID VALID 不使 LONG 自动 VALID | test_mid_valid_does_not_leak_to_long（同 claim id 两周期；命题集合不同；LONG 缺估值诚实 UNESTABLISHED） | PASS |
+| 3 反证未核实→REVIEW_REQUIRED；失效 TRUE→INVALID | test_unverified_counter_evidence_gives_review_required / test_verified_invalidation_true_gives_invalid（决策表行3 已有锁） | PASS |
+| 4 接受绑定精确版本；新事实只生成修订草稿 | test_accept_binds_exact_version | PASS |
+| 5 主意图生命周期：切换保留旧版；重建不沿用旧授权 | test_active_ref_lifecycle | PASS |
+| 6 重试幂等；两进程不丢更新；损坏保守读取 | test_service_retry_idempotent（bundle 级幂等）/ test_two_writers_conflict_rejected（M5 指纹）+ 既有损坏保护测试；**失败恢复（步骤级缓存）未实现——随 R8 增量任务账本接线（监督员 P1·诚实交付修正）** | **PARTIAL** |
+| 7 意图与执行资格分离 | test_policy_intent_strips_execution_semantics（PolicyIntent 无执行字段、组合未知无精确目标） | PASS |
+| 回退 | 旧主策略零改动（legacy 路径未触碰）；草稿/评估全部新增对象；无「非空事实自动 VALID」恢复路径 | 遵守 |
+
+### remaining / next_owner
+
+- CLI 接线交 R8（`l <code>` 消费 ResearchBundle 显示草稿/缺口/比较）；AccountSnapshot 联动
+  active_refs 由 R5 落账户侧；反证自动检测（REFUTES 主张进 material_counter）随 R8/R7 评测口径。
+- 影子对评估的消费：R0 已统一走 assess_thesis 资格门；R3 的 assessments 为逐周期正式输入，
+  R8 接线时替换影子临时口径。
+
+---
+
 *后续 R 卡按同模板追加。*

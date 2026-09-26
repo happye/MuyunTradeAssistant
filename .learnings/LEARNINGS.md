@@ -1875,3 +1875,21 @@ roe_observed_v1 ≠ capital_return_v1，缺就是缺。旧函数名留弃用委�
 - Source: r4_capability_split
 - Pattern-Key: capability.id_must_equal_computation
 - Related Files: src/core/factor_registry.py, src/core/factor_compute.py, src/core/candidate_pool.py, src/data/research_store.py
+
+## [LRN-20260927-R3-BINDING] lesson — 持久化顶层键随 save 全量重建时会静默蒸发
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（R3 save/remove 修复 + 回归锁死）
+**Area**: storage, plan, persistence
+
+HorizonPlanStore.save/remove 构造 candidate 时手写 `{"version":…, "plans":…}`——后来在
+顶层新增 accepted_refs/active_refs，save 一跑就把它们静默丢掉（is_accepted_version 永远
+False，主意图引用蒸发）。写测试才暴露。
+
+教训：**持久化写路径重造容器时必须「继承全部顶层键再改目标键」（dict(data) 起手），
+不许手写字段清单**；新增顶层键的当天就要有 round-trip 测试（写→读→键还在）。
+
+- Source: r3_horizon_plan_store_binding
+- Pattern-Key: persistence.rebuild_container_drops_new_keys
+- Related Files: src/data/horizon_plans.py, tests/core/test_research_service.py
