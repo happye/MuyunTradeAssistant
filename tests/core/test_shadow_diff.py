@@ -410,3 +410,20 @@ def test_report_counts_plan_source_per_horizon(tmp_path):
     text = render_shadow_report(report)
     assert "真计划对照 MID 1 条" in text and "LONG 0 条" in text
     assert "模拟计划 MID 0 条｜LONG 1 条" in text
+
+
+# ── R9：fusion.mode 单一解析器 ─────────────────────────────
+
+def test_fusion_mode_resolver_migration_and_gates():
+    """旧开关迁移不并存两套语义；未知 mode 回退；opt_in/default 附晋级未达标警示。"""
+    from src.core.shadow_diff import resolve_fusion_mode
+    assert resolve_fusion_mode({"fusion": {"shadow_capture": True}}) == \
+        ("capture_only", "经旧开关 fusion.shadow_capture 迁移")
+    assert resolve_fusion_mode({"fusion": {"shadow_capture": False}})[0] == "legacy_only"
+    assert resolve_fusion_mode({"fusion": {"mode": "legacy_only"}})[1] == ""
+    # opt_in/default：模式登记但晋级门未过（裁决未下）——note 必须说明
+    mode, note = resolve_fusion_mode({"fusion": {"mode": "opt_in"}})
+    assert mode == "opt_in" and "未过" in note
+    mode2, note2 = resolve_fusion_mode({"fusion": {"mode": "bogus"}})
+    assert mode2 == "capture_only" and "回退" in note2
+    assert resolve_fusion_mode(None)[0] == "capture_only"

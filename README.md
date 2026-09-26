@@ -6,7 +6,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**v0.8.21 第二轮R0资格止血已实施** ✅ (事实证据资格门 + latest-only 历史快照门 + shadow 逐周期标来源；版本历史见下)
+**v0.8.22 第二轮R7/R8已实施** ✅ (E矩阵manifest v2 + E0b/E7b受控场景 + research单股研究工作台；版本历史见下)
 
 > 📖 **里程碑与阶段详情请参阅 [历史里程碑](docs/archive/v0.8.3_里程碑.md)（已归档，现行状态见 ISSUES.md）**
 > 📖 **案例验证报告请参阅 [C4 案例验证](docs/archive/v0.8.3_C4_案例验证报告.md)（已归档）**
@@ -394,6 +394,18 @@ volume_ratio:
 ---
 
 ## 版本历史
+
+### v0.8.22 (R7/R8——E矩阵受控场景 + research 研究工作台) - 2026-09-27
+
+plan/fusion iteration2 R7+R8（账本 plan/fusion/iteration2/EXECUTION_RECORD.md）。
+
+- 🧪 **E 矩阵 manifest v2**：temporal_eligibility 从输入资格**派生**（STRICT/CONTEMPORARY/NON_STRICT/BLOCKED_DATA——不按实验编号硬赋）；selection/mode/thesis/extraction 分源登记；E0b–E7b 重定级注册
+- 🧪 **E0b 定向成交场景**：同日买入退出被拒/老仓可卖/末日残余持仓按最后价格估值（不虚构强平收益）/除权分红恒等/印花税切换边界（财政部2023年第39号公告，来源登记）
+- 🧪 **E7b 受控场景**：七类动作（OPEN/ADD/HOLD/REDUCE/EXIT/WAIT/REVIEW）+ EXIT+BLOCKED + 四预算案例全命中（合成输入 NON_STRICT 如实标注）
+- 🚧 **E2b/E3b/E4b 诚实阻断**：无严格历史输入 → BLOCKED_DATA 拒绝（R1 latest-only 暂停点保持，不结构性收口）；E1b 资源同价检查机器化
+- 🆕 **`research <代码>` 单股研究工作台**：一次出 MID/LONG 资格结论、系统草稿（未激活）、逐条缺口；`--capture` 采集财务（真实网络，留样+语义筛查）；不带 --facts 解锁资格——缺什么如实点名
+- 📋 **八类走查**：6/8 类合成走查实测通过（记录 plan/fusion/iteration2/R8_WALKTHROUGH.md）；②③ live 持仓路径待真实用户试用（如实 PARTIAL）
+- 质量：测试 1204→**1220**（+16）；监督代理对抗审查通过
 
 ### v0.8.21 (第二轮R0资格止血) - 2026-09-26
 

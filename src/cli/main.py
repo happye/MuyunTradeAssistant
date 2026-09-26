@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.21[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.22[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -4900,7 +4900,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.21 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.22 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",
@@ -5165,3 +5165,108 @@ AI配置:
 
 if __name__ == "__main__":
     main()
+
+
+def research_command(rest: list):
+    """research 单股研究工作台（plan/fusion iteration2 R8，RESEARCH_LOOP §1/§6）。
+
+    一次单股研究即有中长期比较、系统草稿、待验证节点——不用用户编事实解锁。
+    用法:
+      research <代码>            离线确定性研究（当前未接入归档证据读取——按无证据
+                                 口径给具体缺口；不做虚假「已归档」声明）
+      research <代码> --capture  先采集最近季频财务（baostock，真实网络）再研究
+    输出：MID/LONG 各一句资格结论与理由 + 系统草稿（未激活）+ 待验证节点 +
+    严格快照拒收摘要（latest-only 财务不入 strict 历史——live 研究仍可用）。
+    """
+    from rich.console import Console as _C
+    from datetime import datetime
+    rest = [p for p in (rest or []) if p.strip()]
+    capture = "--capture" in rest
+    codes = [p for p in rest if not p.startswith("--")]
+    if not codes:
+        console.print("  [yellow]用法: research <代码> [--capture][/yellow]")
+        return
+    code = normalize_stock_code(codes[0])
+    console.print(f"\n[bold cyan]🔬 单股研究工作台 {code}[/bold cyan]")
+
+    from src.core.research_service import ResearchService
+
+    svc = ResearchService()
+    records, documents, caps, fin_dicts_raw = [], [], {}, []
+    if capture:
+        # 真实网络（显式 --capture）：采集最近 4 季财务 → 留样 → 语义筛查 → 因子能力。
+        # 因子计算吃**原始 fin dict**（metric 键）——EvidenceRecord 的 metric_or_claim
+        # 形状不喂因子（监督员 P1 形状错配修正）。
+        from src.data.financial_data import capture_quarterly_evidence
+        from src.data.research_snapshot import screen_semantic_anomalies
+        from src.data.research_store import ResearchStore
+        store = ResearchStore()
+        console.print("  [dim]采集最近 4 季财务证据（baostock，真实网络）…[/dim]")
+        now = datetime.now()
+        for back in range(4):
+            q = (now.month - 1) // 3 + 1 - back
+            y, q = (now.year + (q - 1) // 4, (q - 1) % 4 + 1)
+            try:
+                recs, raws = capture_quarterly_evidence(code, y, q, store=store,
+                                                        return_raw=True)
+            except Exception as e:  # 网络失败登记，不假装已采集
+                console.print(f"  [yellow]⚠ {y}Q{q} 采集失败（登记不替换）: {e}[/yellow]")
+                continue
+            if not recs:
+                console.print(f"  [yellow]⚠ {y}Q{q} 采集为空（登录失败/接口无数据——不假装已采集）[/yellow]")
+                continue
+            records.extend(recs)
+            fin_dicts_raw.extend(raws)
+        records = screen_semantic_anomalies(records)
+        from src.core.factor_compute import (
+            balance_risk_v1, cash_conversion_v1, roe_observed_v1,
+        )
+        for fn in (cash_conversion_v1, roe_observed_v1, balance_risk_v1):
+            res = fn(fin_dicts_raw)  # 原始 fin dict（metric 键）
+            caps[res.factor_id] = res
+            console.print(f"  [dim]能力 {res.factor_id}: status={res.status}"
+                          + (f" value={res.value}{res.unit}" if res.status == "OK" else "") + "[/dim]")
+    else:
+        console.print("  [dim]离线模式：当前未接入归档证据读取——按无证据口径给缺口"
+                      "（加 --capture 采集财务，真实网络）[/dim]")
+
+    from src.data.research_snapshot import EvidenceSnapshot
+    as_of = datetime.now().astimezone()
+    bundle = svc.run(code, as_of=as_of, evidence_records=records,
+                     documents=documents, factor_capabilities=caps,
+                     snapshot_builder=lambda sid, ao, recs, strict=True: EvidenceSnapshot.build(
+                         sid, ao, recs, strict=strict))
+
+    # 渲染（RESEARCH_LOOP §6 示例口径：一句资格结论+理由；缺口具体；草稿未激活）
+    from src.core.decision_contract import ThesisStatus
+    label = {"VALID": "✅ 逻辑成立（当前命题达标）", "INVALID": "❌ 逻辑失效",
+             "REVIEW_REQUIRED": "⚠ 需人工核对", "UNESTABLISHED": "○ 逻辑待建立"}
+    for h in bundle.horizons:
+        asm = bundle.assessments[h]
+        st = asm["status"]
+        gap_n = len(asm["unresolved_gaps"])
+        console.print(f"\n  [bold]{h}[/bold] {label.get(st, st)}")
+        for g in asm["unresolved_gaps"][:3]:
+            console.print(f"    · {g}")
+        if gap_n > 3:
+            console.print(f"    · …共 {gap_n} 项缺口")
+        for nc in asm["next_checks"][:2]:
+            console.print(f"    ▸ {nc}")
+    console.print(f"\n  [bold]系统草稿[/bold]（未激活——用户选择意图后才出行动建议）")
+    for d in bundle.plan_drafts:
+        console.print(f"    {d['horizon']}: {d['intent'][:60]}")
+        if d["fact_evidence_refs"]:
+            console.print(f"      [dim]已核验事实 {len(d['facts_observed'])} 条（带引用，可打开原文）[/dim]")
+    if bundle.gaps:
+        console.print(f"\n  [yellow]缺口 {len(bundle.gaps)} 项：[/yellow]")
+        for g in bundle.gaps[:5]:
+            console.print(f"    · {g}")
+    if bundle.snapshot_dropped:
+        # 严格快照拒收摘要如实展示（latest-only 财务不入 strict 历史——用户须知道
+        # 采到的证据去哪了，监督员 P1：不让用户从「来源 0 份」反推）
+        drop_desc = "；".join(f"{k}×{len(v)}" for k, v in bundle.snapshot_dropped.items())
+        console.print(f"\n  [yellow]严格快照拒收: {drop_desc}"
+                      "（latest-only 财务不入严格历史判定——live 研究口径不受影响）[/yellow]")
+    src_n = len(bundle.source_document_ids)
+    console.print(f"\n  [dim]来源 {src_n} 份文档；已核验主张 {len(bundle.verified_claims)} 条；"
+                  f"未达核验 {bundle.unverified_claims} 条；run {bundle.run_id}[/dim]")

@@ -453,3 +453,176 @@ class MarketStatusCheck:
             return
         if trade_date > delist_date:
             raise ValueError(f"已退市不可成交：{security_id} 退市 {delist_date}，交易日 {trade_date}")
+
+
+# ──────────────── R7：manifest v2（冻结真实信息集，VALIDATION §3）────────────────
+
+class ExperimentManifestV2(BaseModel):
+    """实验 manifest v2（VALIDATION §3 扩展字段；旧 ExperimentManifest 保留读兼容）。
+
+    核心纪律：temporal_eligibility **从每个输入的资格派生**，不按实验编号硬赋；
+    人工挑选/参数试验次数/剔除记录全部可见。"""
+    model_config = ConfigDict(extra="allow")
+
+    experiment_id: str
+    run_id: str = Field(default_factory=lambda: f"run_{datetime.now().strftime('%Y%m%d%H%M%S')}")
+    preregistered_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    started_at: str = ""
+    completed_at: str = ""
+    code_commit: str = ""
+    dirty_tree_fingerprint: str = ""
+    schema_adapter_policy_versions: dict = Field(default_factory=dict)
+    universe_snapshot_ids: list[str] = Field(default_factory=list)
+    evidence_snapshot_ids: list[str] = Field(default_factory=list)
+    price_corporate_action_rule_versions: dict = Field(default_factory=dict)
+    selection_source: str = Field(default="", description="候选来源（scan规则/产业AI/质量抽样——分路登记）")
+    mode_source: str = Field(default="", description="mode 来源（人工标注/规则代理/AI）")
+    thesis_source: str = Field(default="", description="逻辑来源（用户计划/系统草稿/模拟）")
+    extraction_source: str = Field(default="", description="提取来源（deterministic/LLM@model）")
+    temporal_eligibility: Literal["STRICT", "CONTEMPORARY", "NON_STRICT", "BLOCKED_DATA"] = "NON_STRICT"
+    temporal_eligibility_reasons: list[str] = Field(default_factory=list)
+    unavailable_components: list[str] = Field(default_factory=list)
+    human_overrides: list[str] = Field(default_factory=list, description="人工覆盖记录（谁/何时/改了什么）")
+    arms_and_single_variation: list[dict] = Field(default_factory=list, description="臂清单（每臂单一变量）")
+    costs: dict = Field(default_factory=dict, description="AI tokens/请求数/外源调用/失败次数")
+    budgets: dict = Field(default_factory=dict, description="冻结预算（超限停止）")
+    exclusions_and_reasons: list[dict] = Field(default_factory=list)
+    primary_metric: str = ""
+    guardrail_metrics: list[str] = Field(default_factory=list)
+    inference_method: str = ""
+    stop_rule: str = ""
+    result_paths: list[str] = Field(default_factory=list)
+
+    @property
+    def fingerprint(self) -> str:
+        d = self.model_dump(mode="json")
+        d.pop("run_id", None)
+        return hashlib.sha256(json.dumps(d, ensure_ascii=False, sort_keys=True,
+                                         default=str).encode("utf-8")).hexdigest()[:16]
+
+
+def validate_resource_parity(manifest: ExperimentManifestV2) -> list[str]:
+    """E1b 资源同价检查（VALIDATION §4 E1b）：三路可比性的机器化——
+    「相同深研究名额」与「相同实际成本」两口径必须显式声明且不为空。
+    精确匹配 E1b（不用 startswith——E10+ 不误套，监督员 P2）。"""
+    problems = []
+    if manifest.experiment_id == "E1b":
+        budgets = manifest.budgets or {}
+        if not budgets.get("deep_research_quota"):
+            problems.append("E1b 缺 deep_research_quota（相同深研究名额口径未声明）")
+        if not budgets.get("actual_cost_cap"):
+            problems.append("E1b 缺 actual_cost_cap（相同实际成本口径未声明）")
+        for arm in manifest.arms_and_single_variation:
+            if not arm.get("extraction_source") and not arm.get("notes"):
+                problems.append(f"臂 {arm.get('name')} 缺资源消耗登记")
+    return problems
+
+
+def derive_temporal_eligibility(input_eligibilities: list[str]) -> tuple[str, list[str]]:
+    """temporal_eligibility 从输入资格派生（VALIDATION §3：不按实验编号硬赋）。
+
+    规则：任一 BLOCKED_DATA → BLOCKED_DATA；任一 NON_STRICT → NON_STRICT；
+    任一 CONTEMPORARY → CONTEMPORARY；全部 STRICT → STRICT。
+    input_eligibilities：各输入源的资格标签（STRICT/CONTEMPORARY/NON_STRICT/BLOCKED_DATA）。"""
+    tags = set(input_eligibilities) or {"NON_STRICT"}
+    reasons: list[str] = []
+    if "BLOCKED_DATA" in tags:
+        tag = "BLOCKED_DATA"
+        reasons.append("存在 BLOCKED_DATA 输入（数据源缺历史版本资格——R1 暂停点）")
+    elif "NON_STRICT" in tags:
+        tag = "NON_STRICT"
+        reasons.append("存在 NON_STRICT 输入（latest-only/合成/状态数据缺失）")
+    elif "CONTEMPORARY" in tags:
+        tag = "CONTEMPORARY"
+        reasons.append("存在 CONTEMPORARY 输入（当时捕获——只支持其后决策）")
+    else:
+        tag = "STRICT"
+    return tag, reasons
+
+
+# E2b/E3b/E4b/E5b/E6b/E7b 注册（VALIDATION §4 重定级口径；旧 E_SPEC 保留读兼容）
+E_SPEC_V2: list[ExperimentSpec] = [
+    ExperimentSpec(experiment_id="E0b", name="正确性定向场景",
+                   fixed="同一冻结日历与价格（合成输入明确标注）",
+                   varied="定向成交场景（同日退出/老仓可卖/末日估值/分红恒等/税费切换）",
+                   answers="执行正确性逐笔差异按原因解释——不以收益无差证明没有问题",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R6.replay"],
+                   runnable_offline=True, status="runnable"),
+    ExperimentSpec(experiment_id="E1b", name="候选召回同资源对照",
+                   fixed="同一冻结市场全集、相同排除规则、同一 cutoff、预设研究总名额",
+                   varied="技术/产业/质量单路 vs 并集（相同深研究名额+相同实际成本两口径）",
+                   answers="同等资源下有没有额外的合格机会（非交集Jaccard）",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["F4.candidate_pool", "R4.recall"],
+                   runnable_offline=False, status="blocked_on_data"),
+    ExperimentSpec(experiment_id="E2b", name="研究资格增量",
+                   fixed="共同候选集合、同一研究截止时点、相同后续交易政策",
+                   varied="无新增资格门 vs MID 资格门 vs LONG 资格门（周期分别报告）",
+                   answers="覆盖率/拒绝原因/入选分布；被拒候选保留 shadow outcome 检验误杀",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R1.qualify", "R3.assertions"],
+                   runnable_offline=False, status="blocked_on_data"),
+    ExperimentSpec(experiment_id="E3b", name="持有纪律增量",
+                   fixed="同一批达标标的、相同入场时点与初始资金；MID/LONG 分别检验",
+                   varied="legacy vs 对应周期新纪律（记录每次 sell_path/逻辑失效/技术退出/受阻）",
+                   answers="收益回撤之外计换手/过早退出机会损失/失效后滞留时长",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R5.decision_policy"],
+                   runnable_offline=False, status="blocked_on_data"),
+    ExperimentSpec(experiment_id="E4b", name="技术择时增量",
+                   fixed="同一资格候选、同样计划目标/退出纪律、相同规则版本费用",
+                   varied="无技术择时的预设可交易时点 vs 技术条件入场/加仓（未触发保留现金入分母）",
+                   answers="等待时间/错过机会/现金拖累——不只评价成功入场者",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R4.relative_return_v2"],
+                   runnable_offline=False, status="blocked_on_data"),
+    ExperimentSpec(experiment_id="E5b", name="AI 证据与决策价值（两层）",
+                   fixed="第一层冻结人工核验语料（公司/时间切分）；第二层冻结相同快照/候选/计划",
+                   varied="A=确定性路径；B=A+LLM提取；C=B+独立反证核验预算",
+                   answers="事实precision/拒识率/错误拒识/每有效变化成本——产出更多claim不算成功",
+                   source_tag=InfoSetTag.AI_LOOKAHEAD, depends_on=["R2.verify_claim_tiered"],
+                   runnable_offline=False, status="blocked_on_data"),
+    ExperimentSpec(experiment_id="E6b", name="组合预算与执行",
+                   fixed="事前动作意图流（分配/成交机制验证）与完整状态回放分开",
+                   varied="预算约束臂（删除未来全区间最大回撤——固定预注册压力场景）",
+                   answers="现金数量守恒/买入违规0/未知现金不给精确数量/粒度不再拒绝",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R5.allocate", "R6.rules"],
+                   runnable_offline=True, status="runnable"),
+    ExperimentSpec(experiment_id="E7b", name="完整系统受控场景",
+                   fixed="全链受控场景（合成输入明确标注）+ 同 cutoff 真实非空路径观察分开",
+                   varied="必须命中 OPEN/ADD/HOLD/REDUCE/EXIT/WAIT/REVIEW 与 EXIT+BLOCKED；"
+                          "预算含可行新增/不足最低申报/现金不足/未确认卖出不释放四案例",
+                   answers="路径命中证据——真实市场缺失某类路径标 NOT_OBSERVED 不计已通过",
+                   source_tag=InfoSetTag.RULE_PROXY, depends_on=["R3.bundle", "R5.allocate", "R6.replay"],
+                   runnable_offline=True, status="runnable"),
+]
+
+
+def check_strict_eligibility_or_block(manifest: ExperimentManifestV2,
+                                      input_eligibilities: list[str]) -> str:
+    """E2b/E3b/E4b 数据资格门（R7 验收4）：无严格资料的子实验显式 BLOCKED_DATA——
+    执行可完成部分前先拒绝，不「结构性收口」代替原效果验收。返回派生资格标签；
+    BLOCKED_DATA 时抛 RuntimeError（调用方如实登记后终止）。"""
+    tag, reasons = derive_temporal_eligibility(input_eligibilities)
+    manifest.temporal_eligibility = tag
+    manifest.temporal_eligibility_reasons = reasons
+    if tag == "BLOCKED_DATA":
+        raise RuntimeError(
+            f"{manifest.experiment_id} BLOCKED_DATA：{'；'.join(reasons)}——"
+            "严格口径实验保持阻断（R1 暂停点），可完成部分=场景/资格审计，不做收益结论")
+    return tag
+
+
+class FixedStressScenario(BaseModel):
+    """预注册固定压力场景（E6b：删除未来全区间最大回撤输入的替代品）。
+
+    每条压力损失率带估计截止日/窗口/方法版本——不取未来数据；场景在运行前冻结。"""
+    model_config = ConfigDict(extra="allow")
+
+    scenario_id: str
+    frozen_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
+    estimate_cutoff: str = Field(description="压力估计的截止日（只用截止前信息）")
+    window_days: int = Field(default=250, description="估计窗口（交易日）")
+    method_version: str = "fixed_scenario_v1"
+    rates: dict = Field(default_factory=dict, description="{security_id 或 行业: 压力损失率}")
+    source: str = Field(default="", description="估计来源（历史窗口统计/用户风险档）")
+
+    def rate_for(self, security_id: str, industry: str = "") -> Optional[float]:
+        """查压力损失率：个股优先，行业兜底；两者皆无 → None（不给精确额度）。"""
+        return self.rates.get(security_id, self.rates.get(f"industry:{industry}"))

@@ -402,7 +402,8 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
 
 
 def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
-                               store=None, timeout: int = 30) -> list:
+                               store=None, timeout: int = 30,
+                               return_raw: bool = False):
     """采集一季财务证据：原始响应留样 → fin dict → EvidenceRecord（R1）。
 
     - store（ResearchStore）给定：五接口原始响应逐字段归档（写一次幂等——同内容
@@ -413,6 +414,9 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
     - **语义筛查不在此处**：相邻期量级跳变（ISS-114）需要跨季度累积比较——
       调用方把多期记录累积后调 research_snapshot.screen_semantic_anomalies，
       再进快照/资格判定（probe_fin_semantics.py 与 R3 服务层按此接线）
+    - return_raw=True 时返回 (records, raw_fin_dicts)：raw=供应商原貌 dict
+      （factor_compute._get 消费 "metric" 键——EvidenceRecord 用 metric_or_claim，
+      因子计算不得用 model_dump 喂【监督员 P1 形状错配修正】）
     """
     from src.data.research_snapshot import financial_record
     fin_dicts = get_financial_quarterly(stock_code, year, quarter, timeout=timeout)
@@ -436,4 +440,8 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
                 "value": d.get("value"), "unit": d.get("unit"),
                 "raw_sha256": digest, "source_version": FINANCIAL_SOURCE_VERSION,
             })
-    return [financial_record(str(stock_code), apply_unit_drift_mapping(d)) for d in fin_dicts]
+    mapped = [apply_unit_drift_mapping(d) for d in fin_dicts]
+    records = [financial_record(str(stock_code), d) for d in mapped]
+    if return_raw:
+        return records, mapped  # raw=映射后 fin dict（factor_compute._get 消费 "metric" 键）
+    return records

@@ -141,3 +141,56 @@ def test_t_plus_1_check_regression():
         ReplayChecks.check_t_plus_1("2026-09-20", "2026-09-20")
     with pytest.raises(ValueError, match="整手"):
         ReplayChecks.check_lot_size(150, "BUY")
+
+
+# ── R7：manifest v2 / 资格门 / 固定压力场景 ────────────────
+
+def test_manifest_v2_temporal_eligibility_derived():
+    """R7 验收1：temporal_eligibility 从输入资格派生，不按实验编号硬赋。"""
+    from src.core.experiment import ExperimentManifestV2, derive_temporal_eligibility
+    assert derive_temporal_eligibility(["STRICT", "STRICT"]) == ("STRICT", [])
+    assert derive_temporal_eligibility(["STRICT", "NON_STRICT"])[0] == "NON_STRICT"
+    assert derive_temporal_eligibility(["BLOCKED_DATA", "STRICT"])[0] == "BLOCKED_DATA"
+
+
+def test_strict_gate_blocks_e2_e3_e4():
+    """R7 验收4：无严格资料 → BLOCKED_DATA 拒绝（不结构性收口）。"""
+    from src.core.experiment import ExperimentManifestV2, check_strict_eligibility_or_block
+    m = ExperimentManifestV2(experiment_id="E2b")
+    with pytest.raises(RuntimeError, match="BLOCKED_DATA"):
+        check_strict_eligibility_or_block(m, ["NON_STRICT", "BLOCKED_DATA"])
+    assert m.temporal_eligibility == "BLOCKED_DATA"
+    m2 = ExperimentManifestV2(experiment_id="E2b")
+    assert check_strict_eligibility_or_block(m2, ["STRICT"]) == "STRICT"
+
+
+def test_fixed_stress_scenario_no_future_channel():
+    """E6b：固定预注册压力场景——估计截止日明确；查不到比率返回 None（不给精确额度）。"""
+    from src.core.experiment import FixedStressScenario
+    sc = FixedStressScenario(scenario_id="s1", estimate_cutoff="2025-12-31",
+                             rates={"600519": 0.25, "industry:半导体": 0.35})
+    assert sc.rate_for("600519", "半导体") == 0.25
+    assert sc.rate_for("000002", "半导体") == 0.35
+    assert sc.rate_for("000002", "银行") is None, "无比率 → None（不填通用数字）"
+
+
+def test_resource_parity_checker():
+    """E1b 资源同价检查：缺口径声明即报问题（机器化）。"""
+    from src.core.experiment import ExperimentManifestV2, validate_resource_parity
+    m = ExperimentManifestV2(experiment_id="E1b")
+    problems = validate_resource_parity(m)
+    assert any("deep_research_quota" in p for p in problems)
+    m.budgets = {"deep_research_quota": 35, "actual_cost_cap": "100k tokens/路"}
+    m.arms_and_single_variation = [{"name": "技术路", "extraction_source": "deterministic"}]
+    assert validate_resource_parity(m) == []
+
+
+def test_e_spec_v2_registry_honest_levels():
+    """R7：E_SPEC_V2 八条注册定级如实——runnable 三条离线可跑，其余如实 blocked。"""
+    from src.core.experiment import E_SPEC_V2
+    by_id = {s.experiment_id: s for s in E_SPEC_V2}
+    assert set(by_id) == {"E0b", "E1b", "E2b", "E3b", "E4b", "E5b", "E6b", "E7b"}
+    for eid in ("E0b", "E6b", "E7b"):
+        assert by_id[eid].runnable_offline is True and by_id[eid].status == "runnable", eid
+    for eid in ("E1b", "E2b", "E3b", "E4b", "E5b"):
+        assert by_id[eid].status == "blocked_on_data", f"{eid} 严格历史未解锁不得标 runnable"

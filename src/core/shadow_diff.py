@@ -103,7 +103,8 @@ class ShadowDiffRecord(BaseModel):
 
 
 def _load_capture_switch(config: Optional[dict]) -> bool:
-    """读 fusion.shadow_capture 开关（默认开——capture 语义不改任何主结论）。"""
+    """读融合模式并判定是否捕获（R9 单一解析器 resolve_fusion_mode——
+    旧布尔开关 fusion.shadow_capture 迁移映射，两套语义不并存）。"""
     if config is None:
         try:
             from src.cli.main import load_config
@@ -111,8 +112,10 @@ def _load_capture_switch(config: Optional[dict]) -> bool:
         except Exception as e:  # 配置读取失败按关闭处理（不捕获数据），并如实留痕
             logger.warning(f"影子捕获开关读取失败，本次不捕获（不影响分析）: {e}")
             return False
-    fusion_cfg = (config or {}).get("fusion") or {}
-    return bool(fusion_cfg.get("shadow_capture", True))
+    mode, note = resolve_fusion_mode(config)
+    if note:
+        logger.info(f"fusion.mode={mode}（{note}）")
+    return mode != "legacy_only"
 
 
 def _derive_facts(strategy_decision, packet) -> dict:
@@ -489,3 +492,36 @@ def render_shadow_report(report: dict) -> str:
             f"  ｜ {tags}")
     lines.append(f"  [dim]账本: {report['store']}（追加式）｜ 映射版本 {SHADOW_DERIVATION_VERSION}[/dim]")
     return "\n".join(lines)
+
+
+# ──────────────── R9：fusion.mode 单一解析器（VALIDATION §7 待实施接口落地）────────────────
+
+FUSION_MODES = ("legacy_only", "capture_only", "shadow", "opt_in", "default")
+
+
+def resolve_fusion_mode(config: Optional[dict]) -> tuple[str, str]:
+    """解析融合模式（单一入口；迁移旧开关 fusion.shadow_capture，不并存两套语义）。
+
+    优先级：显式 fusion.mode > 旧开关 fusion.shadow_capture > 缺省 capture_only。
+    - legacy_only：融合层完全不运行
+    - capture_only：影子捕获采集数据（当前缺省——捕获语义不改主结论）
+    - shadow：捕获 + 影子决策表对照输出（当前实现与 capture_only 等价——显式命名阶段）
+    - opt_in / default：融合主决策晋级——**发布门未过（VALIDATION §7），当前配置此值
+      时返回模式但附带未达标警示**（晋级决定权在 R9 独立验收，不在配置拼写）。
+    返回 (mode, note)。未知 mode → 回退 capture_only 并告警。"""
+    fusion = (config or {}).get("fusion") or {}
+    mode = fusion.get("mode")
+    if mode:
+        mode = str(mode).strip().lower()
+        if mode in FUSION_MODES:
+            if mode in ("opt_in", "default"):
+                return mode, ("融合主决策晋级门未过（VALIDATION §7：R9 独立验收）——"
+                              "当前仍按 capture_only 行为运行，该配置暂为意愿登记")
+            return mode, ""
+        logger.warning(f"未知 fusion.mode={mode!r}——回退 capture_only（合法值: {'/'.join(FUSION_MODES)}）")
+        return "capture_only", "未知 mode 回退"
+    if "shadow_capture" in fusion:
+        # 旧开关迁移（单一解析器——旧布尔映射到新枚举，两套语义不并存）
+        return ("capture_only" if fusion.get("shadow_capture") else "legacy_only"), \
+            "经旧开关 fusion.shadow_capture 迁移"
+    return "capture_only", "缺省（捕获语义不改主结论）"

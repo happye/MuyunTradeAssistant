@@ -349,4 +349,81 @@ delivered_commit: 12fecbc（与 R5 同批）
 
 ---
 
+## R7｜按真实信息集执行 E 矩阵
+
+```text
+task_id: R7
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: dc7f12a（R5/R6 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/core/experiment.py` | ExperimentManifestV2（VALIDATION §3 扩展：preregistered_at/temporal_eligibility 从输入资格**派生**/selection/mode/thesis/extraction sources/arms 单一变量/costs/stop_rule——旧 manifest 保留读兼容）+ validate_resource_parity（E1b 资源同价机器化）+ check_strict_eligibility_or_block（BLOCKED_DATA 资格门）+ FixedStressScenario（E6b 删除未来全区间回撤的替代——估计截止日+窗口+方法版本）；E_SPEC_V2 注册 E0b–E7b（重定级口径，runnable/block_on_data 如实） |
+| `tests/backtest/e7b_controlled_scenarios.py` | 新增：E7b 受控场景（七类动作意图全命中 + EXIT+BLOCKED + 四预算案例——实测报告 tests/artifacts/e7b_controlled_report.json；SYNTHETIC/NON_STRICT 如实标注；真实非空路径观察=NOT_OBSERVED 另批） |
+| `tests/backtest/e2b_e3b_e4b_skeletons.py` | 新增：E2b/E3b/E4b 骨架（manifest 预注册+单一变量臂+资格门——实测全部 BLOCKED_DATA 如实拒绝；无严格历史输入不跑收益结论） |
+| `tests/core/test_experiment_r6.py` | R7 回归 4 条（资格派生/资格门/固定压力场景/资源同价检查） |
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1 manifest 从输入证明资格；不硬赋 rule_bz_proxy | ExperimentManifestV2（temporal_eligibility 派生 + selection/mode/thesis/extraction 分源登记）+ 测试 | PASS |
+| 2 E1 同资源比较；E5 预注册；E6 不用全未来回撤；E7 预算正向命中 | validate_resource_parity / E5b 语料冻结（R2 cv2）+ AI 臂 NOT_RUN / FixedStressScenario / E7b 四预算案例全命中 | PASS（离线部分）/ E1b/E5b AI 真跑 opt-in NOT_RUN（如实） |
+| 3 E2/E3/E4 单一变量；被拒样本保留 | ARMS 预注册（每臂 single_variation）+ guardrail_metrics「未触发样本保留」 | PASS（骨架级——真实执行 BLOCKED_DATA） |
+| 4 无严格资料显式 BLOCKED_DATA；执行可完成部分 | e2b_e3b_e4b_skeletons 实测三实验全部 BLOCKED_DATA；E0b/E6b/E7b 可完成部分已执行 | PASS |
+| 5 参数搜索与失败尝试记录 | manifest v2 costs/human_overrides/exclusions 字段 + trial 留痕字段 | PASS（字段层） |
+| 暂停点 | 严格 E2/E4 保持 BLOCKED_DATA（R1 latest-only 门未解除——如实） | 遵守 |
+
+### remaining / next_owner
+
+- E1b/E5b 真跑（AI opt-in 预算）、E2b–E4b 严格历史执行：BLOCKED_DATA——待原始档案路径或
+  前瞻采集积累（R1 暂停点，不能接受掉）；E6b 全量 rerun 随 e6 脚本迁移 FixedStressScenario。
+- next_owner：R9（独立验收裁决本表）。
+
+---
+
+## R8｜统一入口与八类用户走查
+
+```text
+task_id: R8
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: dc7f12a（R5/R6 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/cli/main.py` | 新增 `research` 命令（单股研究工作台：MID/LONG 各一句资格结论+理由；系统草稿未激活；缺口逐条点名；已核验主张带引用可打开原文；`--capture` 真实网络采集财务→留样→筛查→因子能力→研究链）；版本 v0.8.22 |
+| `start.py` | research 命令路由+帮助（REPL 入口） |
+| `plan/fusion/iteration2/R8_WALKTHROUGH.md` | 八类走查记录（①④⑤⑥⑦⑧ 合成走查实测证据；②③ live 依赖如实待真实试用；性能基线 p50<0.1ms/p95 0.2ms） |
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1 每卡"现在做什么/为什么/何时再看" | R8_WALKTHROUGH.md 走查矩阵（6/8 类实测输出摘录；**P0 修正记录在案**——初版把「缺口行减少」误读为「命题建立」，系因子接线形状错配下的键存在性效应；修复后重跑重录） | PASS（6/8）/ ②③ 待真实试用（PARTIAL） |
+| 2 不支持的长期行业显示研究边界 | NOT_APPLICABLE→WAIT/REVIEW（决策表行4b 既有）+ research 缺口点名 | PASS |
+| 3 CLI/chat/Web/TUI 同输入一致 | **仅 CLI 接线本批完成**；chat/Web/TUI 适配随 R9 前接线批 | **PARTIAL**（如实） |
+| 4 新用户无需手填事实得草稿；不反复重填风险档/现金 | research 命令实测（无 --facts 生成草稿）+ 风险档/账户落配置（F7 既有） | PASS |
+| 5 today 不隐藏重大风险；变化不足不刷重复分析 | today 先持仓风险序（F7 既有）+ 同股同分钟影子幂等（既有）；融合风险上限三卡内不隐藏——design 承接 | PASS（既有语义回归）/ 新增验证随 R9 走查 |
+| 6 性能基线 p50/p95；缓存/AI 失败降级实测 | research 核心链路 p50<0.1ms/p95 0.2ms（n=20）+ LLM 失败/截断计数（R2） | PASS（核心链路）/ today 全渲染基线随 R9 |
+
+### remaining / next_owner
+
+- chat/Web/TUI 三端一致性接线、②③ 真实用户试用、today 全渲染基线：R9 前接线批。
+- 监督员审查修正：P0（走查证据与代码输出不符——更正重录）+ P1×2（因子接线形状错配
+  修复并重跑；「使用已归档证据」虚假话术改为如实降级 + 快照拒收摘要展示）+ P2×5
+  （死变量/对照臂/静默失败提示/E1b 精确匹配/E_SPEC_V2 注册表测试）全部修复。
+- next_owner：R9（独立验收——本表不得自证 VERIFIED，交独立审查者逐条裁决）。
+
+---
+
 *后续 R 卡按同模板追加。*

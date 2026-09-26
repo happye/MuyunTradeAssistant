@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.21"  # v0.8.21=第二轮R0资格止血（事实证据资格门/latest-only历史快照门/shadow逐周期标来源）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.22"  # v0.8.22=R7/R8（E矩阵manifest v2与E0b/E7b受控场景/research单股研究工作台）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -92,6 +92,7 @@ def show_help():
     L.append(_cmd("today", "今日工作台（待办/持仓/等待——建议≠成交）"))
     L.append(_cmd("shadow", "影子对照报告（legacy vs fusion 决策表差异观察）"))
     L.append(_cmd("plan2 <代码> mid|long <意图>", "立中期/长期投资计划（影子出真判断的前提）"))
+    L.append(_cmd("research <代码>", "单股研究工作台：中长期比较/系统草稿/待验证节点（--capture 采集财务）"))
     L.append(_row())
     L.append(_row("● 分析"))
     L.append(_cmd("l <代码>", "实时深分析（自动落证据卡）"))
@@ -424,6 +425,11 @@ def parse_input(user_input: str):
     if cmd in ("shadow", "影子"):
         return ("shadow", {})
 
+    # ── 单股研究工作台（plan/fusion R8）：中长期比较/系统草稿/待验证节点 ──
+    if cmd in ("research", "研究"):
+        return ("research", {"rest": parts[1:]})
+
+
     # ── 计划V2（plan/fusion F5/F7）：中期/长期投资计划——影子出真判断的前提 ──
     if cmd in ("plan2", "计划2"):
         return ("plan2", {"rest": parts[1:]})
@@ -730,6 +736,7 @@ _COMMAND_HINTS = {
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
     "plan2": "plan2 列出计划 | plan2 <代码> mid|long <意图> [--facts a,b] [--until 日期] | plan2 accept/rm <代码>",
+        "research": "research <代码> 单股研究工作台（中长期比较/系统草稿/缺口）[--capture 采集财务]",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",
@@ -1571,6 +1578,7 @@ def run_cli(mode: str, args: dict):
         console, scan_market, scan_events, show_expect, show_fear,
         scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
         diff_list_cmd, batch_tasks_cmd, today_command, shadow_command, plan2_command,
+        research_command,
     )
 
     ai_overrides = {}
@@ -1880,6 +1888,11 @@ def run_cli(mode: str, args: dict):
     elif mode == "plan2":
         # plan/fusion F5/F7：中期/长期投资计划（草稿→确认激活）
         plan2_command(args.get("rest") or [])
+
+    elif mode == "research":
+        # plan/fusion R8：单股研究工作台——中长期比较/系统草稿/待验证节点
+        research_command(args.get("rest") or [])
+
 
     elif mode == "noai":
         _no_ai = not _no_ai
