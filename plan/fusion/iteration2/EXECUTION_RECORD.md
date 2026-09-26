@@ -86,4 +86,62 @@ experiment.py 零改动）；HorizonPlan 经 `extra="allow"` 消费 `fact_eviden
 
 ---
 
+## R1｜财务语义、历史版本与可追溯快照
+
+```text
+task_id: R1
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: 26de693（R0 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/data/research_snapshot.py` | R1 主责：EvidenceRecord 版本化扩展（knowledge_basis 四级/document_version_id/first_seen_at/version_available_at/timestamp_precision/provenance_evidence_ids/semantic_status/semantic_note/raw_value/raw_unit/value_kind/period_basis/underlying_period_basis/metric_definition_version——三轴分离，缺省保守 UNKNOWN 不自动补绿）；统一资格算法 `assess_evidence_eligibility`（DATA_TRUST §1）+ EvidenceSnapshot.build 重写（拒收按 7 类原因码分类 + suspect_ids）；qualify 排除 SUSPECT 并给具体话术；派生守卫 `derive_single_quarter_from_cumulative`/`derive_ttm_from_single_quarters`（比率不可差分/跨年拒绝/TTM-YTD 不混）；量级筛查 `screen_semantic_anomalies`（ISS-114，只隔离不纠偏）；R0 临时门 `_is_latest_only_unverifiable` **删除**（knowledge_basis 正式替代，不两套长存）；builders 显式声明版本语义（bar 复权口径参数化） |
+| `src/data/financial_data.py` | R1 主责：32 字段语义登记表 `FIELD_DEFINITIONS`（value_kind/period_basis/underlying/unit/definition_note，verification_status=name_semantics_pending_original 如实）；get_financial_quarterly 消费登记表（未登记字段不产证据）；采集管线 `capture_quarterly_evidence`（原始响应写一次留样+观测索引，DATA_TRUST §2 链路1）；ISS-114 版本化映射 `UNIT_DRIFT_MAPPINGS`+`apply_unit_drift_mapping`（范围+证据透明，非全局 ×100） |
+| `src/data/research_store.py` | 新增：最小存储（raw 写一次归档/观测索引/快照清单/纠错账本，DATA_TRUST §5；隔离目录，绝不写 portfolio/HOME） |
+| `tests/core/test_research_snapshot.py` / `test_financial_data.py` / `test_research_store.py` | R1 回归 17 条净增（档案入选/当时捕获/UNKNOWN 拒绝/修订 hash 稳定/SUSPECT 隔离/派生守卫/映射边界/留样幂等/坏行隔离/HOME 隔离） |
+| `tests/data_sources/probe_fin_semantics.py` | R1 验收6 显式网络探针（真实跑通，见下） |
+| `plan/fusion/DATA_COVERAGE.md` | 财务/行情两行按 R1 语义重写（原「财务可进严格快照/E2E4 解锁」表述作废）；范围结论更新 |
+| `ISSUES.md` | ISS-114 病根核实 + 处置登记 |
+
+### 真实探针结果（R1 验收6——真实网络实测，非 fixture 假称）
+
+`probe_fin_semantics.py` 2026-09-27 实测（日志 tests/artifacts/probe_fin_semantics.log，留样 768 份）：
+- **ISS-114 病根实证**：baostock `liabilityToAsset` 自 **2024-06-30 报告期起**全市场统一 ÷100——
+  万科A 与贵州茅台（正常公司）双样本一致；与东财资产负债表**绝对值按定义重算**交叉核对：
+  2024-03-31 及以前逐期吻合（差<1e-4），2024-06-30 起恒差 ×100。**供应商字段单位变更，非公司异动**。
+- 处置按 DATA_TRUST §2.4：版本化映射（适用范围=该字段×该源×边界后，canonical=raw×100，
+  raw_value 保原值，证据指针可审计）；其余 balance 字段是否同样漂移**待逐字段核定**（登记）。
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1a latest-only+旧pubDate 不进 strict | `test_latest_only_financial_excluded_from_strict_history`（探针 P4 反例保持） | PASS |
+| 1b 原始历史文档按真实公开日进快照 | `test_original_archive_document_enters_strict_by_publication_time`（AS_PUBLISHED_ARCHIVE+version_available_at） | PASS |
+| 2 同期修订后旧快照 hash 不变；新快照解释来源时点 | `test_restatement_does_not_change_old_snapshot_hash` + revisions_of/revision_id/available_at | PASS |
+| 3 类别正确时间基准；比率累计差分拒；TTM/YTD 不混 | 登记表测试 + `test_ratio_cumulative_diff_rejected_and_ttm_not_mixed` | PASS |
+| 4 单位异常/真实经营突变/缺失零值反例；隔离不冻结 | `test_unit_anomaly_suspect_isolated_not_frozen` / `test_real_business_mutation_isolated_then_resolved_by_human`（真实突变同样隔离、人工核对后解除）/ `test_zero_and_growth_not_screened`（零值/GROWTH 分支） | PASS |
+| 5 纠错列受影响对象；旧已确认成交不变 | invalidations 账本 + affected_refs 登记（`test_invalidation_ledger_*`）；store 无 portfolio 写能力 | PASS（账本层）/ **反向影响图随 R3/R4 接线补全**（PARTIAL 项） |
+| 6 正常公司+涉事样本原始资料验证 | 探针真实跑通（768 留样+交叉核定）；verification_status 如实 pending_original | PASS（交叉佐证档）/ 逐份原始财报确认登记为后续 |
+| 暂停点 | 严格 E2/E4 保持阻断（DATA_COVERAGE 已回写作废原解锁表述） | 遵守 |
+
+全量口径：`pytest -q` → 见 R1 提交（提交前实测）。
+
+### 五维度 / remaining / next_owner
+
+- implemented ✅ / **connected PARTIAL**（capture→screen→snapshot 路径测试覆盖；但**零生产
+  接线**——「分析卡可见财务证据资格与具体缺口」的可见交付随 R3/R8 落地，本卡只交付资格层）/
+  scenario_validated ✅（探针=真实场景）/
+  empirically_validated PARTIAL（映射待逐份原始财报确认；其余 balance 字段待核定）/
+  release_ready PARTIAL（严格 E2/E4 仍阻断——暂停点如约保持）
+- next_owner：R2（claim 内容核验，不同文件可并行）；R3/R4 接线 screen/invalidations 进服务层
+  与因子层（语义状态 UNKNOWN 的消费侧限制随之生效）；行业双时间轴（effective/known）随 R4。
+
+---
+
 *后续 R 卡按同模板追加。*

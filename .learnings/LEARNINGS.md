@@ -1815,3 +1815,23 @@ assess_thesis。回归 8 条进 tests/core 四文件。
 - Source: r0_qualification_stopbleeding
 - Pattern-Key: qualification.exists_check_masquerade_and_single_entry
 - Related Files: src/core/research.py, src/data/research_snapshot.py, src/core/shadow_diff.py, plan/fusion/iteration2/PROBES.md
+
+## [LRN-20260927-R1-ISS114] lesson — 量级异常先怀疑供应商侧变更，双源绝对值交叉核定定位边界
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（R1 版本化映射落地，证据入库）
+**Area**: data, evidence, supplier-drift
+
+ISS-114（万科 liabilityToAsset ≈÷100）最初像是公司财务异动。探针双样本（万科+茅台）+
+东财资产负债表绝对值按定义重算交叉核定后定位：**baostock 自 2024-06-30 报告期起该字段
+全市场统一 ÷100**——供应商字段单位变更，非公司异动。跨公司一致 + 精确边界日期 = 供应商侧
+指纹；单公司单指标看不出这个结构。
+
+处置模板（可复用）：①原始响应写一次留样；②相邻期量级筛查只隔离不纠偏；③跨源**绝对值按
+定义重算**交叉核对（不能用多数投票）；④修复=有适用范围+有证据指针的版本化映射（raw_value
+保原值），证据摘录入库（gitignore 的 artifacts 不能当证据链）。
+
+- Source: r1_probe_fin_semantics
+- Pattern-Key: data.supplier_unit_drift_crosscheck_and_scoped_mapping
+- Related Files: src/data/financial_data.py, src/data/research_snapshot.py, tests/data_sources/probe_fin_semantics.py, plan/fusion/iteration2/evidence/

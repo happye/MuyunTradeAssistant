@@ -12,6 +12,7 @@
 纯 mock 测试（monkeypatch baostock 模块属性），零网络。
 跑法：pytest tests/core/test_financial_data.py -q
 """
+import json
 import os
 import sys
 from datetime import datetime, timezone, timedelta
@@ -178,9 +179,11 @@ def test_evidence_integration_and_pit_gate(monkeypatch):
                                   records, strict=True)
     assert snap.records == []
     assert snap.drop_reasons.get("latest_only_unverifiable")
-    # 同批证据「当时抓取」（fetched_at=公布次日）→ 正常入快照（合规历史路径不受累）
+    # 同批证据「当时捕获」（first_seen=公布次日）→ 正常入历史快照（R1 CONTEMPORANEOUS_CAPTURE）
     backthen = [r.model_copy(update={
-        "fetched_at": datetime(2024, 4, 5, tzinfo=timezone(timedelta(hours=8)))})
+        "fetched_at": datetime(2024, 4, 5, tzinfo=timezone(timedelta(hours=8))),
+        "knowledge_basis": "CONTEMPORANEOUS_CAPTURE",
+        "first_seen_at": datetime(2024, 4, 5, tzinfo=timezone(timedelta(hours=8)))})
         for r in records]
     snap_ok = EvidenceSnapshot.build("600519",
                                      datetime(2024, 4, 10, tzinfo=timezone(timedelta(hours=8))),
@@ -193,3 +196,140 @@ def test_evidence_integration_and_pit_gate(monkeypatch):
                                       backthen, strict=True)
     assert snap_old.latest("netProfit") is None
     assert snap_old.dropped_pit == len(records)
+
+
+# ── R1：字段语义登记表 / 采集管线 / 语义筛查（DATA_TRUST §2/§3）──────────
+
+def test_field_registry_covers_all_interface_fields():
+    """登记表完整且关键类别正确：不登记语义的字段不产证据（派生规则分派不了就拒绝）。"""
+    for fn_name, fields in fd._INTERFACE_FIELDS.items():
+        for metric, _unit in fields:
+            d = fd.FIELD_DEFINITIONS.get(metric)
+            assert d is not None, f"{metric} 未登记语义"
+            assert d.interface == fn_name
+            assert d.verification_status == "name_semantics_pending_original", \
+                "未经原始资料复核的字段不得自称 verified"
+    assert fd.FIELD_DEFINITIONS["netProfit"].value_kind == "FLOW"
+    assert fd.FIELD_DEFINITIONS["netProfit"].period_basis == "YTD"
+    assert fd.FIELD_DEFINITIONS["epsTTM"].value_kind == "PER_SHARE_TTM"
+    assert fd.FIELD_DEFINITIONS["epsTTM"].period_basis == "TTM"
+    assert fd.FIELD_DEFINITIONS["totalShare"].value_kind == "STOCK"
+    assert fd.FIELD_DEFINITIONS["totalShare"].period_basis == "POINT_IN_TIME"
+    assert fd.FIELD_DEFINITIONS["YOYNI"].value_kind == "GROWTH"
+    assert fd.FIELD_DEFINITIONS["YOYNI"].period_basis == "COMPARATIVE"
+    assert fd.FIELD_DEFINITIONS["liabilityToAsset"].value_kind == "RATIO"
+    assert fd.FIELD_DEFINITIONS["liabilityToAsset"].period_basis == "POINT_IN_TIME"
+
+
+def test_financial_records_carry_registry_semantics(monkeypatch):
+    """证据记录带登记语义 + latest-only 定级 + 版本化字段（R1 契约）。"""
+    _install_fakes(monkeypatch, _MOUTAI_2023Q4)
+    records = fd.capture_quarterly_evidence("600519", 2023, 4, store=None)
+    np_rec = next(r for r in records if r.metric_or_claim == "netProfit")
+    assert np_rec.value_kind == "FLOW" and np_rec.period_basis == "YTD"
+    assert np_rec.knowledge_basis == "LATEST_WITH_PUBLICATION_DATE"
+    assert np_rec.document_version_id == np_rec.source_document_hash
+    assert np_rec.first_seen_at is not None and np_rec.metric_definition_version
+    assert np_rec.raw_value == np_rec.value and np_rec.raw_unit == "元"
+    yoy = next(r for r in records if r.metric_or_claim == "YOYNI")
+    assert yoy.value_kind == "GROWTH" and yoy.period_basis == "COMPARATIVE"
+
+
+def test_capture_archives_raw_idempotent(tmp_path, monkeypatch):
+    """采集管线：原始响应逐字段留样（写一次幂等）+ 观测索引 + 筛查接线。"""
+    from src.data.research_store import ResearchStore
+    _install_fakes(monkeypatch, _MOUTAI_2023Q4)
+    store = ResearchStore(tmp_path / "research")
+    first = fd.capture_quarterly_evidence("600519", 2023, 4, store=store)
+    raw_files = list((tmp_path / "research" / "raw").glob("*.json"))
+    assert len(raw_files) == len(first)
+    # 幂等重跑：同内容不覆盖原留样
+    second = fd.capture_quarterly_evidence("600519", 2023, 4, store=store)
+    assert len(list((tmp_path / "research" / "raw").glob("*.json"))) == len(first)
+    obs = list((tmp_path / "research" / "observations").glob("*.jsonl"))
+    assert obs and obs[0].read_text(encoding="utf-8").strip().count("\n") >= len(first) * 2 - 1
+    assert len(second) == len(first)
+
+
+# ISS-114 形态夹具（structure only——真值以原始财报核定，见 probe_fin_semantics.py；
+# 此处锁的是「筛查隔离、不自动 ×100」的行为，不是万科数值本身）
+_ISS114_SHAPES = {
+    "2023-09-30": {"pubDate": "2023-10-27", "statDate": "2023-09-30",
+                   "liabilityToAsset": "0.7322"},
+    "2023-12-31": {"pubDate": "2024-03-29", "statDate": "2023-12-31",
+                   "liabilityToAsset": "0.0073"},  # 跨期量级漂移形态（≈百倍）
+}
+
+
+def test_iss114_shape_isolated_not_corrected(monkeypatch, tmp_path):
+    """ISS-114 纪律（R1 验收4）：相邻期量级跳变 → SUSPECT 隔离 + 纠错账本登记；
+    不自动 ×100，不换算，其余字段不受累。"""
+    from src.data.research_store import ResearchStore
+    rows = {}
+    for period, row in _ISS114_SHAPES.items():
+        rows[period] = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+        rows[period]["query_balance_data"] = dict(row)
+        rows[period]["query_balance_data"].setdefault("code", "sz.000002")
+    store = ResearchStore(tmp_path / "research")
+    all_records = []
+    for year, quarter, period in [(2023, 3, "2023-09-30"), (2023, 4, "2023-12-31")]:
+        _install_fakes(monkeypatch, rows[period])
+        all_records.extend(fd.capture_quarterly_evidence("000002", year, quarter, store=store))
+    # 相邻期筛查在累积层做（跨季度比较——capture 单季不做）
+    from src.data.research_snapshot import screen_semantic_anomalies
+    all_records = screen_semantic_anomalies(all_records)
+    lta = [r for r in all_records if r.metric_or_claim == "liabilityToAsset"]
+    assert len(lta) == 2
+    statuses = {r.semantic_status for r in lta}
+    assert "SUSPECT" in statuses, "漂移期被隔离标记"
+    suspect = next(r for r in lta if r.semantic_status == "SUSPECT")
+    assert suspect.value == pytest.approx(0.0073), "值保持原样——不自动 ×100 纠偏"
+    assert "原始财报" in suspect.semantic_note or "人工核对" in suspect.semantic_note
+    # 其余字段不受累（不冻结全产品）
+    others = [r for r in all_records if r.metric_or_claim != "liabilityToAsset"]
+    assert others and all(r.semantic_status != "SUSPECT" for r in others)
+    # 纠错账本：SUSPECT 可登记为待核对事项（隔离 ≠ 接受）
+    inv = store.append_invalidation(
+        cause_kind="unit_drift", security_id="000002", metric="liabilityToAsset",
+        period_end=suspect.period_end,
+        description="相邻期量级跳变 >10x（筛查命中）——待原始财报核定，未自动纠偏")
+    assert store.list_invalidations(metric="liabilityToAsset")
+    assert inv["status"] == "open"
+
+
+def test_unit_drift_mapping_scoped_and_transparent(monkeypatch, tmp_path):
+    """ISS-114 版本化映射（DATA_TRUST §2.4）：只对适用范围（该字段×该源×边界后）生效；
+    raw_value 保供应商原值；note 带证据指针——透明可审计，不是静默 ×100。"""
+    from src.data.research_store import ResearchStore
+    def row_for(period_end, pub, lta):
+        rows = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+        rows["query_balance_data"] = {"code": "sz.000002", "pubDate": pub,
+                                      "statDate": period_end, "liabilityToAsset": str(lta)}
+        return rows
+
+    store = ResearchStore(tmp_path / "research")
+    records = []
+    for year, quarter, period, pub, lta in [
+            (2024, 1, "2024-03-31", "2024-04-27", "0.72707"),   # 边界前：不映射
+            (2024, 2, "2024-06-30", "2024-08-30", "0.007294")]:  # 边界后：×100
+        _install_fakes(monkeypatch, row_for(period, pub, lta))
+        records.extend(fd.capture_quarterly_evidence("000002", year, quarter, store=store))
+    lta_recs = {r.period_end: r for r in records if r.metric_or_claim == "liabilityToAsset"}
+    before = lta_recs["2024-03-31"]
+    after = lta_recs["2024-06-30"]
+    assert before.value == pytest.approx(0.72707), "边界前不动"
+    assert before.semantic_note == ""
+    assert after.value == pytest.approx(0.7294), "边界后映射 ×100"
+    assert after.raw_value == pytest.approx(0.007294), "供应商原值保留"
+    assert "×100" in after.semantic_note and "证据" in after.semantic_note
+    assert after.metric_definition_version.endswith("iss114_driftfix")
+    # 其他字段不受映射影响（即便同在边界后）
+    other = [r for r in records if r.period_end == "2024-06-30"
+             and r.metric_or_claim != "liabilityToAsset"]
+    assert all(r.semantic_note == "" for r in other)
+    # 原始留样仍是供应商原值（归档发生在映射前）
+    raws = [json.loads(p.read_text(encoding="utf-8"))
+            for p in (tmp_path / "research" / "raw").glob("*.json")]
+    lta_raws = [r for r in raws if r["content"]["metric"] == "liabilityToAsset"]
+    values = sorted(r["content"]["value"] for r in lta_raws)
+    assert values == [0.007294, 0.72707], "留样=供应商原貌（含漂移值本身）"
