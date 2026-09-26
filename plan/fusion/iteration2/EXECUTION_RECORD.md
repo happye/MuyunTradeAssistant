@@ -271,4 +271,82 @@ delivered_commit: （commit 后回填）
 
 ---
 
+## R5｜账户事实、现金与合法数量预算
+
+```text
+task_id: R5
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: 9b93d3f（R3 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/data/account_snapshot.py` | 新增：AccountSnapshot（cash_available/cash_reserved/holdings(数量成本批次)/NAV及定价时点/data_completeness——RATIO_ONLY 权重假设视图不冒充数量）；AccountEventLog（事件追加账本：BUY/SELL/FEE/DIVIDEND/DEPOSIT/WITHDRAW 独立事件、event_id 幂等、崩溃重放恢复——FIFO 批次扣减）；LotRules/TradeRulesAdapter 接口（**不实现全市场规则表**——R6 提供官方核验实现）；FeeModel（最低佣金边界显式）；allocate_tradeable_budget（连续 indicative → 离散可行：FEASIBLE/CONDITIONAL/REJECTED + 唯一阻塞字段 + 额度释放；参数表无未来回撤通道——验收6） |
+| `tests/core/test_account_snapshot.py` | R5 回归 12 条（七条验收对应 + 板块规则差异/费用边界/FIFO 批次/幂等重放） |
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1a 现金 None 不显示可买金额/股数 | test_cash_none_gives_conditional_not_amount（CONDITIONAL+唯一阻塞字段） | PASS |
+| 1b 现金 0 与缺失分别解释 | test_cash_zero_vs_missing_distinct（0→REJECTED 仍不足；None→CONDITIONAL 问现金） | PASS |
+| 2 预算不足最低申报量拒绝+释放；板块/日期规则差异、零股卖出字段、费用边界 | test_budget_below_min_order_rejected_and_released / test_board_rules_differ_via_interface / test_sell_odd_lots_rule_field_exists / test_fee_min_commission_boundary | PASS |
+| 3 部分成交/重复确认/崩溃重启不重复入账 | test_event_log_idempotent_and_replay / test_partial_then_more_fills_accumulate（event_id 幂等+重放一致） | PASS |
+| 4 拟卖未确认/已占用/已入账三态不重复计可用 | test_reserved_cash_not_double_counted（cash_deployable=available-reserved；未入账 SELL 不产生现金） | PASS |
+| 5 新开/加/减/清/清后再开维护主计划关联 | R3 active_refs 生命周期测试承接（设置需接受精确版本、重建不沿用）；确认流与 proposals 账本联动 | **PARTIAL**（plan_ref 字段与生命周期已落；确认流联动随 R8——监督员修正：原判 PASS 偏宽） |
+| 6 风险预算占用受限；未来回撤参数无输入通道；终检不越限 | solve_budget 压力约束（既有）+ test_no_future_drawdown_parameter_channel + test_discrete_rounding_never_exceeds_budget | PASS |
+| 7 两写入者冲突显式拒绝；不改真实账户 | M5 指纹拒绝（既有测试）+ 事件账本 event_id 幂等；测试全隔离目录。**注记：事件账本 append 幂等为 check-then-act，单写者前提**（沿用 proposals.json 口径；多进程并发同 event_id 会双行——监督员 P2 登记） | PASS（单写者前提注记） |
+| 监督员修正补记 | P1×2 修复（多行分配串行扣减现金池——合计不超可部署；坏 BUY 事件隔离不炸整本重放）；P2：告警三处同步（plain_errors+速查手册 N+6 节）、幽灵持仓/fee 留痕语义/replay 未知现金 None/终检复核/释放池如实降「登记待 R8 再分配」 | 已修 |
+
+### remaining / next_owner
+
+- **pos confirm 流与 AccountEventLog 的联动接线随 R8**（今日确认流仍走 proposals 账本——
+  事件账本为 R8 准备的双账本事务基础）；today 的「可行数量或唯一阻塞字段」显示随 R8。
+- 交易规则数据（官方核验的 LotRules 表）由 R6 提供——R5 只定义接口与消费，不硬编码。
+- 释放额度自动再分配随 R8（本版如实只登记 released_budget_weight，不自动加量）。
+- next_owner：R6（规则接口实现+回放闭环）；R8（确认流联动+today 显示）。
+
+---
+
+## R6｜交易制度与回放闭环
+
+```text
+task_id: R6
+owner: 实施方（Claude Code）
+status: REVIEW
+baseline_commit: 9b93d3f（R3 后）
+delivered_commit: （commit 后回填）
+```
+
+### owned_files / 变更面
+
+| 文件 | 变更 |
+|---|---|
+| `src/core/experiment.py` | DatedRuleEntry + DATED_RULES（日期化规则注册：印花税 2023-08-28 切换【财政部/税务总局公告2023年第39号】、科创板最低申报 200 股【上交所科创板交易规则】——每条带来源；明确「不冒充最新制度清单，R9 复核」）+ rule_at（切换日边界判定）；CorporateAction + apply_corporate_action（分红入现金/送转扩股调成本——未复权价+行动台账配对，无双计通道）；MarketStatusCheck（停牌/上市/退市拒绝；状态数据 None=缺失→调用方必须标 NON_STRICT，不因接口存在就绿灯） |
+| `tests/backtest/e0b_directed_scenarios.py` | 新增：E0b 定向成交场景脚本（同日买入退出被拒计数非零/次日老仓可卖/末日尚不可卖按最后价格估值——期末残余持仓列示不虚构强平/除权分红恒等/印花税切换边界/三态拒绝；temporal_eligibility=NON_STRICT 合成价格如实标注；报告落 tests/artifacts/e0b_directed_report.json） |
+| `tests/core/test_experiment_r6.py` | R6 回归 9 条 |
+
+### 验收条款逐条
+
+| 条款 | 证据 | 判定 |
+|---|---|---|
+| 1 E0b 定向：新仓不可卖/老仓可卖计数非零；未能卖出仍持有并估值 | e0b_directed_scenarios 场景1/3 实测（blocked=1、残余持仓按最后价格估值） | PASS |
+| 2 除权分红恒等；不复权价与分红现金不双计 | apply_corporate_action 恒等测试（分红=持股×每股；收益=未复权价差+分红一次）+ 送转批次 | PASS |
+| 3 状态数据缺失标 NON_STRICT 不绿灯 | MarketStatusCheck None 语义 + E0b 报告 temporal_eligibility=NON_STRICT | PASS |
+| 4 费用/税切换日边界、板块申报差异有真实来源与固定夹具 | DATED_RULES 来源字段（test_rules_registry_has_sources）+ 边界测试 | PASS（已登记规则事实）/ **全市场现行规则核验归 R9 复核** |
+| 5 固定意图与数量下成本单调 | test_cost_monotonicity_fixed_intent_and_quantity（双边费率单调） | PASS |
+| 可见交付 | 回放报告显示制度版本来源/不可成交原因/期末残余持仓（E0b 报告 JSON） | PASS（E0b 范围）/ 完整回放（历史 PIT 全集）仍 blocked（如实） |
+
+### remaining / next_owner
+
+- 真实历史停牌/退市/行业成员数据接入后 run 才能升级 strict（暂停点保持）；
+  E0b 冻结修正臂作为后续基线（VALIDATION §4 E0b——修正臂 manifest 冻结随 R7）。
+- next_owner：R7（E0b manifest 冻结 + E2b/E3b/E4b/E5b/E6b/E7b 按重定级口径执行）。
+
+---
+
 *后续 R 卡按同模板追加。*

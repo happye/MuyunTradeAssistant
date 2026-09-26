@@ -329,3 +329,127 @@ class PortfolioReplay:
             p = prices.get(code, pos.last_price)
             mv += pos.shares * (p if p is not None else pos.last_price)
         return self.cash + mv
+
+
+# ──────────────── R6：日期化交易规则、公司行动与制度场景 ────────────────
+
+class DatedRuleEntry(BaseModel):
+    """一条日期化规则（生效日期 + 板块范围 + 来源——R6 验收4：切换日边界有真实来源）。
+
+    诚实边界：本注册表只登记**可公开核验的稳定规则事实**并附来源；交易所可能
+    调整——R9 发布前须按官方现行文件复核，本表不冒充最新制度清单。"""
+
+    rule_id: str
+    board_scope: list[str] = Field(default_factory=list, description="适用板块（空=全市场）")
+    effective_from: str = Field(description="生效日期 YYYY-MM-DD")
+    value: dict = Field(description="规则参数（如 {'stamp_rate': 0.0005}）")
+    source: str = Field(description="来源（官方公告/交易所规则名——可查）")
+
+
+# 已知真实的规则切换事实（示例：印花税 2023-08-28 减半——财政部/税务总局公告
+# 2023年第39号；科创板最低申报 200 股——上交所科创板股票交易规则）。
+# 用途：切换日边界测试的真实来源锚点；**非最新制度清单**（R9 复核）。
+DATED_RULES: list[DatedRuleEntry] = [
+    DatedRuleEntry(rule_id="stamp_tax_sell", board_scope=[],
+                   effective_from="2023-08-28",
+                   value={"stamp_rate": 0.0005},
+                   source="财政部 税务总局公告2023年第39号：证券交易印花税减半征收"),
+    DatedRuleEntry(rule_id="stamp_tax_sell", board_scope=[],
+                   effective_from="1900-01-01",
+                   value={"stamp_rate": 0.001},
+                   source="2023-08-28 前的印花税口径（减半前）"),
+    DatedRuleEntry(rule_id="star_min_order", board_scope=["star"],
+                   effective_from="2019-07-22",
+                   value={"min_order_qty": 200, "lot_step": 1},
+                   source="上海证券交易所科创板股票交易规则：限价申报单笔不低于200股"),
+    DatedRuleEntry(rule_id="main_min_order", board_scope=["main", "chinext"],
+                   effective_from="1900-01-01",
+                   value={"min_order_qty": 100, "lot_step": 100},
+                   source="沪深交易所交易规则：买入以100股（一手）为单位"),
+]
+
+
+def rule_at(rule_id: str, as_of: str, board: str = "") -> Optional[DatedRuleEntry]:
+    """取某规则在 as_of 时点对某板块生效的最新条目（切换日边界判定）。"""
+    cands = [r for r in DATED_RULES
+             if r.rule_id == rule_id and r.effective_from <= as_of
+             and (not r.board_scope or board in r.board_scope)]
+    if not cands:
+        return None
+    return max(cands, key=lambda r: r.effective_from)
+
+
+class CorporateAction(BaseModel):
+    """一条公司行动（除权/除息/送转——与未复权价格配对使用，DATA_TRUST §5：
+    「以未复权成交价配公司行动台账计算持仓现金与数量」——不得复权价与分红现金双计）。"""
+    model_config = ConfigDict(extra="allow")
+
+    security_id: str
+    ex_date: str = Field(description="除权除息日 YYYY-MM-DD")
+    cash_dividend_per_share: float = Field(default=0.0, ge=0.0, description="每股现金分红（税前口径登记）")
+    share_ratio: float = Field(default=0.0, ge=0.0, description="每股送转比例（如 10送3 → 0.3）")
+    source: str = Field(default="", description="分红送转公告来源（可查）")
+
+
+def apply_corporate_action(replay: "PortfolioReplay", action: CorporateAction) -> list[ReplayTrade]:
+    """把公司行动落到回放账本（现金分红入现金；送转扩股不产生现金）——返回生成的
+    非交易账目（action 类型 ReplayTrade：shares 变动记录为 price=0 的 note 账目）。
+
+    恒等关系（R6 验收2）：除权日前持有 N 股、未复权价 P：
+      行动后现金 += N×每股分红；股数 += N×送转比例；股价口径保持未复权——
+      投资者收益 = (未复权卖价−未复权买价)×股数 + 分红现金，**不得**再用前复权
+      序列重复计入分红（前复权已把分红从历史价里扣除——双计即虚增收益）。"""
+    generated: list[ReplayTrade] = []
+    pos = replay.positions.get(action.security_id)
+    if pos is None or pos.shares <= 0:
+        return generated
+    if action.cash_dividend_per_share > 0:
+        cash_amt = round(pos.shares * action.cash_dividend_per_share, 2)
+        replay.cash += cash_amt
+        generated.append(ReplayTrade(stock_code=action.security_id, date=action.ex_date,
+                                     action="SELL", shares=0, price=0.0,
+                                     note=f"现金分红 {cash_amt} 元（{action.cash_dividend_per_share}/股，"
+                                          f"来源:{action.source or '未登记'}）——独立事件不并入价差"))
+    if action.share_ratio > 0:
+        new_shares = int(pos.shares * action.share_ratio)
+        if new_shares > 0:
+            pos.shares += new_shares
+            pos.lots.append({"date": action.ex_date, "shares": new_shares,
+                             "corporate_action": True})
+            pos.cost_per_share = round(pos.cost_per_share / (1 + action.share_ratio), 6)
+            generated.append(ReplayTrade(stock_code=action.security_id, date=action.ex_date,
+                                         action="BUY", shares=new_shares, price=0.0,
+                                         note=f"送转股 +{new_shares} 股（成本价除权调整）——非现金交易"))
+    return generated
+
+
+class MarketStatusCheck:
+    """停牌/IPO/退市状态检查（纯函数；真实历史状态数据缺失时 run 必须标 NON_STRICT
+    ——不因接口存在就绿灯，R6 验收3）。"""
+
+    @staticmethod
+    def check_suspended(security_id: str, trade_date: str,
+                        suspended_days: Optional[set]) -> None:
+        """停牌日不可成交。suspended_days=None 表示状态数据缺失——本检查跳过但
+        由调用方登记 NON_STRICT（缺数据不等于无停牌）。"""
+        if suspended_days is None:
+            return
+        if trade_date in suspended_days:
+            raise ValueError(f"停牌不可成交：{security_id} {trade_date}")
+
+    @staticmethod
+    def check_listed(security_id: str, trade_date: str, listing_date: Optional[str]) -> None:
+        """上市日前不可买入（IPO 未上市）。listing_date=None → 数据缺失，调用方标 NON_STRICT。"""
+        if listing_date is None:
+            return
+        if trade_date < listing_date:
+            raise ValueError(f"IPO 未上市不可买入：{security_id} 上市 {listing_date}，交易日 {trade_date}")
+
+    @staticmethod
+    def check_not_delisted(security_id: str, trade_date: str,
+                           delist_date: Optional[str]) -> None:
+        """退市后不可成交；持仓在退市日按最后价格估值（虚构强平收益被禁止）。"""
+        if delist_date is None:
+            return
+        if trade_date > delist_date:
+            raise ValueError(f"已退市不可成交：{security_id} 退市 {delist_date}，交易日 {trade_date}")
