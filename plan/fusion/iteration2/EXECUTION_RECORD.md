@@ -196,7 +196,7 @@ task_id: R4
 owner: 实施方（Claude Code）
 status: REVIEW
 baseline_commit: 6b8544f（R1 后）
-delivered_commit: （commit 后回填）
+delivered_commit: cddd191
 ```
 
 ### owned_files / 变更面
