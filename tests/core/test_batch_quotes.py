@@ -163,11 +163,18 @@ def _canned_kline_df():
 
 
 def test_kline_disk_cache_same_day_second_call_no_fetch(monkeypatch, tmp_path):
+    # 冻结时钟到白天（17:30 前当日缓存有效）——否则 17:30 后跑本用例必挂
+    # （当日缓存规则：白天写的缓存 17:30 后须重拉；时间依赖测试必须定死时间，2026-09-26）
+    class FakeDayDT(datetime):
+        @classmethod
+        def now(cls):
+            return datetime(2026, 9, 7, 10, 0, 0)
+
     monkeypatch.setattr(AKShareClient, "_kline_cache_dir", classmethod(lambda cls: tmp_path))
     calls = []
     monkeypatch.setattr(AKShareClient, "_get_historical_kline_uncached",
                         classmethod(lambda cls, code, period, adjust, s, e, retry: calls.append(1) or _canned_kline_df()))
-    with _quiet():
+    with _swap(akc, "datetime", FakeDayDT), _quiet():
         df1 = AKShareClient.get_historical_kline("600519")
         df2 = AKShareClient.get_historical_kline("600519")
     assert calls == [1], "同日第二次调用应命中磁盘缓存，不再请求"

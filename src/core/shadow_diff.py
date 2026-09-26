@@ -17,8 +17,8 @@ facts 映射规则（v1，显式登记；改动必须 bump 版本）：
   stop_loss_trim, time_stop, weak_sell}（预设技术退出，MID 行5）
 - entry_condition_met  ← 终态 position_action ∈ {OPEN, ADD}
 - research_status      ← packet.research_status 透传（数据缺口/分歧如实进入决策表）
-- thesis_status        ← 恒 UNESTABLISHED（v1 无投资逻辑记录层——不拿评分/技术信号
-  冒充逻辑；真 thesis 待 PlanV2 逻辑记录流程，F7 TODO）
+- thesis_status ← **v2**：用户计划（plan2）带 facts_observed（已发生事实）→ VALID；
+  无计划/无事实 → UNESTABLISHED（评分/技术信号仍不冒充逻辑）
 - budget_available     ← None（组合预算未接，组合信息未知不给精确目标）
 - confirmed_ratio      ← 持仓事实 pos.current_ratio
 - 不把 legacy mode（气宗/剑宗）映射成 horizon——每个持仓同时评估 MID 与 LONG
@@ -40,7 +40,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-SHADOW_DERIVATION_VERSION = "shadow_v1"
+SHADOW_DERIVATION_VERSION = "shadow_v2"  # v2：优先消费用户 plan2 计划（真判断前提）
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -55,6 +55,7 @@ REASON_HARD_EXIT = "hard_exit_divergence"      # fusion 要求退出而 legacy �
 REASON_THESIS = "thesis_unestablished"         # fusion 无投资逻辑记录 → REVIEW/WAIT
 REASON_RESEARCH = "research_gap"               # 证据缺口/分歧 → 冻结新增风险
 REASON_ACTION_FLIP = "action_flip"             # 动作族翻转（非硬退出/研究差异所致）
+REASON_PLAN_DRAFT = "plan_draft_not_activated"  # 用户计划未激活 → 只产出复核（行0 激活门）
 REASON_AGREE = "agree"                         # 动作族一致
 
 
@@ -75,6 +76,8 @@ class ShadowDiffRecord(BaseModel):
     technical_exit: bool = False
     research_status: str = ""
     thesis_status: str = "UNESTABLISHED"
+    plan_source: str = Field(default="simulated",
+                             description="simulated / user_plan_draft / user_plan_accepted")
     delta_reasons: list[str] = Field(default_factory=list, description="差异原因标签（报告按此聚合）")
     derivation_version: str = SHADOW_DERIVATION_VERSION
     shadow_disclosure: str = "shadow 模拟计划（非用户确认，仅对照观察）"
@@ -132,8 +135,14 @@ def _derive_shadow_plan(horizon, security_id: str, as_of: datetime,
 
 
 def _classify_reasons(facts: dict, mid_packet, long_packet,
-                      legacy_desired: str) -> list[str]:
-    """差异原因分类（优先级：硬退出 > 研究缺口 > 逻辑未立 > 动作翻转 > 一致）。"""
+                      legacy_desired: str, plan_source: str = "simulated") -> list[str]:
+    """差异原因分类（优先级：硬退出 > 研究缺口 > 逻辑未立/计划未激活 > 动作翻转 > 一致）。
+
+    v2 归因（审查 P2：plan_source 感知——真判断不被系统性归入「逻辑未立」桶）：
+    - simulated：REVIEW/WAIT 且无逻辑 → thesis_unestablished（模拟无计划，如实）
+    - user_plan_draft：REVIEW/WAIT → plan_draft_not_activated（行0 激活门，等用户确认）
+    - user_plan_accepted：不打逻辑类标签（已登记逻辑；REVIEW 多来自研究缺口，另计）
+    """
     reasons: list[str] = []
     legacy_exit_family = legacy_desired in ("EXIT", "REDUCE")
     mid_exit_family = mid_packet.desired_action.value in ("EXIT", "REDUCE")
@@ -144,10 +153,12 @@ def _classify_reasons(facts: dict, mid_packet, long_packet,
     research_status = getattr(facts["research_status"], "value", facts["research_status"])
     if research_status in ("INCOMPLETE", "CONFLICTED"):
         reasons.append(REASON_RESEARCH)
-    if facts["thesis_status"] is None:  # v1 恒 UNESTABLISHED
-        if mid_packet.desired_action.value in ("REVIEW", "WAIT") or \
-                long_packet.desired_action.value in ("REVIEW", "WAIT"):
-            reasons.append(REASON_THESIS)
+    reviewish = (mid_packet.desired_action.value in ("REVIEW", "WAIT") or
+                 long_packet.desired_action.value in ("REVIEW", "WAIT"))
+    if reviewish and plan_source == "simulated":
+        reasons.append(REASON_THESIS)
+    elif reviewish and plan_source == "user_plan_draft":
+        reasons.append(REASON_PLAN_DRAFT)
     agreed = (legacy_exit_family == mid_exit_family == long_exit_family) or \
              (mid_packet.desired_action.value == legacy_desired and
               long_packet.desired_action.value == legacy_desired)
@@ -160,8 +171,11 @@ def _classify_reasons(facts: dict, mid_packet, long_packet,
 
 def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                    *, packet=None, source: str = "", config: Optional[dict] = None,
-                   store_path: Optional[Path] = None) -> Optional[ShadowDiffRecord]:
-    """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。"""
+                   store_path: Optional[Path] = None,
+                   plans_store=None) -> Optional[ShadowDiffRecord]:
+    """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。
+
+    plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。"""
     if pos is None:
         return None
     if not _load_capture_switch(config):
@@ -183,9 +197,26 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
 
     as_of = datetime.now().astimezone()
     security_id = packet.security_id
+
+    # v2：用户 plan2 计划优先（每股每周期一份——mid/long 可各立）。
+    # 已激活计划走真决策表；草稿按行0 只复核；facts 只作用于其所在周期。
+    user_plans: dict = {}
+    try:
+        store = plans_store
+        if store is None:
+            from src.data.horizon_plans import HorizonPlanStore
+            store = HorizonPlanStore()
+        for h in ("MID", "LONG"):
+            user_plans[h] = store.get(security_id, h)
+    except Exception as e:
+        logger.debug(f"PlanV2 读取失败（按无计划处理）: {e}")
+    has_user_plan = any(p is not None for p in user_plans.values())
+    plan_source = ("user_plan_accepted" if any(p is not None and p.activated
+                                               for p in user_plans.values())
+                   else "user_plan_draft" if has_user_plan else "simulated")
+
     hf_kwargs = dict(
         research_status=facts["research_status"] or ResearchStatus.INCOMPLETE,
-        thesis_status=ThesisStatus.UNESTABLISHED,
         hard_exit_triggered=facts["hard_exit_triggered"],
         hard_exit_detail=f"sell_path={getattr(strategy_decision, 'sell_path', None)}",
         technical_exit_triggered=facts["technical_exit_triggered"],
@@ -196,15 +227,22 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     horizon_packets: list = []
     confirmed_ratio = getattr(pos, "current_ratio", None)
     for horizon in (Horizon.MID, Horizon.LONG):
-        plan = _derive_shadow_plan(horizon, security_id, as_of,
-                                   trade_plan=getattr(pos, "trade_plan", None))
+        up = user_plans.get(horizon.value)
+        hf = dict(hf_kwargs)
+        # 事实只作用于用户计划所在的周期——不把一份计划的逻辑事实泄漏到另一周期
+        hf["thesis_status"] = (ThesisStatus.VALID
+                               if (up is not None and list(getattr(up, "facts_observed", []) or []))
+                               else ThesisStatus.UNESTABLISHED)
+        plan = up if up is not None else _derive_shadow_plan(
+            horizon, security_id, as_of, trade_plan=getattr(pos, "trade_plan", None))
         horizon_packets.append(
-            evaluate_horizon(plan, HorizonFacts(**hf_kwargs), security_id,
+            evaluate_horizon(plan, HorizonFacts(**hf), security_id,
                              confirmed_ratio=confirmed_ratio))
     mid_packet, long_packet = horizon_packets[0], horizon_packets[1]
 
     legacy_desired = packet.desired_action.value
-    delta_reasons = _classify_reasons(facts, mid_packet, long_packet, legacy_desired)
+    delta_reasons = _classify_reasons(facts, mid_packet, long_packet, legacy_desired,
+                                      plan_source)
     legacy_pos_action = getattr(strategy_decision, "position_action", None)
     legacy_pos_action_val = getattr(legacy_pos_action, "value", legacy_pos_action) or ""
     record = ShadowDiffRecord(
@@ -221,7 +259,13 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         hard_exit=facts["hard_exit_triggered"],
         technical_exit=facts["technical_exit_triggered"],
         research_status=getattr(facts["research_status"], "value", "") if facts["research_status"] else "",
-        thesis_status="UNESTABLISHED",
+        thesis_status=("VALID" if any(
+            p is not None and list(getattr(p, "facts_observed", []) or [])
+            for p in user_plans.values()) else "UNESTABLISHED"),
+        plan_source=plan_source,
+        shadow_disclosure=("对照评估（用户已确认计划——真判断）" if plan_source == "user_plan_accepted"
+                           else "对照评估（草稿计划未激活——只产出复核）" if plan_source == "user_plan_draft"
+                           else "shadow 模拟计划（非用户确认，仅对照观察）"),
         delta_reasons=delta_reasons,
     )
     store = Path(store_path) if store_path else SHADOW_STORE_PATH
@@ -291,6 +335,7 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
 _REASON_CN = {
     REASON_HARD_EXIT: "硬退出分歧（fusion 要求退出而 legacy 未退出）",
     REASON_THESIS: "fusion 无投资逻辑记录 → REVIEW/WAIT",
+    REASON_PLAN_DRAFT: "计划已立但未激活 → 只产出复核（plan2 accept 激活）",
     REASON_RESEARCH: "证据缺口/分歧 → 冻结新增风险",
     REASON_ACTION_FLIP: "动作族翻转",
     REASON_AGREE: "动作一致",
@@ -321,10 +366,25 @@ def render_shadow_report(report: dict) -> str:
         )
     lines = ["[bold cyan]🔍 影子对照报告[/bold cyan]",
              "  [dim]shadow 模拟计划（非用户确认，仅对照观察）——不改变任何主结论[/dim]"]
+    # plan_source 分组计数（审查 P1：真判断不被报告头盖成「模拟」）
+    n_accepted = sum(1 for r in report["records"]
+                     if r.get("plan_source") == "user_plan_accepted")
+    n_draft = sum(1 for r in report["records"]
+                  if r.get("plan_source") == "user_plan_draft")
+    n_sim = report["total"] - n_accepted - n_draft
+    src_parts = []
+    if n_accepted:
+        src_parts.append(f"真计划对照 {n_accepted} 条（你的 plan2 已激活——真判断）")
+    if n_draft:
+        src_parts.append(f"草稿计划 {n_draft} 条（plan2 accept 后出真判断）")
+    if n_sim:
+        src_parts.append(f"模拟 {n_sim} 条")
+    lines.append("  记录来源: " + "｜".join(src_parts))
     lines.append(f"  近 7 天捕获 {report['total']} 条（{report['stocks']} 只持仓）"
                  f"｜差异率 {report['diff_rate']:.0%}（非一致占比）")
     reason_labels = {"hard_exit_divergence": _REASON_CN[REASON_HARD_EXIT],
                      "thesis_unestablished": _REASON_CN[REASON_THESIS],
+                     "plan_draft_not_activated": _REASON_CN[REASON_PLAN_DRAFT],
                      "research_gap": _REASON_CN[REASON_RESEARCH],
                      "action_flip": _REASON_CN[REASON_ACTION_FLIP],
                      "agree": _REASON_CN[REASON_AGREE]}

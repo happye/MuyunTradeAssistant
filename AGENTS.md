@@ -121,7 +121,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-当前版本：**v0.8.20**（影子阶段前置，2026-09-26）：`shadow` 影子对照报告（l/la/chat 分析持仓时自动用 fusion 中期/长期决策表出对照包，差异分原因落 `~/.muyun/shadow_diff.jsonl`，开关 `fusion.shadow_capture`）；E0 正确性基线真实执行（21 案例双臂，差异在噪声阈内——旧基线与修正后基线等价，报告 `plan/fusion/E0_BASELINE_REPORT.md`）；数据资格探查落地（财务季频 pubDate/申万指数/停牌状态实证可得，`DATA_COVERAGE.md` 已回写）；用户走查修补（`diff` 无参数列可对比清单/today 等待条件逐只明细/摘要与影子报告术语中文化/用户风险档 `fusion.risk_profile` 已配置）。
+当前版本：**v0.8.20**（影子阶段前置，2026-09-26）：`shadow` 影子对照报告（l/la/chat 分析持仓时自动用 fusion 中期/长期决策表出对照包，差异分原因落 `~/.muyun/shadow_diff.jsonl`，开关 `fusion.shadow_capture`）；`plan2` 计划V2（`plan2 <代码> mid|long <意图> --facts 事实` 立中期/长期计划，`plan2 accept <代码>` 激活——激活后影子用真计划裁决，每股每周期一份存 `~/.muyun/horizon_plans.json`）；`diff` 无参数列可对比清单 + `diff <代码> --ai` 可选 AI 解读；today「等待条件」逐只明细 + 单股额度显示（用户风险档 `fusion.risk_profile`）；E0 正确性基线真实执行（21 案例双臂，差异在噪声阈内，报告 `plan/fusion/E0_BASELINE_REPORT.md`）；E6 组合实验真实执行（报告 `plan/fusion/E6_REPORT.md`）；数据资格探查落地 + 财务季频接线（`src/data/financial_data.py`）；RAG 加载峰值保护 `MUYUN_RAG_MAX_THREADS`（§五硬件节）。
 v0.8.19（融合架构 F0–F9 已全部实施，2026-09-25）：`today` 今日工作台、`pos confirm` 成交确认、持仓事实与建议分离（分析不改持仓）、终态统一输出（摘要/diff/排名）、证据快照 PIT 资格、三路候选池与因子登记、周期决策表（fusion_mid/long，未接入生产）、claim 事件谱系、组合预算求解、实验矩阵与回放基建、五阶段发布阶梯。
 测试 811→**1059**。**版本逐批叙事**（v0.8.15–v0.8.19）已迁入 `docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md`；用户可感知变更清单见 README「版本历史」；**F 批实施账本与交接入口 = `plan/fusion/EXECUTION_RECORD.md`**（F0–F9 全部 VERIFIED；E0 基线与影子差异机制已落地，待办：影子数据积累→opt_in 推进、E1–E7 逐实验执行、八类用户走查，见账本未完成条款）。
 

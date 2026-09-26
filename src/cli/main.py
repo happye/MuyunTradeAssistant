@@ -3754,6 +3754,116 @@ def diff_list_cmd():
     console.print("  [dim]用法: diff <代码>（对比该股最近两次深分析的变化点）[/dim]")
 
 
+def plan2_command(rest: list):
+    """plan2 计划V2（plan/fusion F5/F7）：中期/长期投资计划——先讲清楚投资逻辑，
+    影子对照与周期决策表才有真判断依据（否则只产出「需人工复核」）。
+
+    用法:
+      plan2                                  列出全部计划
+      plan2 <代码> mid|long <意图描述>        新建/更新草稿（--facts 事实1,事实2 已发生
+                                             事实；--until YYYY-MM-DD 期限；--checkpoint 说明）
+      plan2 accept <代码>                    确认激活（激活前只产出复核建议不出行动）
+      plan2 rm <代码>                        删除计划
+    """
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore()
+    if store.corrupted:
+        console.print("[red]⚠ horizon_plans.json 读取失败（损坏保护生效）——"
+                      "本次按空处理且不会覆盖原文件，请手工检查该文件[/red]")
+    rest = [p for p in (rest or []) if p.strip()]
+    if not rest:
+        plans = store.list_plans()
+        console.print("\n[bold cyan]📋 计划V2（中期/长期投资计划）[/bold cyan]")
+        if not plans:
+            console.print("  （还没有计划——plan2 <代码> mid|long <意图描述> 新建）")
+            return
+        for p in plans:
+            status = "已激活" if p.activated else "草稿（未激活——只产出复核建议）"
+            console.print(f"  {p.security_id} [{p.horizon.value}] {status} "
+                          f"r{p.revision} ｜ {p.intent[:50]}")
+        console.print("  [dim]plan2 accept <代码> 确认激活[/dim]")
+        return
+
+    # 双序兼容（审查 P0）：plan2 accept <代码> [mid|long] 与 plan2 <代码> accept 等价
+    if rest[0].lower() in ("accept", "rm") and len(rest) > 1:
+        rest = [rest[1], rest[0]] + rest[2:]  # 动作统一换到第二位
+    code = normalize_stock_code(rest[0])
+    sub = rest[1].lower() if len(rest) > 1 else ""
+    horizon_arg = rest[2].lower() if len(rest) > 2 and rest[2].lower() in ("mid", "long") else None
+    if sub == "accept":
+        ok, msg = store.accept(code, horizon_arg)
+        if ok:
+            console.print(f"  ✅ {code} 计划已激活（{msg}）——影子对照/周期决策表开始出真判断")
+        elif msg == "no_plan":
+            console.print(f"  [yellow]{code} 没有计划——先 plan2 {code} mid|long <意图>[/yellow]")
+        elif msg.startswith("ambiguous"):
+            console.print(f"  [yellow]{code} 同时有 mid 和 long 计划——指定周期: "
+                          f"plan2 accept {code} {msg.split(':')[1]}[/yellow]")
+        else:  # write_rejected
+            reason = ("计划文件此前损坏（损坏保护拒绝写）——请手工检查 ~/.muyun/horizon_plans.json"
+                      if store.corrupted else "计划文件被外部修改——重跑一次即可（会合并最新内容）")
+            console.print(f"  [red]激活失败：{reason}[/red]")
+        return
+    if sub == "rm":
+        console.print(f"  ✅ {code} 计划已删除" if store.remove(code, horizon_arg)
+                      else f"  [yellow]{code} 没有匹配的计划[/yellow]")
+        return
+    if sub not in ("mid", "long"):
+        console.print("  [yellow]用法: plan2 <代码> mid|long <意图描述> ／ plan2 accept <代码> [mid|long][/yellow]")
+        return
+    # 替换提醒（审查 P1：已激活计划被新草稿替换前必须明示）
+    existing = store.get(code, {"mid": "MID", "long": "LONG"}[sub])
+    if existing is not None and existing.activated:
+        console.print(f"  [yellow]⚠ {code} 已有一份激活的 {sub.upper()} 计划——本次将替换为"
+                      f"新草稿（激活态取消，需重新 accept）[/yellow]")
+
+    # 意图 = 代码/周期之后、第一个 --旗标 之前的自由文本；旗标段单独解析
+    flag_i = next((i for i, t in enumerate(rest) if t.startswith("--")), len(rest))
+    intent = " ".join(rest[2:flag_i]).strip()
+    flag_tokens = rest[flag_i:]
+    if not intent:
+        console.print("  [yellow]意图描述不能空——讲清楚这家公司靠什么赚钱、你为什么觉得会兑现[/yellow]")
+        return
+    facts, until, checkpoint = [], None, ""
+    i = 0
+    while i < len(flag_tokens):
+        tok = flag_tokens[i]
+        if tok == "--facts" and i + 1 < len(flag_tokens):
+            facts = [f.strip() for f in flag_tokens[i + 1].split(",") if f.strip()]
+            i += 2
+        elif tok == "--until" and i + 1 < len(flag_tokens):
+            until = flag_tokens[i + 1]
+            i += 2
+        elif tok == "--checkpoint" and i + 1 < len(flag_tokens):
+            checkpoint = flag_tokens[i + 1]
+            i += 2
+        else:
+            i += 1
+    from src.core.decision_policy import POLICY_ID_LONG, POLICY_ID_MID, HorizonPlan
+    from src.core.decision_contract import Horizon
+    from datetime import datetime as _dt
+    plan = HorizonPlan(
+        plan_id=f"p2_{code}_{_dt.now().strftime('%Y%m%d%H%M%S')}",
+        security_id=code, accepted_at=None,
+        horizon=Horizon.MID if sub == "mid" else Horizon.LONG,
+        policy_id=POLICY_ID_MID if sub == "mid" else POLICY_ID_LONG,
+        intent=intent[:200],
+        max_hold_until=until or None,
+        review_triggers=([checkpoint] if checkpoint else []),
+        facts_observed=facts,  # extra=allow 保留——影子评估据此推 thesis 状态
+    )
+    if store.save(plan):
+        console.print(f"  ✅ {code} [{plan.horizon.value}] 计划草稿已保存（未激活）")
+        console.print(f"     意图: {plan.intent}")
+        if facts:
+            console.print(f"     已发生事实: {'；'.join(facts)}")
+        console.print("  [dim]plan2 accept " + code + " 确认激活——激活后影子对照出真判断[/dim]")
+    else:
+        reason = ("计划文件此前损坏（损坏保护拒绝写）——请手工检查 ~/.muyun/horizon_plans.json"
+                  if store.corrupted else "计划文件被外部修改——重跑一次即可（会合并最新内容）")
+        console.print(f"  [red]保存被拒：{reason}[/red]")
+
+
 def today_command():
     """today 统一行动工作台（F7，plan/fusion ADR-F08）：先持仓风险，再等条件。
 

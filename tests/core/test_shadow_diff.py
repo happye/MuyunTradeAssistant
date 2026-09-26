@@ -88,13 +88,17 @@ def _packet(dr=None, sd=None, ev=None, confirmed=0.2):
 _UNSET = object()
 
 
-def _capture(tmp_path, sd=None, dr=None, pos=_UNSET, config=_ON, packet=None):
+def _capture(tmp_path, sd=None, dr=None, pos=_UNSET, config=_ON, packet=None,
+             plans_store=None):
+    from src.data.horizon_plans import HorizonPlanStore
+    store = plans_store if plans_store is not None else HorizonPlanStore(tmp_path / "plans.json")
     return capture_shadow(
         dr or _dr(), sd or _sd(), _eval(),
         _pos() if pos is _UNSET else pos,
         packet=packet or _packet(dr=dr, sd=sd),
         source="test", config=config,
-        store_path=tmp_path / "shadow.jsonl")
+        store_path=tmp_path / "shadow.jsonl",
+        plans_store=store)
 
 
 # ── 1. facts 映射 ───────────────────────────────────────────
@@ -287,3 +291,73 @@ def test_report_skips_old_records(tmp_path):
     _capture(tmp_path)
     report = build_shadow_report(store_path=store, days=7)
     assert report["total"] == 1
+
+
+# ── v2：用户 plan2 计划消费（真判断前提）────────────────────
+
+def _mk_plan(tmp_path, code="601318", horizon="MID", facts=None, accepted=True):
+    from src.core.decision_contract import Horizon
+    from src.core.decision_policy import POLICY_ID_MID, HorizonPlan
+    from datetime import datetime
+    plan = HorizonPlan(
+        plan_id=f"p2_{code}_t", security_id=code,
+        accepted_at=(datetime.now().isoformat(timespec="seconds") if accepted else None),
+        horizon=Horizon[horizon],
+        policy_id=POLICY_ID_MID if horizon == "MID" else plan_policy_long(),
+        intent="锂电需求回暖驱动盈利兑现",
+        facts_observed=facts or [],
+    )
+    return plan
+
+
+def plan_policy_long():
+    from src.core.decision_policy import POLICY_ID_LONG
+    return POLICY_ID_LONG
+
+
+def test_accepted_plan_with_facts_gives_real_verdict(tmp_path):
+    """已激活计划+已发生事实 → thesis VALID → MID 技术退出落行5 REDUCE（不再全 REVIEW）。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"]))
+    rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                   plans_store=store)
+    assert rec.plan_source == "user_plan_accepted"
+    assert rec.thesis_status == "VALID"
+    assert rec.fusion_mid_action == "REDUCE"  # 行5：MID VALID+技术退出 → REDUCE
+    assert rec.shadow_disclosure == "对照评估（用户已确认计划——真判断）"
+    assert "决策表行5" in rec.fusion_mid_reason
+
+
+def test_draft_plan_stays_review(tmp_path):
+    """草稿计划（未激活）→ 行0 激活门只产出 REVIEW（激活语义不被影子绕过）。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"], accepted=False))
+    rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                   plans_store=store)
+    assert rec.plan_source == "user_plan_draft"
+    assert rec.fusion_mid_action == "REVIEW" and rec.fusion_long_action == "REVIEW"
+    assert "对照评估（草稿计划未激活" in rec.shadow_disclosure
+
+
+def test_hard_exit_still_wins_with_user_plan(tmp_path):
+    """有用户计划时行1 硬退出仍先于一切（G02 对照不被官僚流程掩盖）。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"]))
+    rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="fundamental_alert"),
+                   plans_store=store)
+    assert rec.fusion_mid_action == "EXIT" and rec.fusion_long_action == "EXIT"
+    assert REASON_HARD_EXIT in rec.delta_reasons
+
+
+def test_accepted_plan_long_side_stays_unestablished(tmp_path):
+    """泄漏修复的 accepted 侧断言（审查 P2）：MID 计划的事实不得让 LONG 模拟计划变 VALID。"""
+    from src.data.horizon_plans import HorizonPlanStore
+    store = HorizonPlanStore(tmp_path / "plans.json")
+    store.save(_mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"]))
+    rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                   plans_store=store)
+    assert rec.fusion_mid_action == "REDUCE"  # 用户 MID 真判断
+    assert rec.fusion_long_action == "REVIEW"  # LONG 无用户计划 → 模拟+UNESTABLISHED → 行10
