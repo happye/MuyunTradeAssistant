@@ -14,18 +14,35 @@ ThesisAssessment（周期研究评估；状态优先级链）——shadow/CLI/�
 不作为逻辑成立依据。
 """
 
+import hashlib
+import json
 import uuid
 from datetime import datetime
 from enum import Enum
 from typing import Literal, Optional
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.core.decision_contract import ThesisStatus, TruthValue
 
 
 def _uuid_hex() -> str:
     return uuid.uuid4().hex
+
+
+def _assertion_content_id(security_id: str, horizon: str, proposition_type: str,
+                          description: str, importance: str,
+                          evidence_requirements: list, thesis_version: str) -> str:
+    """命题 id 内容派生（K0c/A1：同内容同 id——评估唯一真值 id 由此确定化；
+    随机 uuid 会让同内容评估每次产生不同 assessment_id，重跑幂等比较面失效）。"""
+    payload = {"security_id": security_id, "horizon": horizon,
+               "proposition_type": proposition_type, "description": description,
+               "importance": importance,
+               "evidence_requirements": list(evidence_requirements),
+               "thesis_version": thesis_version}
+    return "asr_" + hashlib.sha256(json.dumps(
+        payload, ensure_ascii=False, sort_keys=True, default=str)
+        .encode("utf-8")).hexdigest()[:16]
 
 
 class ThesisRecord(BaseModel):
@@ -181,7 +198,9 @@ class ThesisAssertion(BaseModel):
 
     model_config = ConfigDict(extra="allow")  # ADR-F09
 
-    assertion_id: str = Field(default_factory=_uuid_hex)
+    assertion_id: str = Field(
+        default="", description="命题 id（缺省由内容派生——同内容同 id，跨 run 稳定；"
+                                "K0c/A1 评估唯一真值 id 确定化的前提）")
     security_id: str = ""
     horizon: str = Field(description="MID/LONG——命题归属周期")
     thesis_version: str = Field(default="", description="所属研究版本（run_id/assessment 版本）")
@@ -211,6 +230,15 @@ class ThesisAssertion(BaseModel):
         if v is not None and (v.tzinfo is None or v.tzinfo.utcoffset(v) is None):
             raise ValueError("evaluated_as_of 必须带时区")
         return v
+
+    @model_validator(mode="after")
+    def _derive_content_id(self):
+        if not self.assertion_id:
+            self.assertion_id = _assertion_content_id(
+                self.security_id, self.horizon, self.proposition_type,
+                self.description, self.importance, self.evidence_requirements,
+                self.thesis_version)
+        return self
 
 
 class ThesisAssessment(BaseModel):
@@ -299,6 +327,11 @@ def _rule_cash_sustainability(assertion: ThesisAssertion,
         if not values:
             return (AssertionEvaluation.UNKNOWN,
                     f"{fid} 缺逐期方向证据（values_by_period 未提供）——持续性未建立")
+        # K0b 审查 P3-4：逐期证据须覆盖全部已见报告期（缺期=方向未证，不置 TRUE）
+        missing_periods = [p for p in periods if str(p) not in {str(k) for k in values}]
+        if missing_periods:
+            return (AssertionEvaluation.UNKNOWN,
+                    f"{fid} 报告期 {missing_periods[:3]} 缺方向证据——持续性未建立")
         bad = sorted(p for p, v in values.items()
                      if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0)
         if bad:

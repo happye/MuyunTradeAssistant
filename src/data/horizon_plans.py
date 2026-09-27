@@ -50,7 +50,7 @@ class HorizonPlanStore:
         self._loaded_fingerprint = None
         if not self.path.exists():
             self._data = {"version": PLANS_VERSION, "plans": {},
-                          "accepted_refs": {}, "active_refs": {}}
+                          "accepted_refs": {}, "active_refs": {}, "candidates": {}}
             self._loaded_fingerprint = _fingerprint(self._data)
             return self._data
         try:
@@ -60,6 +60,7 @@ class HorizonPlanStore:
             data.setdefault("version", PLANS_VERSION)
             data.setdefault("accepted_refs", {})  # R3：接受绑定（旧文件兼容读）
             data.setdefault("active_refs", {})    # R3：持仓主意图引用（旧文件兼容读）
+            data.setdefault("candidates", {})     # K0c/A1：候选草稿槽（旧文件兼容读）
             self._data = data
             self._loaded_fingerprint = _fingerprint(data)
         except Exception as e:
@@ -152,12 +153,55 @@ class HorizonPlanStore:
             return True
         return False
 
+    # ── K0c/A1：候选草稿槽（双槽语义）────────────────────────
+    # 主槽 plans[key] 永远是当前生效版本（已接受或未接受草稿）；新材料研究在
+    # 已接受版本存在时只写候选槽——不覆盖已接受计划、不动 accepted_refs；
+    # 用户显式 accept 时候选原子升主槽并刷新接受绑定。
+
+    def save_candidate(self, plan) -> bool:
+        """写入/替换候选草稿（不触碰主槽与接受绑定；M5 指纹同款保护）。"""
+        data = self._load()
+        key = self._key(plan.security_id, plan.horizon.value)
+        candidate = dict(data)
+        candidate["candidates"] = dict(data.get("candidates") or {})
+        candidate["candidates"][key] = plan.model_dump(mode="json")
+        if self._save(candidate):
+            self._data = candidate
+            return True
+        return False
+
+    def get_candidate(self, security_id: str, horizon: Optional[str] = None):
+        """取候选草稿（双槽的候选侧；None=无候选）。"""
+        data = self._load()
+        cands = data.get("candidates") or {}
+        sid = str(security_id)
+        if horizon is not None:
+            return self._parse(cands.get(self._key(sid, horizon)))
+        out = {}
+        for key, raw in cands.items():
+            if key.split(":")[0] == sid:
+                p = self._parse(raw)
+                if p is not None:
+                    out[p.horizon.value] = p
+        return out
+
+    def list_candidates(self) -> list:
+        """全部候选草稿（plan2 展示用）。"""
+        out = []
+        for key in sorted(self._load().get("candidates") or {}):
+            p = self._parse(self._load()["candidates"][key])
+            if p is not None:
+                out.append(p)
+        return out
+
     def accept(self, security_id: str, horizon: Optional[str] = None) -> tuple:
         """用户确认激活（R3 验收4：接受绑定 plan_id+revision+content_hash——
         草稿改变后不能沿用旧接受状态）。**单次写事务**：accepted_at 与绑定
         同一 candidate 一次落盘（监督员 P1：拆两次写，第二写失败时绑定静默丢失）。
-        返回 (ok, msg)。"""
-        plans = self._load()["plans"]
+        K0c/A1 原子切换：该槽有候选草稿时，候选升主槽（revision+1）、接受绑定
+        指向新版本、候选清除——同一次写入完成。返回 (ok, msg)。"""
+        data = self._load()
+        plans = data["plans"]
         sid = str(security_id)
         keys = [k for k in plans if k.split(":")[0] == sid]
         if horizon is not None:
@@ -166,15 +210,35 @@ class HorizonPlanStore:
             return False, "no_plan"
         if len(keys) > 1:
             return False, "ambiguous:" + ",".join(k.split(":")[1] for k in keys)
-        plan = self._parse(plans[keys[0]])
+        key = keys[0]
+        cand_raw = (data.get("candidates") or {}).get(key)
+        if cand_raw is not None:
+            # K0c/A1：候选 → 主槽原子切换（显式接受才切换——新材料不自动生效）
+            plan = self._parse(cand_raw)
+            if plan is None:
+                return False, "candidate_corrupt"
+            plan = plan.model_copy(update={
+                "accepted_at": datetime.now().isoformat(timespec="seconds"),
+                "revision": int(plan.revision or 1) + 1})
+            candidate = dict(data)
+            candidate["plans"] = dict(data["plans"])
+            candidate["plans"][key] = plan.model_dump(mode="json")
+            candidate["candidates"] = dict(data.get("candidates") or {})
+            candidate["candidates"].pop(key, None)
+            candidate.setdefault("accepted_refs", {})[key] = {
+                "plan_id": plan.plan_id, "revision": plan.revision,
+                "content_hash": plan.content_hash(), "accepted_at": plan.accepted_at}
+            if self._save(candidate):
+                self._data = candidate
+                return True, plan.accepted_at
+            return False, "write_rejected"
+        plan = self._parse(plans[key])
         if plan is None:
             return False, "no_plan"
-        key = keys[0]
         plan.accepted_at = datetime.now().isoformat(timespec="seconds")
-        old = self._load()["plans"].get(key)
+        old = plans.get(key)
         if old and old.get("plan_id") == plan.plan_id:
             plan = plan.model_copy(update={"revision": int(old.get("revision") or 1) + 1})
-        data = self._load()
         candidate = dict(data)
         candidate["plans"] = dict(data["plans"])
         candidate["plans"][key] = plan.model_dump(mode="json")
@@ -241,6 +305,9 @@ class HorizonPlanStore:
             return False
         candidate = dict(data)  # 保留全部顶层键（accepted_refs/active_refs 不丢）
         candidate["plans"] = {k: v for k, v in data["plans"].items() if k not in keys}
+        # K0c/A1：被删槽位的候选草稿级联清除（不留悬挂候选）
+        candidate["candidates"] = {k: v for k, v in (data.get("candidates") or {}).items()
+                                   if k not in keys}
         # 级联清理：被删计划的接受绑定与主意图引用一并移除（不留悬挂引用——监督员 P2）
         refs = candidate.setdefault("accepted_refs", {})
         for k in keys:

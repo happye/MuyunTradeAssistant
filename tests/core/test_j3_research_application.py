@@ -159,8 +159,11 @@ def test_run_result_json_serializable(tmp_path):
 # ── 3. 修订草稿与接受 ─────────────────────────────────────
 
 def test_draft_revision_and_accept_semantics(tmp_path):
-    """已有计划 → revision+1 修订草稿（accepted_at 置空——不沿用旧接受）；
-    接受账目保留旧版本可审计；再研究再 +1。"""
+    """K0c/A1 双槽语义（旧口径「新研究撤接受」已被架构师 A1 反例证伪）：
+    - 同内容重跑幂等：不写计划、不增 revision、接受态保持 active
+    - 新材料 → 候选草稿：已接受版本与 accepted_refs 原样保留（不撤接受）
+    - 显式 accept → 原子切换：候选升主槽、接受绑定指向新版本
+    - 未接受草稿 + 新内容 → 仍原地修订（revision+1、accepted_at 置空）"""
     app, _, _ = _make_app(tmp_path, fetch_metrics={(2026, 2): _metrics()})
     r1 = app.run("600519", as_of=AS_OF, capture=True)
     ps = _plans_store(tmp_path)
@@ -171,17 +174,33 @@ def test_draft_revision_and_accept_semantics(tmp_path):
     assert ok, msg
     accepted_plan = _plans_store(tmp_path).get("600519", "MID")  # 接受时点版本
     assert ps.is_accepted_version(accepted_plan)
-    # 新一轮研究（输入变化 → 新 run）→ 修订草稿不沿用旧接受（fresh 实例读盘防缓存）
+    # 同内容重跑（fresh 实例读盘口径）→ 幂等：不撤接受、revision 不变（A1 主反例）
+    app_same, _, _ = _make_app(tmp_path, fetch_metrics={(2026, 2): _metrics()})
+    app_same.run("600519", as_of=AS_OF, capture=True)
+    plan_same = _plans_store(tmp_path).get("600519", "MID")
+    assert plan_same.revision == accepted_plan.revision, "同内容重跑不增 revision"
+    assert plan_same.accepted_at == accepted_plan.accepted_at, "同内容重跑不改接受态"
+    assert ps.is_accepted_version(plan_same)
+    # 新材料（输入变化）→ 候选草稿：已接受版本原样、接受引用不动
     app2, _, _ = _make_app(tmp_path, fetch_metrics={(2025, 4): _metrics(cfo=0.8)})
     r2 = app2.run("600519", as_of=AS_OF, capture=True)
-    plan2 = _plans_store(tmp_path).get("600519", "MID")  # 新实例=重启读盘口径
-    # accept 与草稿保存各写一次、各递增一次（store.save 统一管理 revision）
-    assert plan2.revision == plan1.revision + 2, \
-        f"accept(+1) 与草稿保存(+1) 恰各递增一次: {plan2.revision}"
-    assert plan2.accepted_at is None, "新事实 → 修订草稿，不沿用旧接受"
-    assert plan2.supersedes_ref == accepted_plan.content_hash(), "版本沿革指向紧邻前版"
-    ref = _plans_store(tmp_path)._load()["accepted_refs"]["600519:MID"]
-    assert ref["content_hash"] == accepted_plan.content_hash(), "接受记录与绑定版本一致"
+    plans2 = _plans_store(tmp_path)
+    plan2 = plans2.get("600519", "MID")
+    assert plan2.revision == accepted_plan.revision, "新材料不动已接受版本 revision"
+    assert plan2.accepted_at == accepted_plan.accepted_at, "新材料不撤接受（A1）"
+    ref = plans2._load()["accepted_refs"]["600519:MID"]
+    assert ref["content_hash"] == accepted_plan.content_hash(), "接受引用仍指旧版本"
+    cand = plans2.get_candidate("600519", "MID")
+    assert cand is not None and cand.content_hash() != accepted_plan.content_hash(), \
+        "新材料进候选槽（可见，等显式切换）"
+    # 显式 accept → 原子切换到候选版本
+    ok2, msg2 = plans2.accept("600519", "MID")
+    assert ok2, msg2
+    plan3 = _plans_store(tmp_path).get("600519", "MID")
+    expected_hash = cand.model_copy(update={"revision": cand.revision + 1}).content_hash()
+    assert plan3.content_hash() == expected_hash, "接受后主槽=候选内容"
+    assert plans2.is_accepted_version(plan3), "接受绑定指向切换后的新版本"
+    assert _plans_store(tmp_path).get_candidate("600519", "MID") is None, "切换后候选清空"
 
 
 # ── 4. 入口支持面（显式未支持）────────────────────────────

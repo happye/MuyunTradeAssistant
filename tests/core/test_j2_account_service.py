@@ -185,6 +185,9 @@ def test_confirm_fill_t1_sellable_next_day(tmp_path):
 
 
 def test_confirm_fill_plan_ref_mismatch(tmp_path):
+    """主计划引用核对（K0c-5 + 监督审查裁决口径）：引用一致→ACCEPTED 不标偏离；
+    引用不存在→放行入账并标偏离（股数是事实——不虚构「已按计划成交」，
+    也不拒绝真实成交；旧口径「直接 REJECTED」与 K0c-5 合同相悖已改写）。"""
     from src.core.decision_policy import POLICY_ID_MID, HorizonPlan
     from src.data.horizon_plans import HorizonPlanStore
     from src.core.decision_contract import Horizon
@@ -193,9 +196,13 @@ def test_confirm_fill_plan_ref_mismatch(tmp_path):
                            policy_id=POLICY_ID_MID, intent="测试计划"))
     svc = _svc(tmp_path, plans_store=store)
     r = svc.confirm_fill("f1", "", _fill(plan_ref="p_wrong"))
-    assert r.status == "REJECTED" and "主计划引用不匹配" in r.reason
-    r2 = svc.confirm_fill("f2", "", _fill(plan_ref="p_mid_1"))
+    assert r.status == "ACCEPTED" and r.ok, "引用不存在放行真实成交（K0c-5 合同）"
+    e1 = svc.log.events()[0]
+    assert e1.model_dump().get("deviation_from_proposal") is True, "偏离必须标注"
+    r2 = svc.confirm_fill("f2", "", _fill(date="2026-09-21", plan_ref="p_mid_1"))
     assert r2.status == "ACCEPTED"
+    e2 = next(e for e in svc.log.events() if e.event_id == "fill_f2")
+    assert not e2.model_dump().get("deviation_from_proposal"), "引用一致不标偏离"
 
 
 def test_confirm_fill_records_deviation_not_falsification(tmp_path):
@@ -329,8 +336,11 @@ def test_pick_reusable_fill_id_numeric_seq_and_recovery(tmp_path):
     events = log.events()
     fp_same = "fp_same"
     # 构造 #10 与待提交 payload 同指纹：直接复用事件自身指纹做期望
+    # （K0a 审查 P1-1：恢复识别按**核心指纹**（去 deviation 位）——deviation 由
+    # 调用方按当时账户事实重算，恢复重跑时账面已变会翻转该位）
     from src.data.account_service import _event_fingerprint
-    last_fp = _event_fingerprint(next(e for e in events if e.related_fill_id == "p1#10"))
+    last_fp = _event_fingerprint(next(e for e in events if e.related_fill_id == "p1#10"),
+                                 include_deviation=False)
     # 崩溃恢复态（未消费）→ 复用 #10（字典序实现会错取 #9 → 新建 #11 → 双记账）
     assert pick_reusable_fill_id(events, "p1#", last_fp,
                                  has_fill_fn=lambda rid: False) == "p1#10"

@@ -1102,12 +1102,21 @@ class PortfolioManager:
                 rec["quantity_fact"] = {"quantity": quantity_after, "as_of": trade_date,
                                         "avg_cost": avg_cost}
         else:  # BUY
+            # K0a 审查 P2：空仓/冷却期记录上数量级买入 = 重新建仓——与比例路径同
+            # 口径重置生命周期与策略状态（否则冷却残留继续冻结已重建仓的处理）
+            was_empty = (rec.get("current_ratio") or 0.0) <= 1e-9
+            if was_empty:
+                rec["lifecycle"] = "OPEN"
+                rec["entry_date"] = trade_date
+                rec["strategy_state"] = self._fresh_strategy_state(
+                    min_hold_days=self.DEFAULT_MIN_HOLD_DAYS)
             rec["last_action"] = "CONFIRMED_BUY"
             rec["last_action_semantic"] = note or f"已成交{quantity}股，现持有{quantity_after}股"
             rec["last_action_date"] = trade_date
             rec["holding_verification"] = VERIFICATION_CONFIRMED_FILL
             # K0a-4：加仓成本派生自批次均价——不用最新买价覆盖历史成本
-            if avg_cost:
+            #（重建仓无历史成本，直接取本次批次均价）
+            if avg_cost and (not was_empty or rec.get("entry_price") is None):
                 rec["entry_price"] = avg_cost
             rec["ratio_stale"] = True
             rec["quantity_fact"] = {"quantity": quantity_after, "as_of": trade_date,
@@ -1150,9 +1159,9 @@ class PortfolioManager:
             proposal.note = f"实际清仓达成（本笔卖出{quantity}股，剩余0股）"
         elif pending:
             verb = "卖出" if action == "SELL" else "买入"
-            proposal.note = (f"实际成交偏离建议：本笔{verb}{quantity}股，"
-                             f"现持有{quantity_after}股——建议（{proposal.position_action}）"
-                             "未确认完成，如继续请再次确认成交")
+            proposal.note = (f"本笔{verb}{quantity}股，现持有{quantity_after}股"
+                             f"——无法以股数事实核验建议（{proposal.position_action}）"
+                             "的完成度，建议保持待确认；如继续请再次确认成交")
 
     def _match_proposal(self, stock_code: str, proposal_id: Optional[str],
                         action: str) -> Optional[Proposal]:

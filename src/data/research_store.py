@@ -328,7 +328,11 @@ class AssessmentStore:
         return aid
 
     def load(self, assessment_id: str):
-        """按 id 加载评估；不存在/坏文件返回 None（坏文件隔离告警，不崩）。"""
+        """按 id 加载评估；不存在/坏文件返回 None（坏文件隔离告警，不崩）。
+
+        K0c-2 内容寻址一致性门：文件登记的 assessment_id/content_hash 与
+        **重算的内容指纹**不符 → 按坏文件隔离（返回 None）——唯一真值不得被
+        损坏或被手工篡改的记录冒充（改了评估内容却沿用旧文件名=失效引用）。"""
         aid = str(assessment_id or "").strip()
         if not aid or any(seg in aid for seg in ("/", "\\", "..")):
             return None  # 非法 id（路径注入防御）按缺失处理
@@ -338,7 +342,15 @@ class AssessmentStore:
         try:
             from src.core.research import ThesisAssessment
             data = json.loads(path.read_text(encoding="utf-8"))
-            return ThesisAssessment.model_validate(data["assessment"])
+            asm = ThesisAssessment.model_validate(data["assessment"])
+            recomputed = self.assessment_id_of(asm)
+            if str(data.get("assessment_id") or "") != aid or recomputed != aid:
+                logger.warning(
+                    f"评估内容与寻址 id 不一致（按坏文件隔离）: {aid}——"
+                    f"文件登记 {data.get('assessment_id')!r}/重算 {recomputed}；"
+                    "该引用按缺失处理（待复核），请人工核对 assessments 目录")
+                return None
+            return asm
         except Exception as e:
             logger.warning(f"评估加载失败（按缺失处理）: {aid}: {e}")
             return None

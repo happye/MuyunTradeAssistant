@@ -109,7 +109,10 @@ def _seed_accepted_plan(tmp_path, plans_store, assessment_store, code="601318"):
     plan.assessment_id = assessment_store.save(asm)
     plan.snapshot_id = asm.snapshot_id
     plans_store.save(plan)
-    return plan, asm
+    # K0c-5：真实接受流（accepted_refs 绑定才构成已接受）
+    ok, msg = plans_store.accept(code, "MID")
+    assert ok, msg
+    return plans_store.get(code, "MID"), asm
 
 
 def test_effective_observation_requires_assessment_and_account(tmp_path):

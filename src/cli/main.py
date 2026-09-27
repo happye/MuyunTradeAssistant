@@ -2323,7 +2323,16 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             from src.data.account_service import (
                 DEFAULT_LEDGER_PATH, AccountService, FillInput, pick_reusable_fill_id,
             )
-            svc = AccountService(DEFAULT_LEDGER_PATH)
+            # K0c-5：数量确认连接计划库——主意图引用（account×security active_ref）
+            # 随事件保留；无 active_ref 时不虚构引用（真实成交照记）
+            from src.data.horizon_plans import HorizonPlanStore
+            plans_store = HorizonPlanStore()
+            active_ref = plans_store.get_active_ref(stock_code)
+            plan_ref = str((active_ref or {}).get("plan_id") or "")
+            if active_ref:
+                console.print(f"  [dim]主意图引用: {plan_ref[:16]}…"
+                              f"（{active_ref.get('horizon', '')} 计划）[/dim]")
+            svc = AccountService(DEFAULT_LEDGER_PATH, plans_store=plans_store)
             snap_before = svc.snapshot()
             held_before = next((h.quantity for h in snap_before.holdings
                                 if h.security_id == stock_code), 0)
@@ -2340,16 +2349,27 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             payload = FillInput(security_id=stock_code, action=fill_action,
                                 quantity=int(qty), price=float(price) if price and price > 0 else 0.0,
                                 fee=float(fee or 0.0), trade_date=eff_date,
+                                plan_ref=plan_ref,
                                 deviation_from_proposal=deviation,
                                 note=(note or f"proposal={target.proposal_id}")
                                      + (f"；偏离：建议清仓，本笔卖出{int(qty)}/{held_before}股"
                                         if deviation else ""))
             fill_id = pick_reusable_fill_id(svc.log.events(), prefix,
-                                            payload.fingerprint(),
+                                            payload.core_fingerprint(),
                                             has_fill_fn=lambda rid: pm._proposals.has_fill(rid)
                                             and pm.has_applied_fill(rid))
-            if fill_id in {str(e.related_fill_id) for e in svc.log.events()
-                           if str(e.related_fill_id or "").startswith(prefix)}:
+            prior_events = [e for e in svc.log.events()
+                            if str(e.related_fill_id or "") == fill_id]
+            if fill_id in {str(e.related_fill_id) for e in prior_events}:
+                # K0a 审查 P1-1：恢复态从已入账事件回读 payload（deviation 位以在账
+                # 事件为准——崩溃后 held_before 变化会让重算翻转，回读保证完整指纹
+                # 一致 → DUPLICATE 而非 CONFLICT）
+                prior_ev = prior_events[-1]
+                pdump = prior_ev.model_dump()
+                payload = payload.model_copy(update={
+                    "deviation_from_proposal": bool(pdump.get("deviation_from_proposal")),
+                    "note": str(pdump.get("fill_note") or "") or payload.note,
+                    "plan_ref": str(pdump.get("plan_ref") or "") or payload.plan_ref})
                 console.print(f"[yellow]↩ 检测到未完成的确认（fill {fill_id} 已入账、"
                               "投影未同步）——按崩溃恢复补做，不重复入账[/yellow]")
             receipt = svc.confirm_fill(fill_id, svc.account_version(), payload)
@@ -3937,13 +3957,21 @@ def plan2_command(rest: list):
     if not rest:
         plans = store.list_plans()
         console.print("\n[bold cyan]📋 计划V2（中期/长期投资计划）[/bold cyan]")
-        if not plans:
+        if not plans and not store.list_candidates():
             console.print("  （还没有计划——plan2 <代码> mid|long <意图描述> 新建）")
             return
         for p in plans:
             status = "已激活" if p.activated else "草稿（未激活——只产出复核建议）"
             console.print(f"  {p.security_id} [{p.horizon.value}] {status} "
                           f"r{p.revision} ｜ {p.intent[:50]}")
+        # K0c/A1：候选草稿可见（新材料研究产生——不覆盖已接受版本，等显式切换）
+        for c in store.list_candidates():
+            console.print(f"  {c.security_id} [{c.horizon.value}] [yellow]候选草稿"
+                          f"（新材料研究产生——当前接受版本保持 active）[/yellow] "
+                          f"r{c.revision} ｜ {c.intent[:50]}")
+        if store.list_candidates():
+            console.print("  [yellow]plan2 accept <代码> [mid|long] 切换到候选版本"
+                          "（原子替换+接受引用刷新）[/yellow]")
         console.print("  [dim]plan2 accept <代码> 确认激活[/dim]")
         return
 

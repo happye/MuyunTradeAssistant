@@ -504,7 +504,12 @@ def _find_value_occurrences(quote: str, variants: list[str]) -> list[dict]:
             k = i - 1
             while k >= 0 and quote[k] in " 　":
                 k -= 1
-            text_negative = token_negative or (k >= 0 and quote[k] in _NEGATIVE_SIGNS)
+            text_negative = token_negative or (
+                k >= 0 and quote[k] in _NEGATIVE_SIGNS
+                # K0b 审查 P2-5：负号自身前后都是数字（"100-200万"）= 区间连接符，
+                # 不是负值——不得把合法区间上界误判成负数
+                and not (k > 0 and quote[k - 1].isdigit()
+                         and k + 1 < len(quote) and quote[k + 1].isdigit()))
             out.append({"variant": token, "start": i, "end": j,
                         "text_negative": text_negative})
             start = j

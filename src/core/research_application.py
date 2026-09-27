@@ -15,8 +15,9 @@
 - 因子输入由**合格快照派生**（strict=False live 资格视图——SUSPECT 已隔离、
   latest-only 如实保留）：J0b raw dict 旁路在应用层闭合（factor_bindings 绑定
   同一 snapshot_id/security/as_of）
-- 草稿真实存入 HorizonPlanStore：已有计划 → revision+1 修订草稿（accepted_at
-  置空——不沿用旧接受；supersedes_ref 留版本沿革）；无计划 → 新 draft plan_id
+- 草稿真实存入 HorizonPlanStore（K0c/A1 双槽）：同内容重跑幂等跳过；未接受计划
+  原地修订（revision+1、accepted_at 置空）；**已接受计划+新材料 → 候选槽**
+  （已接受版本与引用保持，plan2 accept 显式切换）；无计划 → 新 draft plan_id
 
 chat/Web/TUI 当前未适配研究入口——显式「未支持」，不冒充（路由测试锁定）。
 """
@@ -49,6 +50,9 @@ class ResearchRunResult(BaseModel):
     assessments: dict = Field(default_factory=dict, description="horizon → {status, gaps}（与 bundle.assessments 同源）")
     draft_plan_ids: dict = Field(default_factory=dict, description="horizon → plan_id（已存 HorizonPlanStore）")
     draft_revisions: dict = Field(default_factory=dict)
+    draft_kinds: dict = Field(default_factory=dict,
+                              description="horizon → idempotent/new/updated/candidate"
+                                          "（K0c/A1：同内容幂等/新材料入候选槽——回执可见）")
     assessment_ids: dict = Field(default_factory=dict, description="horizon → assessment_id（AssessmentStore）")
     factors: dict = Field(default_factory=dict, description="能力ID → {value, status}（绑定合格快照后）")
     steps: dict = Field(default_factory=dict, description="documents/verified/assessment/draft 步骤计数（断点续跑口径）")
@@ -158,14 +162,16 @@ class ResearchApplicationService:
                 assessment_ids[d["horizon"]] = aid
 
         # ── Step 4 draft：草稿真实存入 HorizonPlanStore（可 plan2 找回/接受）──
-        draft_ids, revisions = {}, {}
+        # K0c/A1 双槽：draft_kinds 向回执区分 idempotent/new/updated/candidate
+        draft_ids, revisions, draft_kinds = {}, {}, {}
         for d in bundle.plan_drafts:
-            plan, revision = self._save_draft(d)
+            plan, revision = self._save_draft(d, draft_kinds=draft_kinds)
             if plan is not None:
                 draft_ids[d["horizon"]] = plan.plan_id
                 revisions[d["horizon"]] = revision
         steps["draft"] = {"plan_ids": draft_ids, "revisions": revisions,
-                          "note": "修订草稿 accepted_at 置空——不沿用旧接受（R3 契约）"}
+                          "kinds": draft_kinds,
+                          "note": "同内容幂等跳过；已接受版本+新材料→候选槽（plan2 accept 切换）"}
 
         # run manifest（写一次——同 snapshot_id 幂等；断点/审计用）
         manifest = {
@@ -187,7 +193,7 @@ class ResearchApplicationService:
             assessments={h: {"status": a["status"],
                              "gaps": list(a["unresolved_gaps"])}
                          for h, a in bundle.assessments.items()},
-            draft_plan_ids=draft_ids, draft_revisions=revisions,
+            draft_plan_ids=draft_ids, draft_revisions=revisions, draft_kinds=draft_kinds,
             assessment_ids=assessment_ids,
             factors={fid: {"value": getattr(res, "value", None),
                            "status": getattr(res, "status", None)}
@@ -224,37 +230,70 @@ class ResearchApplicationService:
                 logger.warning(f"归档证据重建失败（跳过该条）: {o.get('metric')}: {e}")
         return records
 
-    def _save_draft(self, draft: dict):
-        """草稿入 HorizonPlanStore：已有计划 → 修订（accepted_at 置空——不沿用旧
-        接受；revision 由 store.save 统一递增——本方法不预增，防双重递增）；
-        无计划 → 新 draft。返回 (plan, 落盘后的 revision)；保存失败 (None, 0)。"""
+    # K0c/A1：草稿内容字段（同内容重跑幂等的比较面；不含 accepted_at/revision——
+    # 它们是生命周期状态不是内容）
+    _DRAFT_CONTENT_FIELDS = ("intent", "assessment_id", "snapshot_id", "policy_version",
+                             "required_evidence_refs", "fact_evidence_refs",
+                             "facts_observed", "review_triggers", "gaps",
+                             "next_checks", "thesis_id")
+
+    def _save_draft(self, draft: dict, *, draft_kinds: Optional[dict] = None):
+        """草稿入 HorizonPlanStore（K0c/A1 双槽语义）：
+
+        - 无现有计划 → 新草稿入主槽（计划生命周期起点，同旧口径）
+        - 现有计划 + **同内容**重跑 → 幂等跳过：不写计划、不增 revision、
+          不改变接受态（同输入重跑撤销接受=A1 主反例的根因）
+        - 现有计划未接受 + 新内容 → 原地修订（revision 由 store.save 递增，
+          accepted_at 置空——本来就是草稿，无接受态可保护）
+        - 现有计划**已接受** + 新内容 → 只写**候选槽**（save_candidate）：已接受
+          版本与 accepted_refs/主意图引用原样保留；用户显式 accept 才原子切换
+
+        返回 (plan, revision)；保存失败 (None, 0)。draft_kinds 登记
+        idempotent/new/updated/candidate（回执可见）。"""
         from src.core.decision_policy import HorizonPlan
         horizon = draft["horizon"]
         existing = self.plans_store.get(draft["security_id"], horizon)
         if existing is not None:
+            updates = {f: draft[f] for f in self._DRAFT_CONTENT_FIELDS}
+            same_content = all(getattr(existing, f, None) == v
+                               for f, v in updates.items())
+            if same_content:
+                logger.info(f"研究内容与现有计划一致（{draft['security_id']} {horizon}）"
+                            "——幂等跳过（不撤接受、revision 不变）")
+                if draft_kinds is not None:
+                    draft_kinds[horizon] = "idempotent"
+                return existing, existing.revision
+            if existing.accepted_at:
+                # 双槽：已接受版本保持 active——新材料只进候选槽，等显式接受
+                cand = existing.model_copy(update={
+                    **updates, "accepted_at": None,
+                    "supersedes_ref": existing.content_hash()})
+                if self.plans_store.save_candidate(cand):
+                    logger.info(
+                        f"新材料产生候选草稿（{draft['security_id']} {horizon}）——"
+                        "已接受版本保持 active；plan2 accept 显式切换")
+                    if draft_kinds is not None:
+                        draft_kinds[horizon] = "candidate"
+                    return cand, existing.revision
+                logger.warning(f"候选草稿保存被拒（指纹冲突/外部修改）: {cand.plan_id}")
+                return None, 0
             plan = existing.model_copy(update={
-                "intent": draft["intent"],
-                "assessment_id": draft["assessment_id"],
-                "snapshot_id": draft["snapshot_id"],
-                "policy_version": draft["policy_version"],
-                "required_evidence_refs": draft["required_evidence_refs"],
-                "fact_evidence_refs": draft["fact_evidence_refs"],
-                "facts_observed": draft["facts_observed"],
-                "review_triggers": draft["review_triggers"],
-                "gaps": draft["gaps"],
-                "next_checks": draft["next_checks"],
-                "thesis_id": draft["thesis_id"],
-                "accepted_at": None,  # 新事实 → 修订草稿：不沿用旧接受（R3 契约）
+                **updates, "accepted_at": None,  # 草稿修订不沿用旧接受（R3 契约）
                 "supersedes_ref": existing.content_hash(),
                 # revision 不在此改——store.save 对同 plan_id 统一 +1
             })
+            kind = "updated"
         else:
             plan = HorizonPlan(**draft)
+            kind = "new"
         if self.plans_store.save(plan):
             saved = self.plans_store.get(draft["security_id"], horizon)
             # store.save 对同 plan_id 统一 +1——回读落盘后的真实 revision
             #（J5 审查 P1-3：返回自增前的旧值会让 --json/CLI 报错版本号）
-            return (saved if saved is not None else plan), (saved.revision if saved is not None else plan.revision)
+            if draft_kinds is not None:
+                draft_kinds[horizon] = kind
+            return (saved if saved is not None else plan), \
+                (saved.revision if saved is not None else plan.revision)
         logger.warning(f"草稿保存被拒（指纹冲突/外部修改）: {plan.plan_id}")
         return None, 0
 

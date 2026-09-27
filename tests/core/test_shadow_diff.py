@@ -208,7 +208,8 @@ def test_both_horizons_evaluated_policy_ids(tmp_path):
 # ── 3. 存储与幂等 ───────────────────────────────────────────
 
 def test_jsonl_append_and_idempotent_same_minute(tmp_path):
-    """同股同分钟幂等在 _append_record 层锁死（不依赖时钟巧合）。"""
+    """K0c/A3/A4 去重合同（旧口径「同股同分钟即重复」被 A3 反例证伪）：
+    只折叠 同输入+同输出 的重复触发；同分钟输入或输出任一变化必须留痕。"""
     store = tmp_path / "shadow.jsonl"
     rec = _capture(tmp_path)
     lines = store.read_text(encoding="utf-8").strip().splitlines()
@@ -216,17 +217,23 @@ def test_jsonl_append_and_idempotent_same_minute(tmp_path):
     saved = json.loads(lines[0])
     assert saved["security_id"] == "601318"
     assert saved["derivation_version"] == SHADOW_DERIVATION_VERSION
-    # 同股同分钟重复写入：返回 False 不追加
+    assert saved["output_fingerprint"], "输出指纹必须落盘（A4）"
+    assert rec.append_status == "saved", "落盘回执可见（K0c-3）"
+    # 同股同分钟 + 同输入+同输出 → 幂等不追加
     dup = ShadowDiffRecord(security_id="601318", as_of=rec.as_of,
                            legacy_action="HOLD_POSITION", legacy_desired="HOLD",
-                           fusion_mid_action="REVIEW", fusion_long_action="REVIEW")
+                           fusion_mid_action="REVIEW", fusion_long_action="REVIEW",
+                           input_fingerprint=rec.input_fingerprint,
+                           output_fingerprint=rec.output_fingerprint)
     assert _append_record(store, dup) is False
+    assert dup.append_status == "deduped"
     assert len(store.read_text(encoding="utf-8").strip().splitlines()) == 1
-    # 异分钟照写
-    dup2 = ShadowDiffRecord(security_id="601318", as_of="2026-01-01T10:00:00+08:00",
-                            legacy_action="HOLD_POSITION", legacy_desired="HOLD",
-                            fusion_mid_action="REVIEW", fusion_long_action="REVIEW")
-    assert _append_record(store, dup2) is True
+    # 同分钟但输入指纹不同（计划/账户版本变更）→ 留痕（A3）
+    changed = ShadowDiffRecord(security_id="601318", as_of=rec.as_of,
+                               legacy_action="HOLD_POSITION", legacy_desired="HOLD",
+                               fusion_mid_action="REVIEW", fusion_long_action="REVIEW",
+                               input_fingerprint="fp_other")
+    assert _append_record(store, changed) is True, "同分钟输入变化必须留痕（A3）"
     assert len(store.read_text(encoding="utf-8").strip().splitlines()) == 2
 
 
@@ -351,12 +358,21 @@ def _mk_assessed_plan(tmp_path, asm_store, code="601318", horizon="MID", facts=N
     return plan, asm
 
 
+def _save_accepted(store, plan, horizon="MID"):
+    """K0c-5：真实接受流（save → accept 生成 accepted_refs 绑定）——直接写
+    accepted_at 的捷径在精确接受引用核对下不再算已接受。返回接受后版本。"""
+    store.save(plan)
+    ok, msg = store.accept(plan.security_id, horizon)
+    assert ok, msg
+    return store.get(plan.security_id, horizon)
+
+
 def test_accepted_plan_plain_facts_no_longer_valid(tmp_path):
     """R0 资格止血（A03）：已激活计划+纯文本事实（无证据引用）→ thesis UNESTABLISHED
     → 行10 REVIEW——「一条 facts 文本即 VALID」不再成立。"""
     from src.data.horizon_plans import HorizonPlanStore
     store = HorizonPlanStore(tmp_path / "plans.json")
-    store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"]))
+    _save_accepted(store, _mk_plan(tmp_path, facts=["6月订单环比+30%"]))
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
     assert rec.mid_plan_source == "user_plan_accepted"
@@ -376,7 +392,7 @@ def test_accepted_plan_with_assessment_gives_real_verdict(tmp_path):
     asm_store = AssessmentStore(tmp_path / "research")
     store = HorizonPlanStore(tmp_path / "plans.json")
     plan, _asm = _mk_assessed_plan(tmp_path, asm_store, facts=["6月订单环比+30%"])
-    store.save(plan)
+    _save_accepted(store, plan)
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store, assessment_store=asm_store)
     assert rec.mid_thesis_status == "VALID"
@@ -423,7 +439,7 @@ def test_accepted_plan_long_side_stays_simulated_and_unestablished(tmp_path):
     store = HorizonPlanStore(tmp_path / "plans.json")
     plan, _asm = _mk_assessed_plan(tmp_path, asm_store, horizon="MID",
                                    facts=["6月订单环比+30%"])
-    store.save(plan)
+    _save_accepted(store, plan)
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store, assessment_store=asm_store)
     assert rec.mid_plan_source == "user_plan_accepted" and rec.mid_thesis_status == "VALID"
@@ -439,7 +455,7 @@ def test_report_counts_plan_source_per_horizon(tmp_path):
     store = HorizonPlanStore(tmp_path / "plans.json")
     plan = _mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"])
     plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}
-    store.save(plan)
+    _save_accepted(store, plan)
     _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
              plans_store=store)
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl")

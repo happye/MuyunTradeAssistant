@@ -119,6 +119,15 @@ class FillInput(BaseModel):
         return hashlib.sha256(json.dumps(
             self.normalized(), ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
+    def core_fingerprint(self) -> str:
+        """核心指纹（不含 deviation 位——K0a 审查 P1-1：deviation 由调用方按当时
+        账户事实重算，崩溃恢复重跑时账面已变会翻转该位；恢复态识别只看交易内容）。
+        核心指纹一致 + deviation 不同 = 同一笔成交的重算差异，不是不同交易。"""
+        d = self.normalized()
+        d.pop("deviation_from_proposal", None)
+        return hashlib.sha256(json.dumps(
+            d, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+
 
 class FillReceipt(BaseModel):
     """确认回执（K0a 回执三分：未写=REJECTED/STALE/CONFLICT；已持久化=ACCEPTED/
@@ -243,13 +252,32 @@ class AccountService:
                                    reason=f"可卖批次不足（T+1）：可卖 {sellable} 股 < 卖出 {payload.quantity} 股"
                                           "（当日买入次一交易日方可卖出）")
         if payload.action == "BUY" and payload.plan_ref and self.plans_store is not None:
-            plan = self.plans_store.get(payload.security_id, "MID") or \
-                self.plans_store.get(payload.security_id, "LONG")
-            if plan is not None and plan.plan_id != payload.plan_ref:
-                return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
-                                   account_version=current_version,
-                                   reason=f"主计划引用不匹配（plan_ref={payload.plan_ref!r}，"
-                                          f"当前计划 {plan.plan_id!r}）——核对后重试")
+            # K0c-5：按 plan_id 精确解析引用（不按 MID/LONG 查找顺序选——主意图
+            # 引用以 account×security active_ref 为准）。股数是事实：引用不存在/
+            # 过期/与主意图不符 → **放行入账并标偏离**（监督审查 P2 裁决口径），
+            # 不虚构「已按计划成交」，也不拒绝真实成交。
+            plans_by_horizon = self.plans_store.get(payload.security_id) or {}
+            matched = [p for p in plans_by_horizon.values()
+                       if p is not None and p.plan_id == payload.plan_ref]
+            active_ref = None
+            try:
+                active_ref = self.plans_store.get_active_ref(payload.security_id)
+            except Exception:
+                active_ref = None
+            if not matched:
+                payload = payload.model_copy(update={
+                    "deviation_from_proposal": True,
+                    "note": (payload.note or "") + "；计划引用不存在（过期/被删）"
+                            "——真实成交已记录并标偏离"})
+                logger.info(f"fill {fid} 计划引用不存在（plan_ref={payload.plan_ref!r}）"
+                            "——放行入账并标偏离（K0c-5）")
+            elif active_ref and active_ref.get("plan_id") != payload.plan_ref:
+                payload = payload.model_copy(update={
+                    "deviation_from_proposal": True,
+                    "note": (payload.note or "") + "；引用与主意图 active_ref 不符"
+                            "——真实成交已记录并标偏离"})
+                logger.info(f"fill {fid} 计划引用与主意图不符（active_ref="
+                            f"{active_ref.get('plan_id')!r}）——放行入账并标偏离")
         # ── 单事务事件（现金+份额一体）──
         amount = round(payload.quantity * payload.price, 2)
         if payload.action == "BUY":
@@ -432,7 +460,21 @@ class AccountService:
             cash_delta=cash_delta, fee=0.0,
             lot_cost_price=cost_price if security_id else None,
             related_fill_id=fid)
-        self.log.append(event)
+        try:
+            self.log.append(event)
+        except OSError as e:
+            # K0a 审查 P2：期初导入 append 失败=零写入——归因诚实（不再冒充锁冲突）
+            logger.warning(f"期初导入账本追加失败（零写入）: {e}")
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=self.account_version(),
+                               reason=f"账本写入失败（{e}）——本次未写入（未产生半个事件），"
+                                      "请检查磁盘/权限后重试")
+        except AccountLedgerCorruptError as e:
+            logger.warning(f"期初导入账本完整性兜底拒绝追加: {e}")
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=self.account_version(),
+                               reason=f"账本尾部损坏（{e}）——本次未写入（原件未动）。"
+                                      "请先备份账户事件账本，再人工修复损坏尾段后重试")
         if not _fsync_ledger(self.log.path):
             return FillReceipt(status="PERSIST_UNKNOWN", ok=False, fill_id=fid,
                                event_id=event.event_id,
@@ -462,35 +504,41 @@ def _fill_seq(related_fill_id: str) -> int:
 def pick_reusable_fill_id(events: list, prefix: str, payload_fingerprint: str,
                           *, has_fill_fn=None) -> str:
     """崩溃恢复判定（J2 协议，纯函数——可单测）：同前缀已入账事件中，取**数字序号
-    最大**者；若其指纹与本笔 payload 一致且投影未消费（has_fill_fn 为假）→ 判定
-    「上次尝试未完成」，复用该 fill_id（账本 DUPLICATE + 投影补做）；否则返回
-    `prefix{max_seq+1}`（新的真实成交）。"""
+    最大**者；若其**核心指纹**（K0a 审查 P1-1：去 deviation 位——deviation 由调用方
+    按当时账户事实重算，恢复重跑时账面已变会翻转该位）与本笔 payload 核心指纹一致
+    且投影未消费（has_fill_fn 为假）→ 判定「上次尝试未完成」，复用该 fill_id
+    （账本 DUPLICATE + 投影补做）；否则返回 `prefix{max_seq+1}`（新的真实成交）。"""
     prior = [e for e in events if str(getattr(e, "related_fill_id", "") or "").startswith(prefix)]
     if prior:
         last = max(prior, key=lambda e: _fill_seq(e.related_fill_id))
         consumed = has_fill_fn(last.related_fill_id) if has_fill_fn else False
-        if not consumed and _event_fingerprint(last) == payload_fingerprint:
+        if not consumed and _event_fingerprint(last, include_deviation=False) == payload_fingerprint:
             return str(last.related_fill_id)
         return f"{prefix}{_fill_seq(last.related_fill_id) + 1}"
     return f"{prefix}1"
 
 
-def _event_fingerprint(event: AccountEvent) -> str:
-    """已入账事件 → 规范化指纹（与 FillInput.fingerprint 同算法——幂等判定用）。"""
+def _event_fingerprint(event: AccountEvent, *, include_deviation: bool = True) -> str:
+    """已入账事件 → 规范化指纹（与 FillInput.fingerprint 同算法——幂等判定用；
+    include_deviation=False 为核心指纹，恢复态识别用——见 pick_reusable_fill_id）。"""
     quantity = int(event.quantity or 0)
     price = float(event.price or 0.0)
     fee = float(event.fee or 0.0)
     action = getattr(event.event_type, "value", str(event.event_type))
     if action not in ("BUY", "SELL"):
         return ""
-    return hashlib.sha256(json.dumps({
+    dump = event.model_dump()
+    core = {
         "security_id": str(event.security_id or "").strip(),
         "action": action, "quantity": quantity,
         "price": round(price, 6), "fee": round(fee, 6),
         "trade_date": str(event.trade_date or "").strip(),
-        "plan_ref": str((event.model_dump().get("plan_ref")) or "").strip(),
-        "deviation_from_proposal": bool(event.model_dump().get("deviation_from_proposal")),
-    }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
+        "plan_ref": str((dump.get("plan_ref")) or "").strip(),
+    }
+    if include_deviation:
+        core["deviation_from_proposal"] = bool(dump.get("deviation_from_proposal"))
+    return hashlib.sha256(json.dumps(core, ensure_ascii=False, sort_keys=True)
+                          .encode("utf-8")).hexdigest()[:16]
 
 
 def _fsync_ledger(path: Path) -> bool:

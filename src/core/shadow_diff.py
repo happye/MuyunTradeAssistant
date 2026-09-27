@@ -57,7 +57,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
-SHADOW_DERIVATION_VERSION = "shadow_v5"  # v5（J4）：requested/effective 模式拆分 + 有效观察字段（revision/assessment/account_version）+ 同输入去重
+SHADOW_DERIVATION_VERSION = "shadow_v5_k0c"  # K0c：去重按完整输入+输出指纹（A3/A4）+ 评估快照双侧非空资格（A2）——与 v5 记录不可比故版本升位；v6 完整绑定合同随 K1 冻结
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -118,7 +118,11 @@ class ShadowDiffRecord(BaseModel):
     execution_status: str = Field(default="", description="legacy 执行层 effective_action（J4 合同「执行状态」）")
     execution_blocked: bool = Field(default=False, description="执行被阻（跌停/停牌等——J4 合同「阻塞」）")
     blocking_gates: list[str] = Field(default_factory=list, description="捕获时点融合模式未达的发布门")
-    input_fingerprint: str = Field(default="", description="同输入指纹（同日重复捕获去重——同输入重复不是独立观察）")
+    input_fingerprint: str = Field(default="", description="同输入指纹（计划/账户/评估/快照——同输入重复不是独立观察）")
+    output_fingerprint: str = Field(
+        default="", description="同输出指纹（K0c/A4：双方动作/理由/执行状态/thesis——同输入不同输出必须留痕）")
+    append_status: str = Field(
+        default="", description="落盘回执（K0c-3：saved=已写入 / deduped=重复去重——向调用方/诊断可见）")
     delta_reasons: list[str] = Field(default_factory=list, description="差异原因标签（报告按此聚合）")
     derivation_version: str = SHADOW_DERIVATION_VERSION
     shadow_disclosure: str = "shadow 模拟计划（非用户确认，仅对照观察）"
@@ -183,15 +187,6 @@ def _derive_shadow_plan(horizon, security_id: str, as_of: datetime,
     )
 
 
-def _plan_source_of(plan) -> str:
-    """单周期计划来源（v3 逐周期标注——不再整行聚合）。"""
-    if plan is None:
-        return "simulated"
-    if getattr(plan, "activated", False):
-        return "user_plan_accepted"
-    return "user_plan_draft"
-
-
 def _load_verified_assessment(plan, horizon_value: str, security_id: str,
                               assessment_store=None):
     """按 J0b 口径加载并核对评估（J5 审查 P2-2：与 thesis 消费共用同一核对——
@@ -213,7 +208,12 @@ def _load_verified_assessment(plan, horizon_value: str, security_id: str,
     if str(asm.horizon) != str(horizon_value):
         return None  # 周期错配
     plan_snap = str(getattr(plan, "snapshot_id", "") or "")
-    if plan_snap and asm.snapshot_id and plan_snap != asm.snapshot_id:
+    asm_snap = str(asm.snapshot_id or "").strip()
+    if not plan_snap or not asm_snap:
+        # K0c/A2：计划与评估 snapshot **两侧非空且相等**才可消费——空值不作通配
+        #（旧实现任一侧为空即跳过比较，让缺快照评估冒充消费资格）
+        return None
+    if plan_snap != asm_snap:
         return None  # 快照错配
     from src.core.research_service import ASSERTION_METHOD_VERSION
     if str(asm.method_version or "").strip() != ASSERTION_METHOD_VERSION:
@@ -348,6 +348,9 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
 
     # v3：用户 plan2 计划优先（每股每周期一份——mid/long 可各立），来源逐周期标注。
     # 已激活计划走真决策表；草稿按行0 只复核；facts 只作用于其所在周期。
+    # K0c-5：来源与有效观察按**精确接受引用**判定（is_accepted_version：
+    # plan_id+revision+content_hash）——不再仅依 accepted_at 非空（计划被改后
+    # accepted_at 仍在会冒充接受版本）。
     user_plans: dict = {}
     try:
         store = plans_store
@@ -356,10 +359,24 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             store = HorizonPlanStore()
         for h in ("MID", "LONG"):
             user_plans[h] = store.get(security_id, h)
+
+        def _source_of(up) -> str:
+            if up is None:
+                return "simulated"
+            try:
+                if store.is_accepted_version(up):
+                    return "user_plan_accepted"
+            except Exception:
+                pass
+            return "user_plan_draft"
     except Exception as e:
         logger.debug(f"PlanV2 读取失败（按无计划处理）: {e}")
-    mid_src = _plan_source_of(user_plans.get("MID"))
-    long_src = _plan_source_of(user_plans.get("LONG"))
+        user_plans = {"MID": None, "LONG": None}
+
+        def _source_of(up) -> str:
+            return "simulated" if up is None else "user_plan_draft"
+    mid_src = _source_of(user_plans.get("MID"))
+    long_src = _source_of(user_plans.get("LONG"))
 
     # J4 有效观察绑定信息：接受计划的 revision/评估引用/快照；账户版本缺失 →
     # 只记 diagnostic（不进有效比较分母——「缺账户…保留诊断但不进有效比较」）
@@ -375,7 +392,8 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     policy_versions: list[str] = []
     snap_ids: set[str] = set()
     for h, up in user_plans.items():
-        if up is None or not getattr(up, "activated", False):
+        # K0c-5：有效观察的登记以精确接受引用为前提（accepted_ref 三元组一致）
+        if up is None or not _source_of(up) == "user_plan_accepted":
             continue
         pv = str(getattr(up, "policy_version", "") or "")
         if pv and pv not in policy_versions:
@@ -458,30 +476,64 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                                      "value", "") or ""),
         execution_blocked=bool(getattr(execution_eval, "blocked", False)),
         blocking_gates=list(mode_res.blocking_gates),
-        input_fingerprint=_input_fingerprint(security_id, user_plans, account_version),
+        input_fingerprint=_input_fingerprint(security_id, user_plans, account_version,
+                                             snap_ids=snap_ids,
+                                             policy_versions=policy_versions,
+                                             assessment_ids={"MID": mid_aid,
+                                                             "LONG": long_aid}),
         shadow_disclosure=_disclosure_for(mid_src, long_src),
         delta_reasons=delta_reasons,
     )
     store = Path(store_path) if store_path else SHADOW_STORE_PATH
     _append_record(store, record)
+    if record.append_status == "deduped":
+        logger.info(f"影子记录重复触发去重（{security_id}，输入/输出指纹均同）——"
+                    "不重复计观察")
     return record
 
 
-def _input_fingerprint(security_id: str, user_plans: dict, account_version: str) -> str:
-    """同输入指纹（J4：同输入重复不是独立观察——可比性由计划版本+账户版本决定）。"""
+def _input_fingerprint(security_id: str, user_plans: dict, account_version: str,
+                       snap_ids: Optional[set] = None,
+                       policy_versions: Optional[list] = None,
+                       assessment_ids: Optional[dict] = None) -> str:
+    """同输入指纹（K0c/A3 扩展业务字段）：证券+账户版本+两周期计划内容 hash+
+    证据快照 id+计划策略版本+评估引用——同输入重复不是独立观察。"""
     import hashlib as _h
     parts = [str(security_id), str(account_version or "")]
     for h in ("MID", "LONG"):
         up = user_plans.get(h)
         parts.append(up.content_hash() if up is not None else "-")
+    parts.append(";".join(sorted(snap_ids or set())))
+    parts.append(";".join(policy_versions or []))
+    parts.append(";".join(f"{k}:{v}" for k, v in sorted((assessment_ids or {}).items())))
+    return _h.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def _output_fingerprint(record: ShadowDiffRecord) -> str:
+    """同输出指纹（K0c/A4）：双方动作/目标理由/执行状态/thesis——同输入不同输出
+    （行情/证据变化导致决策翻转）不是重复观察，必须留痕。"""
+    import hashlib as _h
+    parts = [str(record.legacy_action), str(record.legacy_desired),
+             str(record.fusion_mid_action), str(record.fusion_long_action),
+             str(record.fusion_mid_reason), str(record.fusion_long_reason),
+             str(record.sell_path), str(record.hard_exit), str(record.technical_exit),
+             str(record.research_status), str(record.mid_thesis_status),
+             str(record.long_thesis_status), str(record.execution_status),
+             str(record.execution_blocked), ";".join(sorted(record.blocking_gates)),
+             ";".join(sorted(record.delta_reasons))]
     return _h.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
 def _append_record(store: Path, record: ShadowDiffRecord) -> bool:
-    """追加一条记录；同股同分钟幂等跳过；同输入同日重复跳过（J4：同输入重复
-    不是独立观察——计划/账户版本变更才产生新观察）。返回是否实际写入。"""
+    """追加一条记录；K0c/A3/A4 去重规则：**只折叠同一完整输入且同一输出的重复触发**——
+    - 同输入+同输出：同分钟幂等、同日跨分钟亦幂等（同输入重复不是独立观察——J4 继承）
+    - 同分钟但输入或输出任一变化 → 留痕（计划/账户版本变更、决策结果翻转不丢——A3/A4）
+    - 旧记录无输出指纹（v5 时代）→ 无法认定同输出 → 保守留痕（不吞新观察）
+    返回是否实际写入；record.append_status 向调用方回执（saved/deduped）。"""
     store.parent.mkdir(parents=True, exist_ok=True)
     minute_key = (record.security_id, record.as_of[:16])
+    day = record.as_of[:10]
+    record.output_fingerprint = record.output_fingerprint or _output_fingerprint(record)
     if store.exists():
         with store.open("r", encoding="utf-8") as f:
             for line in f:
@@ -492,13 +544,22 @@ def _append_record(store: Path, record: ShadowDiffRecord) -> bool:
                     old = json.loads(line)
                 except json.JSONDecodeError:
                     continue  # 坏行隔离（G14：不因坏行丢弃既有记录）
-                if (old.get("security_id"), str(old.get("as_of", ""))[:16]) == minute_key:
+                if old.get("security_id") != record.security_id:
+                    continue
+                same_fp = (record.input_fingerprint and
+                           old.get("input_fingerprint") == record.input_fingerprint)
+                same_out = (record.output_fingerprint and
+                            old.get("output_fingerprint") == record.output_fingerprint)
+                same_minute = (str(old.get("as_of", ""))[:16]) == minute_key[1]
+                if same_minute and same_fp and same_out:
+                    record.append_status = "deduped"
                     return False
-                if record.input_fingerprint and \
-                        old.get("input_fingerprint") == record.input_fingerprint and \
-                        str(old.get("as_of", ""))[:10] == record.as_of[:10]:
+                if not same_minute and same_fp and same_out \
+                        and str(old.get("as_of", ""))[:10] == day:
+                    record.append_status = "deduped"
                     return False
     with store.open("a", encoding="utf-8") as f:
+        record.append_status = "saved"
         f.write(record.model_dump_json() + "\n")
     return True
 

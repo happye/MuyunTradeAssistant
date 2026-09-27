@@ -112,6 +112,17 @@ def test_d1_positive_thousands_separator_and_negative_claim():
     assert r2.level is VerificationLevel.FACT_CHECKED, f"带符号负值被误杀: {r2.failures}"
 
 
+def test_d1b_interval_upper_bound_not_misjudged_as_negative():
+    """监督审查 P2-5 回归：区间上界（净利润100-200万元，主张取 200）合法可核定——
+    负号前后皆数字=区间连接符，不是负值标记；负值反例仍 REJECTED。"""
+    r = _verify("公司净利润100-200万元。", "公司净利润200万元",
+                event_type="earnings", value=200, unit="万元")
+    assert r.level is VerificationLevel.FACT_CHECKED, f"区间上界被误封: {r.failures}"
+    r2 = _verify("公司净利润-100万元。", "公司净利润100万元",
+                 event_type="earnings", value=100, unit="万元")
+    assert r2.level is VerificationLevel.REJECTED, "真负值主张正值仍必须拒绝"
+
+
 def test_d1_positive_negation_same_object_still_fact_checked():
     """正例：否定对象一致（无新订单 ↔ 无新订单）→ FACT_CHECKED（CV-12 语义保持）。"""
     r = _verify("公司本期无新订单。", "公司本期无新订单",
