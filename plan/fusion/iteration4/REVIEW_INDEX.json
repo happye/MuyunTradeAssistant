@@ -1,0 +1,82 @@
+{
+  "schema_version": 2,
+  "reviewed_at": "2026-09-27T15:12:01.732828+00:00",
+  "baseline_commit": "def45d18ef449bd63629963b1c3075a7c9333b9e",
+  "scope": "Targeted properties only; not whole-file safety certification",
+  "current_report": "DEEP_ARCHITECTURE_REVIEW.md",
+  "prior_report": "R10_INDEPENDENT_REVIEW.md",
+  "checks": {
+    "targeted_tests": {
+      "passed": 180,
+      "seconds": 6.9,
+      "runner": "review_test_runner.py",
+      "output": "TARGETED_TEST_RESULTS.txt",
+      "full_suite_rerun": false
+    },
+    "prior_counterexamples": {
+      "A1": "OPEN",
+      "A2": "OPEN",
+      "A3": "OPEN",
+      "A4": "OPEN"
+    },
+    "deep_probes": {
+      "D1a_metric_binding": "OPEN",
+      "D1b_sign": "OPEN",
+      "D1c_decimal": "OPEN",
+      "D1d_negation_binding": "OPEN",
+      "D2_truncated_tail_then_append": "OPEN",
+      "D3_projection_crash_gap": "OPEN",
+      "D4_quantity_partial_sell_cli": "OPEN",
+      "D5_capability_is_not_proposition": "OPEN",
+      "D6_snapshot_subject_boundary": "OPEN",
+      "D7_reserved_semantics": "OPEN"
+    },
+    "deep_runner": "deep_review_probes.py",
+    "deep_output": "DEEP_PROBE_RESULTS.json",
+    "production_writes": false,
+    "paid_calls": false,
+    "real_account_replay": false
+  },
+  "dependencies": {
+    "pytest": "9.1.1",
+    "pydantic": "2.12.5",
+    "PyYAML": "6.0.3"
+  },
+  "groups": {
+    "account": {
+      "src/data/account_service.py": "689402febba27bc9a32efe859a8b502fc976c3336d751b85f3e98edbf6a255be",
+      "src/data/account_snapshot.py": "ea27415219bbb601633677f6cdf53cea4a0cd5d578a5c74952d1831e3ad9f9e6",
+      "src/data/portfolio.py": "7cab1f59c44937cacc51f5717aa58c79d6fef05345fa3452e31f21a2880f55b0",
+      "src/data/proposals.py": "aba8060afc96d8e2d3f0b4ccc3a1c0dd1d68e92320f733dd4a6811620b2840ab",
+      "src/cli/main.py": "196a30fe1813c2c554cf12c703536317d6f847ec0031a4b52003a93b2ad5d4b0"
+    },
+    "facts_and_assertions": {
+      "src/core/claim_extraction.py": "536c8dffea132bf216b7dc5740ab80f2c44496e3e5bcb997f8ce5c90b40bc5ed",
+      "src/core/research.py": "51d0a1db1811ce79f3e77db8a9f7977e607ded10f3b7d7ce87a8eba78d3fcd21",
+      "src/core/factor_compute.py": "0f3611028aedbc08a8c3c153ea5c5dbf0ec18a33caca93995bc8c6bd5830e4aa",
+      "src/core/research_service.py": "20b70672b89689777c5a1f9a0797d65e7bd7a0fad0bba252ed16a93bfad6e3da",
+      "src/data/research_snapshot.py": "0618e3f142cd94edff61b45e10762b3d31c5568405e25fc013e7e28e7ab48d5c"
+    },
+    "plan_and_observation": {
+      "src/core/research_application.py": "536f29f27c18cb47cf479a2cc294e05acb4b147a11628ca455d227f37be3ab9c",
+      "src/data/horizon_plans.py": "66b96f1a9fbb688be7c227ad317627c60ba7b369ce7ebbf65e2feee88b0d4355",
+      "src/data/research_store.py": "5742a0920cefe3ed2bac16483aa5b5cc337953c7148b09e45804eac796990f3f",
+      "src/core/shadow_diff.py": "416bef3509900f5a6e1fc9b03e7b91517f634dc9a514af44147af654de75913c"
+    },
+    "test_boundary": {
+      "tests/conftest.py": "2f6e951025f7a54c33a9affc15e7fbc0a5360bad51a9616f628dc479509f4ae9",
+      "pytest.ini": "9b6e795247cbc7e327d576c1c277e3c350e0995e7a9eb4b17d046a92b99ac666",
+      "tests/core/test_j0_facts_assessment.py": "e5e82887d8c44d3f06c7031f29501623435b50dda58512661f83e372c3f43e6a",
+      "tests/core/test_j1_mapping_boundary.py": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",
+      "tests/core/test_j2_account_service.py": "85c0508d95f638e5a6cc87c7b5cf8632a0751bc1bead0f537273358e868dae64",
+      "tests/core/test_j3_research_application.py": "23deadc68196aa6aa51a11a9c92a5b7d04fc310103158f90d45685f8123f0399",
+      "tests/core/test_j4_mode_observation.py": "0d193f68dd90dea6aac5a1f95b028efca4f7992f853ebf6a337e0e8426e8c5d4",
+      "tests/core/test_claim_extraction.py": "f38ff4fe61018da01f86bb404bb0d6528ea6c7e23af71c3ddaa7a9a9a2526500",
+      "tests/core/test_claim_verification_corpus.py": "fbd0becdd0c83032c9431c674724a5c914959b34024544c1d753c6c58ba19249",
+      "tests/core/test_research_snapshot.py": "915f88737125606312475e085ce493672785c360584cae2cf15456a830055cfe",
+      "tests/core/test_research_service.py": "7cb911b688a3ef6cdc84e0134d61b79a8fee4e5b44d1505cc473868f1c7095cf",
+      "tests/core/test_account_snapshot.py": "43b4b870a060727a40ae133716ab0b83e39ff4a8fb0cf539866796d080fa11ce"
+    }
+  },
+  "reuse_rule": "Compare HEAD, working diff, dependency versions, source hashes, and consumers; original N tests green do not close D counterexamples. Recheck changed groups and their consumers. No claim of real observation or return validation."
+}

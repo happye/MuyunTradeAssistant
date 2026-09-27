@@ -3,6 +3,10 @@
 > 任何 AI 编码工具打开此项目时，请先阅读本文件。
 > 详细文档索引见末尾。
 
+> 当前融合交付验收以 [plan/fusion/STATUS.md](plan/fusion/STATUS.md) 为准。版本叙事中的测试数量与“反例关闭”是当批范围，不代替最新独立验收；2026-09-27 深审已重新打开部分事实与账户一致性问题。
+
+> **多 Agent 共用规则**：本文件只定义项目共同规范，不给阅读者自动分配架构师或实施者身份。角色以用户对当前会话的指派为准；Codex 专属约定见 `CODEX.md`，Claude Code 专属约定见 `CLAUDE.md`。共享交接文档中的作者职责不得覆盖当前 Agent 已获指派的任务。
+
 ---
 
 ## 一、怎么跑
@@ -432,7 +436,7 @@ docs/               # 详细文档
 | `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-098）+ 顶部当前待办汇总 |
 | `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史M/C与F接手记录；当前状态见 `plan/fusion/STATUS.md`，不从归档推定完成状态 |
 | `docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接（已归档）：scan review/观察池交付明细 |
-| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话恢复 = [RESUME](plan/fusion/RESUME.md)；按复查索引比较源码变更，只重看受影响块。F/R历史账本保留，第三轮J0–J5设计见 `plan/fusion/iteration3/`；设计交付、实现、场景验证和策略效果不得混为完成 |
+| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；R10 独立验收与第四轮任务卡见 `plan/fusion/iteration4/`。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
 | `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
 | `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |

@@ -2004,3 +2004,42 @@ J2 confirm_fill 的 CLI 层 fill_id 用 `{proposal_id}#{计数+1}` 派生——�
 - Source: j2_supervisor_review（P0-1）
 - Pattern-Key: idempotency.derived_keys_must_detect_incomplete_attempts
 - Related Files: src/cli/main.py（confirm 分支）, src/data/account_service.py
+
+## [LRN-20260927-ARCH03] insight — 研究重放与观察去重必须核验完整输入、输出和接受态
+
+**Logged**: 2026-09-27
+**Priority**: P1（第四轮 K0 修复任务）
+**Status**: open
+**Area**: architecture, acceptance, research-lifecycle, shadow-observation
+
+J0–J5 实施方全量 1297 绿，架构师独立目标 78 绿，但隔离临时目录反例发现：同 run_id 的 `research` 重跑仍写新草稿并撤销已接受计划；评估快照缺失时仍被计划消费为 VALID；影子“同股同分钟”及不含决策输出的指纹会丢掉计划/账户/动作变化。原反例关闭不代表相邻语义空间已验收。下一轮先写这些反例并从真实消费者入口复核，再冻结观察协议；重复研究须幂等且不得静默覆盖用户接受态，缺快照按待复核，去重仅折叠完整输入和输出都相同的重复触发。
+
+- Source: architecture_R10_independent_review
+- Pattern-Key: acceptance.replay_must_preserve_user_acceptance_and_observation_changes
+- Related Files: plan/fusion/iteration4/R10_INDEPENDENT_REVIEW.md, src/core/research_application.py, src/core/shadow_diff.py
+
+## [LRN-20260927-ARCH04] correction — 共享规范不分配工具身份
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: resolved（职责文档范围已修正）
+**Area**: multi-agent, memory
+
+用户明确纠正 AGENTS.md 同时服务 Codex 与 Claude Code，不得让实施 Agent 因恢复记忆而误认自己为架构师。项目共同约束留 AGENTS；Codex 当前职责放 CODEX.md，并以用户后续指派为准；RESUME 中作者身份和给 Codex 的续接语句标明作用范围。进度/任务事实可共享，角色和工具特有续跑策略不可无条件施加给所有读者。
+
+- Source: user_correction
+- Pattern-Key: memory.shared_guidance_must_not_reassign_agent_roles
+- Related Files: AGENTS.md, CODEX.md, plan/fusion/RESUME.md
+
+## [LRN-20260927-ARCH05] insight — 成功回执、计算资格和语义成立分别验收
+
+**Logged**: 2026-09-27
+**Priority**: P1
+**Status**: open（产品修复承接第四轮 K0a/K0b；本文不是修复）
+**Area**: account-integrity, fact-verification, assertions
+
+深审目标180绿同时新增10个反例：坏JSON尾后追加成交ACCEPTED但重放丢失；投影值已落盘而幂等标记未写时重试重复生效；CLI按建议比例把100股部分卖出投影成1000股全清；相同关键词与数字可把负利润/小数/错指标/不同否定对象核成FACT_CHECKED；因子OK误当多期投资命题TRUE。独立验收必须验证“回执后重放存在且一致”、每个持久化切点的恢复，以及证据对同一命题的支持关系。HOME重定向不足以隔离仓库相对路径：审查运行器使用临时根写入门禁、禁网络、重定向测试产物与持仓哈希核对。源码指纹与原始输出已存iteration4，原反例绿不意味着相邻性质关闭。
+
+- Source: deep_architecture_review
+- Pattern-Key: acceptance.receipt_computability_and_truth_are_distinct
+- Related Files: plan/fusion/iteration4/DEEP_ARCHITECTURE_REVIEW.md, plan/fusion/iteration4/deep_review_probes.py

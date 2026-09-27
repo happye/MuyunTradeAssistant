@@ -1,0 +1,109 @@
+{
+  "review_baseline": "def45d1",
+  "executed_at": "2026-09-27T15:12:01.732828+00:00",
+  "source_sha256": {
+    "src/core/claim_extraction.py": "536c8dffea132bf216b7dc5740ab80f2c44496e3e5bcb997f8ce5c90b40bc5ed",
+    "src/core/research.py": "51d0a1db1811ce79f3e77db8a9f7977e607ded10f3b7d7ce87a8eba78d3fcd21",
+    "src/core/factor_compute.py": "0f3611028aedbc08a8c3c153ea5c5dbf0ec18a33caca93995bc8c6bd5830e4aa",
+    "src/data/account_service.py": "689402febba27bc9a32efe859a8b502fc976c3336d751b85f3e98edbf6a255be",
+    "src/data/account_snapshot.py": "ea27415219bbb601633677f6cdf53cea4a0cd5d578a5c74952d1831e3ad9f9e6",
+    "src/data/portfolio.py": "7cab1f59c44937cacc51f5717aa58c79d6fef05345fa3452e31f21a2880f55b0",
+    "src/data/proposals.py": "aba8060afc96d8e2d3f0b4ccc3a1c0dd1d68e92320f733dd4a6811620b2840ab",
+    "src/data/research_snapshot.py": "0618e3f142cd94edff61b45e10762b3d31c5568405e25fc013e7e28e7ab48d5c",
+    "src/cli/main.py": "196a30fe1813c2c554cf12c703536317d6f847ec0031a4b52003a93b2ad5d4b0"
+  },
+  "synthetic": true,
+  "network": "blocked",
+  "write_boundary": "temporary root enforced by audit hook",
+  "results": [
+    {
+      "id": "D1a_metric_binding",
+      "observed_defect": true,
+      "level": "FACT_CHECKED",
+      "body": "公司营收100万元，净利润10万元。",
+      "statement": "公司净利润100万元",
+      "failures": []
+    },
+    {
+      "id": "D1b_sign",
+      "observed_defect": true,
+      "level": "FACT_CHECKED",
+      "body": "公司净利润-100万元。",
+      "statement": "公司净利润100万元",
+      "failures": []
+    },
+    {
+      "id": "D1c_decimal",
+      "observed_defect": true,
+      "level": "FACT_CHECKED",
+      "body": "公司签订0.900万元订单。",
+      "statement": "公司签订900万元订单",
+      "failures": []
+    },
+    {
+      "id": "D1d_negation_binding",
+      "observed_defect": true,
+      "level": "FACT_CHECKED",
+      "body": "本期无新订单。",
+      "statement": "公司不存在偿债风险",
+      "failures": []
+    },
+    {
+      "id": "D2_truncated_tail_then_append",
+      "observed_defect": true,
+      "receipt": "ACCEPTED",
+      "before_completeness": "QUANTITY_LEVEL",
+      "after_completeness": "QUANTITY_LEVEL",
+      "isolated_events": [],
+      "cash": 10000.0,
+      "holdings": []
+    },
+    {
+      "id": "D3_projection_crash_gap",
+      "observed_defect": true,
+      "after_crash_ratio": 0.2,
+      "after_retry_ratio": 0.30000000000000004,
+      "retry_ok": true,
+      "duplicate": false
+    },
+    {
+      "id": "D4_quantity_partial_sell_cli",
+      "observed_defect": true,
+      "remaining_quantity": 900,
+      "portfolio_record_exists": false,
+      "proposal_status": "CONFIRMED",
+      "cli_output": "\n📌 确认成交\n  600519 : SELL 仓位变化 10% @ ¥10（依据建议 CLOSE_ALL）\n✓ 事件账本入账: SELL 100 股 @ ¥10 ｜ 现金变动 +1000.00 元 ｜ 版本 vb633de14580db3ab\n✓ 比例投影已同步 ｜ 持仓现状: 记录已删除（清仓完成）\n"
+    },
+    {
+      "id": "D5_capability_is_not_proposition",
+      "observed_defect": true,
+      "evaluation": "TRUE",
+      "factor_values": {
+        "cash_conversion_v1": {
+          "status": "OK",
+          "value": -2
+        },
+        "roe_observed_v1": {
+          "status": "OK",
+          "value": -0.1
+        }
+      },
+      "scope": "real factor functions plus pure evaluator; not whole LONG VALID"
+    },
+    {
+      "id": "D6_snapshot_subject_boundary",
+      "observed_defect": true,
+      "snapshot_security": "600519",
+      "record_securities": [
+        "000002"
+      ]
+    },
+    {
+      "id": "D7_reserved_semantics",
+      "observed_defect": true,
+      "declared_already_net_available": 1000,
+      "reserved": 200,
+      "deployable": 800.0
+    }
+  ]
+}

@@ -404,3 +404,19 @@ FETCH FAIL: fatal: unable to access 'https://github.com/happye/MuyunTradeAssista
 Baostock 官方主页/API文档在本轮 web 工具仅返回 `×`，未取得字段定义；没有用搜索到的第三方转载确认全字段单位/PIT资格。待 R1 取得可核验原始定义与发行人报告。
 
 2026-09-27复用该教训：创建iteration3父目录失败后以原生PowerShell显式建目录成功；多文件补丁报错后实际检查发现前序文件已写入，因此**失败不代表零修改，重试前逐文件核对**，不盲目重放整批。巨潮原始PDF全文抓取超时，只保留来源入口，未声称核定财报数值。
+
+## [ERR-20260927-ARCH02] 架构记忆补丁与独立探针调用错误
+
+**Logged**: 2026-09-27
+**Status**: resolved（均未触碰产品或真实账户）
+
+同一 `apply_patch` 内 Delete+Add 同一路径被工具拒绝，原 `plan/fusion/RESUME.md` 未改变；改为 Update 原位替换成功。第一次临时影子探针同时通过 `base` 和显式参数传 `as_of`，抛 `TypeError`；改为先更新 `base['as_of']` 再构造，实测新反例。文档自检 `git diff --check` 又发现本条与新增 learning 的 Markdown 行尾空格；移除后复验。命令/脚本失败后先核对磁盘与输出，再最小修正，不把失败当作产品缺陷或验收证据。
+
+## [ERR-20260927-ARCH03] 独立审查运行器的 Windows 与隔离兼容
+
+**Logged**: 2026-09-27
+**Status**: resolved（最终10探针无执行错误；目标180绿）
+
+首次深审探针因stdout默认GBK无法输出emoji而失败，且cwd仍在TemporaryDirectory内导致Windows无法清理目录；改为显式UTF-8并用contextlib.chdir保证先恢复cwd再清理。首次pytest隔离门禁阻断pandas导入时stdlib的Windows版本探测子进程，先在门禁前预热platform.uname（只读），产品运行仍禁止子进程；随后语料测试试图往tests/artifacts写报告被正确拦截，运行器按模块重定向ARTIFACT到临时根；pytest默认日志NUL也被严格写门禁拦截，改为显式临时日志路径。最终两种运行器成功，真实portfolio及bak哈希不变。没有为通过测试开放真实账户或仓库写入。
+
+另一次读取错写src/core/research_snapshot.py（实际src/data）后用rg --files定位；网页automations.md获取失败后改读官方HTML。工具失败不计产品缺陷、不据失败页面推断官方功能。

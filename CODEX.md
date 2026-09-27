@@ -6,14 +6,22 @@
 
 ## Codex 特有注意点
 
+### 本项目融合架构任务的 Codex 持久化职责
+
+适用范围：用户当前指派 Codex 承担暮云融合项目总架构师的会话；不约束 Claude Code 或其他实施 Agent，用户后续明确改派任务时以新指派为准。
+
+- 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡；由 Claude Code 实施产品代码。未经用户改派，不直接修改产品代码、测试、配置和真实账户，不擅自提交 Git。
+- 恢复顺序：`plan/fusion/STATUS.md` → `plan/fusion/RESUME.md` → 最新独立验收与任务卡；每次先查 HEAD/工作树，按源码指纹复核受影响模块。
+- `AGENTS.md` 是共同规范，只能放工具中立规则与指针；Codex 身份和续接指令写在本文件，跨会话进度写入明确标注范围的 RESUME。
+
+### 环境与操作
+
 1. **Shell 环境**：Codex 默认 shell 下执行 git 前确认中文路径编码；遇到 git 因路径报错时，
    用完整 POSIX 路径（`/g/Tools/...`）而非反斜杠 Windows 路径。
 2. **Python 入口**：统一用 `./.venv/Scripts/python.exe`（Windows 路径）或
-   `uv run python`；不要用系统 Python。测试是脚本式直跑，不是 pytest 断言式：
-   `PYTHONUTF8=1 PYTHONPATH=. ./.venv/Scripts/python.exe tests/<目录>/<测试名>.py`
-3. **无交互机制**：Codex 没有 Claude Code 的 plan mode / TaskCreate / preview 工具。
-   非平凡改动按 AGENTS.md「Deep Analysis Requirements」在回复里给出分析→计划→等用户确认，
-   不要跳过确认直接改。
+   `uv run python`；不要用系统 Python。离线全量以 `pytest.ini` 和 `tests/README.md` 为准：
+   `.\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider`；脚本式场景按各文件头说明单独执行。
+3. **任务范围**：按用户当前指派自主完成可逆工作；不要用过期的工具能力描述或不存在的确认流程阻塞已经授权的审查/设计。产品代码实施仍遵守上面的 Codex 架构师分工。
 4. **网络纪律**：金融数据接口必须带超时与降级（见 AGENTS.md §五）；本机系统代理
    `127.0.0.1:7890` 会干扰东方财富 API 与 GitHub，git 推送用 `git -c http.proxy= push`。
 5. **提交纪律**：commit message 用中文详细描述（AGENTS.md §六）；**禁止 `git add -A`**——
