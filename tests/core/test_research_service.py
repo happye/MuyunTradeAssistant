@@ -83,11 +83,13 @@ def _run_service(claims=None, capabilities=None, horizons=("MID", "LONG")):
 # ── 1. 自动草稿（无 --facts）与诚实缺口 ────────────────────
 
 def test_auto_draft_without_user_facts():
-    """验收1：不填 --facts 也生成 MID/LONG 草稿；已核验主张带证据引用进 fact_evidence_refs。"""
+    """验收1：不填 --facts 也生成 MID/LONG 草稿；已核验主张带证据引用进 fact_evidence_refs。
+    （J0：类型化数值主张需声明 value/unit 才可达 FACT_CHECKED——组件齐备的正式路径。）"""
     c = _claim(statement="公司获 900 万元订单")
     c = c.model_copy(update={"quote_text": "签订 900 万元销售订单",
                              "citation_uri": "cninfo://ann/1",
-                             "citation_hash": _doc().content_hash})
+                             "citation_hash": _doc().content_hash,
+                             "value": 900, "unit": "万元"})
     svc, bundle = _run_service(claims=[c])
     assert [d["horizon"] for d in bundle.plan_drafts] == ["MID", "LONG"]
     mid = bundle.plan_drafts[0]

@@ -90,16 +90,20 @@ _UNSET = object()
 
 
 def _capture(tmp_path, sd=None, dr=None, pos=_UNSET, config=_ON, packet=None,
-             plans_store=None):
+             plans_store=None, assessment_store=_UNSET):
     from src.data.horizon_plans import HorizonPlanStore
+    from src.data.research_store import AssessmentStore
     store = plans_store if plans_store is not None else HorizonPlanStore(tmp_path / "plans.json")
+    # J0b v4：评估存储默认隔离到 tmp（绝不读真实 HOME）
+    asm_store = AssessmentStore(tmp_path / "research") if assessment_store is _UNSET \
+        else assessment_store
     return capture_shadow(
         dr or _dr(), sd or _sd(), _eval(),
         _pos() if pos is _UNSET else pos,
         packet=packet or _packet(dr=dr, sd=sd),
         source="test", config=config,
         store_path=tmp_path / "shadow.jsonl",
-        plans_store=store)
+        plans_store=store, assessment_store=asm_store)
 
 
 # ── 1. facts 映射 ───────────────────────────────────────────
@@ -319,6 +323,23 @@ def plan_policy_long():
     return POLICY_ID_LONG
 
 
+def _mk_assessed_plan(tmp_path, asm_store, code="601318", horizon="MID", facts=None,
+                      accepted=True, status_value="VALID"):
+    """带评估唯一真值的用户计划（J0b v4 合法真判断路径）：
+    计划盖 assessment_id + snapshot_id，评估落 AssessmentStore（caller 负责存计划）。"""
+    from datetime import datetime
+    from src.core.decision_contract import ThesisStatus
+    from src.core.research import ThesisAssessment
+    plan = _mk_plan(tmp_path, code=code, horizon=horizon, facts=facts, accepted=accepted)
+    asm = ThesisAssessment(
+        thesis_id=f"thesis_{code}_{horizon}", security_id=code, horizon=horizon,
+        snapshot_id="snap-test", status=ThesisStatus[status_value],
+        method_version="r3.assertion_v1", evaluated_as_of=datetime.now().astimezone())
+    plan.assessment_id = asm_store.save(asm)
+    plan.snapshot_id = asm.snapshot_id
+    return plan, asm
+
+
 def test_accepted_plan_plain_facts_no_longer_valid(tmp_path):
     """R0 资格止血（A03）：已激活计划+纯文本事实（无证据引用）→ thesis UNESTABLISHED
     → 行10 REVIEW——「一条 facts 文本即 VALID」不再成立。"""
@@ -336,16 +357,17 @@ def test_accepted_plan_plain_facts_no_longer_valid(tmp_path):
     assert "事实未挂证据引用" in text  # R0 验收3：具体原因，不是笼统错误
 
 
-def test_accepted_plan_with_evidence_refs_gives_real_verdict(tmp_path):
-    """带可解析证据引用的事实 → 真判断路径保持：MID VALID → 技术退出落行5 REDUCE
-    （资格门只拦无引用文本，不关整个研究系统）。"""
+def test_accepted_plan_with_assessment_gives_real_verdict(tmp_path):
+    """J0b v4 合法真判断路径：计划带 assessment_id 且评估已落 AssessmentStore
+    → shadow 消费同一 status（MID VALID → 技术退出落行5 REDUCE）。"""
     from src.data.horizon_plans import HorizonPlanStore
+    from src.data.research_store import AssessmentStore
+    asm_store = AssessmentStore(tmp_path / "research")
     store = HorizonPlanStore(tmp_path / "plans.json")
-    plan = _mk_plan(tmp_path, facts=["6月订单环比+30%"])
-    plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}  # extra 字段（R3 正式化）
+    plan, _asm = _mk_assessed_plan(tmp_path, asm_store, facts=["6月订单环比+30%"])
     store.save(plan)
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
-                   plans_store=store)
+                   plans_store=store, assessment_store=asm_store)
     assert rec.mid_thesis_status == "VALID"
     assert rec.fusion_mid_action == "REDUCE"  # 行5：MID VALID+技术退出 → REDUCE
     # 仅 MID 有计划（LONG 模拟）→ 混合来源披露逐周期明示，不再整行盖「真判断」
@@ -382,14 +404,17 @@ def test_hard_exit_still_wins_with_user_plan(tmp_path):
 
 def test_accepted_plan_long_side_stays_simulated_and_unestablished(tmp_path):
     """R0 验收2：同股仅 MID 接受时——LONG 影子明确模拟（long_plan_source=simulated、
-    thesis UNESTABLISHED），不计真计划样本；MID 真判断不受累。"""
+    thesis UNESTABLISHED），不计真计划样本；MID 真判断不受累（J0b v4：MID VALID
+    经 AssessmentStore 合法路径）。"""
     from src.data.horizon_plans import HorizonPlanStore
+    from src.data.research_store import AssessmentStore
+    asm_store = AssessmentStore(tmp_path / "research")
     store = HorizonPlanStore(tmp_path / "plans.json")
-    plan = _mk_plan(tmp_path, horizon="MID", facts=["6月订单环比+30%"])
-    plan.fact_evidence_refs = {"6月订单环比+30%": ["cninfo://ann/123"]}
+    plan, _asm = _mk_assessed_plan(tmp_path, asm_store, horizon="MID",
+                                   facts=["6月订单环比+30%"])
     store.save(plan)
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
-                   plans_store=store)
+                   plans_store=store, assessment_store=asm_store)
     assert rec.mid_plan_source == "user_plan_accepted" and rec.mid_thesis_status == "VALID"
     assert rec.long_plan_source == "simulated" and rec.long_thesis_status == "UNESTABLISHED"
     assert rec.fusion_mid_action == "REDUCE"   # MID 真判断（行5）

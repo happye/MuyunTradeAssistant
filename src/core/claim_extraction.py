@@ -38,6 +38,24 @@ logger = logging.getLogger(__name__)
 CLAIM_SCHEMA_VERSION = "f6.v1"
 # R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2 标签和结果保留，新协议单独命名
 CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv2"
+# J0 类型化事实核验范围规则版本（DELIVERY_PLAN J0a：只有支持该类型的确定性规则完整
+# 验证才进 FACT_CHECKED；改动关键词表/边界规则必须 bump——旧核验结果不冒充新语义）
+TYPED_RULE_VERSION = "j0.typed_scope_v1"
+
+# 核验范围闭集（verification_scope；""=自由文本——最高只能 EXCERPT_GROUNDED）
+SCOPE_NUMERIC_EVENT = "typed_numeric_event"
+SCOPE_NEGATION = "typed_negation"
+_VERIFICATION_SCOPES = ("", SCOPE_NUMERIC_EVENT, SCOPE_NEGATION)
+
+# 类型化数值事件的谓词关键词（按 event_type；主张与摘录须共享同一指标词——
+# 数字不能脱离指标语境背书，扩展反例「数字为其他指标」）
+_SCOPED_NUMERIC_PREDICATES: dict[str, tuple[str, ...]] = {
+    "order": ("订单", "合同", "中标", "销售"),
+    "earnings": ("净利", "利润", "盈利", "营收", "收入", "业绩", "亏损", "预增", "预减"),
+    "exposure": ("暴露", "占比", "份额", "收入占比", "业务收入"),
+}
+# 数值可能属于其他主体的表述标记（「数字为其他主体」——归属存疑转人工）
+_OTHER_SUBJECT_MARKERS = ("同行", "竞争对手", "竞争对手公司", "友商", "同业公司")
 
 
 class ClaimVerificationError(ValueError):
@@ -82,6 +100,11 @@ class ClaimRecord(BaseModel):
     negation_flag: Optional[bool] = Field(default=None, description="主张是否为否定性事实（如『未获得订单』）；None=未声明")
     conditional_flag: bool = Field(default=False, description="主张是否带条件（如『拟』『预计』）")
     relation_basis: str = Field(default="", description="support/refute 判断的依据注记——研究推论与原始事实分开存（DATA_TRUST §4）")
+    # J0 类型化事实（DELIVERY_PLAN J0a）：核验范围声明——空=自由文本（最高
+    # EXCERPT_GROUNDED）；typed_numeric_event/typed_negation 走对应确定性规则
+    verification_scope: str = Field(
+        default="", description="核验范围（J0 类型化事实）：typed_numeric_event/typed_negation；"
+                                "空=自由文本——摘录真实存在但结论不被自动支持")
     # 谱系与诊断
     extracted_by: str = Field(default="", description="提取器标识（deterministic/<model>@<version>）")
     model_confidence: Optional[float] = Field(
@@ -374,6 +397,8 @@ class ClaimVerificationResult(BaseModel):
     failures: list[str] = Field(default_factory=list, description="未达/失败项（人话——用户可见的具体原因）")
     verified_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat(timespec="seconds"))
     protocol_version: str = CLAIM_VERIFICATION_PROTOCOL_VERSION
+    rule_version: str = Field(default=TYPED_RULE_VERSION,
+                              description="类型化事实规则版本（J0——核验范围门语义）")
     as_of: Optional[datetime] = None
     fact_status: FactStatus = FactStatus.MODEL_INFERRED
 
@@ -411,6 +436,37 @@ def _numeric_text_variants(value: float, unit: str) -> list[str]:
     return [s for s in out if s.strip()]
 
 
+def _locate_token_with_boundary(haystack: str, token: str) -> bool:
+    """词元边界定位（J0：抽取值不能数字子串恰巧出现即通过）——token 命中位置的
+    前一字符不得是数字（「900 万元」不得命中「1900 万元」内部）。"""
+    if not token:
+        return False
+    start = 0
+    while True:
+        i = haystack.find(token, start)
+        if i < 0:
+            return False
+        if i == 0 or not haystack[i - 1].isdigit():
+            return True
+        start = i + 1
+
+
+def _resolve_verification_scope(claim: "ClaimRecord") -> str:
+    """核验范围解析（J0）：显式声明优先；未声明时按**已结构化组件**保守推导
+    （value+unit+注册表 event_type → 数值事件；negation_flag → 否定型）——
+    推导不出来=自由文本（最高 EXCERPT_GROUNDED，不发明类型）。
+    显式声明在范围门内**回验组件齐备**（声明与组件不符 → 封顶，自报范围不构成
+    绕过——J0 审查 P1）。"""
+    if claim.verification_scope in (SCOPE_NUMERIC_EVENT, SCOPE_NEGATION):
+        return claim.verification_scope
+    if claim.value is not None and claim.unit and \
+            claim.event_type in _SCOPED_NUMERIC_PREDICATES:
+        return SCOPE_NUMERIC_EVENT
+    if claim.negation_flag is True:
+        return SCOPE_NEGATION
+    return ""
+
+
 def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
                         *, as_of: datetime) -> ClaimVerificationResult:
     """分级核验（R2 主入口，DATA_TRUST §4 五级；**强制显式 as_of** 且必须带时区——
@@ -418,17 +474,26 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
 
     阶梯：PARSED → SOURCE_RESOLVED → EXCERPT_GROUNDED → FACT_CHECKED；
     停在已达等级并给 failures；语义类缺口落 NEEDS_REVIEW（正文不可得/摘录不符/
-    数值未定位/阶段错位/更正混用——TASKS R2 暂停点）；发现错误落 REJECTED
-    （主体不符/hash 版本冲突/与摘录相反/单位错位——**纯时点未到不算错误**，
+    数值未定位/阶段错位/更正混用/数值归属存疑——TASKS R2 暂停点）；发现错误落
+    REJECTED（主体不符/hash 版本冲突/与摘录相反/单位错位——**纯时点未到不算错误**，
     统一停 PARSED 给回放话术）。
+
+    J0 类型化事实范围门（N1 根因修复，TYPED_RULE_VERSION）：错误/存疑检测器照旧
+    先跑；FACT_CHECKED 只有在核验范围（verification_scope：typed_numeric_event /
+    typed_negation，显式声明或按已结构化组件保守推导）的确定性规则**完整验证**
+    后才可达——主体、谓词指标、数值/单位（词元边界）、阶段、否定与摘录一致 +
+    来源公开时点已知。自由文本/缺组件最高停在 EXCERPT_GROUNDED（摘录真实存在
+    但结论不被自动支持——「未发现矛盾」不等于「整句成立」）。
 
     确定性内容检查（**只在 quote_text 内判定**——quote 是主张自选的支撑摘录，
     正文其余部分可能是套话/澄清/无关段落，全文扫描会误杀真实主张，审查 P1）：
     - 引用解析：文档级 uri 匹配 + **hash 与文档版本一致**（冲突=篡改/版本错配→
       REJECTED，审查 P1）+ 归属主体一致 + 文档在 as_of 前已公开
     - 摘录定位：quote_text 必须真实存在于正文（quote_span 给了则按区间精确校验）
-    - 数值一致：value+unit 的原文形态须出现在摘录内；差 100 倍的形态出现在摘录
-      而原值形态缺席 → 单位错位 REJECTED；否则数值未定位 → NEEDS_REVIEW
+    - 数值一致：value+unit 的原文形态须出现在摘录内（**词元边界**——数字子串
+      恰巧出现不算）；差 100 倍的形态出现在摘录而原值形态缺席 → 单位错位
+      REJECTED；否则数值未定位 → NEEDS_REVIEW
+    - 谓词指标一致：主张与摘录共享同一指标关键词（数值不能脱离指标语境背书）
     - 否定一致：摘录内否定标记 vs 主张否定旗标冲突 → REJECTED（否定丢失）
     - 阶段一致：摘录内框架/意向标记 + 主张带数值且非意向阶段 → NEEDS_REVIEW
     - 后发更正：来源是更正公告而 claim.revision==1 → NEEDS_REVIEW
@@ -452,6 +517,13 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
     def _review(reason: str) -> ClaimVerificationResult:
         failures.append(reason)
         return ClaimVerificationResult(claim=claim, level=VerificationLevel.NEEDS_REVIEW,
+                                       checks=checks, failures=failures, as_of=as_of)
+
+    def _cap_excerpt_grounded(reason: str) -> ClaimVerificationResult:
+        """封顶已达等级（EXCERPT_GROUNDED）——摘录真实但类型化核验不可达（诚实缺项，
+        不是人工判断不了：材料缺口属提取侧，J0 范围门语义）。"""
+        failures.append(reason)
+        return ClaimVerificationResult(claim=claim, level=VerificationLevel.EXCERPT_GROUNDED,
                                        checks=checks, failures=failures, as_of=as_of)
 
     if not claim.citation_uri and not claim.citation_hash:
@@ -544,7 +616,11 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
     level = VerificationLevel.EXCERPT_GROUNDED
 
     # 阶梯 4：确定性内容检查——**只在 quote_text 内判定**（摘录是主张自选的支撑；
-    # 正文其他部分的套话/澄清段不参与，防误杀真实主张，审查 P1）
+    # 正文其他部分的套话/澄清段不参与，防误杀真实主张，审查 P1）。
+    # 本阶梯先跑**错误/存疑检测器**（主体/否定/数值/阶段/更正——REJECTED/NEEDS_REVIEW
+    # 语义与 R2 一致），最后过 **J0 类型化事实范围门**：只有支持该类型的确定性规则
+    # 完整验证才进 FACT_CHECKED；自由文本/缺组件最高停在已达等级（EXCERPT_GROUNDED）
+    # ——不可因没有命中否定词就认为整句成立（N1 根因）。
     if (claim.security_id and matched.security_ids
             and claim.security_id not in matched.security_ids):
         return _reject("主体不符（别家公司的公告不能支撑本主体主张）")
@@ -555,10 +631,10 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
         return _review("主张为否定性事实但摘录未见否定表述——需人工复核")
     if claim.value is not None:
         direct = [s for s in _numeric_text_variants(claim.value, claim.unit)
-                  if s in claim.quote_text]
+                  if _locate_token_with_boundary(claim.quote_text, s)]
         scaled = [s for s in _numeric_text_variants(claim.value * 100, claim.unit)
                   + _numeric_text_variants(claim.value / 100, claim.unit)
-                  if s in claim.quote_text]
+                  if _locate_token_with_boundary(claim.quote_text, s)]
         if not direct and scaled:
             return _reject("数值与摘录相差 100 倍（单位错位）——按摘录应为 "
                            f"{scaled[0]!r}（若非同一事项请人工修正摘录）")
@@ -571,6 +647,43 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
         return _review("摘录为框架/意向表述而主张按已确认数值处理（阶段错位）——需人工核对合同性质")
     if matched.is_correction and claim.revision == 1:
         return _review("来源为更正/修订公告而主张未声明版本（revision=1）——新旧版本混用待人工定版")
+
+    # ── J0 类型化事实范围门（N1 根因修复）──────────────────────
+    scope = _resolve_verification_scope(claim)
+    if scope == SCOPE_NUMERIC_EVENT and not (
+            claim.value is not None and claim.unit
+            and claim.event_type in _SCOPED_NUMERIC_PREDICATES):
+        # 显式声明也须组件齐备——自报范围不构成绕过（J0 审查 P1：LLM 自报
+        # scope 不能让未结构化主张拿到 FACT_CHECKED）
+        return _cap_excerpt_grounded(
+            "声明数值事件核验范围但类型化组件不齐（缺数值/单位/注册表事件类型）——需人工核对")
+    if scope == SCOPE_NEGATION and claim.negation_flag is not True:
+        return _cap_excerpt_grounded(
+            "声明否定型核验范围但 negation_flag 未置真——需人工核对")
+    if scope in (SCOPE_NUMERIC_EVENT, SCOPE_NEGATION) and matched.published_at is None:
+        # 时点/实体资格与内容核验分开：来源未登记公开时点 → 类型化事实缺时点资格
+        return _cap_excerpt_grounded(
+            "缺公开时点（来源文档未登记公布时间）——类型化事实无法确认时点资格，需人工核对")
+    if scope == SCOPE_NUMERIC_EVENT:
+        # 谓词/指标一致：主张与摘录须共享同一指标关键词（数字不能脱离指标语境背书）
+        predicates = _SCOPED_NUMERIC_PREDICATES.get(claim.event_type, ())
+        kw_stmt = [k for k in predicates if k in claim.statement]
+        kw_quote = [k for k in predicates if k in claim.quote_text]
+        if not kw_stmt or not (set(kw_stmt) & set(kw_quote)):
+            return _cap_excerpt_grounded(
+                "主张谓词与摘录指标不一致（数值不能脱离指标语境背书）——需人工核对")
+        if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
+            return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
+        checks.append(SCOPE_NUMERIC_EVENT)
+    elif scope == SCOPE_NEGATION:
+        # 否定型：主张文本自身也要有否定语义（防「肯定主张 + 否定摘录」错位）
+        if not any(m in claim.statement for m in _NEGATION_MARKERS):
+            return _cap_excerpt_grounded(
+                "主张文本未见否定表述（与摘录否定语义不一致）——需人工核对")
+        checks.append(SCOPE_NEGATION)
+    else:
+        return _cap_excerpt_grounded(
+            "主张无确定性核验类型（自由文本）——摘录真实存在但结论不被自动支持，需人工核验")
     checks.append("content_consistent")
     level = VerificationLevel.FACT_CHECKED
     return ClaimVerificationResult(claim=claim, level=level, checks=checks,
@@ -631,6 +744,9 @@ class DeterministicExtractor(ClaimExtractor):
                 citation_hash=content_hash,
                 # R2：正文即摘录（确定性转写可定位原文——无 content 的输入留空）
                 quote_text=content[:500],
+                # J0：转写了数值 → 声明数值事件核验范围（只转写已结构化字段，不发明；
+                # 范围门仍要求谓词/时点/边界组件齐备才 FACT_CHECKED）
+                verification_scope=(SCOPE_NUMERIC_EVENT if raw_value is not None else ""),
                 extracted_by="deterministic",
             )
         except Exception as e:

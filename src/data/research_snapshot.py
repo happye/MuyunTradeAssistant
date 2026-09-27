@@ -910,6 +910,7 @@ def financial_record(security_id: str, fin: dict, *,
         provenance_evidence_ids=list(provenance_evidence_ids or []),
         raw_value=fin.get("raw_value", value),
         raw_unit=fin.get("raw_unit", unit),
+        semantic_status=fin.get("semantic_status", "UNKNOWN"),  # J1：映射范围外 SUSPECT 隔离可达
         semantic_note=fin.get("semantic_note", ""),
         value_kind=fin.get("value_kind", "UNKNOWN"),
         period_basis=fin.get("period_basis", "UNKNOWN"),

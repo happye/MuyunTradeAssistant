@@ -32,6 +32,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.core.claim_extraction import (
+    TYPED_RULE_VERSION,
     SourceDocument,
     VerificationLevel,
     verify_claim_tiered,
@@ -47,8 +48,20 @@ from src.core.research import (
 
 logger = logging.getLogger(__name__)
 
-RESEARCH_SERVICE_VERSION = "r3.research_service_v1"
+RESEARCH_SERVICE_VERSION = "r4.research_service_v1"
 ASSERTION_METHOD_VERSION = "r3.assertion_v1"
+# J0 关联/检查点/命题规则版本（改动映射与判定必须 bump——旧评估不冒充新语义）
+ASSOC_RULE_VERSION = "j4.assoc_v1"
+CHECKPOINT_RULE_VERSION = "j4.checkpoint_v1"
+PROPOSITION_RULE_VERSION = "j4.propo_v1"  # 命题级阈值/方向判断结构位（J3 随绑定数据补全）
+
+# 必需命题保守绑定映射（J0b：一个订单不能同时证明业务纯度、利润兑现和长期优势——
+# 单主张至多绑定一个 required 命题；moat 等综合命题无确定性单主张通道）
+_REQUIRED_BINDING_MAP: dict[str, dict[str, str]] = {
+    "MID": {"exposure": "real_exposure", "order": "change_to_profit",
+            "earnings": "change_to_profit"},
+    "LONG": {"earnings": "cash_sustainability"},
+}
 
 
 # ── 周期最小命题模板（RESEARCH_LOOP §2；evidence_requirements 引用 R4 能力ID）──
@@ -115,6 +128,31 @@ def _content_hash(obj) -> str:
                                      default=str).encode("utf-8")).hexdigest()[:16]
 
 
+def _normalize_binding(b) -> Optional[dict]:
+    """绑定信息规范（缓存键稳定：as_of 统一 isoformat）。"""
+    if not b:
+        return None
+    out = dict(b)
+    ao = out.get("as_of")
+    out["as_of"] = ao.isoformat() if hasattr(ao, "isoformat") else str(ao or "")
+    return out
+
+
+def _same_as_of(a, b: datetime) -> bool:
+    """绑定 as_of 与 run as_of 是否同一时刻（aware datetime 按时刻比较）。"""
+    if a is None:
+        return False
+    if hasattr(a, "tzinfo"):
+        if a.tzinfo is None or a.tzinfo.utcoffset(a) is None:
+            return False
+        return a == b
+    try:
+        parsed = datetime.fromisoformat(str(a))
+    except ValueError:
+        return False
+    return parsed.tzinfo is not None and parsed == b
+
+
 class ResearchService:
     """研究链编排（依赖注入；步骤缓存幂等）。"""
 
@@ -126,6 +164,9 @@ class ResearchService:
             horizons: tuple[str, ...] = ("MID", "LONG"),
             evidence_records: list, documents: Optional[list] = None,
             factor_capabilities: Optional[dict] = None,
+            factor_bindings: Optional[dict] = None,
+            checkpoints: Optional[list] = None,
+            assessment_store=None,
             snapshot_builder: Optional[Callable] = None) -> ResearchBundle:
         """一次单股研究（同步、确定性）。
 
@@ -133,11 +174,18 @@ class ResearchService:
         documents：list[dict]，每项 {"claim": ClaimRecord, "documents": [SourceDocument|旧池条目]}
             ——待核验主张及其核验池；顶层裸 SourceDocument 按「仅来源文档」归档；
         factor_capabilities：{能力ID: FactorResult}（R4 计算函数产出——服务不自行算因子）；
+        factor_bindings：{能力ID: {snapshot_id, security_id, as_of}}（J0b——能力必须绑定
+            合格快照才进命题评估；未绑定/错配的能力按缺失计缺口，raw dict 旁路封堵）；
+        checkpoints：CheckpointCondition 列表（J0b——window_and_refutation /
+            longterm_invalidation 的合法建立渠道：经核实材料 + 用户确认风险意愿）；
+        assessment_store：AssessmentStore 注入（J0b——评估唯一真值持久化；None=纯内存，
+            草稿带内容派生 id 但未持久化，影子侧按待复核处理）；
         snapshot_builder：默认 EvidenceSnapshot.build（strict——注入便于测试）。
         """
         if getattr(as_of, "tzinfo", None) is None:
             raise ValueError("as_of 必须带时区（naive 拒收）")
         factor_capabilities = factor_capabilities or {}
+        checkpoints = list(checkpoints or [])  # 先定形——生成器不能被键哈希消费后丢失
         def _pool_hash(p):
             """核验池条目指纹（SourceDocument 用其 content_hash 字段；dict 直接哈希）。"""
             if isinstance(p, SourceDocument):
@@ -145,7 +193,13 @@ class ResearchService:
             return _content_hash(p)
 
         run_key = _content_hash({
-            "v": RESEARCH_SERVICE_VERSION, "security_id": security_id,
+            "v": RESEARCH_SERVICE_VERSION,
+            # J0 缓存合同：方法/规则版本进键（改规则即失效）
+            "typed_rule": TYPED_RULE_VERSION,
+            "assoc_rule": ASSOC_RULE_VERSION,
+            "checkpoint_rule": CHECKPOINT_RULE_VERSION,
+            "proposition_rule": PROPOSITION_RULE_VERSION,
+            "security_id": security_id,
             "as_of": as_of.isoformat(), "horizons": list(horizons),
             "records": [r.content_fingerprint() for r in evidence_records],
             "documents": [_content_hash(d.model_dump(mode="json"))
@@ -154,15 +208,24 @@ class ResearchService:
                                               "pool": [_pool_hash(p)
                                                        for p in (d.get("documents") or [])]})
                           for d in (documents or [])],
-            "factors": {k: _content_hash({"id": k, "v": getattr(v, "value", None),
-                                          "s": getattr(v, "status", None)})
+            # J0 缓存合同：因子全量内容（值/单位/状态/注记/**分量**）+ 绑定信息进键
+            # ——只改负债分量/来源资格也使缓存失效
+            "factors": {k: _content_hash({
+                            "result": {"value": getattr(v, "value", None),
+                                       "unit": getattr(v, "unit", ""),
+                                       "status": getattr(v, "status", None),
+                                       "note": getattr(v, "note", ""),
+                                       "components": getattr(v, "components", None) or {}},
+                            "binding": _normalize_binding((factor_bindings or {}).get(k))})
                         for k, v in factor_capabilities.items()},
+            "checkpoints": [_content_hash(cp.model_dump(mode="json"))
+                            for cp in (checkpoints or [])],
         })
         run_id = f"run_{run_key}"
         cached = self._step_cache.get(f"bundle:{run_key}")
         if cached is not None:
             self.stats["bundle_cache_hits"] += 1
-            return cached  # 分析重试幂等：同输入直接返回同 bundle
+            return cached.model_copy(deep=True)  # 返回副本——消费者不得原地污染缓存
         self.stats["bundle_runs"] += 1
 
         # ① snapshot（strict PIT 资格——R1 统一资格算法）
@@ -191,30 +254,74 @@ class ResearchService:
             else:
                 unverified_count += 1
 
+        # ③b 因子绑定合格快照（J0b：上游 SUSPECT/实体错配/过期不得经另一个 raw dict
+        # 绕进 capabilities——能力可用 ⇔ 绑定存在且与本次 run 的快照/实体/时点一致）
+        usable_caps: dict = {}
+        unbound_caps: list[str] = []
+        for k, v in factor_capabilities.items():
+            b = _normalize_binding((factor_bindings or {}).get(k))
+            if (b and b.get("security_id") == security_id
+                    and b.get("snapshot_id") == snap.snapshot_id
+                    and _same_as_of(b.get("as_of"), as_of)):
+                usable_caps[k] = v
+            else:
+                unbound_caps.append(k)
+
         # ④ assess（命题级评估——共享事实、分别评估；next_checks 按周期隔离——
         # 监督员 P1：共享可变列表会让 MID 待办串进 LONG 评估）
         verified_ids = {c["claim"]["claim_id"] for c in verified}
         assessments: dict[str, ThesisAssessment] = {}
+        assessment_ids: dict[str, str] = {}
         gaps: list[str] = []
         next_checks: list[str] = []
         for horizon in horizons:
             horizon_checks: list[str] = []
             assertions = _default_assertions(security_id, horizon, run_id)
+            bindings, counter_candidates = _build_support_bindings(
+                verified, assertions, horizon)
             evaluated: list[ThesisAssertion] = []
             for a in assertions:
-                # 共享事实：已核验主张按 event_type 挂到两周期的相关命题（各自独立求值）
-                supporting = [c["claim"]["claim_id"] for c in verified
-                              if _claim_supports(c["claim"], a.proposition_type)]
-                a2 = a.model_copy(update={"supporting_evidence_ids": supporting}) if supporting else a
+                update: dict = {}
+                if a.assertion_id in bindings:
+                    # 显式支持绑定（J0b：关联可审计——relation/rule_version/justification）
+                    update["supporting_evidence_ids"] = sorted(
+                        {e for bb in bindings[a.assertion_id] for e in bb["evidence_ids"]})
+                    update["support_bindings"] = bindings[a.assertion_id]
+                if a.proposition_type in counter_candidates:
+                    # REFUTES/否定主张 → 反证侧（评估 UNKNOWN，待人工核实）
+                    update["counter_evidence_ids"] = counter_candidates[a.proposition_type]
+                if a.proposition_type in ("window_and_refutation", "longterm_invalidation"):
+                    # J0b 合法建立渠道：经核实材料（evidence_refs 全部已核验）+ 用户
+                    # 已确认风险意愿；条件不是已发生公司事实，不进 facts_observed
+                    confirmed = [cp for cp in checkpoints
+                                 if cp.proposition_type == a.proposition_type
+                                 and (not cp.horizon or cp.horizon == horizon)
+                                 and (not cp.security_id or cp.security_id == security_id)
+                                 and cp.user_confirmed]
+                    if confirmed and all(cp.evidence_refs
+                                         and all(r in verified_ids for r in cp.evidence_refs)
+                                         for cp in confirmed):
+                        refs = sorted({r for cp in confirmed for r in cp.evidence_refs})
+                        update["supporting_evidence_ids"] = refs
+                        update["support_bindings"] = [{
+                            "assertion_id": a.assertion_id, "evidence_ids": refs,
+                            "relation": "SUPPORTS", "rule_version": CHECKPOINT_RULE_VERSION,
+                            "justification": "经核实的日历/披露安排生成检查点条件，"
+                                             "用户已确认风险意愿（条件不是已发生公司事实）"}]
+                a2 = a.model_copy(update=update) if update else a
                 evaluated.append(evaluate_assertion(
-                    a2, available_capabilities=factor_capabilities,
+                    a2, available_capabilities=usable_caps,
                     verified_evidence_ids=verified_ids, as_of=as_of))
             missing_reqs = sorted({req for a in evaluated
                                    for req in a.evidence_requirements
                                    if a.evaluation is not AssertionEvaluation.TRUE
-                                   and req not in factor_capabilities})
+                                   and req not in usable_caps})
             for req in missing_reqs:
-                gaps.append(f"[{horizon}] 缺能力/证据: {req}（命题无法建立——不强行 VALID）")
+                if req in unbound_caps:
+                    gaps.append(f"[{horizon}] 能力 {req} 未绑定合格快照（snapshot/security/"
+                                "as_of 不符）——不进命题评估（raw dict 旁路已封堵）")
+                else:
+                    gaps.append(f"[{horizon}] 缺能力/证据: {req}（命题无法建立——不强行 VALID）")
             if not verified:
                 horizon_checks.append(f"[{horizon}] 待核验事实——自动研究需来源文档或人工通道")
             unresolved = [a.description for a in evaluated
@@ -222,8 +329,9 @@ class ResearchService:
                           and a.evaluation is not AssertionEvaluation.TRUE]
             status = assess_thesis_by_assertions(
                 evaluated, invalidation_value=None, verified_counter_evidence=False)
-            assessments[horizon] = ThesisAssessment(
-                thesis_id=f"thesis_{security_id}_{horizon}", horizon=horizon,
+            asm = ThesisAssessment(
+                thesis_id=f"thesis_{security_id}_{horizon}", security_id=security_id,
+                horizon=horizon,
                 snapshot_id=snap.snapshot_id, status=status,
                 required_assertions=[a for a in evaluated if a.importance == "required"],
                 supporting_assertions=[a for a in evaluated if a.importance == "supporting"],
@@ -232,13 +340,22 @@ class ResearchService:
                 next_checks=list(horizon_checks),
                 method_version=ASSERTION_METHOD_VERSION,
                 evaluated_as_of=as_of)
+            assessments[horizon] = asm
+            # J0b：评估唯一真值持久化（store 注入即落盘；None=内容派生 id 未持久化——
+            # 影子侧按待复核处理，不重判）
+            if assessment_store is not None:
+                assessment_ids[horizon] = assessment_store.save(asm)
+            else:
+                from src.data.research_store import AssessmentStore
+                assessment_ids[horizon] = AssessmentStore.assessment_id_of(asm)
             next_checks.extend(horizon_checks)
 
         # ⑤ draft（系统草稿——未激活；不带 --facts 也能生成）
         drafts = []
         for horizon in horizons:
             asm = assessments[horizon]
-            plan = _draft_plan(security_id, horizon, run_id, asm, verified, snap)
+            plan = _draft_plan(security_id, horizon, run_id, asm, verified, snap,
+                               assessment_id=assessment_ids[horizon])
             drafts.append(plan)
 
         bundle = ResearchBundle(
@@ -258,25 +375,57 @@ class ResearchService:
                           "claims_verified": len(verified),
                           "claims_unverified": unverified_count})
         self._step_cache[f"bundle:{run_key}"] = bundle
-        return bundle
+        return bundle.model_copy(deep=True)  # 新鲜结果同样返回副本（缓存对象不可变语义）
 
 
-def _claim_supports(claim: dict, proposition_type: str) -> bool:
-    """已核验主张与命题的**确定性**关联（不解释语义——按事件类型粗分类，
-    精细关联属研究推论，由 R8 界面/R7 评测口径细化）。"""
-    et = claim.get("event_type") or ""
-    if proposition_type in ("real_exposure", "change_to_profit", "moat"):
-        return et in ("order", "exposure", "earnings", "forecast")
-    if proposition_type == "cash_sustainability":
-        return et in ("earnings", "forecast")
-    return False
+def _build_support_bindings(verified: list[dict], assertions: list[ThesisAssertion],
+                            horizon: str) -> tuple[dict[str, list[dict]], dict[str, list[str]]]:
+    """已核验主张 → **显式支持绑定**（J0b，ASSOC_RULE_VERSION）。
+
+    替代旧 `_claim_supports` 的 event_type 隐式路由（N2 根因：只按事件类型挂
+    supporting 不看 relation）。规则：
+    - relation=REFUTES 或 negation_flag=True 的主张**绝不进正面支撑**——挂到其事件
+      类型对应命题的反证侧（evaluate_assertion 对带反证引用的命题返回 UNKNOWN）
+    - 单主张至多绑定一个 required 命题（assertions 顺序确定性先到先得）——一个订单
+      不能同时证明业务纯度、利润兑现和长期优势；moat 等综合命题无确定性单主张通道
+    - 绑定必须携带 relation + rule_version + justification（可审计数据，不是隐式行为）
+    返回 (assertion_id → bindings, proposition_type → counter_evidence_ids)。"""
+    bindings: dict[str, list[dict]] = {}
+    counters: dict[str, list[str]] = {}
+    used: set[str] = set()
+    prop_map = _REQUIRED_BINDING_MAP.get(horizon, {})
+    assertion_by_type = {a.proposition_type: a for a in assertions
+                         if a.importance == "required"}
+    for c in verified:
+        claim = c.get("claim") or {}
+        cid = claim.get("claim_id") or ""
+        if not cid:
+            continue
+        et = claim.get("event_type") or ""
+        target = prop_map.get(et)
+        if str(claim.get("relation") or "") == "REFUTES" or claim.get("negation_flag") is True:
+            if target and target in assertion_by_type:
+                counters.setdefault(target, []).append(cid)
+            continue
+        if not target or cid in used or target not in assertion_by_type:
+            continue
+        used.add(cid)
+        tgt = assertion_by_type[target]
+        bindings.setdefault(tgt.assertion_id, []).append({
+            "assertion_id": tgt.assertion_id, "evidence_ids": [cid],
+            "relation": "SUPPORTS", "rule_version": ASSOC_RULE_VERSION,
+            "justification": f"保守映射: {et} 主张绑定 {target}"
+                             "（单主张单必需命题，J0 关联规则）"})
+    return bindings, counters
 
 
 def _draft_plan(security_id: str, horizon: str, run_id: str,
-                asm: ThesisAssessment, verified: list[dict], snap) -> dict:
+                asm: ThesisAssessment, verified: list[dict], snap,
+                assessment_id: str = "") -> dict:
     """系统草稿（HorizonPlan 兼容 dict——未激活；用户选择意图后才 accept）。
     facts_observed=已核验主张 statement；fact_evidence_refs=statement→claim_id
-    （R0 资格门的正式数据来源——无核验引用的文本不作为逻辑成立依据）。"""
+    （R0 资格门的正式数据来源）；assessment_id=AssessmentStore 唯一真值引用（J0b：
+    影子按引用消费同一评估，不再 facts+refs 重判）。"""
     from src.core.decision_policy import POLICY_ID_LONG, POLICY_ID_MID
     facts = []
     refs: dict[str, list[str]] = {}
@@ -296,7 +445,7 @@ def _draft_plan(security_id: str, horizon: str, run_id: str,
         "policy_id": POLICY_ID_MID if horizon == "MID" else POLICY_ID_LONG,
         "intent": f"[系统草稿 {asm.status.value}] 命题评估见 assessment；缺口 {len(asm.unresolved_gaps)} 项",
         "thesis_id": asm.thesis_id,
-        "assessment_id": f"{asm.horizon}:{asm.snapshot_id}",
+        "assessment_id": assessment_id or f"{asm.horizon}:{asm.snapshot_id}",
         "snapshot_id": asm.snapshot_id,
         "policy_version": RESEARCH_SERVICE_VERSION,
         "supersedes_ref": None,

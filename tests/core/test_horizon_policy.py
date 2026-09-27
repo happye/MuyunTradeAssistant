@@ -333,10 +333,17 @@ def test_assess_thesis_driven_by_evidence():
     assert assess_thesis(t2) is ThesisStatus.UNESTABLISHED
     t2_ref = t2.model_copy(update={
         "fact_evidence_refs": {"Q2 订单落地（公告 P3）": ["cninfo://ann/p3"]}})
-    assert assess_thesis(t2_ref) is ThesisStatus.VALID
-    assert assess_thesis(t2_ref, invalidation_value=TruthValue.UNKNOWN) is ThesisStatus.REVIEW_REQUIRED
-    assert assess_thesis(t2_ref, invalidation_value=TruthValue.TRUE) is ThesisStatus.INVALID
-    assert assess_thesis(t2_ref, counter_evidence_verified=True) is ThesisStatus.INVALID
+    # J0/N3：「可解析」须接证据库实存解析——无 resolver 一律不 VALID（旧兼容路径降级）
+    assert assess_thesis(t2_ref) is ThesisStatus.UNESTABLISHED
+    # 带 resolver（引用实存且归属正确）→ 正式 VALID 路径
+    resolver = lambda ref: ref == "cninfo://ann/p3"  # noqa: E731
+    assert assess_thesis(t2_ref, evidence_resolver=resolver) is ThesisStatus.VALID
+    assert assess_thesis(t2_ref, evidence_resolver=resolver,
+                         invalidation_value=TruthValue.UNKNOWN) is ThesisStatus.REVIEW_REQUIRED
+    assert assess_thesis(t2_ref, evidence_resolver=resolver,
+                         invalidation_value=TruthValue.TRUE) is ThesisStatus.INVALID
+    assert assess_thesis(t2_ref, evidence_resolver=resolver,
+                         counter_evidence_verified=True) is ThesisStatus.INVALID
     t3 = t2_ref.model_copy(update={"counter_evidence": ["竞品降价 20%（新闻）"]})
     assert assess_thesis(t3, invalidation_value=TruthValue.FALSE) is ThesisStatus.REVIEW_REQUIRED
 

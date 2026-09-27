@@ -38,6 +38,13 @@ v3（R0 资格止血，2026-09-26）：
   v2 的整行 plan_source / thesis_status 保留为兼容聚合口径（任一周期），报告与
   原因分类已改用分周期字段，R3 收口时移除聚合字段
 - 新差异原因 facts_unverified：已激活计划的事实无可解析证据引用（R0 资格门落表）
+
+v4（J0b 评估唯一真值，2026-09-27）：
+- thesis 状态不再由影子从 facts+refs 重判——计划带 assessment_id 时经
+  AssessmentStore 加载并核对（security/horizon/snapshot/method/时效）后消费
+  **同一 status**；找不到/错配/过期 → REVIEW_REQUIRED（明确待复核）
+- 旧计划（无 assessment_id）→ UNESTABLISHED 降级：facts+refs 简化判断退役，
+  不再可能被非空引用救成 VALID（N2 根因封堵）；计划文字保留、资料不销毁
 """
 
 import json
@@ -50,7 +57,7 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
-SHADOW_DERIVATION_VERSION = "shadow_v3"  # v3：thesis 走 assess_thesis 唯一入口 + 来源逐周期标注
+SHADOW_DERIVATION_VERSION = "shadow_v4"  # v4（J0b）：评估唯一真值——影子按 assessment 引用消费，不再 facts+refs 重判
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -165,17 +172,46 @@ def _plan_source_of(plan) -> str:
     return "user_plan_draft"
 
 
-def _thesis_status_for(plan, horizon_value: str, security_id: str):
-    """单周期逻辑状态——研究评估唯一入口（A03 止火）：影子不再自写「facts 非空 → VALID」，
-    统一走 research.assess_thesis（无可解析证据引用的文本事实 → UNESTABLISHED）。"""
-    from src.core.research import ThesisRecord, assess_thesis
-    facts = list(getattr(plan, "facts_observed", []) or []) if plan is not None else []
-    refs = dict(getattr(plan, "fact_evidence_refs", {}) or {}) if plan is not None else {}
-    return assess_thesis(ThesisRecord(
-        thesis_id=f"shadow_{security_id}_{str(horizon_value).lower()}",
-        horizon=str(horizon_value),
-        beneficiary_business="", profit_mechanism="",
-        facts_observed=facts, fact_evidence_refs=refs))
+def _thesis_status_for(plan, horizon_value: str, security_id: str,
+                       assessment_store=None):
+    """单周期逻辑状态（J0b v4：评估唯一真值——影子消费同一 Assessment，不再重判）。
+
+    - plan 带 assessment_id → AssessmentStore 加载并核对 security/horizon/snapshot/
+      method_version/时效 → 消费**同一 status**；找不到、错配或过期 → REVIEW_REQUIRED
+      （明确待复核），**绝不调用旧 facts+refs 简化判断救成 VALID**（N2 根因）。
+      核对收紧（J0 审查 P2）：评估 security_id 为空、method_version 与当前
+      ASSERTION_METHOD_VERSION 不符 → 一律待复核（空实体/旧方法不冒充当前语义）
+    - 旧计划降级（J0 审查 P2 语义对齐）：assessment_id 缺失**或为旧格式**
+      （`{horizon}:{snapshot_id}`——R3 旧草稿合成串，不是评估库 id）→ UNESTABLISHED
+      （计划文字保留、资料不销毁；补一次正式评估即恢复真判断路径）
+    - 无计划 → UNESTABLISHED（与原行为一致）"""
+    from src.core.decision_contract import ThesisStatus
+    if plan is None:
+        return ThesisStatus.UNESTABLISHED
+    aid = str(getattr(plan, "assessment_id", "") or "").strip()
+    if not aid or ":" in aid or not aid.startswith("asm_"):
+        # 无评估引用（或 R3 旧合成串格式——非评估库 id）→ 旧计划降级
+        return ThesisStatus.UNESTABLISHED
+    if assessment_store is None:
+        from src.data.research_store import AssessmentStore
+        assessment_store = AssessmentStore()
+    asm = assessment_store.load(aid)
+    if asm is None:
+        return ThesisStatus.REVIEW_REQUIRED  # 找不到——明确待复核（不救成 VALID）
+    if not str(asm.security_id or "").strip() or \
+            (security_id and asm.security_id != security_id):
+        return ThesisStatus.REVIEW_REQUIRED  # 实体缺失/错配（空实体不冒充任意证券）
+    if str(asm.horizon) != str(horizon_value):
+        return ThesisStatus.REVIEW_REQUIRED  # 周期错配
+    plan_snap = str(getattr(plan, "snapshot_id", "") or "")
+    if plan_snap and asm.snapshot_id and plan_snap != asm.snapshot_id:
+        return ThesisStatus.REVIEW_REQUIRED  # 快照错配
+    from src.core.research_service import ASSERTION_METHOD_VERSION
+    if str(asm.method_version or "").strip() != ASSERTION_METHOD_VERSION:
+        return ThesisStatus.REVIEW_REQUIRED  # 方法版本不符——旧评估不冒充当前语义
+    if asm.evaluated_as_of is not None and asm.evaluated_as_of > datetime.now().astimezone():
+        return ThesisStatus.REVIEW_REQUIRED  # 评估时点在未来——不可消费（过期/错版同待复核）
+    return asm.status
 
 
 # 计划来源 → 人话（披露串与报告共用）
@@ -244,10 +280,11 @@ def _classify_reasons(facts: dict, mid_packet, long_packet,
 def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                    *, packet=None, source: str = "", config: Optional[dict] = None,
                    store_path: Optional[Path] = None,
-                   plans_store=None) -> Optional[ShadowDiffRecord]:
+                   plans_store=None, assessment_store=None) -> Optional[ShadowDiffRecord]:
     """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。
 
-    plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。"""
+    plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。
+    assessment_store: AssessmentStore 注入（J0b v4——None=默认 ~/.muyun/research/assessments）。"""
     if pos is None:
         return None
     if not _load_capture_switch(config):
@@ -305,8 +342,9 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         up = user_plans.get(horizon.value)
         hf = dict(hf_kwargs)
         # 事实只作用于用户计划所在的周期——不把一份计划的逻辑事实泄漏到另一周期；
-        # 状态统一经 assess_thesis（A03 资格门），影子不自写判断
-        thesis_status = _thesis_status_for(up, horizon.value, security_id)
+        # 状态消费评估唯一真值（J0b v4：assessment 引用——缺失/错配→待复核，不重判）
+        thesis_status = _thesis_status_for(up, horizon.value, security_id,
+                                           assessment_store=assessment_store)
         per_horizon_thesis[horizon.value] = thesis_status.value
         hf["thesis_status"] = thesis_status
         plan = up if up is not None else _derive_shadow_plan(

@@ -63,20 +63,28 @@ def evaluate_invalidation_rules(rules) -> TruthValue:
     return TruthValue.FALSE
 
 
-def fact_has_resolvable_reference(fact: str, refs: dict[str, list[str]]) -> bool:
-    """事实是否带可解析证据引用（R0 资格门，A03 止血）。
+def fact_has_resolvable_reference(fact: str, refs: dict[str, list[str]],
+                                  resolver=None) -> bool:
+    """事实是否带**实存可解析**的证据引用（R0 资格门 + J0/N3 收紧）。
 
-    规则：键=去空白事实原文**精确匹配**；值中任一引用串去空白后非空才算可解析。
-    空白事实、空引用串、键不匹配一律 False——文字存在≠逻辑成立（探针 P1 同根）。"""
+    规则：键=去空白事实原文**精确匹配**；值中引用串去空白后非空，且必须经
+    resolver 实存解析为真（引用指向的证据库中确实存在、归属正确）。
+    resolver=None（调用方没有证据库）时一律不可解析——「非空」不等于「可解析」，
+    旧兼容路径只能降级（J0 验收：N3 不存在的 ID 不得 VALID）。"""
     key = str(fact).strip()
     if not key:
         return False
-    return any(str(r).strip() for r in (refs.get(key) or []))
+    for r in (refs.get(key) or []):
+        ref = str(r).strip()
+        if ref and resolver is not None and resolver(ref):
+            return True
+    return False
 
 
 def assess_thesis(thesis: ThesisRecord,
                   invalidation_value: Optional[TruthValue] = None,
-                  counter_evidence_verified: bool = False) -> ThesisStatus:
+                  counter_evidence_verified: bool = False, *,
+                  evidence_resolver=None) -> ThesisStatus:
     """证据驱动的逻辑状态转移（AI 不改状态；状态由事实与明确条件驱动）。
 
     规则（DESIGN §5.2 + §4.2 + R0 资格止血）：
@@ -91,6 +99,8 @@ def assess_thesis(thesis: ThesisRecord,
     fact_evidence_refs 里可解析的证据引用；用户确认的是目标与风险意愿，不是把一句话
     变成客观事实。兼容读策略：旧序列化记录无该字段 → 默认 {} → 保守 UNESTABLISHED。
     R3 自动研究给事实挂证据后这是正式路径，不是永久封锁。
+    J0/N3 收紧：「可解析」须接证据库实存解析（evidence_resolver）——无 resolver
+    一律不 VALID（旧兼容路径只能降级）。
 
     注意：状态只是**评估结果**；真正进入决策表的是调用方把 status 传给
     decision_policy.HorizonFacts.thesis_status。
@@ -101,7 +111,8 @@ def assess_thesis(thesis: ThesisRecord,
         return ThesisStatus.REVIEW_REQUIRED
     if thesis.counter_evidence:
         return ThesisStatus.REVIEW_REQUIRED
-    if any(fact_has_resolvable_reference(f, thesis.fact_evidence_refs)
+    if any(fact_has_resolvable_reference(f, thesis.fact_evidence_refs,
+                                         resolver=evidence_resolver)
            for f in thesis.facts_observed):
         return ThesisStatus.VALID
     return ThesisStatus.UNESTABLISHED
@@ -120,6 +131,44 @@ class AssertionEvaluation(str, Enum):
     TRUE = "TRUE"        # 该命题在冻结证据和方法下被支持——不是未来一定兑现
     FALSE = "FALSE"
     UNKNOWN = "UNKNOWN"
+
+
+class SupportBinding(BaseModel):
+    """支持/反驳绑定（J0b：关联是显式可审计数据，不再是 event_type 隐式路由）。
+
+    DELIVERY_PLAN J0：支持/反驳要绑定 assertion_id + evidence_ids + relation +
+    rule_version + justification；relation=REFUTES/否定主张绝不无条件进入正面支撑。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    assertion_id: str
+    evidence_ids: list[str] = Field(default_factory=list)
+    relation: Literal["SUPPORTS", "REFUTES"] = "SUPPORTS"
+    rule_version: str = Field(default="", description="绑定规则版本（保守映射/检查点渠道各有版本）")
+    justification: str = Field(default="", description="绑定依据（人话——为什么这些证据支撑该命题）")
+
+
+class CheckpointCondition(BaseModel):
+    """检查点条件（J0b：window_and_refutation / longterm_invalidation 的合法建立渠道）。
+
+    从经核实事件日历/披露安排提出检查点，系统生成可验证条件，用户确认风险意愿；
+    这些条件**不是已发生公司事实**——不进 facts_observed；没有材料时保持未知，
+    不因用户 accept 自动通过（DELIVERY_PLAN J0 原文）。"""
+
+    model_config = ConfigDict(extra="allow")
+
+    condition_id: str = Field(default_factory=_uuid_hex)
+    security_id: str = ""
+    horizon: str = Field(default="", description="MID/LONG；空=两周期通用")
+    proposition_type: str = Field(description="window_and_refutation / longterm_invalidation")
+    description: str = Field(description="可验证条件（何时验证、什么事实出现会推翻）")
+    evidence_refs: list[str] = Field(default_factory=list,
+                                     description="生成该条件的经核实材料（claim/evidence id）")
+    derived_from: Literal["verified_calendar", "disclosure_schedule",
+                          "user_confirmed_risk"] = Field(
+        description="条件来源（经核实日历/披露安排/用户确认的风险意愿）")
+    user_confirmed: bool = Field(default=False,
+                                 description="用户已确认风险意愿——缺省 False 不自动通过")
 
 
 class ThesisAssertion(BaseModel):
@@ -145,6 +194,10 @@ class ThesisAssertion(BaseModel):
                     "按能力ID匹配，非空数字不自动满足能力，A08）")
     supporting_evidence_ids: list[str] = Field(default_factory=list)
     counter_evidence_ids: list[str] = Field(default_factory=list)
+    support_bindings: list[dict] = Field(
+        default_factory=list,
+        description="支持绑定审计记录（SupportBinding dump——J0b：关联显式化，"
+                    "含 relation/rule_version/justification）")
     evaluation: AssertionEvaluation = Field(default=AssertionEvaluation.UNKNOWN)
     evaluation_rule_version: str = Field(default="", description="求值方法版本")
     evaluated_as_of: Optional[datetime] = Field(default=None, description="求值截止时点")
@@ -162,6 +215,7 @@ class ThesisAssessment(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     thesis_id: str = Field(default="", description="关联 ThesisRecord/计划 thesis_id")
+    security_id: str = Field(default="", description="主体证券（J0b：shadow 消费核对用）")
     horizon: str = Field(description="MID/LONG")
     snapshot_id: str = Field(default="", description="评估所依据的证据快照（可复现）")
     status: ThesisStatus = Field(default=ThesisStatus.UNESTABLISHED)

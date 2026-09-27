@@ -65,7 +65,7 @@ class HorizonPlan(BaseModel):
     legacy_mode: Optional[str] = Field(default=None, description="仅兼容与对照（气宗/剑宗），不参与 horizon 裁决")
     # ── R3 研究契约字段（此前经 extra 隐式携带——正式声明；旧 JSON 缺省兼容）──
     fact_evidence_refs: dict = Field(default_factory=dict, description="事实→证据引用（R0 资格门数据源正式化：statement→claim_id/原文引用）")
-    assessment_id: str = Field(default="", description="关联 ThesisAssessment（horizon:snapshot_id）")
+    assessment_id: str = Field(default="", description="关联 ThesisAssessment（J0b：AssessmentStore 唯一真值 id asm_<hash>；旧格式 horizon:snapshot_id 视为无评估引用——影子降级处理）")
     snapshot_id: str = Field(default="", description="研究依据的证据快照 id")
     policy_version: str = Field(default="", description="研究服务/方法版本（草稿生成方登记）")
     supersedes_ref: Optional[str] = Field(default=None, description="被本草稿取代的旧版本引用（版本沿革）")
