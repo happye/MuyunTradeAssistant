@@ -1,6 +1,7 @@
 # 跨对话恢复入口
 
 更新2026-09-27｜已复核HEAD `427e110` / v0.8.22｜当前架构设计第三轮，产品实现仍是第二轮交付。
+> **⚠ 状态快照（架构师复核时点）**：J0–J5 已由实施 Agent 全部交付（v0.8.24，N1–N5 关闭，测试 1297 绿）——最新状态以 [STATUS.md](STATUS.md) 与 [iteration3/EXECUTION_RECORD.md](iteration3/EXECUTION_RECORD.md) 为准，本页其余内容保留复核时点原貌。
 
 ## 五分钟接手
 

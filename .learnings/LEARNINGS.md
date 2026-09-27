@@ -1957,3 +1957,50 @@ J1 原件试点 v1 提取脚本用子串 `负债合计` 匹配，命中了「流
 - Source: j1_original_pilot
 - Pattern-Key: data.pdf_label_extraction_line_anchored_with_selfcheck
 - Related Files: tests/artifacts/j1_original_pilot/extract_vanke_2024h1.py（本地保留）
+
+## [LRN-20260927-J02-ISOLATION] error — 「隔离 HOME」对仓库根相对路径无效；e2e 污染真实持仓文件
+
+**Logged**: 2026-09-27
+**Priority**: P0（已清理+披露）
+**Status**: fixed（e2e 改 patch 模块常量+导入前断言；真实 portfolio.yaml 外科清理）
+**Area**: test-isolation, path-resolution, destructive-risk
+
+J2 e2e 脚本用 HOME/USERPROFILE 重定向做「隔离」，但 `DEFAULT_PORTFOLIO_PATH`
+是**模块位置推导的仓库根相对路径**（src/data/portfolio.py:44，os.path.dirname
+三次上溯）——HOME 隔离对它完全无效，测试持仓（600519 贵州茅台）被写进真实
+portfolio.yaml，且 _save 连带覆盖了 portfolio.yaml.bak（原备份内容丢失）。
+监督代理复跑 e2e 后才发现（我交付时声称「隔离真跑通过」是未核实路径解析的
+虚假信心）。
+
+教训：①**任何「隔离」声明必须先核实被测代码的实际路径解析方式**（HOME 基/
+CWD 基/模块位置基是三种不同的东西）；②测试/脚本写文件前断言目标不在仓库内
+（`Path(...).resolve() != (REPO/"portfolio.yaml").resolve()`）；③模块级路径
+常量在 import 时固化——隔离要么 patch 常量、要么传显式路径参数，不能只改环境；
+④交付前对「碰过用户文件」的测试脚本做 diff 审计。与 feedback_chat_init/
+portfolio 纪律同根：**portfolio.yaml/真实账户是最高保护级**。
+
+- Source: j2_supervisor_review（P0-2）
+- Pattern-Key: isolation.module_relative_paths_defeat_home_isolation
+- Related Files: src/data/portfolio.py, tests/artifacts/j2_e2e_verify.py
+
+## [LRN-20260927-J02-FILLID] lesson — 幂等键派生不能用「计数+1」：崩溃恢复必须检测未完成态
+
+**Logged**: 2026-09-27
+**Priority**: P0（已修复+回归）
+**Status**: fixed（派生前检查前缀最大序号事件：指纹一致+投影未消费→复用同 id）
+**Area**: idempotency, crash-recovery, transaction-protocol
+
+J2 confirm_fill 的 CLI 层 fill_id 用 `{proposal_id}#{计数+1}` 派生——崩溃恢复
+场景（事实入账、投影未更新，建议仍 PROPOSED）下重跑同命令会派生**新 id**，
+幂等判定完全失效→同一笔成交入账两次（监督代理实测 100 股变 200 股）。而
+「服务层幂等」测试手写硬编码同一 fill_id，绕开了派生逻辑——测试绿但缺陷在。
+
+教训：①**幂等键若由调用方派生，派生逻辑本身必须处理「上次尝试未完成」态**——
+先查同前缀已入账事件：指纹一致且下游未消费 → 复用 id（走幂等+补做下游）；
+②事务协议测试必须覆盖「事实已写、投影未写」的中间态，且走真实入口（CLI/
+服务）而非绕过派生逻辑直调底层；③「重跑同一命令可恢复」的承诺=派生函数的
+确定性承诺，两者必须同源验证。
+
+- Source: j2_supervisor_review（P0-1）
+- Pattern-Key: idempotency.derived_keys_must_detect_incomplete_attempts
+- Related Files: src/cli/main.py（confirm 分支）, src/data/account_service.py
