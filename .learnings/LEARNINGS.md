@@ -1781,10 +1781,12 @@ F1/F2 两课：① 测试替身用 `SimpleNamespace(value="FLAT")` 冒充 `Trade
 
 **Logged**: 2026-09-26
 **Priority**: high
-**Status**: pending（架构师只交付设计；R0–R9 待实施，不冒充代码修复）
+**Status**: partial（2026-09-27复验：P1–P4原反例关闭，P5分层认可；更广语义/接线边界由J0–J5承接，见plan/fusion/STATUS.md）
 **Area**: fusion, evidence, validation
 
-只读架构复核确认：latest-only 数值带旧 pubDate 可进 strict；facts 非空可使 thesis VALID；引用匹配但正文相反的 claim 可通过结构核验；未知现金仍有数学分配额度。局部探针不代表已发生错误交易，详见 plan/fusion/iteration2/PROBES.md。
+2026-09-26历史复核确认以下原反例（现已按上方状态修复）：latest-only数值带旧pubDate可进strict；facts非空可使thesis VALID；引用匹配但正文相反的claim可通过结构核验；未知现金仍有数学分配额度。原证据保留在plan/fusion/iteration2/PROBES.md。
+
+2026-09-27扩展复核：无关真实摘录仍可FACT_CHECKED；否定订单作正面支撑；正式UNESTABLISHED在shadow重判VALID；非空假引用可通过；单位映射不幂等；被隔离账户事件仍改现金。均为局部真实函数反例，未声称发生实盘交易错误；109项目标测试通过不覆盖这些新边界。实际脚本见plan/fusion/iteration3/EVIDENCE.md，待J0/J1/J2修复。不要每轮重复旧探索，用STATUS和REVIEW_INDEX按变化范围恢复。
 
 后续门禁：时间过滤另需历史版本证明；用户事实文本另需内容与命题资格；数学额度另需账户/交易可行性；全 WAIT / 零预算输入 / 风险 0/0 不算目标路径验证。完成状态按 implemented/connected/scenario_validated/empirically_validated/release_ready 分开登记，保留原实验而限定结论。
 

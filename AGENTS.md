@@ -429,9 +429,9 @@ docs/               # 详细文档
 | `docs/2026-08-23_美债风险文档评估+量化拥挤监测思路.md` | **v0.8.7 新增**：美债监测面板评估（拍板不做 ISS-062）+ 监测信号先过历史迷你回测纪律 + 拥挤度代理候选清单 |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
 | `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-098）+ 顶部当前待办汇总 |
-| `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史交接（已归档）：M/C 批次完成 + F 系列接手指引——**现行交接入口 = `plan/fusion/EXECUTION_RECORD.md`** |
+| `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史M/C与F接手记录；当前状态见 `plan/fusion/STATUS.md`，不从归档推定完成状态 |
 | `docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接（已归档）：scan review/观察池交付明细 |
-| `plan/` | 架构师迭代计划（M1–M6 与 fusion **F0–F9 已全部实施 VERIFIED**；**F 批实施账本与交接入口 = `plan/fusion/EXECUTION_RECORD.md`**，发布阶梯 `ROLLOUT.md`，实验计划 `EXPERIMENTS.md`，数据资格 `DATA_COVERAGE.md`） |
+| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话恢复 = [RESUME](plan/fusion/RESUME.md)；按复查索引比较源码变更，只重看受影响块。F/R历史账本保留，第三轮J0–J5设计见 `plan/fusion/iteration3/`；设计交付、实现、场景验证和策略效果不得混为完成 |
 | `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
 | `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |

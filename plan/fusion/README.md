@@ -1,6 +1,6 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-> **2026-09-26 架构验收与第二轮入口：[iteration2/README.md](iteration2/README.md)。** 第一轮实施报告已审阅，工程交付有条件接受；历史版本/事实核验/主意图/可执行预算与效果验证仍有待办，不能将 F0–F9 的实施 VERIFIED 扩大为全部原始验收通过。下一批任务为 [R0–R9](iteration2/TASKS.md)，均待实施；架构师本轮仅修改设计文档。
+> **当前进度（2026-09-27）：先读 [STATUS](STATUS.md) 与 [第三轮裁决](iteration3/README.md)。** 第二轮交付已复验，原P反例关闭；新N反例和生产接线由J0–J5承接。下文是第一轮设计与历史验收叙述，不能替代当前里程碑；新对话按 [RESUME](RESUME.md) 增量恢复。架构师本轮仍只修改设计/交接文档。
 
 日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付 → F0–F9 已全部实施 VERIFIED**（v0.8.20，1121 tests；实施状态与证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)；**致架构师汇报与下一轮设计议题见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)**）。
 

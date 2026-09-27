@@ -1,0 +1,211 @@
+{
+  "schema_version": 1,
+  "reviewed_at": "2026-09-27",
+  "baseline_commit": "427e110",
+  "scope": "Architecture review only; not a whole-file safety certification",
+  "evidence": "EVIDENCE.md",
+  "baseline_dirty_files": [
+    "src/cli/main.py",
+    "portfolio.yaml",
+    "plan/fusion/iteration2/DATA_TRUST.md",
+    "plan/fusion/iteration2/R8_WALKTHROUGH.md",
+    "plan/fusion/iteration2/README.md",
+    "plan/fusion/iteration2/RESEARCH_LOOP.md"
+  ],
+  "checks": {
+    "targeted_pytest": {
+      "passed": 109,
+      "seconds": 6.55,
+      "full_suite_rerun": false
+    },
+    "original_probes": {
+      "P1": "closed_for_original_case",
+      "P2": "closed_at_cv2_for_original_case",
+      "P3": "closed_for_original_case",
+      "P4": "closed_for_original_case",
+      "P5": "layering_accepted_production_connection_pending"
+    },
+    "new_probes": {
+      "N1": "open_J0",
+      "N2": "open_J0",
+      "N3": "open_J0",
+      "N4": "open_J1",
+      "N5": "open_J2"
+    },
+    "raw_samples": {
+      "objects": 768,
+      "securities": 2,
+      "liabilityToAsset_observations": 24
+    }
+  },
+  "review_groups": [
+    {
+      "id": "facts_assessment",
+      "files": [
+        "src/core/claim_extraction.py",
+        "src/core/research.py",
+        "src/core/research_service.py",
+        "src/core/shadow_diff.py"
+      ],
+      "verified_properties": [
+        "P1/P2_cv2/P3",
+        "N1/N2/N3 reproduced"
+      ],
+      "unreviewed": [
+        "all possible text entailment cases",
+        "all production consumer paths"
+      ],
+      "reopen_on": [
+        "any group file hash change",
+        "claim schema/source adapter/assessment consumer change",
+        "new counterexample"
+      ]
+    },
+    {
+      "id": "financial_trust",
+      "files": [
+        "src/data/financial_data.py",
+        "src/data/research_snapshot.py",
+        "src/data/research_store.py"
+      ],
+      "verified_properties": [
+        "P4",
+        "N4 reproduced",
+        "raw sample counts"
+      ],
+      "unreviewed": [
+        "issuer-original numerical verification",
+        "all fields/all securities",
+        "store transactional durability"
+      ],
+      "reopen_on": [
+        "mapping/eligibility/source definition hash change",
+        "raw sample/version set changes",
+        "supplier behavior change"
+      ]
+    },
+    {
+      "id": "account",
+      "files": [
+        "src/data/account_snapshot.py",
+        "src/core/portfolio_policy.py"
+      ],
+      "verified_properties": [
+        "P5",
+        "N5 reproduced"
+      ],
+      "unreviewed": [
+        "production account integrations",
+        "multi-process transaction/crash durability"
+      ],
+      "reopen_on": [
+        "ledger/allocation/consumer change",
+        "new trading rules/account data semantics"
+      ]
+    },
+    {
+      "id": "user_path",
+      "files": [
+        "src/cli/main.py",
+        "src/data/horizon_plans.py"
+      ],
+      "verified_properties": [
+        "static current research command gaps",
+        "existing R9 handoff constraints"
+      ],
+      "unreviewed": [
+        "live end-to-end workflow",
+        "complete UI parity",
+        "plan store concurrency"
+      ],
+      "reopen_on": [
+        "production endpoint/persistence change"
+      ]
+    }
+  ],
+  "resume_protocol": [
+    "Read ../STATUS.md then ../RESUME.md",
+    "Compare HEAD and worktree diff, then only relevant hashes",
+    "Unchanged hashes permit reuse of listed properties only; inspect changed dependencies/consumers",
+    "Do not rerun external AI/network experiments or reread historical long logs without a concrete affected item",
+    "Update STATUS by sub-deliverable with real evidence; leave historical reports untouched"
+  ],
+  "files": [
+    {
+      "path": "src/core/research.py",
+      "sha256": "62884c1147fe47f805174c8fbbcacff61855c650996c9bdca8692fb2c6efa89e"
+    },
+    {
+      "path": "src/core/research_service.py",
+      "sha256": "16a9dcaf6cf37a9f12cbde79e6927ed828196d06bb5ddc666de9275abc2b8e8b"
+    },
+    {
+      "path": "src/core/claim_extraction.py",
+      "sha256": "4a2a20454cf795e765c3427c4ecde69382962930ee8c63de4094daefb6764b79"
+    },
+    {
+      "path": "src/core/shadow_diff.py",
+      "sha256": "2df3061bf7b7c8df5f289bb328a3feb5acd56adb21e6c49e1eb2d705552f78c1"
+    },
+    {
+      "path": "src/data/financial_data.py",
+      "sha256": "1d2d8af10d423df42c92ef5de2d25ab932ff846d7c0e6df9f6297c19c7396e7b"
+    },
+    {
+      "path": "src/data/research_snapshot.py",
+      "sha256": "4e1142a92530c1a089b25238f742b3cc408ac9b998a08faba4da725fca589f50"
+    },
+    {
+      "path": "src/data/research_store.py",
+      "sha256": "40d0988948147e7d1a22faa6ba43575be517866268fefe47db401e523ddf47d9"
+    },
+    {
+      "path": "src/data/account_snapshot.py",
+      "sha256": "3be2385f15f66e61a355a4d75fd7baaebf2374a8c87a840b94f137d21b256889"
+    },
+    {
+      "path": "src/data/horizon_plans.py",
+      "sha256": "66b96f1a9fbb688be7c227ad317627c60ba7b369ce7ebbf65e2feee88b0d4355"
+    },
+    {
+      "path": "src/core/portfolio_policy.py",
+      "sha256": "84e13613ea7bc4548fbc450ebdef2a1a87fcdbf4b0a2dc08c8258c38c1ce7993"
+    },
+    {
+      "path": "src/cli/main.py",
+      "sha256": "c6398dc87ebfb870d286ac9ca8a99348ecdd3aaa5cfe37c5acf96ac2435626ed"
+    },
+    {
+      "path": "tests/core/test_horizon_policy.py",
+      "sha256": "b12e2b89d585ed546fe45dc2463ef9f24cfce4eb00d87871d7faf1b5d88815cf"
+    },
+    {
+      "path": "tests/core/test_claim_verification_corpus.py",
+      "sha256": "fbd0becdd0c83032c9431c674724a5c914959b34024544c1d753c6c58ba19249"
+    },
+    {
+      "path": "tests/core/test_financial_data.py",
+      "sha256": "e7307275a5f8a25744868f2a1c18c88abafbbfe4ee5d7505ecba6fa5db8e96bf"
+    },
+    {
+      "path": "tests/core/test_research_snapshot.py",
+      "sha256": "915f88737125606312475e085ce493672785c360584cae2cf15456a830055cfe"
+    },
+    {
+      "path": "tests/core/test_account_snapshot.py",
+      "sha256": "43b4b870a060727a40ae133716ab0b83e39ff4a8fb0cf539866796d080fa11ce"
+    },
+    {
+      "path": "tests/core/test_research_service.py",
+      "sha256": "0cbd82d585c5a21a981a0521432789e0257c25a00da37defdee0dcbe64c386dc"
+    },
+    {
+      "path": "tests/ai_eval/claim_verification_corpus.json",
+      "sha256": "92e8e1d52942988f7bd7e0e0ad848a7b2a8c67617bc8859b9275cd7e7dc692a4"
+    },
+    {
+      "path": "tests/data_sources/probe_fin_semantics.py",
+      "sha256": "4a47ee32e1a3287d97fb64112bd366968341757862d11904729033988b3f4c7b"
+    }
+  ]
+}
