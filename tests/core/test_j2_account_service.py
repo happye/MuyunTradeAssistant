@@ -212,13 +212,25 @@ def test_confirm_fill_records_deviation_not_falsification(tmp_path):
 # ── 3. 事务与崩溃恢复 ─────────────────────────────────────
 
 def test_truncated_last_line_isolated_rebuild(tmp_path):
-    """崩溃点：append 写一半断电 → 截断尾行读侧隔离（G14），已持久化事件幂等重建。"""
+    """崩溃点：append 写一半断电 → 截断尾行快照隔离留痕（G14）。
+
+    K0a/D2 收紧：损坏段进 isolated_events/PARTIAL，写侧**拒绝向损坏尾部追加**
+    （旧口径「照常 ACCEPTED」会把新成交粘在损坏行上、重放整行丢失）；人工修复
+    损坏尾段后恢复写入。"""
     svc = _svc(tmp_path)
     assert svc.confirm_fill("f1", "", _fill()).status == "ACCEPTED"
     with open(tmp_path / "events.jsonl", "a", encoding="utf-8") as f:
         f.write('{"event_id": "fill_f2", "event_type": "BUY", "secur')  # 截断半行
     snap = svc.snapshot()
     assert snap.holdings[0].quantity == 100, "坏行隔离，好事件照常重建"
+    assert snap.data_completeness == "PARTIAL" and snap.isolated_events, \
+        "损坏段必须进快照隔离留痕（不能只打日志）"
+    r = svc.confirm_fill("f2", "", _fill(date="2026-09-21"))
+    assert r.status == "REJECTED" and not r.ok, \
+        "完整性先于写入：损坏尾部冻结新写（不再假 ACCEPTED）"
+    # 用户人工修复损坏尾段（备份后删除坏行）→ 恢复写入
+    lines = (tmp_path / "events.jsonl").read_text(encoding="utf-8").splitlines()
+    (tmp_path / "events.jsonl").write_text(lines[0] + "\n", encoding="utf-8")
     assert svc.confirm_fill("f2", "", _fill(date="2026-09-21")).status == "ACCEPTED"
 
 

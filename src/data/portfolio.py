@@ -145,6 +145,8 @@ class PositionRecord:
         trade_plan: Optional[TradePlan] = None,
         trade_plan_raw: Optional[dict] = None,
         holding_verification: Optional[str] = None,
+        ratio_stale: bool = False,
+        quantity_fact: Optional[dict] = None,
     ):
         self.stock_code = stock_code
         self.stock_name = stock_name
@@ -165,6 +167,10 @@ class PositionRecord:
         # F1（ADR-F03）：持仓来源标记——CONFIRMED_FILL=用户确认成交 / USER_ENTERED=
         # 手动录入 / LEGACY_UNVERIFIED=F1 之前的旧记录（数值保持原样，提示一次核对）
         self.holding_verification = holding_verification
+        # K0a/D4：股数是事实——数量级成交后比例视图待重估标记 + 账户快照事实留痕
+        # （quantity_fact={quantity, as_of, avg_cost}，事实源=账户事件账本）
+        self.ratio_stale = ratio_stale
+        self.quantity_fact = quantity_fact
 
     def to_dict(self) -> dict:
         """转为YAML可序列化的字典"""
@@ -188,6 +194,10 @@ class PositionRecord:
             d["trade_plan"] = self.trade_plan_raw
         if self.holding_verification:
             d["holding_verification"] = self.holding_verification
+        if self.ratio_stale:
+            d["ratio_stale"] = True
+        if self.quantity_fact is not None:
+            d["quantity_fact"] = self.quantity_fact
         return d
 
     @classmethod
@@ -227,6 +237,8 @@ class PositionRecord:
             trade_plan=trade_plan,
             trade_plan_raw=trade_plan_raw,
             holding_verification=verification,
+            ratio_stale=bool(data.get("ratio_stale", False)),
+            quantity_fact=data.get("quantity_fact"),
         )
 
 
@@ -770,6 +782,20 @@ class PortfolioManager:
             f"（proposal_id={prop.proposal_id[:8]}，`pos confirm {stock_code}` 确认实际成交）")
         return prop
 
+    # ── K0a/D3：投影消费水位（与投影值同一次 _save 原子落盘）──
+
+    def _applied_fills(self) -> dict:
+        """fill 消费水位（存在 portfolio.yaml 内，与持仓值同文件同次保存——
+        「投影写后/水位前」从结构上不可出现）。"""
+        return self._data.setdefault("applied_fills", {})
+
+    def _has_applied_fill(self, fill_id: str) -> bool:
+        return str(fill_id or "") in self._data.get("applied_fills", {})
+
+    def has_applied_fill(self, fill_id: str) -> bool:
+        """该 fill_id 是否已被比例投影消费（K0a/D3 水位——崩溃恢复判定用）。"""
+        return self._has_applied_fill(fill_id)
+
     def confirm_fill(
         self,
         stock_code: str,
@@ -783,7 +809,7 @@ class PortfolioManager:
         proposal_id: Optional[str] = None,
         note: str = "",
     ) -> FillResult:
-        """用户确认实际成交（F1）：唯一把建议变成持仓事实的入口。
+        """用户确认实际成交（F1）：唯一把建议变成持仓事实的入口（比例路径）。
 
         - BUY：无记录则建仓（entry_date/entry_price 取成交日/成交价）；有记录则加仓
         - SELL：减仓；清仓时按关联建议的 cooldown_days 进入冷却（保留记录），
@@ -791,8 +817,9 @@ class PortfolioManager:
         - 重复 fill_id 幂等拒绝（不重复入账）；部分卖出关联建议转 PARTIAL
         - 被确认成交的持仓标记 holding_verification=CONFIRMED_FILL
 
-        写入顺序：先 _save portfolio.yaml（事实；失败时内存已被 M5 回滚、账本不动），
-        后建议/成交账本（簿记；失败如实告警，提示重复提交风险）。
+        写入顺序（K0a/D3）：持仓值+消费水位**同一次** _save 落盘（投影写后/水位前
+        不可出现）→ 后写建议/成交账本（簿记；失败如实告警，重试按水位幂等补记，
+        不重复变动持仓）。数量级成交走 apply_quantity_fill（股数是事实，见该方法）。
         """
         action = (action or "").upper()
         if action not in ("BUY", "SELL"):
@@ -805,7 +832,9 @@ class PortfolioManager:
             return FillResult(False, False, f"成交仓位变化需 > 0，收到 {ratio_change}")
         fill_id = fill_id or uuid.uuid4().hex
         self._proposals.refresh()  # M5 同款：写前重同步（幂等判定基于磁盘最新账本）
-        if self._proposals.has_fill(fill_id):
+        already_applied = self._has_applied_fill(fill_id)
+        in_ledger = self._proposals.has_fill(fill_id)
+        if already_applied and in_ledger:
             return FillResult(True, True,
                               f"fill_id {fill_id} 已入账过，幂等跳过（持仓未重复变动）")
         # P2-1：价格校验两分支统一走数据层兜底（FillResult 错误契约，不裸抛）
@@ -818,6 +847,46 @@ class PortfolioManager:
         today = date or datetime.now().strftime("%Y-%m-%d")
         positions = self._data.setdefault("positions", {})
         rec = positions.get(stock_code)
+
+        if already_applied or in_ledger:
+            # K0a/D3 崩溃恢复：水位或账本任一在案 → 投影不重复变动（写入顺序是
+            # 持仓+水位先、账本后，两处记录在案即「已应用过」）；只补齐缺失的簿记。
+            # 旧数据（无水位时代）账本有记录 = 持仓当时已更新——回填水位，不重放。
+            proposal = self._match_proposal(stock_code, proposal_id, action)
+            if proposal is not None and rec is not None:
+                new_ratio = rec.get("current_ratio") or 0.0
+                partial = False
+                if proposal.target_ratio is not None:
+                    partial = (new_ratio > proposal.target_ratio + 1e-9) if action == "SELL" \
+                        else (new_ratio < proposal.target_ratio - 1e-9)
+                self._proposals.mark_confirmed(proposal.proposal_id, partial=partial)
+            repaired = False
+            if not in_ledger:
+                self._proposals.record_fill(FillRecord(
+                    fill_id=fill_id, stock_code=stock_code, date=today, action=action,
+                    ratio_change=ratio_change, price=price,
+                    proposal_id=(proposal.proposal_id if proposal else None), note=note))
+                repaired = True
+            if not already_applied:
+                # 水位回填（与投影值同文件保存——历史数据补齐水位标记）
+                self._applied_fills()[fill_id] = {
+                    "action": action, "date": today,
+                    "recorded_at": datetime.now().isoformat(timespec="seconds")}
+                if not self._save().ok:
+                    logger.warning(
+                        f"fill 消费水位回填失败（{stock_code} fill_id={fill_id[:8]}）——"
+                        f"持仓未变动；下次确认同 fill_id 会再次尝试回填")
+            if repaired and not self._proposals._save():
+                logger.warning(
+                    f"成交账本补记写入失败（{stock_code} {action} fill_id={fill_id[:8]}）——"
+                    f"持仓未重复变动，重复提交同 fill_id 可再次补记，请检查 {self._proposals.path}")
+                return FillResult(True, True,
+                                  f"fill_id {fill_id} 已入账过，幂等跳过（持仓未重复变动）；"
+                                  "账本补记写入失败，重跑可再补")
+            return FillResult(True, True,
+                              f"fill_id {fill_id} 已入账过，幂等跳过（持仓未重复变动）"
+                              + ("；账本已补记" if repaired else ""))
+
         # F1 审查 P1-3：BUY 确认同样匹配建议（ADD 建议→BUY），状态机对加仓腿不断裂
         proposal = self._match_proposal(stock_code, proposal_id, action)
 
@@ -900,6 +969,10 @@ class PortfolioManager:
                 rec["last_action_date"] = today
                 rec["holding_verification"] = VERIFICATION_CONFIRMED_FILL
 
+        # K0a/D3：消费水位与投影值同一次原子保存——「投影写后/水位前」不可出现
+        self._applied_fills()[fill_id] = {
+            "action": action, "date": today,
+            "recorded_at": datetime.now().isoformat(timespec="seconds")}
         if not self._save().ok:
             return FillResult(False, False, "持仓文件保存失败（详见告警），本次成交未入账")
 
@@ -923,12 +996,163 @@ class PortfolioManager:
         if not self._proposals._save():
             logger.warning(
                 f"建议/成交账本写入失败（{stock_code} {action} {ratio_change:.0%}）——"
-                f"持仓已更新但幂等账本缺失，重复提交同一 fill_id 可能重复入账，"
-                f"请检查 {self._proposals.path}")
+                f"持仓已更新但幂等账本缺失，重复提交同一 fill_id 可按水位幂等补记"
+                f"（不会重复变动持仓），请检查 {self._proposals.path}")
         msg = (f"已确认{('买入' if action == 'BUY' else '卖出')} {ratio_change:.0%}"
                f"（{stock_code}，{today}，fill_id={fill_id[:8]}）"
                + ("" if ledger_ok else "｜⚠ 幂等账本写入失败"))
         return FillResult(True, False, msg)
+
+    def apply_quantity_fill(
+        self,
+        stock_code: str,
+        action: str,
+        *,
+        quantity: int,
+        price: Optional[float],
+        trade_date: str,
+        fill_id: str,
+        proposal_id: Optional[str] = None,
+        note: str = "",
+        quantity_before: Optional[int] = None,
+        quantity_after: Optional[int] = None,
+        avg_cost: Optional[float] = None,
+    ) -> FillResult:
+        """数量级成交的比例视图同步（K0a/D4：股数是事实，建议是意图）。
+
+        调用方（CLI 数量路径）先经 AccountService 事件账本入账（事实源），再把
+        账户快照派生的事实（成交/剩余股数、批次均价、真实成交日）传入本方法；
+        本方法只把这些事实同步到比例视图，**不用建议目标反推仓位变化**：
+
+        - 部分卖出：保留持仓记录（不删、不清仓语义），标记 ratio_stale（NAV 未知
+          不得把比例冒充事实）+ quantity_fact 事实留痕
+        - 剩余 0 股：事实清仓才走既有清仓语义（冷却/删除）
+        - 买入加仓：成本取批次均价（不覆盖为最新买价）
+        - 建议：只有事实达成（清仓完成）才 CONFIRMED，否则保持待确认+偏离注记
+
+        写入顺序与 confirm_fill 相同：水位+持仓值同次 _save → 账本幂等补记。
+        """
+        action = (action or "").upper()
+        if action not in ("BUY", "SELL"):
+            return FillResult(False, False, f"action 需为 BUY/SELL，收到 {action!r}")
+        if int(quantity) <= 0:
+            return FillResult(False, False, f"成交数量需 > 0，收到 {quantity}")
+        self._proposals.refresh()
+        if self._has_applied_fill(fill_id):
+            # 水位在=投影已消费（水位与投影值同次落盘）——不重复变动，只补簿记
+            proposal = self._match_proposal(stock_code, proposal_id, action)
+            repaired = False
+            if not self._proposals.has_fill(fill_id):
+                self._proposals.record_fill(FillRecord(
+                    fill_id=fill_id, stock_code=stock_code, date=trade_date,
+                    action=action, ratio_change=None, price=price,
+                    quantity=int(quantity),
+                    proposal_id=(proposal.proposal_id if proposal else None), note=note))
+                repaired = True
+            if proposal is not None:
+                self._mark_proposal_after_quantity(
+                    proposal, action, int(quantity), quantity_after)
+            if repaired and not self._proposals._save():
+                logger.warning(
+                    f"成交账本补记写入失败（{stock_code} {action} fill_id={fill_id[:8]}）——"
+                    f"持仓未重复变动，重复提交同 fill_id 可再次补记，请检查 {self._proposals.path}")
+                return FillResult(True, True,
+                                  f"fill_id {fill_id} 已入账过，幂等跳过（持仓未重复变动）；"
+                                  "账本补记写入失败，重跑可再补")
+            return FillResult(True, True,
+                              f"fill_id {fill_id} 已入账过，幂等跳过（持仓未重复变动）"
+                              + ("；账本已补记" if repaired else ""))
+
+        positions = self._data.setdefault("positions", {})
+        rec = positions.get(stock_code)
+        if rec is None:
+            # 不从数量事实伪造比例视图（比例需 NAV；视图缺记录必须显式补建）
+            return FillResult(False, False,
+                              f"数量事实已入账（fill_id={fill_id[:8]}），但 {stock_code} 无持仓"
+                              "比例记录——不伪造比例视图；请先 pos add 建立比例视图再重跑确认同步")
+        proposal = self._match_proposal(stock_code, proposal_id, action)
+
+        if action == "SELL":
+            if quantity_after is not None and quantity_after <= 0:
+                # 剩余 0 股=事实清仓 → 既有清仓语义（冷却/删除），日期用真实成交日
+                cooldown_days = proposal.cooldown_days if proposal else 0
+                if cooldown_days > 0:
+                    rec["current_ratio"] = 0.0
+                    rec["lifecycle"] = "COOLDOWN"
+                    rec["last_action"] = "CONFIRMED_SELL"
+                    rec["last_action_semantic"] = note or f"实际卖出{quantity}股清仓"
+                    rec["last_action_date"] = trade_date
+                    rec["holding_verification"] = VERIFICATION_CONFIRMED_FILL
+                    ss = rec.get("strategy_state")
+                    if not isinstance(ss, dict):
+                        ss = rec["strategy_state"] = {}
+                    ss["cooldown_remaining"] = cooldown_days
+                    ss["cooldown_reason"] = "confirmed_close"
+                    ss["last_tick_date"] = trade_date
+                    rec.pop("ratio_stale", None)
+                    rec.pop("quantity_fact", None)
+                else:
+                    del positions[stock_code]
+            else:
+                rec["last_action"] = "CONFIRMED_SELL"
+                rec["last_action_semantic"] = note or f"已成交{quantity}股，剩余{quantity_after}股"
+                rec["last_action_date"] = trade_date
+                rec["holding_verification"] = VERIFICATION_CONFIRMED_FILL
+                rec["ratio_stale"] = True
+                rec["quantity_fact"] = {"quantity": quantity_after, "as_of": trade_date,
+                                        "avg_cost": avg_cost}
+        else:  # BUY
+            rec["last_action"] = "CONFIRMED_BUY"
+            rec["last_action_semantic"] = note or f"已成交{quantity}股，现持有{quantity_after}股"
+            rec["last_action_date"] = trade_date
+            rec["holding_verification"] = VERIFICATION_CONFIRMED_FILL
+            # K0a-4：加仓成本派生自批次均价——不用最新买价覆盖历史成本
+            if avg_cost:
+                rec["entry_price"] = avg_cost
+            rec["ratio_stale"] = True
+            rec["quantity_fact"] = {"quantity": quantity_after, "as_of": trade_date,
+                                    "avg_cost": avg_cost}
+
+        # 水位与投影值同一次原子保存（K0a/D3）
+        self._applied_fills()[fill_id] = {
+            "action": action, "date": trade_date, "quantity": int(quantity),
+            "recorded_at": datetime.now().isoformat(timespec="seconds")}
+        if not self._save().ok:
+            return FillResult(False, False,
+                              "持仓文件保存失败（详见告警），比例投影未同步"
+                              "（数量事实已在账户事件账本，重跑同一确认可幂等恢复投影）")
+        # 簿记 + 建议状态（可重建派生结果；失败如实告警，重试按水位幂等补记）
+        if not self._proposals.has_fill(fill_id):
+            self._proposals.record_fill(FillRecord(
+                fill_id=fill_id, stock_code=stock_code, date=trade_date,
+                action=action, ratio_change=None, price=price,
+                quantity=int(quantity),
+                proposal_id=(proposal.proposal_id if proposal else None), note=note))
+        if proposal is not None:
+            self._mark_proposal_after_quantity(proposal, action, int(quantity), quantity_after)
+        if not self._proposals._save():
+            logger.warning(
+                f"建议/成交账本写入失败（{stock_code} {action} {quantity}股）——"
+                f"持仓与水位已落盘，重复提交同 fill_id 可幂等补记（不会重复变动持仓），"
+                f"请检查 {self._proposals.path}")
+        msg = (f"已记录{('买入' if action == 'BUY' else '卖出')} {quantity} 股"
+               f"（{stock_code}，{trade_date}，fill_id={fill_id[:8]}）")
+        return FillResult(True, False, msg)
+
+    def _mark_proposal_after_quantity(self, proposal: Proposal, action: str,
+                                      quantity: int, quantity_after: Optional[int]) -> None:
+        """数量事实 → 建议状态（K0a/D4）：只有事实达成（清仓完成）才 CONFIRMED，
+        否则保持待确认+偏离注记——不虚判「建议全额完成」。"""
+        pending = getattr(proposal.status, "value", None) in ("PROPOSED", "PARTIAL")
+        if action == "SELL" and quantity_after is not None and quantity_after <= 0:
+            if pending:
+                self._proposals.mark_confirmed(proposal.proposal_id, partial=False)
+            proposal.note = f"实际清仓达成（本笔卖出{quantity}股，剩余0股）"
+        elif pending:
+            verb = "卖出" if action == "SELL" else "买入"
+            proposal.note = (f"实际成交偏离建议：本笔{verb}{quantity}股，"
+                             f"现持有{quantity_after}股——建议（{proposal.position_action}）"
+                             "未确认完成，如继续请再次确认成交")
 
     def _match_proposal(self, stock_code: str, proposal_id: Optional[str],
                         action: str) -> Optional[Proposal]:

@@ -86,14 +86,17 @@ class Proposal(BaseModel):
 
 
 class FillRecord(BaseModel):
-    """一条已确认成交（用户录入；fill_id 幂等键）。"""
+    """一条已确认成交（用户录入；fill_id 幂等键）。
 
+    K0a/D4：数量级确认（账户事件账本路径）记录 quantity、ratio_change=None——
+    股数是事实，仓位比例在 NAV 未知时是未知的，不得编数。"""
     fill_id: str
     stock_code: str
     date: str                              # 成交日期 YYYY-MM-DD（用户可补录历史日期）
     action: str                            # BUY / SELL
-    ratio_change: float                    # 仓位比例变化绝对值 0-1
+    ratio_change: Optional[float] = None   # 仓位比例变化绝对值 0-1（数量路径=None）
     price: Optional[float] = None
+    quantity: Optional[int] = None         # 成交股数（数量级路径；比例路径=None）
     proposal_id: Optional[str] = None      # 关联建议（可无）
     note: str = ""
     recorded_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))

@@ -225,14 +225,16 @@ def test_partial_then_more_fills_accumulate(tmp_path):
 # ── 4. 拟卖未确认不释放现金 ────────────────────────────────
 
 def test_reserved_cash_not_double_counted():
-    """验收4：已占用现金（拟买挂单）不重复计入可用；拟卖未确认的钱不在账上。"""
+    """验收4（K0a/D7 口径收紧）：cash_available 合同=已扣冻结后的净可用额——
+    reserved 仅解释展示，不再二次扣减（旧实现 deployable=cash-reserved 与字段
+    自身声明矛盾）；拟卖未确认的钱不在账上（卖出确认入账后才可用）不变。"""
     snap = _snap(cash=10_000.0, reserved=4_000.0)
-    assert snap.cash_deployable == 6_000.0
+    assert snap.cash_deployable == 10_000.0, "cash_available 已是净额（D7 合同统一）"
     out = allocate_tradeable_budget([_line(add=0.002)], snap, _FixtureRules(),
                                     as_of="2026-09-25", price_provider=_prices(10.0))
     a = out[0]
     assert a.allocation_state is AllocationState.FEASIBLE
-    assert a.estimated_cost <= 6_000.0, "分配只消费可部署现金（reserved 不重复计）"
+    assert a.estimated_cost <= 10_000.0, "分配只消费净可用现金（reserved 仅解释）"
     # 拟卖未确认：SELL 事件未入账前，replay 快照不含该现金（无 sell 事件 → cash 不变）
     import tempfile
     from pathlib import Path

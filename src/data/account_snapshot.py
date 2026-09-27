@@ -20,6 +20,7 @@
 纯函数+注入存储：零网络、零 AI、不碰真实 HOME。
 """
 
+import hashlib
 import json
 import logging
 from datetime import datetime
@@ -31,8 +32,15 @@ from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
-ACCOUNT_SNAPSHOT_VERSION = "r5.v1"
+# K0a/D7：现金口径统一为「cash_available=已扣冻结净额」——版本随口径升位（不静默换义）
+ACCOUNT_SNAPSHOT_VERSION = "k0a.v1"
 EVENT_SCHEMA_VERSION = 1
+
+
+class AccountLedgerCorruptError(RuntimeError):
+    """账本尾部损坏（截断 JSON 等）——写侧拒绝追加（K0a/D2 完整性先于写入）。
+
+    损坏原件保留在磁盘上未改动；快照 isolated_events 带行号/偏移/sha256 供人工恢复。"""
 
 
 # ──────────────── 账户快照 ────────────────
@@ -87,11 +95,13 @@ class AccountSnapshot(BaseModel):
 
     @property
     def cash_deployable(self) -> Optional[float]:
-        """可用于新增买入的现金——已占用（reserved）不重复计（验收4）。
+        """可用于新增买入的现金——K0a/D7 口径统一：cash_available 按合同已是
+        扣冻结后的净可用额，reserved 仅解释展示、不再二次扣减（旧实现在此再减
+        一次 reserved，与本字段声明合同矛盾）。
         拟卖未确认的钱**不在** cash_available 里（卖出确认入账后才出现）。"""
         if self.cash_available is None:
             return None
-        return max(0.0, self.cash_available - self.cash_reserved)
+        return max(0.0, self.cash_available)
 
 
 # ──────────────── 账户事件账本（幂等 + 重放）────────────────
@@ -129,27 +139,94 @@ class AccountEventLog:
     def __init__(self, path: Path):
         self.path = Path(path)
 
-    def _load(self) -> list[AccountEvent]:
+    def _load_detailed(self) -> tuple[list[AccountEvent], list[dict], bool]:
+        """结构化读取（K0a/D2）：返回 (events, corrupt_segments, tail_corrupt)。
+
+        - corrupt_segments：无法解析的行，结构化留痕（行号/字节偏移/长度/sha256），
+          与业务隔离分开——快照把它们并入 isolated_events，不再只 logger 一声丢掉
+        - tail_corrupt：最后一条非空行是否损坏。True 时写侧必须拒绝追加（截断
+          JSON 尾部会把下一个事件粘成一行、重放整行丢失）；尾部完好时中部坏行
+          只隔离不冻结写入
+        - 行分隔与 Python universal newline 对齐（\\r\\n、\\r、\\n 都是行终止符）；
+          偏移按原始字节计（供人工恢复定位）
+        """
         if not self.path.exists():
-            return []
-        out = []
-        for line in self.path.read_text(encoding="utf-8").splitlines():
-            line = line.strip()
-            if not line:
-                continue
+            return [], [], False
+        raw = self.path.read_bytes()
+        events: list[AccountEvent] = []
+        corrupt: list[dict] = []
+        tail_corrupt = False
+        n = len(raw)
+
+        def _consume(segment: bytes, line_no: int, start: int) -> None:
+            nonlocal tail_corrupt
+            if not segment.strip():
+                return
             try:
-                out.append(AccountEvent(**json.loads(line)))
-            except Exception as e:  # 坏行隔离（G14）
-                logger.warning(f"账户事件坏行隔离: {e}")
-        return out
+                events.append(AccountEvent(**json.loads(segment.decode("utf-8"))))
+                tail_corrupt = False
+            except Exception as e:
+                tail_corrupt = True
+                corrupt.append({
+                    "event_id": f"corrupt_line_{line_no}",
+                    "event_type": "CORRUPT_SEGMENT",
+                    "reason": f"账本行解析失败（{type(e).__name__}）——原字节保留待人工恢复",
+                    "line_no": line_no,
+                    "byte_offset": start,
+                    "byte_length": len(segment),
+                    "sha256": hashlib.sha256(segment).hexdigest()[:16],
+                })
+
+        i = 0
+        line_start = 0
+        line_no = 0
+        while i < n:
+            b = raw[i]
+            if b == 0x0A:  # \n
+                line_no += 1
+                _consume(raw[line_start:i], line_no, line_start)
+                i += 1
+                line_start = i
+            elif b == 0x0D:  # \r（或 \r\n）
+                line_no += 1
+                _consume(raw[line_start:i], line_no, line_start)
+                i += 2 if (i + 1 < n and raw[i + 1] == 0x0A) else 1
+                line_start = i
+            else:
+                i += 1
+        if line_start < n:  # 尾段无行终止符（完整 JSON 缺尾换行或截断 JSON 都在这）
+            line_no += 1
+            _consume(raw[line_start:n], line_no, line_start)
+        if corrupt:
+            logger.warning(f"账户账本存在 {len(corrupt)} 个损坏段（已隔离留痕，"
+                           f"首段行 {corrupt[0]['line_no']} 偏移 {corrupt[0]['byte_offset']}）"
+                           "——请人工核对账户事件账本")
+        return events, corrupt, tail_corrupt
+
+    def _load(self) -> list[AccountEvent]:
+        events, _, _ = self._load_detailed()
+        return events
 
     def append(self, event: AccountEvent) -> bool:
-        """追加事件；重复 event_id 幂等拒绝（返回 False，不重复入账）。"""
-        if any(e.event_id == event.event_id for e in self._load()):
+        """追加事件；重复 event_id 幂等拒绝（返回 False，不重复入账）。
+
+        K0a/D2 完整性先于写入：尾部损坏时抛 AccountLedgerCorruptError 拒绝追加
+        （写了也重放不出来）——事务入口 confirm_fill 在此之前已给可操作 REJECTED
+        回执，本异常是兜底。完整 JSON 缺尾换行 ≠ 损坏：追加前补一个换行。"""
+        events, corrupt, tail_corrupt = self._load_detailed()
+        if tail_corrupt:
+            c = corrupt[-1]
+            raise AccountLedgerCorruptError(
+                f"账本尾部损坏（行 {c['line_no']}，偏移 {c['byte_offset']}）——拒绝追加")
+        if any(e.event_id == event.event_id for e in events):
             logger.info(f"账户事件 {event.event_id} 已入账，幂等跳过")
             return False
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        existing = self.path.read_bytes() if self.path.exists() else b""
+        needs_newline = bool(existing) and not (existing.endswith(b"\n") or existing.endswith(b"\r"))
         with self.path.open("a", encoding="utf-8") as f:
+            if needs_newline:
+                f.write("\n")
             f.write(json.dumps(event.model_dump(mode="json"), ensure_ascii=False) + "\n")
         return True
 
@@ -193,7 +270,16 @@ class AccountEventLog:
                              "reason": reason})
             logger.warning(f"账户事件 {e.event_id} 未生效（整事件隔离）: {reason}")
 
-        for e in self._load():
+        # K0a/D2：解析损坏段与业务隔离同样进快照留痕（不再只 logger 丢掉）——
+        # 存在即 PARTIAL + 精确新增冻结，由人工恢复
+        events, corrupt_segments, _tail = self._load_detailed()
+        for seg in corrupt_segments:
+            isolated.append(seg)
+            logger.warning(f"账户账本损坏段隔离: {seg['event_id']} "
+                           f"（行 {seg['line_no']}，偏移 {seg['byte_offset']}，"
+                           f"sha256:{seg['sha256']}）——{seg['reason']}")
+
+        for e in events:
             q = e.quantity
             # ── 业务校验（全过才应用——现金与份额不可分离，J2/N5）──
             if e.event_type in (EventType.BUY, EventType.SELL):
@@ -271,6 +357,10 @@ class AccountEventLog:
                 # 现金类事件（FEE/DIVIDEND/DEPOSIT/WITHDRAW 及带 security 标签的费用等）
                 if cash is not None:
                     cash = cash + e.cash_delta
+        # K0a-4：批次均价成本从事件快照派生（剩余批次的加权均价——消费者不用再各自推算）
+        for h in holdings.values():
+            if h.lots and h.quantity > 0:
+                h.avg_cost = round(sum(l.quantity * l.cost_price for l in h.lots) / h.quantity, 6)
         return AccountSnapshot(as_of=datetime.now().astimezone(),
                                cash_available=cash,
                                holdings=list(holdings.values()),

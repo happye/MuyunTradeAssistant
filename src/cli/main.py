@@ -2291,22 +2291,32 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             return
         # 方向：卖出类建议 → SELL；加仓建议 → BUY
         fill_action = "SELL" if target.position_action in ("REDUCE", "CLOSE_ALL") else "BUY"
-        if ratio and ratio > 0:
+        qty_mode = qty is not None and int(qty) > 0
+        if qty_mode:
+            # K0a/D4：数量路径不用建议目标反推仓位变化——实际股数事实来自账户事件账本
+            change = None
+        elif ratio and ratio > 0:
             change = ratio  # 用户显式给的部分成交比例
         else:
-            # 缺省 = 建议全额：目标 - 当前
+            # 缺省 = 建议全额：目标 - 当前（仅比例路径使用）
             change = (pos_now.current_ratio or 0.0) - (target.target_ratio or 0.0) \
                 if fill_action == "SELL" else (target.target_ratio or 0.0) - (pos_now.current_ratio or 0.0)
             change = round(abs(change), 6) or None
-        if not change or change <= 0:
+        if not qty_mode and (not change or change <= 0):
             console.print(f"[yellow]⚠ {stock_code} 建议目标与当前仓位一致，无需确认成交[/yellow]")
             return
         console.print(f"\n[bold cyan]📌 确认成交[/bold cyan]")
-        console.print(f"  {stock_code} {target.stock_name}: {fill_action} 仓位变化 {change:.0%}"
-                      f"{f' @ ¥{price}' if price else ''}（依据建议 {target.position_action}）")
+        if qty_mode:
+            console.print(f"  {stock_code} {target.stock_name}: {fill_action} {int(qty)} 股"
+                          f"{f' @ ¥{price}' if price else ''}（依据建议 {target.position_action}）")
+        else:
+            console.print(f"  {stock_code} {target.stock_name}: {fill_action} 仓位变化 {change:.0%}"
+                          f"{f' @ ¥{price}' if price else ''}（依据建议 {target.position_action}）")
 
-        if qty is not None and int(qty) > 0:
-            # ── J2 数量级路径：账户事件账本事务（事实先落，投影后更新）──
+        if qty_mode:
+            # ── J2 数量级路径（K0a/D4：股数是事实，建议是意图）──
+            # 事件账本先入账（唯一事实源）→ 账户快照派生事实 → apply_quantity_fill
+            # 只把事实同步到比例视图（部分卖出保留记录+待重估；剩余 0 股才清仓）
             if not price or price <= 0:
                 console.print("[red]✗ 数量级确认需成交价（--qty 与成交价成对给）——未入账[/red]")
                 return
@@ -2314,29 +2324,42 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                 DEFAULT_LEDGER_PATH, AccountService, FillInput, pick_reusable_fill_id,
             )
             svc = AccountService(DEFAULT_LEDGER_PATH)
+            snap_before = svc.snapshot()
+            held_before = next((h.quantity for h in snap_before.holdings
+                                if h.security_id == stock_code), 0)
             # 稳定 fill_id（J2 审查 P0 修复 + J5 审查 P1-1 数字序号修正）：
-            # 前缀下已入账事件中**数字序号最大**者，指纹与本笔一致且投影未消费
-            # （proposals 无此 fill 记录）→ 判定崩溃恢复态，复用同一 fill_id
+            # 前缀下已入账事件中**数字序号最大**者，指纹与本笔一致且账本/投影**均未
+            # 消费完**（任一缺失=上次未完成）→ 判定崩溃恢复态，复用同一 fill_id
             # （账本 DUPLICATE + 投影补做）；否则新序号（逐笔部分成交）。
             # 派生逻辑本体在 account_service.pick_reusable_fill_id（可单测）。
             prefix = f"{target.proposal_id}#"
             eff_date = trade_date or datetime.now().strftime("%Y-%m-%d")
+            # 偏离判定（事实对建议）：建议清仓但本笔卖不完全部持仓 → 明确偏离
+            deviation = (fill_action == "SELL" and target.position_action == "CLOSE_ALL"
+                         and held_before > int(qty))
             payload = FillInput(security_id=stock_code, action=fill_action,
                                 quantity=int(qty), price=float(price) if price and price > 0 else 0.0,
                                 fee=float(fee or 0.0), trade_date=eff_date,
-                                note=note or f"proposal={target.proposal_id}")
-            prior_ids = {str(e.related_fill_id) for e in svc.log.events()
-                         if str(e.related_fill_id or "").startswith(prefix)}
+                                deviation_from_proposal=deviation,
+                                note=(note or f"proposal={target.proposal_id}")
+                                     + (f"；偏离：建议清仓，本笔卖出{int(qty)}/{held_before}股"
+                                        if deviation else ""))
             fill_id = pick_reusable_fill_id(svc.log.events(), prefix,
                                             payload.fingerprint(),
-                                            has_fill_fn=pm._proposals.has_fill)
-            if fill_id in prior_ids:
+                                            has_fill_fn=lambda rid: pm._proposals.has_fill(rid)
+                                            and pm.has_applied_fill(rid))
+            if fill_id in {str(e.related_fill_id) for e in svc.log.events()
+                           if str(e.related_fill_id or "").startswith(prefix)}:
                 console.print(f"[yellow]↩ 检测到未完成的确认（fill {fill_id} 已入账、"
                               "投影未同步）——按崩溃恢复补做，不重复入账[/yellow]")
             receipt = svc.confirm_fill(fill_id, svc.account_version(), payload)
             if not receipt.ok:
-                console.print(f"[red]✗ 数量级确认未入账（{receipt.status}）: {receipt.reason}[/red]")
-                console.print("  [dim]账户/投影均未改动——核对后重试（版本过期请重读 pos list）[/dim]")
+                if receipt.status == "PERSIST_UNKNOWN":
+                    # K0a：fsync 失败≠未入账——写入状态待核对（可能已在盘上）
+                    console.print(f"[red]⚠ 写入状态待核对（{receipt.status}）: {receipt.reason}[/red]")
+                else:
+                    console.print(f"[red]✗ 数量级确认未入账（{receipt.status}）: {receipt.reason}[/red]")
+                    console.print("  [dim]账户/投影均未改动——核对后重试（版本过期请重读 pos list）[/dim]")
                 return
             if receipt.status == "DUPLICATE":
                 console.print(f"[yellow]↩ fill {fill_id} 已入账过（幂等跳过账本）——"
@@ -2344,19 +2367,44 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             else:
                 console.print(f"[green]✓ 事件账本入账: {fill_action} {qty} 股 @ ¥{price}"
                               f" ｜ 现金变动 {receipt.cash_delta:+.2f} 元 ｜ 版本 {receipt.account_version}[/green]")
-            # 投影更新（比例视图）——fill_id 幂等：崩溃重跑不重复变动持仓
-            result = pm.confirm_fill(stock_code, fill_action, change,
-                                     price=price if price and price > 0 else None,
-                                     fill_id=fill_id, proposal_id=target.proposal_id,
-                                     note=note or "")
+            # 账户事实（股数是事实——来自事件账本快照，不受建议影响）
+            snap_after = svc.snapshot()
+            held_after = next((h.quantity for h in snap_after.holdings
+                               if h.security_id == stock_code), 0)
+            holding_after = next((h for h in snap_after.holdings
+                                  if h.security_id == stock_code), None)
+            # 投影同步（比例视图）——事实驱动：部分卖出保留记录、剩余 0 股才清仓
+            result = pm.apply_quantity_fill(
+                stock_code, fill_action, quantity=int(qty),
+                price=float(price) if price and price > 0 else None,
+                trade_date=eff_date, fill_id=fill_id,
+                proposal_id=target.proposal_id, note=note or "",
+                quantity_before=held_before, quantity_after=held_after,
+                avg_cost=(holding_after.avg_cost if holding_after else None))
+            if fill_action == "SELL" and held_after <= 0:
+                console.print(f"[green]✓ 清仓完成（实际卖出 {int(qty)} 股）[/green]")
+            elif fill_action == "SELL":
+                console.print(f"[green]✓ 已记录本笔成交：已成交 {int(qty)} 股 / 剩余 {held_after} 股[/green]")
+                if target.position_action == "CLOSE_ALL":
+                    console.print("  [yellow]⚠ 建议（清仓）未完全达成——建议保持待确认，"
+                                  "如继续卖出请再次执行确认[/yellow]")
+            else:
+                cost_str = (f"，批次均价成本 ¥{holding_after.avg_cost:.2f}"
+                            if holding_after and holding_after.avg_cost else "")
+                console.print(f"[green]✓ 已记录本笔成交：已成交 {int(qty)} 股 / "
+                              f"现持有 {held_after} 股{cost_str}[/green]")
             if result.ok:
-                after = pm.get_position(stock_code)
-                console.print(f"[green]✓ 比例投影已同步[/green]"
-                              + (f" ｜ 持仓现状 {after.current_ratio:.0%} ｜ 生命周期 {after.lifecycle}"
-                                 if after is not None else " ｜ 持仓现状: 记录已删除（清仓完成）"))
+                if held_after > 0:
+                    console.print("[green]✓ 比例视图已同步[/green]"
+                                  " ｜ [dim]数量事实以账户账本为准（比例视图已标待重估）[/dim]")
+                else:
+                    after = pm.get_position(stock_code)
+                    console.print("[green]✓ 比例视图已同步[/green]"
+                                  + (" ｜ 持仓现状: 记录已删除（清仓完成）" if after is None
+                                     else f" ｜ 持仓现状 {after.current_ratio:.0%} ｜ 生命周期 {after.lifecycle}"))
             else:
                 console.print(f"[yellow]⚠ 数量级事实已入账（fill_id={fill_id}），"
-                              f"但比例投影更新失败: {result.message}[/yellow]")
+                              f"但比例投影同步失败: {result.message}[/yellow]")
                 console.print("  [dim]重跑同一命令可幂等恢复投影（账本不会重复入账）[/dim]")
             return
 

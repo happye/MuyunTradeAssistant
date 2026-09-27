@@ -11,7 +11,8 @@
    不同允许记录真实结果并标偏离——不能为建议吻合篡改事实
 4. 单个事务事件包含现金和份额变化；append + flush + fsync 成功后才发布新版本
    （账本内容 hash）；失败不提交半个事件（replay 端整事件原子生效同口径）
-5. 崩溃恢复：截断尾行由读侧隔离（G14），按已持久化事件幂等重建投影
+5. 崩溃恢复：截断尾行快照隔离留痕（G14+K0a/D2：进 isolated_events/PARTIAL，写侧
+   拒绝向损坏尾部追加，损坏原件与行号/偏移保留供人工恢复）；按已持久化事件幂等重建投影
 6. 期初导入 OPENING 事件记录用户确认的数量/成本/现金时点；仅百分比旧仓位
    无法推确切股数 → 保留 RATIO_ONLY 只补问阻塞字段
 7. 无券商下单功能——本协议只记录**已发生**的成交
@@ -33,6 +34,7 @@ from src.data.account_snapshot import (
     AccountEvent,
     AccountEventLog,
     AccountSnapshot,
+    AccountLedgerCorruptError,
     EventType,
 )
 
@@ -119,11 +121,14 @@ class FillInput(BaseModel):
 
 
 class FillReceipt(BaseModel):
-    """确认回执（status + 新账本版本；REJECTED/STALE 带 reason 不写任何状态）。"""
+    """确认回执（K0a 回执三分：未写=REJECTED/STALE/CONFLICT；已持久化=ACCEPTED/
+    DUPLICATE；写入状态待核对=PERSIST_UNKNOWN）。REJECTED/STALE 带 reason 不写任何状态。"""
     model_config = ConfigDict(extra="allow")
 
-    status: Literal["ACCEPTED", "DUPLICATE", "CONFLICT", "REJECTED", "STALE"]
-    ok: bool = Field(description="是否达到用户意图（ACCEPTED/DUPLICATE=True——重复提交算成功幂等）")
+    status: Literal["ACCEPTED", "DUPLICATE", "CONFLICT", "REJECTED", "STALE",
+                    "PERSIST_UNKNOWN"]
+    ok: bool = Field(description="是否达到用户意图（ACCEPTED/DUPLICATE=True——重复提交算成功幂等；"
+                                 "PERSIST_UNKNOWN=False：写入状态待核对，重跑同一确认可核对）")
     fill_id: str
     event_id: str = ""
     account_version: str = Field(default="", description="回执时点的账本内容版本")
@@ -180,7 +185,7 @@ class AccountService:
 
     def _confirm_locked(self, fid: str, expected_account_version: str,
                         payload: FillInput) -> FillReceipt:
-        events = self.log._load()
+        events, corrupt_segments, tail_corrupt = self.log._load_detailed()
         current_version = self.account_version()
         prior = next((e for e in events if e.event_id == f"fill_{fid}"), None)
         if prior is not None:
@@ -201,6 +206,16 @@ class AccountService:
                                account_version=current_version,
                                reason=f"账户版本已变化（期望 {expected_account_version}，"
                                       f"当前 {current_version}）——重读快照后重试")
+        # ── K0a/D2 完整性先于写入：幂等/冲突/STALE 是只读判定可照常回答；
+        #    新写入前必须过完整性门——截断 JSON 尾部会把本事件粘在损坏行上、
+        #    重放整行丢失（D2 主反例），损坏原件不动、给可操作回执 ──
+        if tail_corrupt:
+            c = corrupt_segments[-1]
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=current_version,
+                               reason=f"账本尾部损坏（行 {c['line_no']}，偏移 {c['byte_offset']}，"
+                                      f"sha256:{c['sha256']}）——本次未写入（原件未动）。"
+                                      "请先备份账户事件账本，再人工修复或删除损坏尾段后重试")
         # ── 业务校验 ──
         err = self._validate(payload)
         if err:
@@ -256,13 +271,37 @@ class AccountService:
             deviation_from_proposal=payload.deviation_from_proposal,
             fill_note=payload.note,
         )
-        if not self.log.append(event):
+        try:
+            appended = self.log.append(event)
+        except OSError as e:
+            # K0a：追加失败=零写入（半个事件都没有）——诚实回执，修复后重试干净入账
+            logger.warning(f"账本追加失败（零写入）: {e}")
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=current_version,
+                               reason=f"账本写入失败（{e}）——本次未写入（未产生半个事件），"
+                                      "请检查磁盘/权限后重试")
+        except AccountLedgerCorruptError as e:
+            # 完整性门前置正常不会到这里（兜底）：尾部在锁内被并发改坏
+            logger.warning(f"账本完整性兜底拒绝追加: {e}")
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=current_version,
+                               reason=f"账本尾部损坏（{e}）——本次未写入（原件未动）。"
+                                      "请先备份账户事件账本，再人工修复损坏尾段后重试")
+        if not appended:
             # append 幂等拒绝（并发同 id 已入账）——按幂等成功回执
             return FillReceipt(status="DUPLICATE", ok=True, fill_id=fid,
                                event_id=event.event_id,
                                account_version=self.account_version(),
                                cash_delta=cash_delta)
-        _fsync_ledger(self.log.path)
+        if not _fsync_ledger(self.log.path):
+            # K0a：fsync 失败≠普通成功——写入状态待核对（数据可能已在盘上）；
+            # 重跑同一确认会命中 event_id 幂等返回 DUPLICATE，可安全核对
+            return FillReceipt(status="PERSIST_UNKNOWN", ok=False, fill_id=fid,
+                               event_id=event.event_id,
+                               account_version=self.account_version(),
+                               cash_delta=cash_delta,
+                               reason="事件已写入但磁盘落盘确认失败（fsync）——写入状态待核对。"
+                                      "请重跑同一确认核对：已入账会返回 DUPLICATE（幂等不重复入账）")
         new_version = self.account_version()
         dev = "（偏离已标注——记录真实结果）" if payload.deviation_from_proposal else ""
         logger.info(f"成交确认入账 {payload.security_id} {payload.action} {payload.quantity}股"
@@ -371,13 +410,20 @@ class AccountService:
     def _append_opening_locked(self, fid: str, security_id: str, quantity: int,
                                cost_price: Optional[float], cash_delta: float,
                                trade_date: str, acquired_at: str = "") -> FillReceipt:
-        events = self.log._load()
+        events, corrupt_segments, tail_corrupt = self.log._load_detailed()
         prior = next((e for e in events if e.event_id == f"fill_{fid}"), None)
         if prior is not None:
             return FillReceipt(status="DUPLICATE", ok=True, fill_id=fid,
                                event_id=prior.event_id,
                                account_version=self.account_version(),
                                cash_delta=prior.cash_delta)
+        if tail_corrupt:  # K0a/D2：完整性先于写入（期初导入同样冻结）
+            c = corrupt_segments[-1]
+            return FillReceipt(status="REJECTED", ok=False, fill_id=fid,
+                               account_version=self.account_version(),
+                               reason=f"账本尾部损坏（行 {c['line_no']}，偏移 {c['byte_offset']}，"
+                                      f"sha256:{c['sha256']}）——本次未写入（原件未动）。"
+                                      "请先备份账户事件账本，再人工修复或删除损坏尾段后重试")
         event = AccountEvent(
             event_id=f"fill_{fid}", event_type=EventType.OPENING,
             security_id=security_id,
@@ -387,7 +433,13 @@ class AccountService:
             lot_cost_price=cost_price if security_id else None,
             related_fill_id=fid)
         self.log.append(event)
-        _fsync_ledger(self.log.path)
+        if not _fsync_ledger(self.log.path):
+            return FillReceipt(status="PERSIST_UNKNOWN", ok=False, fill_id=fid,
+                               event_id=event.event_id,
+                               account_version=self.account_version(),
+                               cash_delta=cash_delta,
+                               reason="事件已写入但磁盘落盘确认失败（fsync）——写入状态待核对。"
+                                      "请重跑同一期初导入核对：已入账会返回 DUPLICATE（幂等）")
         return FillReceipt(status="ACCEPTED", ok=True, fill_id=fid,
                            event_id=event.event_id,
                            account_version=self.account_version(),
@@ -441,12 +493,17 @@ def _event_fingerprint(event: AccountEvent) -> str:
     }, ensure_ascii=False, sort_keys=True).encode("utf-8")).hexdigest()[:16]
 
 
-def _fsync_ledger(path: Path) -> None:
-    """追加后 fsync（崩溃点契约：持久化成功才发布新版本——J2 协议第 4 条）。"""
+def _fsync_ledger(path: Path) -> bool:
+    """追加后 fsync（崩溃点契约：持久化确认才发布确定成功——J2 协议第 4 条）。
+
+    K0a：返回 False=落盘未确认（调用方必须给 PERSIST_UNKNOWN 回执，不得当普通成功）。"""
     try:
         with open(path, "ab") as f:
             f.flush()
             import os
             os.fsync(f.fileno())
+        return True
     except OSError as e:
-        logger.warning(f"账本 fsync 失败（数据可能未落盘，请核对）: {e}")
+        logger.warning(f"账本 fsync 失败（数据可能未落盘，写入状态待核对——"
+                       f"重跑同一确认可幂等核对）: {e}")
+        return False

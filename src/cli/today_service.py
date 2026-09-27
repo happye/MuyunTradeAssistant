@@ -166,7 +166,8 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
         if deployable is not None:
             line = f"可用现金 {deployable:,.0f} 元"
             if account.cash_reserved:
-                line += f"（已占用 {account.cash_reserved:,.0f} 元不重复计）"
+                # K0a/D7：cash_available 已是扣冻结净额——reserved 仅解释展示（不重复减）
+                line += f"（其中已占用/冻结 {account.cash_reserved:,.0f} 元）"
             view.account.append(line)
         else:
             view.account.append("现金未知（未导入期初/期初现金缺失——不产可买数量，None≠0）")
