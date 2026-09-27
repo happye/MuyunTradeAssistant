@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 # 纪律（LRN-20260925-015）：patch 前先预导入被 patch 的真实模块
 import src.cli.main as cli_main
 import src.data.account_service as account_module
+import src.data.horizon_plans as horizon_plans_module
 import src.data.portfolio as portfolio_module
 import src.data.proposals as proposals_module
 import start as start_module
@@ -38,11 +39,13 @@ def test_k0a_partial_sell_vertical_repl_to_today(tmp_path, monkeypatch):
     portfolio_path = tmp_path / "portfolio.yaml"
     proposals_path = tmp_path / "proposals.json"
     ledger_path = tmp_path / "account_events.jsonl"
+    plans_path = tmp_path / "horizon_plans.json"  # K0c-5：CLI 确认会读计划库——一并隔离
     monkeypatch.setattr(portfolio_module, "DEFAULT_PORTFOLIO_PATH", str(portfolio_path))
     monkeypatch.setattr(proposals_module, "DEFAULT_PROPOSALS_PATH", str(proposals_path))
     monkeypatch.setattr(account_module, "DEFAULT_LEDGER_PATH", ledger_path)
+    monkeypatch.setattr(horizon_plans_module, "PLANS_FILE", plans_path)
     root = str(tmp_path.resolve())
-    for p in (str(portfolio_path), str(proposals_path), str(ledger_path)):
+    for p in (str(portfolio_path), str(proposals_path), str(ledger_path), str(plans_path)):
         assert os.path.abspath(p).startswith(root), f"持久化路径越出临时根: {p}"
     pm = PortfolioManager()
     assert os.path.abspath(str(pm.portfolio_path)).startswith(root), \
