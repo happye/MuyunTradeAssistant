@@ -2189,7 +2189,7 @@ P3（已取消）:
 - **优先级**: P1
 - **描述**: query_balance_data 的 liabilityToAsset 跨报告期量级不一致——万科 000002：2023Q4=0.7322（真实资产负债率 73%✓）而 2024Q2/2024Q4/2025Q2≈0.0073（量级 ÷100）；平安银行（银行）2025Q2=0.0091 同样异常。疑似 baostock 近期数据语义/单位漂移。值落在 [0,1] 合法区间内，无法靠范围校验拦截——需同公司跨期连续性校验（相邻期跳变 >10× 即标记疑似漂移）。E1 质量路已改用已验证语义的 2023 年报规避。
 - **来源**: E1 候选召回真实执行（tests/backtest/e1_route_recall.py）
-- **R1 核实结论（2026-09-27，tests/data_sources/probe_fin_semantics.py 实测）**: 病根=**baostock 供应商侧字段单位变更**，非公司财务异动——`liabilityToAsset` 自 **2024-06-30 报告期起**全市场统一 ÷100（万科A/贵州茅台双样本一致）；与东财资产负债表**绝对值按定义重算**（负债/资产，同报告期同合并口径）交叉核对：2024-03-31 及以前逐期吻合（差<1e-4），2024-06-30 起恒差 ×100。原始响应 768 份留样（写一次不可覆盖，tests/artifacts/probe_fin_semantics_raw/）。
+- **R1 核实结论（2026-09-27，tests/data_sources/probe_fin_semantics.py 实测）**: 病根=**baostock 供应商侧字段单位变更**，非公司财务异动——`liabilityToAsset` 自 **2024-06-30 报告期起**统一 ÷100（万科A/贵州茅台双样本一致；**2026-09-27 架构师限定：证据=2 家公司 24 个观测，支持有范围映射核定，不证明全市场/所有未来期间永久同比例**——iteration3/DATA_DECISION.md §2）；与东财资产负债表**绝对值按定义重算**（负债/资产，同报告期同合并口径）交叉核对：2024-03-31 及以前逐期吻合（差<1e-4），2024-06-30 起恒差 ×100。原始响应 768 份留样（写一次不可覆盖，tests/artifacts/probe_fin_semantics_raw/）。
 - **R1 处置**: ①相邻期量级筛查（>10x/符号翻转→SUSPECT 隔离，`research_snapshot.screen_semantic_anomalies`——**纯函数已测试；分析路径接线随 R3 服务层，当前不自动兜底**）；②版本化映射（`financial_data.UNIT_DRIFT_MAPPINGS`：仅 liabilityToAsset×baostock×period_end≥2024-06-30，canonical=raw×100，raw_value 保供应商原值，证据指针透明可审计——**非全局 ×100**；证据摘录入库 `plan/fusion/iteration2/evidence/2026-09-27_ISS114探针摘录.md`）；③其余 balance 比例字段是否同样漂移**待逐字段交叉核定**；④待逐份发行人原始财报确认后 verification 升级（当前 cross_checked_pending_original）。commit 哈希回填后本行同步。
 
 ### ISS-115: 用户反馈 plan2 手写逻辑门槛高——R3 优先级的用户实证（2026-09-27）

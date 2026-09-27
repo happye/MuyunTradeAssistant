@@ -1,6 +1,6 @@
 # R3–R6/R8 自动研究、双周期计划与行动闭环
 
-2026-09-26｜设计提案，未实施｜前置 [DATA_TRUST.md](DATA_TRUST.md)。保持模块化单体，复用 DecisionPacket、任务账本、证据库和已有命令。
+2026-09-26｜2026-09-27 更新：**R3/R4/R5/R6 大部已实施，R8 CLI 接线已落**（见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md) 各节五维判定；chat/Web/TUI 一致性与②③真实试用为剩余项）｜前置 [DATA_TRUST.md](DATA_TRUST.md)。保持模块化单体，复用 DecisionPacket、任务账本、证据库和已有命令。
 
 ## 1. 核心产品变化：系统完成研究，用户选择意图
 

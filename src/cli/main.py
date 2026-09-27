@@ -5258,9 +5258,11 @@ def research_command(rest: list):
         if d["fact_evidence_refs"]:
             console.print(f"      [dim]已核验事实 {len(d['facts_observed'])} 条（带引用，可打开原文）[/dim]")
     if bundle.gaps:
-        console.print(f"\n  [yellow]缺口 {len(bundle.gaps)} 项：[/yellow]")
+        console.print(f"\n  [yellow]缺口 {len(bundle.gaps)} 项（显示前 5）：[/yellow]")
         for g in bundle.gaps[:5]:
             console.print(f"    · {g}")
+        if len(bundle.gaps) > 5:
+            console.print(f"    · …其余 {len(bundle.gaps) - 5} 项见 research --json（接线批）")
     if bundle.snapshot_dropped:
         # 严格快照拒收摘要如实展示（latest-only 财务不入 strict 历史——用户须知道
         # 采到的证据去哪了，监督员 P1：不让用户从「来源 0 份」反推）
