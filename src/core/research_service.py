@@ -244,6 +244,13 @@ class ResearchService:
         for d in (documents or []):
             if isinstance(d, SourceDocument):
                 continue
+            claim_obj = d.get("claim")
+            # K2a 反向门：主张主体与本次研究主体不符（别家公告安到自家头上）
+            # → 不核验、计未核验（宁可缺口不冒充；与 D6 快照主体边界同精神）
+            if claim_obj is not None and str(getattr(claim_obj, "security_id", "") or "").strip() \
+                    and str(claim_obj.security_id).strip() != security_id:
+                unverified_count += 1
+                continue
             res = verify_claim_tiered(
                 d["claim"], d.get("documents") or [], as_of=as_of)
             for p in (d.get("documents") or []):

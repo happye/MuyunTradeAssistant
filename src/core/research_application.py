@@ -85,7 +85,22 @@ class ResearchApplicationService:
 
     def run(self, security_id: str, *, as_of: datetime,
             horizons: tuple[str, ...] = ("MID", "LONG"),
-            capture: bool = False, account_version: str = "") -> ResearchRunResult:
+            capture: bool = False, account_version: str = "",
+            documents: Optional[list] = None,
+            checkpoints: Optional[list] = None) -> ResearchRunResult:
+        """K2a 公开研究闭环：documents（主张+核验池）与 checkpoints（检查点）
+        是**公开入口的一等入参**——合法正例从公开解析器输入建立（不直调
+        ResearchService 注入）。
+
+        documents：list[dict]，每项 {"claim": {...字段...}, "document": {...原文...}}
+            ——claim dict 构造 ClaimRecord，document dict 构造 SourceDocument
+            （canonical_uri/body/security_ids/published_at——原文 URI/hash 可追溯，
+            body 经 ResearchStore.archive_raw 留样）；直传 ClaimRecord/SourceDocument
+            亦可（兼容服务层形态）。
+        checkpoints：CheckpointCondition 列表（user_confirmed 必须由用户显式给出
+            ——接受计划不自动替代风险确认，AI 不能自行确认）。
+        """
+        from src.core.claim_extraction import ClaimRecord, SourceDocument
         from src.data.financial_data import (
             apply_unit_drift_mapping, capture_quarterly_evidence, select_ended_quarters,
         )
@@ -98,6 +113,44 @@ class ResearchApplicationService:
 
         security_id = str(security_id).strip()
         steps: dict = {"documents": {}, "verified": {}, "assessment": {}, "draft": {}}
+
+        # ── K2a：公开主张通道——原文归档留样（URI/hash 可追溯）+ 形态适配 ──
+        claim_bundles: list = []
+        claim_doc_uris: list[str] = []
+        for item in (documents or []):
+            if item is None:
+                continue
+            if isinstance(item, dict) and "claim" in item:
+                c_raw, d_raw = item.get("claim") or {}, item.get("document") or {}
+                claim = c_raw if isinstance(c_raw, ClaimRecord) else ClaimRecord(**c_raw)
+                doc = d_raw if isinstance(d_raw, SourceDocument) else SourceDocument(
+                    canonical_uri=str(d_raw.get("canonical_uri") or ""),
+                    content_hash=SourceDocument.body_hash(str(d_raw.get("body") or "")),
+                    security_ids=[str(s) for s in (d_raw.get("security_ids") or [])],
+                    published_at=d_raw.get("published_at"),
+                    body=str(d_raw.get("body") or ""),
+                    title=str(d_raw.get("title") or ""),
+                    is_correction=bool(d_raw.get("is_correction", False)))
+                claim.citation_uri = claim.citation_uri or doc.canonical_uri
+                claim.citation_hash = claim.citation_hash or doc.content_hash
+                # 原文留样（同 hash 幂等——归档是追溯链的落盘点）
+                try:
+                    if doc.body:
+                        self.store.archive_raw(
+                            {"kind": "research_document", "uri": doc.canonical_uri,
+                             "body": doc.body},
+                            metadata={"security_ids": doc.security_ids,
+                                      "published_at": doc.published_at.isoformat()
+                                      if doc.published_at else ""})
+                except Exception as e:
+                    logger.warning(f"研究原文留样失败（核验继续，追溯链缺该份）: {e}")
+                if doc.canonical_uri and doc.canonical_uri not in claim_doc_uris:
+                    claim_doc_uris.append(doc.canonical_uri)
+                claim_bundles.append({"claim": claim, "documents": [doc]})
+            elif isinstance(item, SourceDocument):
+                claim_bundles.append(item)  # 仅来源文档（无主张）——服务层按归档处理
+            else:
+                logger.warning(f"documents 条目形态非法（跳过）: {type(item).__name__}")
 
         # ── Step 1 documents：归档读取 + 按需补采（报告期粒度断点）──
         records: list = []
@@ -122,6 +175,7 @@ class ResearchApplicationService:
             "quarters_selected": self.n_quarters, "quarters_archived_skipped": skipped,
             "quarters_fetched": fetched, "quarters_missing": archived_missing,
             "evidence_records": len(records),
+            "claims_input": len(claim_bundles),  # K2a：公开通道导入的主张数（审查 P3-1）
             "resume": "已归档季度零重复抓取；提取/评估/草稿为确定性重放（同输入同 run_id）",
         }
 
@@ -154,6 +208,7 @@ class ResearchApplicationService:
             security_id, as_of=as_of, horizons=horizons,
             evidence_records=records, factor_capabilities=caps,
             factor_bindings=bindings, assessment_store=self.assessment_store,
+            documents=claim_bundles or None, checkpoints=checkpoints,
             snapshot_builder=lambda sid, ao, recs, strict=True: snap)
         assessment_ids = {}
         for d in bundle.plan_drafts:
@@ -202,7 +257,8 @@ class ResearchApplicationService:
             verified_claims=len(bundle.verified_claims),
             unverified_claims=bundle.unverified_claims,
             source_count=len(bundle.source_document_ids),
-            source_uris=list(bundle.source_document_ids),
+            source_uris=list(dict.fromkeys(
+                list(bundle.source_document_ids) + claim_doc_uris)),
             account_version=str(account_version or ""),
         )
 

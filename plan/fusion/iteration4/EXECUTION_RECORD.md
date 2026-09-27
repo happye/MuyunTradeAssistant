@@ -197,3 +197,41 @@ plain_errors.py 新增 6 条 + 更新 fsync 条目：账户账本存在/账户�
 4. 输入指纹未含行情/报价截止（证据变化已覆盖；价格变化且输出逐字段相同时仍折叠——K1 v6 引入 quote_cutoff 时闭合）。
 5. A1 测试矩阵缺「接受冲突」「影子读取（候选在场）」两专门用例（结构性有保证：get 只读主槽）。
 6. state-3 修复路径可能向最新同向 PROPOSED 建议补 mark_confirmed（比例 CLI 用 uuid fill_id 不可达；API 直调可达——K2b 归并时收口）。
+
+---
+
+## K2a｜最小研究闭环（公开入口通道）
+
+**状态：实施完成，待监督审查 + 全量验证（2026-09-28）**
+
+### 子任务拆解
+
+| # | 内容 | 状态 |
+|---|---|---|
+| K2a-T1 | 红灯测试：tests/core/test_k2a_research_loop.py（通道 2 + 反向 2 + 闭环 2） | ✅ 红灯确认（run() 无 documents 入参 TypeError） |
+| K2a-T2 | 公开通道：ResearchApplicationService.run 增加 documents/checkpoints 一等入参——claim dict+document dict → ClaimRecord/SourceDocument（citation_uri/hash 自动补齐）；原文经 ResearchStore.archive_raw 留样（URI/hash 追溯链落盘点）；透传 ResearchService.run（不新增平行引擎） | ✅ |
+| K2a-T3 | 反向门：错主体主张（security_id 与 run 主体不符）→ 不核验计未核验（research_service 核验循环主体门，与 D6 同精神）；缺原件（body 空）→ 核验不可达 FACT_CHECKED | ✅ |
+| K2a-T4 | CLI：research --claims <json> 本地主张文件导入（_load_research_claims_file：statement/quote_text/source_uri 必填人话校验，零模型调用）；--checkpoint 描述 + --confirm-risk（未确认→记录但不进支撑——接受计划不自动替代风险确认） | ✅ |
+| K2a-T5 | 主意图入口：plan2 accept --primary → set_active_ref（此前全库无生产调用点——闭环断环补齐）；candidate_corrupt 专属提示 | ✅ |
+| K2a-T6 | 纵向验收：合法 fixture → 公开入口评估 → 计划候选 → 显式接受 → 主意图引用 → capture_shadow 落盘 effective 观察（报告分母计入） | ✅ |
+| K2a-T7 | 监督审查处置：P1-1 CLI body 缺失回退摘录（缺原件 typed 主张自证 FACT_CHECKED）→ 删回退+CLI 通道回归测试；P1-2 两条新告警三处同步；P2-1 检查点测试改真断言（确认→TRUE 显式登记/未确认→UNKNOWN 双向锁）；P2-2 账本措辞如实更正（检查点无持久化落点）；P3-1 死写/P3-3 缺值静默/P3-4 行业级 security_id/P3-5 拼写与隔离断言 | ✅ |
+| K2a-T8 | 已知项登记：摘录定位字段（excerpt_locator/quote_span）CLI 文件格式暂不支持（P3-7，随 K2b）；source_uris 含被门掉主张的原文 URI（可追溯语义，注释言明 P3-2） | ✅ |
+
+### 决策记录（K2a）
+
+- 通道形态：documents 条目 {"claim": dict, "document": dict}，直传 ClaimRecord/
+  SourceDocument 兼容；原文留样失败降级为告警（核验继续、追溯链缺该份——不阻断研究）。
+- 错主体门放服务层核验循环（所有调用方受益），主张主体非空且 != run 主体 → 计
+  unverified——不做隐式改写归属。
+- 风险确认语义：checkpoint.user_confirmed 只能来自用户显式输入（--confirm-risk）；
+  未确认的检查点**仅本次运行内存/输入指纹在案，无持久化落点**（K2a 审查 P2-2 如实
+  更正——持久化登记随 K2b/观察协议收口），且不进评估支撑（J0b 合同保持）。
+- 已知项（随 K2b/后续）：source_uris 由 bundle 汇集（真实来源跳转已接）；付费提取
+  未隐式开启（导入/校验零模型调用）；chat/Web/TUI 研究入口仍未适配（K2b 后单独验收）。
+
+### 验证记录
+
+| 验证 | 命令 | 结果 |
+|---|---|---|
+| 目标测试 | `pytest tests/core/test_k2a_research_loop.py -q` | **6 passed** |
+| 全量 | `pytest -q` | 见提交前补记 |

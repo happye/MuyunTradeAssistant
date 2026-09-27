@@ -3982,14 +3982,35 @@ def plan2_command(rest: list):
     sub = rest[1].lower() if len(rest) > 1 else ""
     horizon_arg = rest[2].lower() if len(rest) > 2 and rest[2].lower() in ("mid", "long") else None
     if sub == "accept":
+        primary = "--primary" in rest
+        rest_wo = [p for p in rest if p != "--primary"]
+        horizon_arg = rest_wo[2].lower() if len(rest_wo) > 2 and rest_wo[2].lower() in ("mid", "long") else None
         ok, msg = store.accept(code, horizon_arg)
         if ok:
             console.print(f"  ✅ {code} 计划已激活（{msg}）——影子对照/周期决策表开始出真判断")
+            if primary:
+                # K2a 闭环：接受精确版本 → 主意图引用（account×security 唯一；
+                # 数量确认随事件保留引用）。只接受当前已接受版本（三元组核对内置）。
+                plan_now = store.get(code, horizon_arg) if horizon_arg else None
+                if plan_now is None:
+                    allp = store.get(code) or {}
+                    plan_now = allp.get("MID") or allp.get("LONG")
+                ok2, msg2 = store.set_active_ref(code, plan_now) if plan_now \
+                    else (False, "no_plan")
+                if ok2:
+                    console.print(f"  ✅ 主意图引用已设置（{code}）——pos confirm --qty "
+                                  "将随事件保留该引用")
+                else:
+                    console.print(f"  [yellow]⚠ 主意图引用设置失败: {msg2}"
+                                  "（数量确认将不带计划引用）[/yellow]")
         elif msg == "no_plan":
             console.print(f"  [yellow]{code} 没有计划——先 plan2 {code} mid|long <意图>[/yellow]")
         elif msg.startswith("ambiguous"):
             console.print(f"  [yellow]{code} 同时有 mid 和 long 计划——指定周期: "
                           f"plan2 accept {code} {msg.split(':')[1]}[/yellow]")
+        elif msg == "candidate_corrupt":
+            console.print(f"  [red]候选草稿损坏（{code}）——重跑 research 覆盖候选，"
+                          "或手工检查 horizon_plans.json[/red]")
         else:  # write_rejected
             reason = ("计划文件此前损坏（损坏保护拒绝写）——请手工检查 ~/.muyun/horizon_plans.json"
                       if store.corrupted else "计划文件被外部修改——重跑一次即可（会合并最新内容）")
@@ -5373,13 +5394,50 @@ def research_command(rest: list):
     rest = [p for p in (rest or []) if p.strip()]
     capture = "--capture" in rest
     as_json = "--json" in rest
-    codes = [p for p in rest if not p.startswith("--")]
+    # K2a：公开研究闭环入参——主张文件导入（原文留样+核验）与检查点（显式风险确认）
+    claims_file = None
+    checkpoint_desc = ""
+    confirm_risk = "--confirm-risk" in rest
+    for _i, _p in enumerate(rest):
+        if _p in ("--claims", "--checkpoint"):
+            # K2a 审查 P3-3：旗标在场但缺值 → 显式报错（不静默跑无主张研究）
+            if _i + 1 >= len(rest) or rest[_i + 1].startswith("--"):
+                console.print(f"  [red]✗ {_p} 缺值——用法: research <代码> "
+                              f"--claims 主张.json ／ --checkpoint 描述 --confirm-risk[/red]")
+                return
+            if _p == "--claims":
+                claims_file = rest[_i + 1]
+            else:
+                checkpoint_desc = rest[_i + 1]
+    codes = [p for p in rest if not p.startswith("--") and p not in
+             (claims_file, checkpoint_desc)]
     if not codes:
-        console.print("  [yellow]用法: research <代码> [--capture] [--json][/yellow]")
+        console.print("  [yellow]用法: research <代码> [--capture] [--json] "
+                      "[--claims 主张.json] [--checkpoint 描述 --confirm-risk][/yellow]")
         return
     code = normalize_stock_code(codes[0])
     if not as_json:
         console.print(f"\n[bold cyan]🔬 单股研究工作台 {code}[/bold cyan]")
+
+    documents = []
+    if claims_file:
+        try:
+            documents = _load_research_claims_file(claims_file, code)
+        except (ValueError, OSError) as e:
+            console.print(f"  [red]✗ 主张文件不可用: {e}[/red]")
+            return
+        console.print(f"  [dim]已导入 {len(documents)} 条主张（原文 URI/hash 可追溯）[/dim]")
+    checkpoints = []
+    if checkpoint_desc:
+        from src.core.research import CheckpointCondition
+        checkpoints.append(CheckpointCondition(
+            security_id=code, horizon="", proposition_type="window_and_refutation",
+            description=checkpoint_desc, evidence_refs=[],
+            derived_from="user_confirmed_risk",
+            user_confirmed=confirm_risk))
+        if not confirm_risk:
+            console.print("  [yellow]⚠ 检查点未确认风险意愿（缺 --confirm-risk）——"
+                          "不进入评估支撑（接受计划不自动替代风险确认）[/yellow]")
 
     from src.core.research_application import ResearchApplicationService
     from src.data.research_store import ResearchStore, AssessmentStore
@@ -5396,7 +5454,8 @@ def research_command(rest: list):
         assessment_store=AssessmentStore(), fetch_fn=fetch_fn)
     as_of = datetime.now().astimezone()
     try:
-        result = app.run(code, as_of=as_of, capture=capture)
+        result = app.run(code, as_of=as_of, capture=capture,
+                         documents=documents, checkpoints=checkpoints)
     except Exception as e:
         logger.warning(f"研究链执行失败: {e}")
         console.print(f"  [red]✗ 研究链执行失败: {e}[/red]")
@@ -5409,6 +5468,54 @@ def research_command(rest: list):
                           indent=1, default=str))
         return
     _render_research_result(console, result)
+
+
+def _load_research_claims_file(path, security_id: str) -> list[dict]:
+    """K2a：主张文件 → documents 形态（公开解析器输入——本地 JSON，零模型调用）。
+
+    文件形态：JSON 数组，每项
+      {"statement": 人话主张, "event_type": order/earnings/..., "value": 数值?,
+       "unit": 单位?, "quote_text": 摘录, "source_uri": 原文定位,
+       "body": 原文正文（原文留样——缺则用摘录）, "published_at": ISO?, ...}
+    校验：statement/quote_text/source_uri 必填；缺 → ValueError（人话，不静默跳过）。
+    K2a 审查 P1-1：body 缺失**不回退为摘录**——正文=摘录会让「缺原件」的 typed 主张
+    自证 FACT_CHECKED（核验器按设计返回 NEEDS_REVIEW，缺原件如实降级）。
+    """
+    from pathlib import Path as _P
+    raw = json.loads(_P(path).read_text(encoding="utf-8"))
+    if not isinstance(raw, list):
+        raise ValueError("主张文件须为 JSON 数组")
+    out = []
+    for i, item in enumerate(raw):
+        if not isinstance(item, dict):
+            raise ValueError(f"第 {i+1} 条主张不是对象")
+        missing = [k for k in ("statement", "quote_text", "source_uri")
+                   if not str(item.get(k) or "").strip()]
+        if missing:
+            raise ValueError(f"第 {i+1} 条主张缺必填字段: {'、'.join(missing)}")
+        # K2a 审查 P3-4：显式给 security_id（含空串=行业级）尊重原值——不强制改写本股
+        sec = str(item["security_id"]) if "security_id" in item else security_id
+        out.append({
+            "claim": {"security_id": sec,
+                      "subject": sec,
+                      "statement": str(item["statement"]),
+                      "event_type": str(item.get("event_type") or "other"),
+                      "value": item.get("value"),
+                      "unit": str(item.get("unit") or ""),
+                      "quote_text": str(item["quote_text"]),
+                      "published_at": item.get("published_at"),
+                      "occurred_at": item.get("occurred_at"),
+                      "fact_stage": str(item.get("fact_stage") or ""),
+                      "negation_flag": item.get("negation_flag"),
+                      "verification_scope": str(item.get("verification_scope") or "")},
+            "document": {"canonical_uri": str(item["source_uri"]),
+                         "body": str(item.get("body") or ""),
+                         "security_ids": [sec],
+                         "published_at": item.get("published_at"),
+                         "title": str(item.get("title") or ""),
+                         "is_correction": bool(item.get("is_correction", False))},
+        })
+    return out
 
 
 def _render_research_result(console, result) -> None:
