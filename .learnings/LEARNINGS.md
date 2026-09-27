@@ -1915,3 +1915,45 @@ R2–R8 缺表，收尾补齐。
 - Source: r9_independent_acceptance
 - Pattern-Key: evidence.walkthrough_must_be_rerun_not_narrated
 - Related Files: plan/fusion/iteration2/R8_WALKTHROUGH.md, plan/fusion/iteration2/R9_INDEPENDENT_REVIEW.md
+
+## [LRN-20260927-J01-DECLARATION] lesson — 显式声明字段必须回验组件，否则自报即绕过
+
+**Logged**: 2026-09-27
+**Priority**: high
+**Status**: fixed（J0 审查 P1 修复 + 回归 test_declared_scope_without_components_capped）
+**Area**: verification, trust-boundary, adversarial-review
+
+J0 类型化事实核验门初版：`_resolve_verification_scope` 对显式声明的
+verification_scope 无条件采信——LLM 提取器只要自报 scope 就能让未结构化/语义
+相反的主张拿到 FACT_CHECKED（监督代理实测复现两条绕过，其中否定型变体对
+语义相反摘录给出 FACT_CHECKED）。N1 修复被声明通道重新打开。
+
+教训：**信任边界上的「声明类」字段（自报范围/自报类型/自报资格）必须在使用点
+回验与实际组件一致**——声明只能加速 happy path，不能替代组件校验；推导路径
+与声明路径要过同一组门。配套：边界契约测试要包含「声明与组件不符」的对抗用例，
+不只测「不声明」的默认路径。
+
+- Source: j0_supervisor_review
+- Pattern-Key: security.declared_field_must_revalidate_components
+- Related Files: src/core/claim_extraction.py, plan/fusion/iteration3/EXECUTION_RECORD.md（附审查节）
+
+## [LRN-20260927-J01-EXTRACT] error — 报表文本提取：标签子串误命中（流动负债合计 ⊃ 负债合计）
+
+**Logged**: 2026-09-27
+**Priority**: medium
+**Status**: fixed（行锚定重写 + 表内自洽校验；核对结论未受影响——人工复核页面原文发现）
+**Area**: data-extraction, pdf, substring-boundary
+
+J1 原件试点 v1 提取脚本用子串 `负债合计` 匹配，命中了「流**动负债合计**」的
+后缀——把流动负债 786,441,354,254.96 当成负债合计，与映射值核对差 25 个百分点。
+**人工复核页面原文才发现**（正则结果与已知量级直觉不符→dump 原文逐行核对）。
+
+教训：①财务报表标签匹配必须**行首锚定**（剥空白后 startswith），不信子串；
+②提取结果必须带**表内自洽校验**（流动+非流动=负债合计；负债和股东权益=资产
+总计）——校验不过就拒绝产出而不是输出数字；③与外部基准（如映射值 0.7294）
+交叉核对是最后一道闸，差 25pp 直接暴露。与记忆 feedback_closed_interval_boundary
+同根：边界/子串类判定是 bug 高发点。
+
+- Source: j1_original_pilot
+- Pattern-Key: data.pdf_label_extraction_line_anchored_with_selfcheck
+- Related Files: tests/artifacts/j1_original_pilot/extract_vanke_2024h1.py（本地保留）
