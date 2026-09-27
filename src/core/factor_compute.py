@@ -11,8 +11,7 @@
   relative_return_v2 是真实能力；capital_return_v1（ROIC）与 valuation_range_v1（区间）
   当前**不可计算**（登记表 needs_data_probe=True），代理不得自动满足——研究资格按
   能力ID匹配，返回非空数字不代表满足某个研究能力
-- 旧函数名（capital_return_v1/earnings_quality_v1/valuation_pe_v1）保留为**弃用委托**
-  （E1/E7 脚本迁移前兼容，R7 迁移后删除）——返回新能力ID的 FactorResult
+- 旧函数名弃用委托已于 J5 删除（e1/e7 消费者已迁移真实能力ID，见文件尾注记）
 
 覆盖（登记表可计算的 6+1 个）：
 - cash_conversion_v1  ← CFOToNP（含接近零分母防护）
@@ -224,28 +223,7 @@ def trading_capacity_v1(avg_amount_20d: Optional[float], trade_amount: Optional[
                         note=note, components={"status": status_note})
 
 
-# ──────────────── 弃用委托（E1/E7 脚本迁移前兼容；R7 迁移后删除）────────────────
-
-def capital_return_v1(financial_records: list[dict]) -> FactorResult:
-    """弃用（R4 A08）：capital_return_v1=ROIC 能力，当前不可计算——本函数只兼容旧调用，
-    返回 roe_observed_v1 的真实结果（factor_id 已改为真实能力ID）。"""
-    r = roe_observed_v1(financial_records)
-    return FactorResult(factor_id=r.factor_id, value=r.value, unit=r.unit, status=r.status,
-                        note=r.note + "（经弃用委托 capital_return_v1 调用——请改用 roe_observed_v1）",
-                        components=r.components)
-
-
-def earnings_quality_v1(financial_records: list[dict]) -> FactorResult:
-    """弃用（R4）：现金转化计算承接至 cash_conversion_v1——本函数只兼容旧调用。"""
-    r = cash_conversion_v1(financial_records)
-    return FactorResult(factor_id=r.factor_id, value=r.value, unit=r.unit, status=r.status,
-                        note=r.note + "（经弃用委托 earnings_quality_v1 调用——请改用 cash_conversion_v1）",
-                        components=r.components)
-
-
-def valuation_pe_v1(price: Optional[float], eps_ttm: Optional[float]) -> FactorResult:
-    """弃用（R4）：trailing PE 计算承接至 pe_ttm_v1——本函数只兼容旧调用。"""
-    r = pe_ttm_v1(price, eps_ttm)
-    return FactorResult(factor_id=r.factor_id, value=r.value, unit=r.unit, status=r.status,
-                        note=r.note + "（经弃用委托 valuation_pe_v1 调用——请改用 pe_ttm_v1）",
-                        components=r.components)
+# ──────────────── （J5 已收口）E1/E7 弃用委托已删除 ────────────────
+# 旧名 capital_return_v1/earnings_quality_v1/valuation_pe_v1 的弃用委托已于 J5
+# 删除：消费者（tests/backtest/e1_route_recall.py、e7_funnel_smoke.py）已迁移至
+# 真实能力ID（roe_observed_v1/cash_conversion_v1/pe_ttm_v1）——R9 旁路表删除条件满足。

@@ -19,14 +19,11 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from src.core.factor_compute import (
     UNKNOWN,
     balance_risk_v1,
-    capital_return_v1,
     cash_conversion_v1,
-    earnings_quality_v1,
     pe_ttm_v1,
     relative_return_v2,
     roe_observed_v1,
     trading_capacity_v1,
-    valuation_pe_v1,
 )
 
 
@@ -98,12 +95,6 @@ def test_cash_conversion_missing_cfo_unknown():
     assert r.status == UNKNOWN and "不猜" in r.note
 
 
-def test_earnings_quality_wrapper_maps_to_new_id():
-    """弃用委托：旧名返回真实能力ID的结果（factor_id 不再冒 earnings_quality 名义）。"""
-    r = earnings_quality_v1(_fin_multi())
-    assert r.factor_id == "cash_conversion_v1"
-
-
 # ── 2. roe_observed_v1（不冒 ROIC 名义——A08）─────────────
 
 def test_roe_observed_value_and_leverage_note():
@@ -115,14 +106,6 @@ def test_roe_observed_value_and_leverage_note():
 
 def test_roe_observed_missing_unknown():
     assert roe_observed_v1([_fin(metric="netProfit", value=1e9)]).status == UNKNOWN
-
-
-def test_capital_return_wrapper_maps_to_roe_observed():
-    """弃用委托：旧 capital_return_v1 调用返回 roe_observed_v1 结果——
-    ROIC 能力本身不可计算（登记表 needs_data_probe=True），ROE 不再冒名。"""
-    r = capital_return_v1(_fin_multi())
-    assert r.factor_id == "roe_observed_v1"
-    assert "弃用委托" in r.note
 
 
 # ── 3. balance_risk ────────────────────────────────────────
@@ -160,11 +143,6 @@ def test_pe_ttm_loss_not_aplicable():
 
 def test_pe_ttm_missing_unknown():
     assert pe_ttm_v1(None, 59.49).status == UNKNOWN
-
-
-def test_valuation_pe_wrapper_maps_to_new_id():
-    r = valuation_pe_v1(price=1500.0, eps_ttm=59.49)
-    assert r.factor_id == "pe_ttm_v1"
 
 
 # ── 5. relative_return_v2（日期对齐——R4 验收2）───────────

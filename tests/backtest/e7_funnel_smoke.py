@@ -33,7 +33,7 @@ E1_DETAIL = Path(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", 
 def main():
     from src.core.decision_contract import Horizon, ResearchStatus, ThesisStatus
     from src.core.decision_policy import HorizonFacts, HorizonPlan, evaluate_horizon
-    from src.core.factor_compute import balance_risk_v1, capital_return_v1, earnings_quality_v1
+    from src.core.factor_compute import balance_risk_v1, roe_observed_v1, cash_conversion_v1
     from src.core.experiment import ExperimentManifest, InfoSetTag, PortfolioReplay
     from src.core.portfolio_policy import AddProposal, BudgetConstraints, HoldingWeight, solve_budget
     from src.data.financial_data import get_financial_quarterly
@@ -58,8 +58,8 @@ def main():
         except Exception as e:
             print(f"  ⚠ {code} 财务拉取失败: {e}", flush=True)
             continue
-        roe = capital_return_v1(recs)
-        eq = earnings_quality_v1(recs)
+        roe = roe_observed_v1(recs)
+        eq = cash_conversion_v1(recs)
         bal = balance_risk_v1(recs)
         qualified.append(code)
         factor_notes[code] = {"roe": roe.value, "cfo_np": eq.value,

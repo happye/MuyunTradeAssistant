@@ -70,7 +70,7 @@ def quality_route(universe_codes: list):
     """长期质量路：等步长抽样 × 季频财务 × factor_compute 演示阈值。"""
     from src.data.financial_data import get_financial_quarterly
     from src.data.akshare_client import _ensure_baostock_login
-    from src.core.factor_compute import capital_return_v1, earnings_quality_v1, balance_risk_v1
+    from src.core.factor_compute import roe_observed_v1, cash_conversion_v1, balance_risk_v1
     _ensure_baostock_login()
     step = max(1, len(universe_codes) // SAMPLE_N)
     sample = universe_codes[::step][:SAMPLE_N]
@@ -85,8 +85,8 @@ def quality_route(universe_codes: list):
         except Exception as e:
             print(f"    ⚠ {code} 财务拉取失败: {e}", flush=True)
             continue
-        roe = capital_return_v1(recs)
-        eq = earnings_quality_v1(recs)
+        roe = roe_observed_v1(recs)
+        eq = cash_conversion_v1(recs)
         bal = balance_risk_v1(recs)
         if roe.value is not None:
             dist["roe"].append(roe.value)
