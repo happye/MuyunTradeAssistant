@@ -172,14 +172,20 @@ def budget_cases():
             "deployable_before_confirm": snap.cash_deployable,
             "state": out4[0].allocation_state.value,
             "note": "卖出确认入账前，可用现金不含拟卖金额"}
-        # 对照臂：卖出确认入账（cash_delta 落账）→ 可用现金才增加
+        # 对照臂：卖出确认入账（cash_delta 落账）→ 可用现金才增加。
+        # J2 整事件原子生效：SELL 需先有合法 BUY 建仓（无持仓卖出整事件隔离）——
+        # 场景算术相应为 100_000 − 1000(买) + 995(卖净额) = 99_995
+        log.append(AccountEvent(event_id="buy-0", event_type=EventType.BUY,
+                                security_id="000002", trade_date="2026-09-20",
+                                quantity=100, price=10.0, cash_delta=-1000.0,
+                                lot_cost_price=10.0))
         log.append(AccountEvent(event_id="sell-1", event_type=EventType.SELL,
                                 security_id="000002", trade_date="2026-09-25",
                                 quantity=100, price=10.0, cash_delta=+995.0))
         snap_confirmed = log.replay(opening_cash=100_000.0)
         cases["未确认卖出不释放现金"]["deployable_after_confirm"] = snap_confirmed.cash_deployable
-        assert snap_confirmed.cash_deployable == 100_000.0 + 995.0, \
-            "确认入账后现金才增加（对照臂）"
+        assert snap_confirmed.cash_deployable == 100_000.0 - 1000.0 + 995.0, \
+            "确认入账后现金才增加（对照臂；J2 原子语义下买入卖出均须合法配对）"
     return cases
 
 
@@ -206,7 +212,8 @@ def main() -> dict:
     assert budgets["不足最低合法申报"]["state"] == "REJECTED"
     assert budgets["现金不足"]["state"] == "REJECTED"
     assert budgets["未确认卖出不释放现金"]["deployable_before_confirm"] == 100_000.0
-    assert budgets["未确认卖出不释放现金"]["deployable_after_confirm"] == 100_995.0
+    assert budgets["未确认卖出不释放现金"]["deployable_after_confirm"] == 99_995.0, \
+        "J2 原子语义：合法买入+卖出配对后净增 995（100_000−1000+995）"
     out = Path(__file__).resolve().parents[1] / "artifacts" / "e7b_controlled_report.json"
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
