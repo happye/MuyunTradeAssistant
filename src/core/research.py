@@ -200,6 +200,9 @@ class ThesisAssertion(BaseModel):
                     "含 relation/rule_version/justification）")
     evaluation: AssertionEvaluation = Field(default=AssertionEvaluation.UNKNOWN)
     evaluation_rule_version: str = Field(default="", description="求值方法版本")
+    evaluation_note: str = Field(
+        default="", description="求值说明（K0b/D5：UNKNOWN 的具体缺口或规则判定依据——人话，"
+                                "随评估落盘；「能力可计算」不再自动等于「命题成立」）")
     evaluated_as_of: Optional[datetime] = Field(default=None, description="求值截止时点")
 
     @field_validator("evaluated_as_of")
@@ -236,17 +239,100 @@ class ThesisAssessment(BaseModel):
         return v
 
 
+# ──────────────── K0b/D5：命题规则（能力可计算 ≠ 命题成立）────────────────
+#
+# 每个可自动建立的必需命题登记确定性规则（rule_id/version/输入/适用范围/判定条件）；
+# 规则未登记的命题一律 UNKNOWN（无规则默认 UNKNOWN——阈值有效性未验证时不凭空
+# 冻结投资阈值，研究性判断保留在评估层与人工通道）。
+ASSERTION_RULE_VERSION = "k0b.assertion_v1"
+CASH_SUSTAINABILITY_MIN_PERIODS = 2
+
+
+def _cap_status(cap) -> Optional[str]:
+    """能力状态读取（FactorResult 形态或落盘 dict 形态同口径）。"""
+    if cap is None:
+        return None
+    if isinstance(cap, dict):
+        return cap.get("status")
+    return getattr(cap, "status", None)
+
+
+def _cap_provenance(cap) -> dict:
+    if cap is None:
+        return {}
+    if isinstance(cap, dict):
+        prov = cap.get("provenance")
+        return prov if isinstance(prov, dict) else {}
+    prov = getattr(cap, "provenance", None)
+    return prov if isinstance(prov, dict) else {}
+
+
+def _rule_cash_sustainability(assertion: ThesisAssertion,
+                              available_capabilities: dict) -> tuple:
+    """cash_sustainability 规则（rule_id=k0b.rule.cash_sustainability）。
+
+    语义：盈利与现金创造的**多期**持续性——需要 ≥2 个报告期、方向一致
+    （观察值 > 0）的 CFO 转化与 ROE 序列证据。单期观察只证明「该期可计算」，
+    不得建立持续性（D5 主反例）；报告期序列由因子 provenance.periods_seen 提供，
+    逐期方向由 values_by_period 提供（当前因子形态为单期观察 → 恒 UNKNOWN 并
+    解释缺口——诚实降级，未来因子升格为序列后规则自动可建立）。
+    阈值有效性未验证：本规则只判方向与期数，不做阈值级实证声明。"""
+    for fid in assertion.evidence_requirements:
+        cap = available_capabilities.get(fid)
+        status = _cap_status(cap)
+        if status != "OK":
+            return (AssertionEvaluation.UNKNOWN,
+                    f"因子 {fid} 状态 {status or '缺失'}——不满足规则输入")
+        prov = _cap_provenance(cap)
+        seen = prov.get("periods_seen") or {}
+        if isinstance(seen, dict):
+            raw_periods = seen.get(_metric_of(fid)) or seen.get(fid) or []
+        else:  # 兼容直接给列表的因子形态
+            raw_periods = seen
+        periods = sorted({str(p) for p in raw_periods if p})
+        if len(periods) < CASH_SUSTAINABILITY_MIN_PERIODS:
+            return (AssertionEvaluation.UNKNOWN,
+                    f"多期持续性需要 ≥{CASH_SUSTAINABILITY_MIN_PERIODS} 个报告期方向一致的 "
+                    f"{fid} 序列；当前仅 {len(periods)} 期观察（{periods or '无报告期'}）"
+                    "——单期可计算≠持续性成立")
+        values = prov.get("values_by_period") or {}
+        if not values:
+            return (AssertionEvaluation.UNKNOWN,
+                    f"{fid} 缺逐期方向证据（values_by_period 未提供）——持续性未建立")
+        bad = sorted(p for p, v in values.items()
+                     if isinstance(v, bool) or not isinstance(v, (int, float)) or v <= 0)
+        if bad:
+            return (AssertionEvaluation.UNKNOWN,
+                    f"报告期 {bad[:3]} 的 {fid} 观察值方向不符（≤0）——持续性未建立")
+    return (AssertionEvaluation.TRUE,
+            f"≥{CASH_SUSTAINABILITY_MIN_PERIODS} 期方向一致的 "
+            f"{'/'.join(assertion.evidence_requirements)} 序列（规则判定，非收益承诺）")
+
+
+def _metric_of(factor_id: str) -> str:
+    """能力ID → 主输入指标名（provenance.periods_seen 键；与 factor_compute 对齐）。"""
+    return {"cash_conversion_v1": "CFOToNP", "roe_observed_v1": "roeAvg"}.get(
+        factor_id, factor_id)
+
+
+_PROPOSITION_RULES: dict[str, tuple] = {
+    "cash_sustainability": ("k0b.rule.cash_sustainability", _rule_cash_sustainability),
+}
+
+
 def evaluate_assertion(assertion: ThesisAssertion, *, available_capabilities: dict,
                        verified_evidence_ids: set, as_of) -> ThesisAssertion:
     """单命题求值（确定性；按能力ID匹配证据/因子，A08：非空数字≠能力满足）。
 
     available_capabilities: {能力ID/evidence_requirement: FactorResult或等价dict}——
-    状态 OK 才计满足；verified_evidence_ids: 已核验（FACT_CHECKED 级）证据/claim id 集。
-    求值规则版本 r3.assertion_v1：
+    状态 OK 只表示**可计算**（K0b/D5：能力状态≠命题成立）；verified_evidence_ids:
+    已核验（FACT_CHECKED 级）证据/claim id 集。
+    求值规则版本 k0b.assertion_v1：
     - 有反证引用未核实 → UNKNOWN（升级到评估层处理）
     - 能力要求有缺失 或 引用的支撑证据未核验 → UNKNOWN（缺什么是缺口，不猜）
-    - 支撑证据已核验（或能力要求全部满足且非空）→ TRUE——「被支持」指冻结证据与
-      方法下成立，不是未来一定兑现（RESEARCH_LOOP §2）
+    - 支撑证据已核验（claim 路径——J0b 显式绑定语义不变）→ TRUE
+    - 仅能力要求满足 → **命题规则**判定（登记于 _PROPOSITION_RULES）；无规则默认
+      UNKNOWN 并解释缺口——「可计算」不再自动等于「命题成立」
     - 两者皆无 → UNKNOWN（没有任何依据的命题不自动成立）"""
     if getattr(as_of, "tzinfo", None) is None:
         raise ValueError("evaluated_as_of 必须带时区（naive 拒收）")
@@ -256,15 +342,31 @@ def evaluate_assertion(assertion: ThesisAssertion, *, available_capabilities: di
                   if rid not in verified_evidence_ids]
     if assertion.counter_evidence_ids:
         evaluation = AssertionEvaluation.UNKNOWN
+        note = "存在未核实反证引用——先人工核实再评估"
     elif missing or unverified:
         evaluation = AssertionEvaluation.UNKNOWN
-    elif assertion.supporting_evidence_ids or assertion.evidence_requirements:
+        note = ("缺能力/证据: " + ", ".join(missing)) if missing \
+            else "支撑证据未全部核验（verified_evidence_ids 不含引用）"
+    elif assertion.supporting_evidence_ids:
         evaluation = AssertionEvaluation.TRUE
+        note = "支撑证据已核验（claim 路径——J0b 显式绑定）"
+    elif assertion.evidence_requirements:
+        rule_entry = _PROPOSITION_RULES.get(assertion.proposition_type)
+        if rule_entry is None:
+            evaluation = AssertionEvaluation.UNKNOWN
+            note = (f"能力可计算但命题 {assertion.proposition_type} 无确定性规则"
+                    f"（{ASSERTION_RULE_VERSION} 注册表未登记）——能力状态≠命题成立")
+        else:
+            rule_id, rule_fn = rule_entry
+            evaluation, note = rule_fn(assertion, available_capabilities)
+            note = f"[{rule_id}] {note}"
     else:
         evaluation = AssertionEvaluation.UNKNOWN
+        note = "命题无任何依据（无证据引用、无能力要求）"
     return assertion.model_copy(update={
         "evaluation": evaluation,
-        "evaluation_rule_version": "r3.assertion_v1",
+        "evaluation_note": note,
+        "evaluation_rule_version": ASSERTION_RULE_VERSION,
         "evaluated_as_of": as_of,
     })
 

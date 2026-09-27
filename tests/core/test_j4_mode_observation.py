@@ -23,6 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from src.core.research_service import ASSERTION_METHOD_VERSION
 from src.core.shadow_diff import (
     build_shadow_report,
     capture_shadow,
@@ -103,7 +104,7 @@ def _seed_accepted_plan(tmp_path, plans_store, assessment_store, code="601318"):
                        facts_observed=["6月订单环比+30%"])
     asm = ThesisAssessment(thesis_id=f"thesis_{code}_MID", security_id=code,
                            horizon="MID", snapshot_id="snap-j4",
-                           status=ThesisStatus.VALID, method_version="r3.assertion_v1",
+                           status=ThesisStatus.VALID, method_version=ASSERTION_METHOD_VERSION,
                            evaluated_as_of=datetime.now().astimezone())
     plan.assessment_id = assessment_store.save(asm)
     plan.snapshot_id = asm.snapshot_id
@@ -146,7 +147,7 @@ def test_mismatched_assessment_not_effective(tmp_path):
     from src.core.decision_contract import ThesisStatus
     bad = ThesisAssessment(thesis_id="t", security_id="000002", horizon="MID",
                            snapshot_id="snap-j4", status=ThesisStatus.VALID,
-                           method_version="r3.assertion_v1",
+                           method_version=ASSERTION_METHOD_VERSION,
                            evaluated_as_of=datetime.now().astimezone())
     plan.assessment_id = asm_store.save(bad)
     plans.save(plan)

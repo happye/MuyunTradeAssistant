@@ -24,6 +24,7 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 
 from src.core.analysis_service import build_decision_packet
 from src.core.execution_layer import ExecutionEvaluation
+from src.core.research_service import ASSERTION_METHOD_VERSION
 from src.core.shadow_diff import (
     REASON_AGREE,
     REASON_FACTS_UNVERIFIED,
@@ -342,7 +343,9 @@ def _mk_assessed_plan(tmp_path, asm_store, code="601318", horizon="MID", facts=N
     asm = ThesisAssessment(
         thesis_id=f"thesis_{code}_{horizon}", security_id=code, horizon=horizon,
         snapshot_id="snap-test", status=ThesisStatus[status_value],
-        method_version="r3.assertion_v1", evaluated_as_of=datetime.now().astimezone())
+        # K0b：用当前方法版本常量（测试模拟「现行方法评估」——硬编码字符串会随版本升位过期）
+        method_version=ASSERTION_METHOD_VERSION,
+        evaluated_as_of=datetime.now().astimezone())
     plan.assessment_id = asm_store.save(asm)
     plan.snapshot_id = asm.snapshot_id
     return plan, asm

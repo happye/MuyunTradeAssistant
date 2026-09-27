@@ -35,27 +35,65 @@ UNKNOWN = "UNKNOWN"
 
 @dataclass
 class FactorResult:
-    """单因子计算输出：value 或显式 UNKNOWN（missing_policy 落地形态）。"""
+    """单因子计算输出：value 或显式 UNKNOWN（missing_policy 落地形态）。
 
+    provenance（K0b-3 输入谱系）：成员证据的 evidence_ids/报告期/公布时点/口径/
+    修订与已见报告期序列——派生因子不只绑定顶层 snapshot_id，消费者（命题规则/
+    审计）可追溯输入成员。"""
     factor_id: str
     value: Optional[float] = None
     unit: str = ""
     status: str = "OK"  # OK / UNKNOWN / NOT_APPLICABLE
     note: str = ""
     components: dict = field(default_factory=dict)  # 多分量因子（如 balance_risk）
+    provenance: dict = field(default_factory=dict)  # K0b-3：输入谱系（成员记录元数据）
 
 
 def _get(records: list[dict], metric: str, period_end: Optional[str] = None) -> Optional[float]:
     """从 financial_data.get_financial_quarterly 产出里取最新值（可限报告期）。
 
     「最新」按 published_at 排序判定（审查 P2：多期拼接顺序无契约，不依赖入参顺序）。"""
+    rec = _get_record(records, metric, period_end)
+    return rec.get("value") if rec else None
+
+
+def _get_record(records: list[dict], metric: str,
+                period_end: Optional[str] = None) -> Optional[dict]:
+    """同 _get 但返回整条记录（K0b-3：谱系需要报告期/公布时点/evidence_id）。"""
     cands = [r for r in records if r.get("metric") == metric
              and (period_end is None or r.get("period_end") == period_end)
              and r.get("value") is not None]
     if not cands:
         return None
     cands.sort(key=lambda r: str(r.get("published_at") or ""))
-    return cands[-1]["value"]
+    return cands[-1]
+
+
+def _provenance_of(records: list[dict], metrics: list[str]) -> dict:
+    """构造输入谱系：每个成员指标的选中记录元数据 + 该指标已见的报告期序列
+    （periods_seen——多期持续性命题规则按此判定期数，K0b/D5）。"""
+    inputs: dict = {}
+    for metric in metrics:
+        rec = _get_record(records, metric)
+        if rec is None:
+            continue
+        inputs[metric] = {
+            "evidence_ids": ([str(rec["evidence_id"])] if rec.get("evidence_id") else []),
+            "period_end": rec.get("period_end"),
+            "published_at": str(rec.get("published_at") or ""),
+            "period_basis": rec.get("period_basis") or (
+                {"cumulative": "YTD", "single": "SINGLE_QUARTER"}.get(rec.get("period_kind"))
+                or "UNKNOWN"),
+            "revision_id": str(rec.get("revision_id") or ""),
+        }
+    periods_seen: dict = {}
+    for metric in metrics:
+        seen = sorted({str(r.get("period_end")) for r in records
+                       if r.get("metric") == metric and r.get("value") is not None
+                       and r.get("period_end")})
+        if seen:
+            periods_seen[metric] = seen
+    return {"inputs": inputs, "periods_seen": periods_seen}
 
 
 def cash_conversion_v1(financial_records: list[dict]) -> FactorResult:
@@ -66,24 +104,26 @@ def cash_conversion_v1(financial_records: list[dict]) -> FactorResult:
     缺 CFO 或净利润 → UNKNOWN。"""
     cfo_np = _get(financial_records, "CFOToNP")
     net_profit = _get(financial_records, "netProfit")
+    prov = _provenance_of(financial_records, ["CFOToNP", "netProfit"])
     if net_profit is not None and net_profit <= 0:
         return FactorResult(
             factor_id="cash_conversion_v1", status="NOT_APPLICABLE",
             note=f"净利润为负（{net_profit:.0f} 元）——不做比值；"
                  f"现金流方向={'净流入' if (cfo_np or 0) > 0 else '净流出/未知'}（风险解释口径）",
-            components={"netProfit": net_profit, "CFOToNP_raw": cfo_np})
+            components={"netProfit": net_profit, "CFOToNP_raw": cfo_np}, provenance=prov)
     if net_profit is not None and abs(net_profit) < 1e4:
         # 接近零分母（<1万元）：比值数值失真（微利/一次性损益），转人工口径
         return FactorResult(
             factor_id="cash_conversion_v1", status="NOT_APPLICABLE",
             note=f"净利润接近零（{net_profit:.0f} 元，含一次性损益时比值失真）——不做比值，转专门研究",
-            components={"netProfit": net_profit, "CFOToNP_raw": cfo_np})
+            components={"netProfit": net_profit, "CFOToNP_raw": cfo_np}, provenance=prov)
     if cfo_np is None:
         return FactorResult(factor_id="cash_conversion_v1", status=UNKNOWN,
                             note="经营现金流/净利润缺失——不猜")
     return FactorResult(factor_id="cash_conversion_v1", value=round(cfo_np, 4), unit="倍",
                         note="≥1 利润有现金流支撑；<1 盈利未完全转化为现金（口径：年初累计）",
-                        components={"CFOToNP": cfo_np})
+                        components={"CFOToNP": cfo_np},
+                        provenance=_provenance_of(financial_records, ["CFOToNP", "netProfit"]))
 
 
 def roe_observed_v1(financial_records: list[dict]) -> FactorResult:
@@ -97,7 +137,8 @@ def roe_observed_v1(financial_records: list[dict]) -> FactorResult:
     return FactorResult(factor_id="roe_observed_v1", value=round(roe, 4), unit="倍",
                         note="ROE 观察值（roeAvg）；高杠杆会抬高 ROE，跨行业比较需结合 liabilityToAsset——"
                              "不自动满足 ROIC（capital_return_v1）能力",
-                        components={"roeAvg": roe})
+                        components={"roeAvg": roe},
+                        provenance=_provenance_of(financial_records, ["roeAvg"]))
 
 
 def balance_risk_v1(financial_records: list[dict]) -> FactorResult:

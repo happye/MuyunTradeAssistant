@@ -69,3 +69,55 @@ K3 可与 K0 并行；K4 收尾。
 plain_errors.py 新增 6 条 + 更新 fsync 条目：账户账本存在/账户账本损坏段隔离/账本追加失败/
 账本完整性兜底拒绝追加/fill 消费水位回填失败/成交账本补记写入失败；docs/报错速查手册.md
 同步更新（N+1 建议账本组 + 账户事件账本组）。
+
+---
+
+## K0b｜事实核验、命题规则与成员资格（D1×4/D5/D6）
+
+**状态：实施完成，全量验证中（2026-09-28）**
+
+### 子任务拆解
+
+| # | 内容 | 反例 | 状态 |
+|---|---|---|---|
+| K0b-T1 | 红灯测试：tests/core/test_k0b_facts_propositions.py（D1×4 正反例 9 例 + D5×4 + 谱系 1 + D6×3） | 全部 | ✅ 红灯确认（7~8 failed 后实施） |
+| K0b-T2 | D1 绑定元组核验：claim_extraction `_find_value_occurrences`（词元边界+小数点边界+带符号定位）+ `_clauses_with_spans`（子句局部，千分位不切分）+ 数值-谓词同子句绑定（D1a）+ 符号绑定（D1b：符号相反 REJECTED，负值无负号降摘录级）+ 小数边界（D1c）+ 否定对象绑定（D1d：事件类型谓词未注册→摘录级，不加关键词扩闭集） | D1×4 | ✅ |
+| K0b-T3 | 协议升位：CLAIM_VERIFICATION_PROTOCOL_VERSION cv2→cv3；TYPED_RULE_VERSION→k0b.binding_v1；冻结语料 15 用例按 cv3 语义重验全部一致（meta 升 cv3+changelog 登记，期望未改） | — | ✅ |
+| K0b-T4 | D5 命题规则：research.py `_PROPOSITION_RULES` 注册表（rule_id/version）+ evaluate_assertion 规则层（claim 路径语义不变；能力路径由规则判定；无规则默认 UNKNOWN+evaluation_note 人话缺口）+ cash_sustainability 规则（≥2 期方向一致序列；单期恒 UNKNOWN+解释缺口）+ ASSERTION_RULE_VERSION k0b.assertion_v1（旧方法版本评估影子侧自动待复核） | D5 | ✅ |
+| K0b-T5 | K0b-3 输入谱系：FactorResult.provenance（成员 evidence_ids/period_end/published_at/period_basis/revision + periods_seen 序列）；cash_conversion/roe/balance 接线 | — | ✅ |
+| K0b-T6 | D6 主体边界：EvidenceRecord.subject_scope（security/industry/macro/unknown 显式建模）+ build 主体门（错主体财务记录拒收+subject_mismatch 原因码+日志；跨主体公告同样拒收；显式 scope 放行） | D6 | ✅ |
+| K0b-T7 | 验收：目标 149 绿 + 架构师探针 10/10 ok（0 缺陷）+ 全量 pytest | — | ✅（全量见下） |
+
+### 决策记录（K0b）
+
+- 绑定元组的「同一原文局部」= 子句（。！？；，,、换行切分；千分位分隔符两侧皆数字不切分）。
+  首批闭集：数值事件（order/earnings/exposure 谓词表）+ 否定型（须注册事件类型谓词）；
+  解析不可靠一律降 EXCERPT_GROUNDED/NEEDS_REVIEW，不靠加关键词扩大闭集。
+- 符号语义：主张正值×摘录负值=REJECTED（矛盾）；主张负值×摘录无负号=摘录级
+  （「亏损=负值」语义改写不可靠——宁降级不猜）。
+- D5 规则层只作用于能力路径；claim 路径（已核验主张显式绑定，J0b 语义）不变——
+  MID 合法 VALID 包不受影响（test_mid_fully_legal_pack 等保持绿）。
+- cash_sustainability 规则要求 ≥2 期方向一致序列（periods_seen+values_by_period 由
+  provenance 提供）；当前因子形态是单期观察 → 该命题恒 UNKNOWN+缺口解释——诚实降级，
+  因子升格为序列后规则自动可建立。capital_constraint/moat 等无确定性规则 → 默认 UNKNOWN。
+- 命题 UNKNOWN 的原因（evaluation_note）随 assertion/assessment/plan 落盘——
+  「缺什么」之外还能看到「为什么 UNKNOWN」。
+- D6 语义：财务记录必须精确主体匹配（空 ID 不放行）；非财务带主体须匹配；行业/宏观
+  显式 subject_scope 声明放行（scope→证券关联规则属消费方，快照层只保证「不错主体」）。
+- 测试更新（随版本升位，非放水）：test_shadow_diff/_mk_assessed_plan 与 test_j4 两处
+  硬编码 method_version 字符串改为常量引用（测试语义=「现行方法评估」）。
+
+### 同类点扫描（铁律1③）
+
+- 能力 status=OK 消费者：仅 research._requirement_satisfied（已被规则层门控）。
+- 旧版本串残留：仅历史注释（保留正确）；corpus meta/test 断言升 cv3。
+- 错主体记录的其他入口：research_service 经 EvidenceSnapshot.build 单一入口 → 门在
+  build 内即全覆盖。
+
+### 验证记录
+
+| 验证 | 命令 | 结果 |
+|---|---|---|
+| 目标测试 | `pytest tests/core/test_k0b_facts_propositions.py tests/core/test_claim_extraction.py tests/core/test_claim_verification_corpus.py tests/core/test_j0_facts_assessment.py tests/core/test_research_service.py tests/core/test_research_snapshot.py tests/core/test_j1_mapping_boundary.py -q` | **149 passed** |
+| 架构师探针 | deep_review_probes.py（未改） | **10/10 ok，0 缺陷**（K0a+K0b 全部反例不再复现） |
+| 全量 | `pytest -q` | **1332 passed / 2 skipped / 1 deselected**（注：中间一次运行出现 3 个语料假失败=改语料 JSON 与运行中套件读写撞车，重跑干净全绿；教训落 .learnings LRN-20260928-K0AB01） |

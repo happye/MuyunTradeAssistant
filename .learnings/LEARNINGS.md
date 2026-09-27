@@ -2043,3 +2043,16 @@ J0–J5 实施方全量 1297 绿，架构师独立目标 78 绿，但隔离临�
 - Source: deep_architecture_review
 - Pattern-Key: acceptance.receipt_computability_and_truth_are_distinct
 - Related Files: plan/fusion/iteration4/DEEP_ARCHITECTURE_REVIEW.md, plan/fusion/iteration4/deep_review_probes.py
+
+## [LRN-20260928-K0AB01] insight — K0a/K0b 修复三课：空串子串陷阱/双路径写序/测试夹具读写撞车
+
+**Logged**: 2026-09-28
+**Priority**: P1
+**Status**: closed（K0a commit 2cbeab2；K0b 本 commit）
+**Area**: account-integrity, fact-verification, test-hygiene
+
+三课：① 字节级行解析重写时，`prev in ".．"` 在 prev 为空串时恒真（空串是任何串的子串）——首字符数值被误判小数尾，边界判定必须带非空前置（闭区间/边界值陷阱又一例）。② 同一 fill 的消费判定必须按**各路径写序**分别接线：比例路径（持仓→账本）与数量路径（账本→投影）的「投影未消费」含义相反，pick_reusable_fill_id 的 has_fill_fn 按路径注入 账本∧水位 组合。③ 全量测试运行期间**不得改写测试夹具文件**（冻结语料 JSON）——pytest 运行时读取夹具，读写撞车产生 3 个假失败（单跑全绿）；改夹具先等套件跑完。
+
+- Source: k0a_k0b_implementation
+- Pattern-Key: verification.empty_substring_membership, recovery.write_order_per_path, testing.no_fixture_edits_during_suite
+- Related Files: src/core/claim_extraction.py, src/data/portfolio.py, tests/ai_eval/claim_verification_corpus.json

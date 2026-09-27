@@ -104,6 +104,13 @@ class EvidenceRecord(BaseModel):
         default=None, description="比率分子分母 underlying 期间基准（RATIO 类登记）")
     metric_definition_version: str = Field(
         default="", description="指标定义版本（经济含义/量纲/时间基准/合并范围/派生公式）")
+    # K0b/D6：主体范围显式建模——行业/宏观公共记录显式声明 scope（不以空 security_id
+    # 混同证券财务记录；快照主体边界按此判定）
+    subject_scope: Literal["security", "industry", "macro", "unknown"] = Field(
+        default="unknown",
+        description="记录主体范围：security=单证券（须与快照主体精确匹配）/"
+                    "industry=行业（显式关联规则）/macro=宏观（显式关联规则）/unknown=未声明"
+                    "——financial 类 unknown+空主体不放行")
 
     @field_validator("security_id", mode="before")
     @classmethod
@@ -165,6 +172,7 @@ DROP_LATEST_ONLY = "latest_only_unverifiable"
 DROP_KB_UNKNOWN = "knowledge_basis_unknown"
 DROP_ARCHIVE_NO_TIME = "archive_missing_version_time"
 DROP_CAPTURE_NO_SEEN = "contemporaneous_missing_first_seen"
+DROP_SUBJECT_MISMATCH = "subject_mismatch"  # K0b/D6：快照主体边界（错主体记录不入）
 
 
 class EvidenceEligibility(BaseModel):
@@ -300,7 +308,36 @@ class EvidenceSnapshot(BaseModel):
             if r.metric_or_claim and r.metric_or_claim not in drop_reasons.setdefault(code, []):
                 drop_reasons[code].append(r.metric_or_claim)
 
+        def _subject_allowed(r: EvidenceRecord, snapshot_security: str) -> bool:
+            """K0b/D6 快照主体边界：证券记录须与快照主体精确匹配；行业/宏观记录须
+            显式 scope 声明；财务类空主体不放行（不能把空ID记录混同公司财务）。
+            行业/宏观的关联规则（scope→证券映射）由消费方按显式注册消费，
+            快照层只保证「不错主体」。"""
+            if r.subject_scope in ("industry", "macro"):
+                return True
+            if r.subject_scope == "security":
+                return r.security_id == snapshot_security
+            # unknown：按来源类别保守判定
+            if r.source_kind == "financial":
+                # 财务记录必须带精确主体（空ID/错主体都不得混入）
+                return bool(r.security_id) and r.security_id == snapshot_security
+            # 非财务类：带主体则须匹配（跨主体公告/预测同样不得混入）；空主体保留
+            # 既有行为（市场类记录等——关联规则随 K3 规则核定建模，不在此发明）
+            return not r.security_id or r.security_id == snapshot_security
+
         for r in records:
+            # K0b/D6：主体边界先于资格判定——错主体记录即使时点合格也不入快照
+            #（被拒数量/id/原因如实记录，可追溯）
+            if not _subject_allowed(r, str(security_id)):
+                dropped += 1
+                dropped_ids.append(r.evidence_id)
+                if r.metric_or_claim and r.metric_or_claim not in \
+                        drop_reasons.setdefault(DROP_SUBJECT_MISMATCH, []):
+                    drop_reasons[DROP_SUBJECT_MISMATCH].append(r.metric_or_claim)
+                logger.warning(
+                    f"证据主体边界拒收: {r.evidence_id}（{r.source_kind} 主体={r.security_id!r} "
+                    f"scope={r.subject_scope} ≠ 快照主体 {security_id}）——不入快照")
+                continue
             el = assess_evidence_eligibility(r, as_of=as_of, strict=strict)
             if el.status == "STRICT_ELIGIBLE" or (not strict and el.status == "LIVE_ONLY"):
                 kept.append(r)

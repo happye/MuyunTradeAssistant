@@ -33,7 +33,7 @@ ARTIFACT = Path(__file__).resolve().parents[2] / "tests" / "artifacts" / "claim_
 
 def _load_corpus() -> dict:
     corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
-    assert corpus["_meta"]["schema"] == "cv2", "语料必须是 cv2 协议（历史 f6v1/v2 保留不混用）"
+    assert corpus["_meta"]["schema"] == "cv3", "语料必须是 cv3 协议（K0b 绑定元组核验；历史 f6v1/v2/cv2 保留不混用）"
     assert corpus["_meta"]["frozen_at"], "语料必须带冻结时间戳"
     return corpus
 

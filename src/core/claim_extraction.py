@@ -25,6 +25,7 @@ external/AI opt-in 评测跑，见 tests/core/test_claim_extraction.py 的 mock 
 import hashlib
 import json
 import logging
+import re
 from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
@@ -36,11 +37,13 @@ from src.core.decision_contract import FactStatus
 logger = logging.getLogger(__name__)
 
 CLAIM_SCHEMA_VERSION = "f6.v1"
-# R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2 标签和结果保留，新协议单独命名
-CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv2"
-# J0 类型化事实核验范围规则版本（DELIVERY_PLAN J0a：只有支持该类型的确定性规则完整
-# 验证才进 FACT_CHECKED；改动关键词表/边界规则必须 bump——旧核验结果不冒充新语义）
-TYPED_RULE_VERSION = "j0.typed_scope_v1"
+# R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2/cv2 标签和结果保留，新协议单独命名。
+# K0b/D1：cv3 = 绑定元组核验（同一原文局部：主体×谓词×带符号数值×单位×期间×阶段×
+# 否定对象）；cv2 时代 FACT_CHECKED 结果按旧协议标签保留，重验按 cv3 语义降级。
+CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv3"
+# J0/K0b 类型化事实核验范围规则版本（DELIVERY_PLAN J0a/K0b-1：只有支持该类型的确定性
+# 规则完整验证才进 FACT_CHECKED；改动关键词表/绑定规则必须 bump——旧核验结果不冒充新语义）
+TYPED_RULE_VERSION = "k0b.binding_v1"
 
 # 核验范围闭集（verification_scope；""=自由文本——最高只能 EXCERPT_GROUNDED）
 SCOPE_NUMERIC_EVENT = "typed_numeric_event"
@@ -436,19 +439,76 @@ def _numeric_text_variants(value: float, unit: str) -> list[str]:
     return [s for s in out if s.strip()]
 
 
-def _locate_token_with_boundary(haystack: str, token: str) -> bool:
-    """词元边界定位（J0：抽取值不能数字子串恰巧出现即通过）——token 命中位置的
-    前一字符不得是数字（「900 万元」不得命中「1900 万元」内部）。"""
-    if not token:
-        return False
+# K0b/D1：绑定元组核验的原文局部（子句）切分——数值/谓词/否定对象必须在同一子句内
+_CLAUSE_SPLIT_RE = re.compile(r"[。！？；;!?，,、\n\r]")
+# 词元边界补充（K0b/D1c）：前一字符为小数点（半角/全角）= 小数尾部，不是独立数值
+_DECIMAL_BOUNDARY_CHARS = ".．"
+_NEGATIVE_SIGNS = "-－−"
+
+
+def _clauses_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """摘录 → 子句列表 [(子句文本, 起始偏移, 结束偏移)]——绑定元组的「同一原文局部」。
+
+    千分位不切分：分隔符两侧均为数字（"1,900"）时是数字内部逗号，不是子句边界。"""
+    out: list[tuple[str, int, int]] = []
     start = 0
-    while True:
-        i = haystack.find(token, start)
-        if i < 0:
-            return False
-        if i == 0 or not haystack[i - 1].isdigit():
-            return True
-        start = i + 1
+    for m in _CLAUSE_SPLIT_RE.finditer(text):
+        if m.start() > start:
+            out.append((text[start:m.start()], start, m.start()))
+        start = m.end()
+    if start < len(text):
+        out.append((text[start:], start, len(text)))
+    # 合并被数字内分隔符误切的相邻子句（"1,900"：分隔符两侧均为数字）
+    merged: list[tuple[str, int, int]] = []
+    for seg, s, e in out:
+        if merged:
+            prev_seg, ps, pe = merged[-1]
+            between = text[pe:s]
+            if between and pe > 0 and text[pe - 1].isdigit() and s < len(text) \
+                    and text[s].isdigit():
+                merged[-1] = (prev_seg + between + seg, ps, e)
+                continue
+        merged.append((seg, s, e))
+    return merged
+
+
+def _find_value_occurrences(quote: str, variants: list[str]) -> list[dict]:
+    """在摘录中定位 (value, unit) 的文本形态（K0b/D1 绑定核验的定位层）。
+
+    每个命中返回 {variant, start, end, text_negative}：
+    - 词元边界（J0 继承+K0b 收紧）：前一字符不得是数字或小数点（「0.900 万元」
+      不得命中「900 万元」；「1900 万元」不得命中「900 万元」）；token 以数字结尾
+      时后一字符不得是数字（「900」不得命中「9000」）
+    - 符号绑定（K0b/D1b）：token 自带负号，或跳过空白后前一字符是负号（-／－／−）
+      → text_negative=True
+    """
+    out: list[dict] = []
+    for token in variants:
+        if not token:
+            continue
+        token_negative = token.lstrip().startswith(tuple(_NEGATIVE_SIGNS))
+        start = 0
+        while True:
+            i = quote.find(token, start)
+            if i < 0:
+                break
+            j = i + len(token)
+            prev = quote[i - 1] if i > 0 else ""
+            nxt = quote[j] if j < len(quote) else ""
+            # 注意：prev 为空串时 `prev in X` 恒真（空串是任何串的子串）——
+            # 边界字符判定必须带非空前置
+            if prev.isdigit() or (prev and prev in _DECIMAL_BOUNDARY_CHARS) or \
+                    (nxt.isdigit() and token[-1].isdigit()):
+                start = i + 1
+                continue
+            k = i - 1
+            while k >= 0 and quote[k] in " 　":
+                k -= 1
+            text_negative = token_negative or (k >= 0 and quote[k] in _NEGATIVE_SIGNS)
+            out.append({"variant": token, "start": i, "end": j,
+                        "text_negative": text_negative})
+            start = j
+    return out
 
 
 def _resolve_verification_scope(claim: "ClaimRecord") -> str:
@@ -630,16 +690,28 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
     if claim.negation_flag is True and not has_negation_quote:
         return _review("主张为否定性事实但摘录未见否定表述——需人工复核")
     if claim.value is not None:
-        direct = [s for s in _numeric_text_variants(claim.value, claim.unit)
-                  if _locate_token_with_boundary(claim.quote_text, s)]
-        scaled = [s for s in _numeric_text_variants(claim.value * 100, claim.unit)
-                  + _numeric_text_variants(claim.value / 100, claim.unit)
-                  if _locate_token_with_boundary(claim.quote_text, s)]
-        if not direct and scaled:
+        # K0b/D1：数值定位带符号与边界——返回出现点列表（含 text_negative），
+        # 供数值一致、符号绑定与同子句谓词绑定共用
+        direct_occ = _find_value_occurrences(
+            claim.quote_text, _numeric_text_variants(claim.value, claim.unit))
+        scaled_occ = _find_value_occurrences(
+            claim.quote_text,
+            _numeric_text_variants(claim.value * 100, claim.unit)
+            + _numeric_text_variants(claim.value / 100, claim.unit))
+        if not direct_occ and scaled_occ:
             return _reject("数值与摘录相差 100 倍（单位错位）——按摘录应为 "
-                           f"{scaled[0]!r}（若非同一事项请人工修正摘录）")
-        if not direct and not scaled:
+                           f"{scaled_occ[0]['variant']!r}（若非同一事项请人工修正摘录）")
+        if not direct_occ:
             return _review("关键数值未能在摘录定位（数值/单位组合未出现）——需人工复核")
+        # K0b/D1b：符号绑定——摘录数值带负号而主张为正 → 主张与原文矛盾（REJECTED）；
+        # 主张为负而摘录数值无负号 → 「亏损=负值」的语义改写不可靠，降摘录级
+        claim_negative = claim.value < 0
+        sign_consistent = [o for o in direct_occ if o["text_negative"] == claim_negative]
+        if not sign_consistent:
+            if claim_negative:
+                return _cap_excerpt_grounded(
+                    "主张为负值而摘录数值未见负号（不做『亏损=负值』语义改写）——需人工核对")
+            return _reject("数值符号与摘录相反（摘录该数值为负值）——主张与原文矛盾")
         checks.append("numeric_consistent")
     if (any(m in claim.quote_text for m in _FRAMEWORK_MARKERS)
             and claim.value is not None
@@ -665,21 +737,43 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
         return _cap_excerpt_grounded(
             "缺公开时点（来源文档未登记公布时间）——类型化事实无法确认时点资格，需人工核对")
     if scope == SCOPE_NUMERIC_EVENT:
-        # 谓词/指标一致：主张与摘录须共享同一指标关键词（数字不能脱离指标语境背书）
+        # 谓词/指标一致 + 绑定元组（K0b/D1a）：主张谓词与**数值所在同一子句**必须
+        # 共享指标关键词——数字不能脱离指标语境背书，同句其他指标的数值不能背书本主张
         predicates = _SCOPED_NUMERIC_PREDICATES.get(claim.event_type, ())
         kw_stmt = [k for k in predicates if k in claim.statement]
-        kw_quote = [k for k in predicates if k in claim.quote_text]
-        if not kw_stmt or not (set(kw_stmt) & set(kw_quote)):
+        if not kw_stmt:
             return _cap_excerpt_grounded(
                 "主张谓词与摘录指标不一致（数值不能脱离指标语境背书）——需人工核对")
+        clauses = _clauses_with_spans(claim.quote_text)
+        value_bound = any(
+            any(k in c_text for k in kw_stmt)
+            for o in sign_consistent
+            for c_text, c_s, c_e in clauses
+            if c_s <= o["start"] and o["end"] <= c_e)
+        if not value_bound:
+            return _cap_excerpt_grounded(
+                "数值与主张谓词未绑定到同一原文局部（数值可能属于同句其他指标/主体）"
+                "——需人工核对")
         if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
             return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
         checks.append(SCOPE_NUMERIC_EVENT)
     elif scope == SCOPE_NEGATION:
-        # 否定型：主张文本自身也要有否定语义（防「肯定主张 + 否定摘录」错位）
+        # 否定型（K0b/D1d）：主张文本自身要有否定语义，且**否定对象绑定**——主张与
+        # 摘录须共享同一事件类型谓词（「无新订单」不能背书「不存在偿债风险」）；
+        # 谓词类型未注册=无可靠解析句式 → 摘录级（不靠加关键词扩大闭集）
         if not any(m in claim.statement for m in _NEGATION_MARKERS):
             return _cap_excerpt_grounded(
                 "主张文本未见否定表述（与摘录否定语义不一致）——需人工核对")
+        neg_predicates = _SCOPED_NUMERIC_PREDICATES.get(claim.event_type, ())
+        if not neg_predicates:
+            return _cap_excerpt_grounded(
+                "否定对象的事件类型未注册确定性句式（无可靠解析→摘录级）——需人工核对")
+        if not any(k in claim.statement for k in neg_predicates):
+            return _cap_excerpt_grounded(
+                "主张谓词与摘录指标不一致（否定对象不同）——需人工核对")
+        if not any(k in claim.quote_text for k in neg_predicates):
+            return _cap_excerpt_grounded(
+                "摘录未见主张所属指标（否定对象不同）——需人工核对")
         checks.append(SCOPE_NEGATION)
     else:
         return _cap_excerpt_grounded(

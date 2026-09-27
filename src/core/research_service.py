@@ -39,6 +39,7 @@ from src.core.claim_extraction import (
 )
 from src.core.decision_contract import ResearchStatus, ThesisStatus
 from src.core.research import (
+    ASSERTION_RULE_VERSION,
     AssertionEvaluation,
     ThesisAssertion,
     ThesisAssessment,
@@ -49,11 +50,12 @@ from src.core.research import (
 logger = logging.getLogger(__name__)
 
 RESEARCH_SERVICE_VERSION = "r4.research_service_v1"
-ASSERTION_METHOD_VERSION = "r3.assertion_v1"
-# J0 关联/检查点/命题规则版本（改动映射与判定必须 bump——旧评估不冒充新语义）
+# K0b/D5：求值方法版本随命题规则语义升位（旧方法版本评估影子侧按待复核——重验不冒充）
+ASSERTION_METHOD_VERSION = ASSERTION_RULE_VERSION
+# J0/K0b 关联/检查点/命题规则版本（改动映射与判定必须 bump——旧评估不冒充新语义）
 ASSOC_RULE_VERSION = "j4.assoc_v1"
 CHECKPOINT_RULE_VERSION = "j4.checkpoint_v1"
-PROPOSITION_RULE_VERSION = "j4.propo_v1"  # 命题级阈值/方向判断结构位（J3 随绑定数据补全）
+PROPOSITION_RULE_VERSION = "k0b.propo_v1"  # K0b/D5：命题规则注册表语义（无规则默认 UNKNOWN）
 
 # 必需命题保守绑定映射（J0b：一个订单不能同时证明业务纯度、利润兑现和长期优势——
 # 单主张至多绑定一个 required 命题；moat 等综合命题无确定性单主张通道）
@@ -234,7 +236,7 @@ class ResearchService:
             snapshot_builder = EvidenceSnapshot.build
         snap = snapshot_builder(security_id, as_of, list(evidence_records), strict=True)
 
-        # ② extract + ③ verify（claim 分级核验——R2 cv2）
+        # ② extract + ③ verify（claim 分级核验——R2 cv3：K0b 绑定元组协议）
         # 顶层裸 SourceDocument = 仅来源文档（无主张）——归档 id，不参与核验
         source_doc_ids = [d.canonical_uri for d in (documents or [])
                           if isinstance(d, SourceDocument)]
@@ -324,7 +326,11 @@ class ResearchService:
                     gaps.append(f"[{horizon}] 缺能力/证据: {req}（命题无法建立——不强行 VALID）")
             if not verified:
                 horizon_checks.append(f"[{horizon}] 待核验事实——自动研究需来源文档或人工通道")
-            unresolved = [a.description for a in evaluated
+            # K0b/D5：缺口带求值说明（evaluation_note 人话——UNKNOWN 的具体原因随
+            # 评估落盘，消费方不再只能看到「缺什么」而看不到「为什么 UNKNOWN」）
+            unresolved = [(f"{a.description}——{a.evaluation_note}"
+                           if getattr(a, "evaluation_note", "") else a.description)
+                          for a in evaluated
                           if a.importance == "required"
                           and a.evaluation is not AssertionEvaluation.TRUE]
             status = assess_thesis_by_assertions(

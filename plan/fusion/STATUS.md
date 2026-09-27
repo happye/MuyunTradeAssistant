@@ -1,6 +1,6 @@
 # 融合项目当前状态与里程碑
 
-**唯一当前状态入口**｜更新2026-09-28｜实施交付基线`def45d1`/v0.8.24，J0–J5 已实施。**[R10 A1–A4](iteration4/R10_INDEPENDENT_REVIEW.md) 与 [深审 D1–D7](iteration4/DEEP_ARCHITECTURE_REVIEW.md) 中 D2/D3/D4/D7 已修复关闭（K0a 实施，架构师探针不再复现，全量 1314 绿）；D1×4/D5/D6（K0b）与 A1–A4（K0c）仍 OPEN。** 下一步 = [第四轮任务卡](iteration4/DELIVERY_PLAN.md)：K0b事实/命题→K0c计划/观察→K2a公开研究闭环；K1设计同步、纵向验收后冻结，再K2b归并 `l`。六项裁决见[第四轮裁决](iteration4/README.md)。K0a 账本见 [iteration4/EXECUTION_RECORD.md](iteration4/EXECUTION_RECORD.md)。
+**唯一当前状态入口**｜更新2026-09-28｜实施交付基线`def45d1`/v0.8.24。**深审 D1–D7 与 R10 中 D2/D3/D4/D7（K0a）与 D1×4/D5/D6（K0b）已修复关闭——架构师探针 10/10 不再复现（0 缺陷），全量 1332 绿；A1–A4（K0c）仍 OPEN。** 下一步 = [第四轮任务卡](iteration4/DELIVERY_PLAN.md)：K0c计划/观察→K2a公开研究闭环；K1设计同步、纵向验收后冻结，再K2b归并 `l`。六项裁决见[第四轮裁决](iteration4/README.md)。账本见 [iteration4/EXECUTION_RECORD.md](iteration4/EXECUTION_RECORD.md)。
 
 新对话先读本页、[RESUME](RESUME.md)、[深审](iteration4/DEEP_ARCHITECTURE_REVIEW.md) 与 [K 任务卡](iteration4/DELIVERY_PLAN.md)，按 [当前复查索引](iteration4/REVIEW_INDEX.json) 复核变化。不要先从第一轮长账本开始重读。实施和设计是不同交付，本页勾选只对写明范围有效。
 
@@ -33,7 +33,7 @@
 
 | 块 | 状态 | 明确剩余项 | 承接 |
 |---|---|---|---|
-| 事实→命题 | **J0 已交付；深审 PARTIAL** | N1原例仍绿，但D1四例重新打开事实语义资格；D5因子OK被当命题TRUE；D6快照缺成员证券边界 | K0b |
+| 事实→命题 | **K0b 已修复 D1×4/D5/D6（2026-09-28）** | N1原例仍绿；D1四例→绑定元组核验（同子句数值-谓词/带符号/小数边界/否定对象绑定，闭集外降摘录级，协议升 cv3）；D5→命题规则注册表（无规则默认 UNKNOWN+缺口说明，单期不得建立多期持续性）；D6→快照主体边界（错主体拒收+subject_scope 显式建模）；冻结语料 15 用例按 cv3 重验一致 | 无（探针不再复现）；正向合法路径保持绿 |
 | 评估唯一真值 | **J0 已交付；R10 PARTIAL** | A2：计划快照有值而评估快照为空仍可消费 VALID；旧计划/方法降级门保留 | K0 评估快照资格 |
 | 单位/字段核定 | **J1 已交付** | N4重复映射/源恢复已关闭（幂等+范围门）；万科2024H1负债率原件核定0.72937（orig_6366a5eff46fb65a）；**试点其余5份 NOT_RUN**、波次B/C（currentRatio/quickRatio/assetToEquity）未启动 | J1 后续批（DATA_DECISION 排期） |
 | 原件/历史时点 | **PARTIAL / BLOCKED_DATA** | 原件核对机制已建+1/6 点位核定；严格历史全集不足 | J1 后续批/观察期 |
