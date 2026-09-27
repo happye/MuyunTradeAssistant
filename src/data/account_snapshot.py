@@ -66,14 +66,24 @@ class AccountSnapshot(BaseModel):
     account_id: str = "default"
     as_of: datetime
     currency: str = "CNY"
-    cash_available: Optional[float] = Field(default=None, description="可用现金（元）；None=未知——不给可买金额/股数")
+    cash_available: Optional[float] = Field(
+        default=None,
+        description="可用现金（元）；None=未知——不给可买金额/股数。口径=已扣冻结资金后的"
+                    "可动用部分（账面余额含冻结挂单时由录入方折算，reserved 另记不重复减——J2 写清防二次扣减）")
     cash_reserved: float = Field(default=0.0, ge=0.0, description="已占用现金（拟买未成交挂单等）——不重复计可用")
     nav: Optional[float] = Field(default=None, description="账户净资产（元）；None=未知（数量分配 CONDITIONAL）")
     nav_priced_at: Optional[datetime] = Field(default=None, description="NAV 定价时点（不是快照生成时刻）")
     holdings: list[AccountHolding] = Field(default_factory=list)
     data_completeness: Literal["QUANTITY_LEVEL", "RATIO_ONLY", "PARTIAL"] = Field(
-        default="RATIO_ONLY", description="QUANTITY_LEVEL=数量/成本/现金齐备；RATIO_ONLY=仅权重假设视图；PARTIAL=部分齐备")
+        default="RATIO_ONLY", description="QUANTITY_LEVEL=数量/成本/现金齐备；RATIO_ONLY=仅权重假设视图；PARTIAL=部分齐备（含账本存在隔离事件）")
     version: str = ACCOUNT_SNAPSHOT_VERSION
+    # J2/N5：整事件未生效的隔离留痕（现金与份额都没动——不再「拒份额改现金」）
+    isolated_events: list[dict] = Field(
+        default_factory=list,
+        description="重放时未生效的事件 [{event_id, event_type, reason}]——账本不一致待人工核对；"
+                    "存在时 data_completeness=PARTIAL、精确新增冻结（allocate 拒给可买数量）")
+    account_version: str = Field(
+        default="", description="账本内容版本（确认提交协议乐观锁用——confirm_fill 比对）")
 
     @property
     def cash_deployable(self) -> Optional[float]:
@@ -93,6 +103,7 @@ class EventType(str, Enum):
     DIVIDEND = "DIVIDEND"    # 分红（独立事件）
     DEPOSIT = "DEPOSIT"      # 存入现金
     WITHDRAW = "WITHDRAW"    # 取出现金
+    OPENING = "OPENING"      # 期初导入（J2：用户确认的数量/成本/现金时点锚定）
 
 
 class AccountEvent(BaseModel):
@@ -142,57 +153,131 @@ class AccountEventLog:
             f.write(json.dumps(event.model_dump(mode="json"), ensure_ascii=False) + "\n")
         return True
 
+    def events(self) -> list[AccountEvent]:
+        """账本全部事件（公共读取——确认协议按 proposal 前缀派生 fill_id 序号用）。"""
+        return self._load()
+
+    def content_version(self) -> str:
+        """账本内容版本（J2 确认提交协议乐观锁）：账本文件字节 sha256[:16]；
+        空账本 = "v0"。append 成功即版本变化（持久化成功后才发布新版本）。"""
+        import hashlib as _hl
+        if not self.path.exists():
+            return "v0"
+        return "v" + _hl.sha256(self.path.read_bytes()).hexdigest()[:16]
+
     def replay(self, *, opening_cash: Optional[float] = None) -> AccountSnapshot:
         """事件重放 → 账户快照（追加序即权威序；同事件集重放结果一致——崩溃恢复
         不丢不重：已落盘事件重放一次与多次结果相同）。
 
         opening_cash：期初现金。None（缺省）=期初未知——有现金事件也无法推算绝对
         余额，cash_available=None（未知≠0，与验收1 同口径）；显式传 0.0=已知从零起。
+        OPENING 事件（J2 期初导入）：cash 未知时**锚定**期初现金（cash=cash_delta），
+        已锚定时同 DEPOSIT 累加；带 security_id+数量+成本时同 BUY 建批次。
         fee 字段仅分类留痕：现金一律以 cash_delta 为准（写侧不得以为 fee 自动扣现金）。
 
+        **整事件原子生效（J2/N5 修复）**：解析、业务校验（数量非正/缺有效成本价/
+        现金方向与事件类型不符）、账户前置条件（无持仓卖出/超卖）全部通过后，
+        现金与份额**一起**应用；任一不过 → 整事件隔离（isolated_events 留痕，
+        现金份额都不动）——不再「拒了份额却改了现金」。孤立 cash_delta 不静默
+        称可用资金；存在隔离事件时 data_completeness=PARTIAL。
+
         单写者假设：append 幂等是 check-then-act，多进程并发同 event_id 会双行——
-        账本沿用 proposals.json 的单写者口径（M5 指纹拒绝在调用方，验收7 注记）。"""
+        事务写入走 AccountService.confirm_fill（文件锁内校验+append，本方法只读重放）。"""
         cash: Optional[float] = opening_cash
         holdings: dict[str, AccountHolding] = {}
+        isolated: list[dict] = []
+
+        def _isolate(e: AccountEvent, reason: str) -> None:
+            isolated.append({"event_id": e.event_id,
+                             "event_type": getattr(e.event_type, "value", str(e.event_type)),
+                             "reason": reason})
+            logger.warning(f"账户事件 {e.event_id} 未生效（整事件隔离）: {reason}")
+
         for e in self._load():
-            cash = None if cash is None else cash + e.cash_delta
-            if not e.security_id:
-                continue
-            if e.event_type is EventType.BUY and e.quantity > 0:
-                cost = e.lot_cost_price or e.price
-                if not cost or cost <= 0:
-                    # 坏批次（无有效成本价）：隔离留痕，不炸整本重放（监督员 P1——
-                    # 一行坏账拖死全部恢复违背 G14 哲学）
-                    logger.warning(f"账户事件 {e.event_id} 缺有效成本价（lot_cost_price/price 均无效）"
-                                   "——该批次不入快照，事件保留待人工核对")
+            q = e.quantity
+            # ── 业务校验（全过才应用——现金与份额不可分离，J2/N5）──
+            if e.event_type in (EventType.BUY, EventType.SELL):
+                if not e.security_id:
+                    _isolate(e, "证券事件缺 security_id")
                     continue
-                h = holdings.setdefault(e.security_id, AccountHolding(security_id=e.security_id))
-                h.quantity += e.quantity
-                h.lots.append(HoldingLot(quantity=e.quantity, cost_price=cost,
-                                         acquired_at=e.trade_date))
-            elif e.event_type is EventType.SELL and e.quantity > 0:
-                h = holdings.get(e.security_id)
-                if h is None or h.quantity <= 0:
-                    logger.warning(f"卖出事件 {e.event_id} 无对应持仓（{e.security_id}）——"
-                                   "幽灵卖出隔离留痕，不建空持仓条目（监督员 P2）")
+                if q <= 0:
+                    # 0/负数量一并隔离——HoldingLot 约束 gt=0，放行会让整本重放崩
+                    #（J2 审查 P1：G14 坏行隔离不炸整本）
+                    _isolate(e, f"证券事件数量非正（{q}）——账本不一致待人工核对")
                     continue
-                # 卖出从最早批次扣（T+1/先买先卖）；数量不足 = 账本不一致 → 显式告警
-                remain = e.quantity
-                while remain > 0 and h.lots:
-                    lot = h.lots[0]
-                    take = min(lot.quantity, remain)
-                    lot.quantity -= take
-                    remain -= take
-                    if lot.quantity == 0:
-                        h.lots.pop(0)
-                if remain > 0:
-                    logger.warning(f"卖出事件 {e.event_id} 超出持仓 {remain} 股（账本不一致）——"
-                                   "按 0 下限处理并留痕，不造假")
-                h.quantity = max(0, h.quantity - e.quantity)
+                if e.event_type is EventType.BUY:
+                    cost = e.lot_cost_price or e.price
+                    if not cost or cost <= 0:
+                        _isolate(e, "缺有效成本价（lot_cost_price/price 均无效）——批次与现金一并隔离待人工核对")
+                        continue
+                    if e.cash_delta > 0:
+                        _isolate(e, f"现金方向与事件类型不符（BUY cash_delta={e.cash_delta} > 0）")
+                        continue
+                    h = holdings.setdefault(e.security_id, AccountHolding(security_id=e.security_id))
+                    if cash is not None:
+                        cash = cash + e.cash_delta
+                    h.quantity += q
+                    h.lots.append(HoldingLot(quantity=q, cost_price=cost,
+                                             acquired_at=e.trade_date))
+                else:  # SELL
+                    h = holdings.get(e.security_id)
+                    if h is None or h.quantity <= 0:
+                        _isolate(e, f"无对应持仓（{e.security_id}）——幽灵卖出整事件隔离"
+                                    "（现金不动，J2/N5）")
+                        continue
+                    if q > h.quantity:
+                        _isolate(e, f"超卖：卖出 {q} 股 > 持仓 {h.quantity} 股——整事件隔离待人工核对")
+                        continue
+                    if e.cash_delta < 0:
+                        _isolate(e, f"现金方向与事件类型不符（SELL cash_delta={e.cash_delta} < 0）")
+                        continue
+                    if cash is not None:
+                        cash = cash + e.cash_delta
+                    # 卖出从最早批次扣（T+1/先买先卖）
+                    remain = q
+                    while remain > 0 and h.lots:
+                        lot = h.lots[0]
+                        take = min(lot.quantity, remain)
+                        lot.quantity -= take
+                        remain -= take
+                        if lot.quantity == 0:
+                            h.lots.pop(0)
+                    h.quantity -= q
+            elif e.event_type is EventType.OPENING:
+                # 期初导入：cash 未知时锚定期初现金；已锚定时同存入累加。
+                # 带证券侧（quantity>0+成本）时同 BUY 建批次（用户确认的期初批次）。
+                if e.security_id and q > 0:
+                    cost = e.lot_cost_price or e.price
+                    if not cost or cost <= 0:
+                        _isolate(e, "期初批次缺有效成本价——整事件隔离待人工补录")
+                        continue
+                    h = holdings.setdefault(e.security_id, AccountHolding(security_id=e.security_id))
+                    if cash is not None:
+                        cash = cash + e.cash_delta
+                    h.quantity += q
+                    h.lots.append(HoldingLot(quantity=q, cost_price=cost,
+                                             acquired_at=e.trade_date))
+                elif e.security_id:
+                    # 期初证券事件缺数量 → 整事件隔离——不得落回现金锚定
+                    #（J2 审查 P2：防 cash 被锚定成 0.0 谎报「现金=0 是确定的」）
+                    _isolate(e, "期初证券事件数量非正——整事件隔离待人工补录")
+                    continue
+                else:
+                    if cash is None:
+                        cash = e.cash_delta  # 期初锚定（不是叠加在未知上）
+                    else:
+                        cash = cash + e.cash_delta
+            else:
+                # 现金类事件（FEE/DIVIDEND/DEPOSIT/WITHDRAW 及带 security 标签的费用等）
+                if cash is not None:
+                    cash = cash + e.cash_delta
         return AccountSnapshot(as_of=datetime.now().astimezone(),
                                cash_available=cash,
                                holdings=list(holdings.values()),
-                               data_completeness="QUANTITY_LEVEL" if cash is not None else "PARTIAL")
+                               data_completeness=("QUANTITY_LEVEL" if cash is not None and not isolated
+                                                  else "PARTIAL"),
+                               isolated_events=isolated,
+                               account_version=self.content_version())
 
 
 # ──────────────── 交易规则接口（R6 提供日期化实现；R5 只消费）────────────────
@@ -276,6 +361,21 @@ def allocate_tradeable_budget(lines: list, snapshot: AccountSnapshot,
     - price_provider(security_id) -> (price, priced_at)：价格缺失 → CONDITIONAL
     """
     out: list[TradeAllocation] = []
+    # J2/N5：账本存在未生效事件 → 现金/持仓事实可能失真——精确新增冻结
+    #（CONDITIONAL 给唯一阻塞话术，不产可买数量、不冒充「可买0股」是确定额度）
+    if snapshot.isolated_events:
+        freeze_reason = (f"账本存在 {len(snapshot.isolated_events)} 条待核对事件（隔离留痕）"
+                         "——精确新增冻结，先人工核对账户事件账本")
+        for line in lines:
+            indicative = float(getattr(line, "add_weight", 0.0) or 0.0)
+            out.append(TradeAllocation(
+                stock_code=getattr(line, "stock_code", ""),
+                indicative_weight=indicative,
+                allocation_state=(AllocationState.REJECTED if indicative <= 1e-9
+                                  else AllocationState.CONDITIONAL),
+                rejected_reason="无可新增额度（solve_budget 已拒）" if indicative <= 1e-9 else "",
+                blocked_field="" if indicative <= 1e-9 else freeze_reason))
+        return out
     release_pool: list[tuple[str, float]] = []  # (code, weight) 释放队列（再分配随 R8）
     deployable = snapshot.cash_deployable
     remaining_cash = deployable  # **串行扣减的现金池**（监督员 P1：多行合计不得超可用）

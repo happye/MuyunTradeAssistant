@@ -45,6 +45,14 @@ _ON = {"fusion": {"shadow_capture": True}}
 _OFF = {"fusion": {"shadow_capture": False}}
 
 
+@pytest.fixture(autouse=True)
+def _isolate_account_ledger(tmp_path, monkeypatch):
+    """J5 审查 P2-3：隔离账户账本路径——capture_shadow 的缺省读取绝不触真实 HOME。"""
+    import src.data.account_service as _asvc
+    monkeypatch.setattr(_asvc, "DEFAULT_LEDGER_PATH", tmp_path / "no-ledger.jsonl")
+    yield
+
+
 def _dr(decision="HOLD", score=0.5, warnings=None):
     return SimpleNamespace(
         decision=SimpleNamespace(value=decision), score=score,
@@ -168,7 +176,7 @@ def test_record_schema_and_version(tmp_path):
     rec = _capture(tmp_path)
     assert rec.derivation_version == SHADOW_DERIVATION_VERSION
     assert rec.shadow_disclosure == "shadow 模拟计划（非用户确认，仅对照观察）"
-    assert rec.thesis_status == "UNESTABLISHED"
+    assert rec.mid_thesis_status == "UNESTABLISHED" and rec.long_thesis_status == "UNESTABLISHED"
     # v3：来源逐周期标注（simulated 显式落字段）
     assert rec.mid_plan_source == "simulated" and rec.long_plan_source == "simulated"
     assert rec.mid_thesis_status == "UNESTABLISHED" and rec.long_thesis_status == "UNESTABLISHED"
@@ -348,7 +356,7 @@ def test_accepted_plan_plain_facts_no_longer_valid(tmp_path):
     store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"]))
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
-    assert rec.plan_source == "user_plan_accepted"
+    assert rec.mid_plan_source == "user_plan_accepted"
     assert rec.mid_plan_source == "user_plan_accepted"
     assert rec.mid_thesis_status == "UNESTABLISHED"
     assert rec.fusion_mid_action == "REVIEW"  # 行10（原 v2 误升级行5 REDUCE）
@@ -383,7 +391,7 @@ def test_draft_plan_stays_review(tmp_path):
     store.save(_mk_plan(tmp_path, facts=["6月订单环比+30%"], accepted=False))
     rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
                    plans_store=store)
-    assert rec.plan_source == "user_plan_draft"
+    assert rec.mid_plan_source == "user_plan_draft"
     assert rec.mid_plan_source == "user_plan_draft"
     assert rec.fusion_mid_action == "REVIEW" and rec.fusion_long_action == "REVIEW"
     # 仅 MID 草稿（LONG 模拟）→ 混合披露逐周期明示
@@ -440,15 +448,19 @@ def test_report_counts_plan_source_per_horizon(tmp_path):
 # ── R9：fusion.mode 单一解析器 ─────────────────────────────
 
 def test_fusion_mode_resolver_migration_and_gates():
-    """旧开关迁移不并存两套语义；未知 mode 回退；opt_in/default 附晋级未达标警示。"""
-    from src.core.shadow_diff import resolve_fusion_mode
+    """旧开关迁移不并存两套语义；未知 mode 回退；J4：requested≠effective——
+    opt_in/default 意愿登记不等于生效，消费者只据 effective。"""
+    from src.core.shadow_diff import resolve_fusion_mode, resolve_fusion_mode_full
     assert resolve_fusion_mode({"fusion": {"shadow_capture": True}}) == \
         ("capture_only", "经旧开关 fusion.shadow_capture 迁移")
     assert resolve_fusion_mode({"fusion": {"shadow_capture": False}})[0] == "legacy_only"
     assert resolve_fusion_mode({"fusion": {"mode": "legacy_only"}})[1] == ""
-    # opt_in/default：模式登记但晋级门未过（裁决未下）——note 必须说明
+    # J4：opt_in = 意愿登记——effective 一律 capture_only + blocking_gates 明示
+    full = resolve_fusion_mode_full({"fusion": {"mode": "opt_in"}})
+    assert full.requested_mode == "opt_in" and full.effective_mode == "capture_only"
+    assert full.blocking_gates, "未达发布门必须明示"
     mode, note = resolve_fusion_mode({"fusion": {"mode": "opt_in"}})
-    assert mode == "opt_in" and "未过" in note
+    assert mode == "capture_only" and "未达发布门" in note
     mode2, note2 = resolve_fusion_mode({"fusion": {"mode": "bogus"}})
     assert mode2 == "capture_only" and "回退" in note2
     assert resolve_fusion_mode(None)[0] == "capture_only"

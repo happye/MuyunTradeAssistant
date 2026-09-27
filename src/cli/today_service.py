@@ -40,6 +40,7 @@ class TodayView(BaseModel):
     waiting: list[TodayCard] = Field(default_factory=list, description="等待条件（观察池/过期建议）")
     holding: list[TodayCard] = Field(default_factory=list, description="继续持有（无待办持仓）")
     notices: list[str] = Field(default_factory=list, description="全组提示（LEGACY 核对等）")
+    account: list[str] = Field(default_factory=list, description="账户事实区（J2：同一账户服务——现金/股数/隔离冻结；空=无数量级账本）")
     as_of: str = ""
 
     @property
@@ -48,13 +49,16 @@ class TodayView(BaseModel):
 
 
 def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]] = None,
-                     risk_profile: Optional[dict] = None) -> TodayView:
+                     risk_profile: Optional[dict] = None,
+                     account=None) -> TodayView:
     """从持仓事实+待确认建议构建 today 视图（纯读取，零写入零网络）。
 
     watch_entries: 观察池在池明细 [{code, name, price, ts, source}]（ISS-104：
     用户走查——只给数量用户不知道「在等什么」，需逐只列出）。
     risk_profile: 用户风险档（settings.yaml fusion.risk_profile，ISS-108）——
-    逐只显示单股额度占用；行业映射未接线，industry_max 暂不核对（如实标注）。"""
+    逐只显示单股额度占用；行业映射未接线，industry_max 暂不核对（如实标注）。
+    account: AccountSnapshot（J2——today 调同一账户服务的读模型）：现金/股数/
+    隔离冻结如实显示；None=无数量级账本（保留比例视图，不发明数字）。"""
     from datetime import datetime
     view = TodayView(as_of=datetime.now().strftime("%Y-%m-%d %H:%M"))
     positions = {p.stock_code: p for p in pm.list_positions()}
@@ -150,12 +154,43 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
         # F7 审查 P2-11：持仓文件损坏时今日视图静默空态=谎报——必须显式提示
         view.notices.append("⚠ 持仓文件此前读取失败（损坏保护生效）——"
                             "下面显示的不是你的真实持仓，请先修复 portfolio.yaml")
+
+    # ── 账户事实区（J2：today 调同一账户服务——现金/股数/隔离冻结如实显示）──
+    if account is not None:
+        isolated = list(getattr(account, "isolated_events", []) or [])
+        if isolated:
+            view.notices.append(
+                f"⚠ 账本存在 {len(isolated)} 条待核对事件（{'、'.join(e.get('event_id', '') for e in isolated[:3])}）"
+                "——精确新增冻结，先人工核对账户事件账本")
+        deployable = account.cash_deployable
+        if deployable is not None:
+            line = f"可用现金 {deployable:,.0f} 元"
+            if account.cash_reserved:
+                line += f"（已占用 {account.cash_reserved:,.0f} 元不重复计）"
+            view.account.append(line)
+        else:
+            view.account.append("现金未知（未导入期初/期初现金缺失——不产可买数量，None≠0）")
+        qty_holdings = [h for h in account.holdings if h.quantity > 0]
+        if qty_holdings:
+            for h in qty_holdings:
+                cost = f"，平均成本 {h.avg_cost:.2f}" if h.avg_cost else ""
+                view.account.append(f"{h.security_id} 持有 {h.quantity} 股{cost}")
+        elif deployable is None:
+            view.account.append("数量级持仓/现金未建立——当前仅比例视图"
+                                "（pos opening 锚定期初现金、pos openinglot 导入持仓批次、"
+                                "pos confirm --qty 记成交后此处显示股数/现金）")
+        else:
+            view.account.append("当前无持仓（账本已清仓——重新建仓后此处显示股数）")
     return view
 
 
 def render_today(view: TodayView) -> str:
     """人话渲染（REPL 用；chat/Web 复用同一服务时自行包 UI）。"""
     out = [f"📅 今日工作台  {view.as_of}"]
+    if view.account:
+        out.append(f"\n[cyan]💰 账户事实（事件账本——同一账户服务）[/cyan]")
+        for line in view.account:
+            out.append(f"  {line}")
     if view.needs_action:
         out.append(f"\n[bold yellow]🟠 需要处理（{len(view.needs_action)}）——这是建议，尚未记为成交[/bold yellow]")
         for card in view.needs_action:

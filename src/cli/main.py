@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.23[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.24[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -2124,13 +2124,53 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
 
 
 def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0,
-                     ratio: float | None = None, update: bool = False):
+                     ratio: float | None = None, update: bool = False,
+                     qty: int | None = None, fee: float = 0.0,
+                     trade_date: str = "", note: str = "",
+                     cash: float | None = None,
+                     security_id: str = "", cost_price: float = 0.0,
+                     acquired_at: str = ""):
     """持仓管理子命令
 
     ratio 语义（F1）：add=建仓仓位（None→0.20 兜底）；confirm=实际成交的仓位变化
     （None=按建议全额）。所有 add 调用方均显式传参，签名默认值改动不影响它们。
+    J2：confirm 带 qty+price → 账户事件账本事务（唯一事实源，confirm_fill 协议）→
+    成功后才更新比例投影；缺 qty → 旧比例确认（不产数量级事实，如实提示）。
+    opening/openinglot：期初导入（现金锚定/持仓批次——用户确认的数量级事实）。
     """
     pm = PortfolioManager()
+
+    if action == "opening":
+        from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
+        try:
+            receipts = AccountService(DEFAULT_LEDGER_PATH).opening_import(opening_cash=cash)
+        except (ValueError, OSError) as e:
+            console.print(f"[red]✗ 期初导入被拒: {e}[/red]")
+            return
+        r = receipts[0] if receipts else None
+        if r is not None and r.ok:
+            console.print(f"[green]✓ 期初现金已锚定: {cash:,.2f} 元（版本 {r.account_version}）[/green]")
+            console.print("  [dim]持仓批次用 pos openinglot <代码> <数量> <成本价> [日期] 逐笔导入[/dim]")
+        else:
+            console.print(f"[red]✗ 期初导入失败: {r.reason if r else '未知'}[/red]")
+        return
+
+    if action == "openinglot":
+        from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
+        try:
+            receipts = AccountService(DEFAULT_LEDGER_PATH).opening_import(lots=[{
+                "security_id": security_id, "quantity": qty, "cost_price": cost_price,
+                "acquired_at": acquired_at or None}])
+        except (ValueError, OSError) as e:
+            console.print(f"[red]✗ 期初批次导入被拒: {e}[/red]")
+            return
+        r = receipts[0] if receipts else None
+        if r is not None and r.ok:
+            console.print(f"[green]✓ 期初批次已导入: {security_id} {qty} 股 @ ¥{cost_price}"
+                          f"（版本 {r.account_version}）[/green]")
+        else:
+            console.print(f"[red]✗ 期初批次导入失败: {r.reason if r else '未知'}[/red]")
+        return
 
     if action == "list":
         positions = pm.list_positions()
@@ -2231,6 +2271,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
     elif action == "confirm":
         # F1：确认实际成交——唯一把建议变成持仓事实的入口
+        # J2：qty+price → 账户事件账本事务（唯一事实源）→ 成功后才更新比例投影；
+        #     仅比例 → 旧投影确认（不产数量级事实，如实提示补 qty）
         if not stock_code:
             console.print("[red]请指定股票代码[/red]")
             return
@@ -2262,6 +2304,62 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"\n[bold cyan]📌 确认成交[/bold cyan]")
         console.print(f"  {stock_code} {target.stock_name}: {fill_action} 仓位变化 {change:.0%}"
                       f"{f' @ ¥{price}' if price else ''}（依据建议 {target.position_action}）")
+
+        if qty is not None and int(qty) > 0:
+            # ── J2 数量级路径：账户事件账本事务（事实先落，投影后更新）──
+            if not price or price <= 0:
+                console.print("[red]✗ 数量级确认需成交价（--qty 与成交价成对给）——未入账[/red]")
+                return
+            from src.data.account_service import (
+                DEFAULT_LEDGER_PATH, AccountService, FillInput, pick_reusable_fill_id,
+            )
+            svc = AccountService(DEFAULT_LEDGER_PATH)
+            # 稳定 fill_id（J2 审查 P0 修复 + J5 审查 P1-1 数字序号修正）：
+            # 前缀下已入账事件中**数字序号最大**者，指纹与本笔一致且投影未消费
+            # （proposals 无此 fill 记录）→ 判定崩溃恢复态，复用同一 fill_id
+            # （账本 DUPLICATE + 投影补做）；否则新序号（逐笔部分成交）。
+            # 派生逻辑本体在 account_service.pick_reusable_fill_id（可单测）。
+            prefix = f"{target.proposal_id}#"
+            eff_date = trade_date or datetime.now().strftime("%Y-%m-%d")
+            payload = FillInput(security_id=stock_code, action=fill_action,
+                                quantity=int(qty), price=float(price) if price and price > 0 else 0.0,
+                                fee=float(fee or 0.0), trade_date=eff_date,
+                                note=note or f"proposal={target.proposal_id}")
+            prior_ids = {str(e.related_fill_id) for e in svc.log.events()
+                         if str(e.related_fill_id or "").startswith(prefix)}
+            fill_id = pick_reusable_fill_id(svc.log.events(), prefix,
+                                            payload.fingerprint(),
+                                            has_fill_fn=pm._proposals.has_fill)
+            if fill_id in prior_ids:
+                console.print(f"[yellow]↩ 检测到未完成的确认（fill {fill_id} 已入账、"
+                              "投影未同步）——按崩溃恢复补做，不重复入账[/yellow]")
+            receipt = svc.confirm_fill(fill_id, svc.account_version(), payload)
+            if not receipt.ok:
+                console.print(f"[red]✗ 数量级确认未入账（{receipt.status}）: {receipt.reason}[/red]")
+                console.print("  [dim]账户/投影均未改动——核对后重试（版本过期请重读 pos list）[/dim]")
+                return
+            if receipt.status == "DUPLICATE":
+                console.print(f"[yellow]↩ fill {fill_id} 已入账过（幂等跳过账本）——"
+                              "继续核对比例投影一致性[/yellow]")
+            else:
+                console.print(f"[green]✓ 事件账本入账: {fill_action} {qty} 股 @ ¥{price}"
+                              f" ｜ 现金变动 {receipt.cash_delta:+.2f} 元 ｜ 版本 {receipt.account_version}[/green]")
+            # 投影更新（比例视图）——fill_id 幂等：崩溃重跑不重复变动持仓
+            result = pm.confirm_fill(stock_code, fill_action, change,
+                                     price=price if price and price > 0 else None,
+                                     fill_id=fill_id, proposal_id=target.proposal_id,
+                                     note=note or "")
+            if result.ok:
+                after = pm.get_position(stock_code)
+                console.print(f"[green]✓ 比例投影已同步[/green]"
+                              + (f" ｜ 持仓现状 {after.current_ratio:.0%} ｜ 生命周期 {after.lifecycle}"
+                                 if after is not None else " ｜ 持仓现状: 记录已删除（清仓完成）"))
+            else:
+                console.print(f"[yellow]⚠ 数量级事实已入账（fill_id={fill_id}），"
+                              f"但比例投影更新失败: {result.message}[/yellow]")
+                console.print("  [dim]重跑同一命令可幂等恢复投影（账本不会重复入账）[/dim]")
+            return
+
         result = pm.confirm_fill(
             stock_code, fill_action, change,
             price=price if price and price > 0 else None,
@@ -2275,6 +2373,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                               + (f" ｜ 开仓价 {after.entry_price}" if after.entry_price else ""))
             else:
                 console.print("  持仓现状: 记录已删除（清仓完成）")
+            console.print("  [dim]提示：仅比例记录——带 --qty <股数> --price 确认可入数量级事件账本"
+                          "（现金/持仓事实源）[/dim]")
         else:
             console.print(f"[red]✗ 确认失败: {result.message}[/red]")
 
@@ -3886,7 +3986,7 @@ def today_command():
     """today 统一行动工作台（F7，plan/fusion ADR-F08）：先持仓风险，再等条件。
 
     分"需要处理（待确认建议）""继续持有""等待条件"三组；无操作是合法结果。
-    纯读取（持仓事实+建议账本+观察池计数），零写入零网络。
+    纯读取（持仓事实+建议账本+观察池计数+账户事件账本重放），零写入零 AI。
     """
     from src.cli.today_service import build_today_view, render_today
     watch_entries = []
@@ -3902,11 +4002,24 @@ def today_command():
                         "source": rec.get("source", "")})
     except Exception:
         watch_failed = True  # F7 审查 P2-7：读取失败显式告知，不静默消失
+    # J2：账户事实区——同一账户服务读模型（纯文件重放，不写不联网）
+    account = None
+    account_failed = False
+    try:
+        from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
+        if DEFAULT_LEDGER_PATH.exists():
+            account = AccountService(DEFAULT_LEDGER_PATH).snapshot()
+    except Exception as e:
+        logger.warning(f"账户事件账本读取失败（今日账户区跳过）: {e}")
+        account_failed = True
     pm = PortfolioManager()
     view = build_today_view(pm, watch_entries=watch_entries,
-                            risk_profile=(_fusion_risk_profile() or None))
+                            risk_profile=(_fusion_risk_profile() or None),
+                            account=account)
     if watch_failed:
         view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
+    if account_failed:
+        view.notices.append("账户事件账本读取失败——今日账户事实区跳过（不影响持仓/建议显示）")
     console.print(render_today(view))
 
 
@@ -4900,7 +5013,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.23 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.24 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",
@@ -5168,107 +5281,95 @@ if __name__ == "__main__":
 
 
 def research_command(rest: list):
-    """research 单股研究工作台（plan/fusion iteration2 R8，RESEARCH_LOOP §1/§6）。
+    """research 单股研究工作台（plan/fusion iteration2 R8 + iteration3 J3 接线）。
 
     一次单股研究即有中长期比较、系统草稿、待验证节点——不用用户编事实解锁。
+    J3：归档读取/按需补采 → 合格因子 → 评估持久化 → 草稿入计划库（可 plan2 找回）。
     用法:
-      research <代码>            离线确定性研究（当前未接入归档证据读取——按无证据
-                                 口径给具体缺口；不做虚假「已归档」声明）
-      research <代码> --capture  先采集最近季频财务（baostock，真实网络）再研究
-    输出：MID/LONG 各一句资格结论与理由 + 系统草稿（未激活）+ 待验证节点 +
-    严格快照拒收摘要（latest-only 财务不入 strict 历史——live 研究仍可用）。
+      research <代码>            研究链（归档证据优先；无归档给具体缺口）
+      research <代码> --capture  缺失季度联网补采（baostock，真实网络；已归档零重复抓取）
+      research <代码> --json     输出机器可读结果（跨入口一致的数据源）
+    输出：MID/LONG 各一句资格结论与理由 + 系统草稿（已存计划库，未激活） +
+    待验证节点 + 严格快照拒收摘要。chat/Web/TUI 未适配研究入口（显式未支持）。
     """
     from rich.console import Console as _C
     from datetime import datetime
     rest = [p for p in (rest or []) if p.strip()]
     capture = "--capture" in rest
+    as_json = "--json" in rest
     codes = [p for p in rest if not p.startswith("--")]
     if not codes:
-        console.print("  [yellow]用法: research <代码> [--capture][/yellow]")
+        console.print("  [yellow]用法: research <代码> [--capture] [--json][/yellow]")
         return
     code = normalize_stock_code(codes[0])
-    console.print(f"\n[bold cyan]🔬 单股研究工作台 {code}[/bold cyan]")
+    if not as_json:
+        console.print(f"\n[bold cyan]🔬 单股研究工作台 {code}[/bold cyan]")
 
-    from src.core.research_service import ResearchService
+    from src.core.research_application import ResearchApplicationService
+    from src.data.research_store import ResearchStore, AssessmentStore
+    from src.data.horizon_plans import HorizonPlanStore
 
-    svc = ResearchService()
-    records, documents, caps, fin_dicts_raw = [], [], {}, []
+    fetch_fn = None
     if capture:
-        # 真实网络（显式 --capture）：采集最近 4 季财务 → 留样 → 语义筛查 → 因子能力。
-        # 因子计算吃**原始 fin dict**（metric 键）——EvidenceRecord 的 metric_or_claim
-        # 形状不喂因子（监督员 P1 形状错配修正）。
-        from src.data.financial_data import capture_quarterly_evidence
-        from src.data.research_snapshot import screen_semantic_anomalies
-        from src.data.research_store import ResearchStore
-        store = ResearchStore()
-        console.print("  [dim]采集最近 4 季财务证据（baostock，真实网络）…[/dim]")
-        now = datetime.now()
-        for back in range(4):
-            q = (now.month - 1) // 3 + 1 - back
-            y, q = (now.year + (q - 1) // 4, (q - 1) % 4 + 1)
-            try:
-                recs, raws = capture_quarterly_evidence(code, y, q, store=store,
-                                                        return_raw=True)
-            except Exception as e:  # 网络失败登记，不假装已采集
-                console.print(f"  [yellow]⚠ {y}Q{q} 采集失败（登记不替换）: {e}[/yellow]")
-                continue
-            if not recs:
-                console.print(f"  [yellow]⚠ {y}Q{q} 采集为空（登录失败/接口无数据——不假装已采集）[/yellow]")
-                continue
-            records.extend(recs)
-            fin_dicts_raw.extend(raws)
-        records = screen_semantic_anomalies(records)
-        from src.core.factor_compute import (
-            balance_risk_v1, cash_conversion_v1, roe_observed_v1,
-        )
-        for fn in (cash_conversion_v1, roe_observed_v1, balance_risk_v1):
-            res = fn(fin_dicts_raw)  # 原始 fin dict（metric 键）
-            caps[res.factor_id] = res
-            console.print(f"  [dim]能力 {res.factor_id}: status={res.status}"
-                          + (f" value={res.value}{res.unit}" if res.status == "OK" else "") + "[/dim]")
-    else:
-        console.print("  [dim]离线模式：当前未接入归档证据读取——按无证据口径给缺口"
-                      "（加 --capture 采集财务，真实网络）[/dim]")
-
-    from src.data.research_snapshot import EvidenceSnapshot
+        def fetch_fn(sec, y, q):
+            from src.data.financial_data import capture_quarterly_evidence
+            return capture_quarterly_evidence(sec, y, q, store=ResearchStore(),
+                                              return_raw=True)
+    app = ResearchApplicationService(
+        store=ResearchStore(), plans_store=HorizonPlanStore(),
+        assessment_store=AssessmentStore(), fetch_fn=fetch_fn)
     as_of = datetime.now().astimezone()
-    bundle = svc.run(code, as_of=as_of, evidence_records=records,
-                     documents=documents, factor_capabilities=caps,
-                     snapshot_builder=lambda sid, ao, recs, strict=True: EvidenceSnapshot.build(
-                         sid, ao, recs, strict=strict))
+    try:
+        result = app.run(code, as_of=as_of, capture=capture)
+    except Exception as e:
+        logger.warning(f"研究链执行失败: {e}")
+        console.print(f"  [red]✗ 研究链执行失败: {e}[/red]")
+        return
 
-    # 渲染（RESEARCH_LOOP §6 示例口径：一句资格结论+理由；缺口具体；草稿未激活）
+    if as_json:
+        # 机器可读输出必须走裸 print（rich console 按宽度折行会破坏 JSON 结构）
+        import json as _json
+        print(_json.dumps(result.model_dump(mode="json"), ensure_ascii=False,
+                          indent=1, default=str))
+        return
+    _render_research_result(console, result)
+
+
+def _render_research_result(console, result) -> None:
+    """研究结果渲染（唯一适配器——CLI 视图；--json 与此同数据源）。"""
     from src.core.decision_contract import ThesisStatus
     label = {"VALID": "✅ 逻辑成立（当前命题达标）", "INVALID": "❌ 逻辑失效",
              "REVIEW_REQUIRED": "⚠ 需人工核对", "UNESTABLISHED": "○ 逻辑待建立"}
-    for h in bundle.horizons:
-        asm = bundle.assessments[h]
+    docs = result.steps.get("documents", {})
+    console.print(f"  [dim]资料: 归档复用 {docs.get('quarters_archived_skipped', 0)} 季 · "
+                  f"本次补采 {docs.get('quarters_fetched', 0)} 季 · 缺失 {docs.get('quarters_missing', 0)} 季"
+                  f"（已归档零重复抓取）[/dim]")
+    for h, asm in result.assessments.items():
         st = asm["status"]
-        gap_n = len(asm["unresolved_gaps"])
+        gaps = asm["gaps"]
         console.print(f"\n  [bold]{h}[/bold] {label.get(st, st)}")
-        for g in asm["unresolved_gaps"][:3]:
+        for g in gaps[:3]:
             console.print(f"    · {g}")
-        if gap_n > 3:
-            console.print(f"    · …共 {gap_n} 项缺口")
-        for nc in asm["next_checks"][:2]:
-            console.print(f"    ▸ {nc}")
-    console.print(f"\n  [bold]系统草稿[/bold]（未激活——用户选择意图后才出行动建议）")
-    for d in bundle.plan_drafts:
-        console.print(f"    {d['horizon']}: {d['intent'][:60]}")
-        if d["fact_evidence_refs"]:
-            console.print(f"      [dim]已核验事实 {len(d['facts_observed'])} 条（带引用，可打开原文）[/dim]")
-    if bundle.gaps:
-        console.print(f"\n  [yellow]缺口 {len(bundle.gaps)} 项（显示前 5）：[/yellow]")
-        for g in bundle.gaps[:5]:
+        if len(gaps) > 3:
+            console.print(f"    · …共 {len(gaps)} 项缺口")
+    if result.factors:
+        parts = [f"{fid}={d['status']}" for fid, d in result.factors.items()]
+        console.print(f"\n  [dim]因子能力（绑定合格快照 {result.snapshot_id[:12]}…）: "
+                      + "、".join(parts) + "[/dim]")
+    console.print(f"\n  [bold]研究草稿[/bold]（已存计划库·未激活——plan2 查看/接受；"
+                  f"接受即绑定评估 {next(iter(result.assessment_ids.values()), '—')[:16]}…）")
+    for h, plan_id in result.draft_plan_ids.items():
+        rev = result.draft_revisions.get(h, 1)
+        console.print(f"    {h}: {plan_id}（rev {rev}）")
+    if result.gaps:
+        console.print(f"\n  [yellow]缺口 {len(result.gaps)} 项（显示前 5）：[/yellow]")
+        for g in result.gaps[:5]:
             console.print(f"    · {g}")
-        if len(bundle.gaps) > 5:
-            console.print(f"    · …其余 {len(bundle.gaps) - 5} 项见 research --json（接线批）")
-    if bundle.snapshot_dropped:
-        # 严格快照拒收摘要如实展示（latest-only 财务不入 strict 历史——用户须知道
-        # 采到的证据去哪了，监督员 P1：不让用户从「来源 0 份」反推）
-        drop_desc = "；".join(f"{k}×{len(v)}" for k, v in bundle.snapshot_dropped.items())
-        console.print(f"\n  [yellow]严格快照拒收: {drop_desc}"
-                      "（latest-only 财务不入严格历史判定——live 研究口径不受影响）[/yellow]")
-    src_n = len(bundle.source_document_ids)
-    console.print(f"\n  [dim]来源 {src_n} 份文档；已核验主张 {len(bundle.verified_claims)} 条；"
-                  f"未达核验 {bundle.unverified_claims} 条；run {bundle.run_id}[/dim]")
+        if len(result.gaps) > 5:
+            console.print(f"    · …其余 {len(result.gaps) - 5} 项见 research --json")
+    if result.snapshot_dropped:
+        # 快照拒收摘要如实展示（SUSPECT 隔离/latest-only——用户须知道证据去哪了）
+        drop_desc = "；".join(f"{k}×{len(v)}" for k, v in result.snapshot_dropped.items())
+        console.print(f"\n  [yellow]快照拒收/隔离: {drop_desc}[/yellow]")
+    console.print(f"\n  [dim]已核验主张 {result.verified_claims} 条；未达核验 {result.unverified_claims} 条；"
+                  f"run {result.run_id}[/dim]")

@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.23"  # v0.8.23=J0/J1（事实/评估唯一真值+映射边界与原件核定）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.24"  # v0.8.24=J2/J3/J4/J5（账户确认闭环+研究链接线+有效模式观察+兼容收口）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -133,7 +133,8 @@ def show_help():
     L.append(_row("● 持仓"))
     L.append(_cmd("pos [list]", "持仓列表"))
     L.append(_cmd("pos add <代码> [名] [价] [仓位]", "建仓（带价格才生成计划草稿）"))
-    L.append(_cmd("pos confirm <代码> [变化] [价]", "确认实际成交（建议≠成交，F1）"))
+    L.append(_cmd("pos confirm <代码> [--qty 股数 --price 价]", "确认实际成交（带 --qty 入事件账本）"))
+    L.append(_cmd("pos opening <现金> / openinglot <码 量 成本 [日]>", "期初导入（现金锚定/持仓批次）"))
     L.append(_cmd("pos rm <代码>", "删除持仓记录"))
     L.append(_cmd("pos plan <代码>|all [--update]", "查看 / 生成 / 更新交易计划"))
     L.append(_cmd("pos overweight <代码> [依据]", "超配策略（教学十，只出手一次）"))
@@ -543,26 +544,88 @@ def parse_input(user_input: str):
             return ("pos_remove", {"stock_code": parts[2]})
         elif sub in ("confirm", "cf"):
             # F1（plan/fusion）：确认实际成交——分析建议不是成交事实，这里落账
+            # J2：带 --qty 数量级成交走账户事件账本事务（唯一事实源）；仅仓位比例走旧投影
             if len(parts) < 3:
-                print("  [!] 用法: pos confirm <代码> [实际仓位变化] [成交价]")
-                print("      pos confirm 601318              按建议全额确认")
-                print("      pos confirm 601318 0.1          部分成交（仓位变化 10%）")
-                print("      pos confirm 601318 0.1 48.5     部分成交并记成交价")
+                print("  [!] 用法: pos confirm <代码> [实际仓位变化] [成交价] [--qty 股数 --fee 费用 --date 日期]")
+                print("      pos confirm 601318                        按建议全额确认（比例投影）")
+                print("      pos confirm 601318 0.1                    部分成交（仓位变化 10%）")
+                print("      pos confirm 601318 0.1 48.5               部分成交并记成交价")
+                print("      pos confirm 601318 --qty 500 --price 48.5 数量级成交（入事件账本——数量/现金事实源）")
                 return None
-            args = {"stock_code": parts[2], "ratio": None, "price": 0.0}
-            if len(parts) >= 4:
+            args = {"stock_code": parts[2], "ratio": None, "price": 0.0,
+                    "qty": None, "fee": 0.0, "trade_date": "", "note": ""}
+            positional = []
+            _FLAGS_WITH_VALUE = {"--qty", "--fee", "--date", "--note", "--price"}
+            i = 3
+            while i < len(parts):
+                tok = parts[i]
+                if tok.startswith("--"):
+                    if tok not in _FLAGS_WITH_VALUE:
+                        print(f"  [!] 未知参数: {tok}（支持 --qty/--fee/--date/--note/--price）")
+                        return None
+                    if i + 1 >= len(parts):
+                        print(f"  [!] {tok} 缺值")
+                        return None
+                    val = parts[i + 1]
+                    i += 2  # 值随 flag 一起消费（不再当位置参数）
+                    if tok == "--date":
+                        args["trade_date"] = val
+                    elif tok == "--note":
+                        args["note"] = val
+                    else:
+                        try:
+                            valf = float(val)
+                        except ValueError:
+                            print(f"  [!] {tok} 值无效: '{val}'（需数字）")
+                            return None
+                        if tok == "--qty" and (valf <= 0 or valf != int(valf)):
+                            print(f"  [!] --qty 须为正整数（股数）: '{val}'——确认取消")
+                            return None
+                        args[tok[2:]] = valf
+                else:
+                    positional.append(tok)
+                    i += 1
+            if len(positional) >= 1:
                 try:
-                    args["ratio"] = float(parts[3])
+                    args["ratio"] = float(positional[0])
                 except ValueError:
-                    print(f"  [!] 仓位变化无效: '{parts[3]}'（需数字 0-1），pos confirm 取消")
+                    print(f"  [!] 仓位变化无效: '{positional[0]}'（需数字 0-1），pos confirm 取消")
                     return None
-            if len(parts) >= 5:
+            if len(positional) >= 2:
                 try:
-                    args["price"] = float(parts[4])
+                    args["price"] = float(positional[1])
                 except ValueError:
-                    print(f"  [!] 成交价无效: '{parts[4]}'（需数字），pos confirm 取消")
+                    print(f"  [!] 成交价无效: '{positional[1]}'（需数字），pos confirm 取消")
                     return None
             return ("pos_confirm", args)
+        elif sub in ("opening", "openinglot"):
+            # J2 期初导入：用户确认的数量/成本/现金时点 → 账户事件账本（OPENING 事件）
+            if sub == "opening":
+                if len(parts) < 3:
+                    print("  [!] 用法: pos opening <期初现金>（元）")
+                    print("      pos opening 50000        锚定期初现金")
+                    return None
+                try:
+                    cash = float(parts[2])
+                except ValueError:
+                    print(f"  [!] 期初现金无效: '{parts[2]}'（需数字）")
+                    return None
+                return ("pos_opening", {"cash": cash})
+            # openinglot
+            if len(parts) < 5:
+                print("  [!] 用法: pos openinglot <代码> <数量> <成本价> [买入日期]")
+                print("      pos openinglot 600519 500 1500.0 2026-09-01")
+                return None
+            lot_args = {"security_id": parts[2]}
+            try:
+                lot_args["quantity"] = int(parts[3])
+                lot_args["cost_price"] = float(parts[4])
+            except ValueError:
+                print("  [!] 数量/成本价无效（数量须正整数）")
+                return None
+            if len(parts) >= 6:
+                lot_args["acquired_at"] = parts[5]
+            return ("pos_openinglot", lot_args)
         elif sub in ("verify", "vz"):
             # 用户走查缺口（ISS-111）：旧记录肉眼核对后的确认动作
             if len(parts) < 3:
@@ -1942,13 +2005,25 @@ def run_cli(mode: str, args: dict):
         manage_positions("remove", stock_code=args.get("stock_code", ""))
 
     elif mode == "pos_confirm":
-        # F1：确认实际成交（建议→事实的唯一入口）
+        # F1：确认实际成交（建议→事实的唯一入口）；J2：--qty 数量级走账户事件账本事务
         manage_positions("confirm", stock_code=args.get("stock_code", ""),
-                         ratio=args.get("ratio"), price=args.get("price", 0.0))
+                         ratio=args.get("ratio"), price=args.get("price", 0.0),
+                         qty=args.get("qty"), fee=args.get("fee", 0.0),
+                         trade_date=args.get("trade_date", ""), note=args.get("note", ""))
 
     elif mode == "pos_verify":
         # ISS-111：旧记录核对确认（数值不变，消除提醒）
         manage_positions("verify", stock_code=args.get("stock_code", ""))
+
+    elif mode == "pos_opening":
+        # J2 期初导入：现金锚定
+        manage_positions("opening", cash=args.get("cash"))
+
+    elif mode == "pos_openinglot":
+        # J2 期初导入：持仓批次
+        manage_positions("openinglot", security_id=args.get("security_id", ""),
+                         qty=args.get("quantity"), cost_price=args.get("cost_price", 0.0),
+                         acquired_at=args.get("acquired_at", ""))
 
     elif mode == "pos_plan":
         manage_positions("plan", stock_code=args.get("stock_code", ""),
