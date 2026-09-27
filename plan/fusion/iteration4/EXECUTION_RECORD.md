@@ -235,3 +235,51 @@ plain_errors.py 新增 6 条 + 更新 fsync 条目：账户账本存在/账户�
 |---|---|---|
 | 目标测试 | `pytest tests/core/test_k2a_research_loop.py -q` | **6 passed** |
 | 全量 | `pytest -q` | 见提交前补记 |
+
+---
+
+## K1｜shadow_v6 观察协议（实施完成——正式冻结待架构师确认）
+
+**状态：实施完成，待监督审查 + 全量验证（2026-09-28）**
+
+### 子任务拆解
+
+| # | 内容 | 状态 |
+|---|---|---|
+| K1-T1 | 红灯测试：tests/core/test_k1_shadow_v6.py（per-horizon 绑定/账户缺失诊断/分别计分母/旧记录只诊断） | ✅ 红灯确认（版本号与字段缺失） |
+| K1-T2 | ShadowDiffRecord v6 字段：mid_binding/long_binding（plan_id/plan_revision/content_hash/accepted_ref/assessment_id/thesis_status/policy_id/method_version/target_weight/blockers/eligible/drop_reasons）+ mid_effective/long_effective（分别判资格）+ v6_drop_reasons（机器可读） | ✅ |
+| K1-T3 | capture_shadow 组装：_build_binding per-horizon（accepted_ref 经 HorizonPlanStore.get_accepted_ref；评估经 _load_verified_assessment；target/blockers 取自 DecisionPacket）；字段缺失→diagnostic+原因码，不冒充合格 | ✅ |
+| K1-T4 | 报告分母：v6 记录分别计 v6_mid_effective/v6_long_effective/v6_diagnostic/v6_drop_counts；legacy_records=旧版本计数（原样保留只诊断不追认）；render_shadow_report 显示 v6 段与阻塞原因人话 | ✅ |
+| K1-T5 | 版本：SHADOW_DERIVATION_VERSION→shadow_v6（v5/v5_k0c 记录读适配=只诊断；不改写不追认） | ✅ |
+
+### 决策记录（K1）
+
+- 「MID/LONG 分别判资格、分别计分母」落地为 per-horizon binding.eligible +
+  mid/long_effective 双列——一周期合格不把另一周期算入（无计划的 LONG 显式
+  no_plan_long，不搭 MID 的车）。
+- eligible 判定三要件：精确接受引用（is_accepted_version）+ 评估可解析
+  （_load_verified_assessment）+ 账户版本非空——与 K0c-5/A2 合同一致。
+- 观察窗/去相关：配对单元=证券×周期×plan_id（binding 携带），预注册统计随 K4
+  效果评估实施（本卡只保证记录可比较——冻结语义=记录可比较，不等于效果/发布门）。
+- **正式冻结待架构师确认**：实施方只交付 v6 合同实现与纵向场景
+  （K2a 全链测试覆盖 research 草稿→接受→l 影子落盘→报告计数），冻结声明权在架构师。
+
+### 验证记录
+
+| 验证 | 命令 | 结果 |
+|---|---|---|
+| 目标测试 | `pytest tests/core/test_k1_shadow_v6.py tests/core/test_shadow_diff.py tests/core/test_j4_mode_observation.py tests/core/test_k2a_research_loop.py tests/core/test_k0c_plan_observation.py -q` | **56 passed** |
+| 全量 | `pytest -q` | 见提交前补记 |
+
+---
+
+## K3｜原件、字段与规则证据
+
+**状态：BLOCKED_NETWORK（2026-09-28）——下载发行人报告需外部网络，当前环境直连与代理均不可达（git push 同样失败），不伪造下载结果。**
+
+| 项 | 状态 | 依据 |
+|---|---|---|
+| 原件试点剩余 5 份 | **NOT_RUN**（网络不可达） | DATA_DECISION 第一批排期；按卡规则：下载失败记 NOT_RUN/UNAVAILABLE，不用供应商交叉一致替代原件 |
+| 波次 B（currentRatio/quickRatio/assetToEquity） | **NOT_RUN** | 字段定义核定需官方来源证据（网络）；liabilityToAsset 仅万科 2024H1 单点已核定，不推广 |
+| 波次 C（cashRatio/YOYLiability） | **NOT_RUN** | 真实消费前再做（卡原文） |
+| 逐股可买数量/全市场日期化规则 | **PARTIAL（不变）** | K3 卡：先锁官方生效日/板块/数量/费用证据再接 today——证据未取得，PARTIAL 如实保留 |

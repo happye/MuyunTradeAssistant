@@ -263,6 +263,12 @@ class HorizonPlanStore:
                 and ref.get("revision") == plan.revision
                 and ref.get("content_hash") == plan.content_hash())
 
+    def get_accepted_ref(self, security_id: str, horizon: str) -> Optional[dict]:
+        """读接受绑定（K1 v6：影子记录登记 accepted_ref 三元组——None=未接受）。"""
+        self._load()
+        key = self._key(security_id, horizon)
+        return (self._data or {}).get("accepted_refs", {}).get(key)
+
     # ── R3 验收5：持仓主意图引用（active_holding_plan_ref；账户状态接线在 R5，
     # 此处先落计划侧生命周期：一账户一股一个；清仓后再建仓不沿用旧轮授权）──
 
