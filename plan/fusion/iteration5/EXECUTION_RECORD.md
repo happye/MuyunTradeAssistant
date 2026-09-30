@@ -89,3 +89,45 @@ L0 与 L1 业务模块可分开处理，共享 CLI/计划接线串行整合。
 1. P3（guard 提出，性能）：account_nav() 每调用重放账本——la 批量 N 持仓×全量重放为乘法开销。正确性无损；按 T05 纪律先量基线再优化（分析周期内快照复用为候选方案）。
 2. 投影失败重启的 D3 恢复路径已被 K0a 用例覆盖（崩溃恢复补做）；本轮竖向用例覆盖「确认→重启→读取→today」主链。
 3. V4 → L2。
+
+## L2｜检查点从公开入口可建立、可复核（G2/G3，T02）
+
+**状态：实施完成，待架构师复验（2026-10-01）**
+
+### 反例与红灯
+
+| 反例 | 内容 | 红灯 | 状态 |
+|---|---|---|---|
+| V4 | CLI 检查点 evidence_refs 固定 []——公开入口无法绑定证据，checkpoint 命题 UNKNOWN | tests/core/test_l2_public_checkpoint.py 8 红（稳定ID/绑定通道/全链均未实现） | ✅ 转绿 |
+
+### 实施
+
+| # | 内容 | 文件 |
+|---|---|---|
+| L2-T1 | 稳定证据ID：主张文件 claim_id 显式给则尊重、缺省按 sha256(主体\|主张\|来源URI)[:12] 确定性生成（同命令重放不换引用）；批内 ID 重复显式拒绝（guard P3） | src/cli/main.py |
+| L2-T2 | --ref 绑定通道：可重复参数（consumed 索引解析——值恰似代码不误吞）；需与 --checkpoint 成对；CheckpointCondition.evidence_refs 只收显式 --ref（**不自动绑定任何主张**——DELIVERY_PLAN 红线） | src/cli/main.py |
+| L2-T3 | 入口预校验：伪引用（不在本批）拒绝并列可用ID；错主体拒绝；--ref 无 --claims 显式拒绝（guard P2-1：防跑后误导诊断） | src/cli/main.py |
+| L2-T4 | 跑后引导：未给引用→列可选证据ID与缺口；批内未核验→「补原文后重跑」明确下一步；渲染层显示已核验证据ID；--json 经 verified_claim_ids 暴露（提示不污染 JSON stdout） | src/cli/main.py |
+| L2-T5 | 帮助/使用文档：start.py 两处 research 帮助 + 使用手册 --claims/--checkpoint/--ref 段落 | start.py、使用手册.md |
+
+### 验证
+
+- 红灯→绿灯：test_l2_public_checkpoint.py 9/9 passed——真实 parse_input→run_cli 全链：
+  research --ref → 检查点命题 TRUE → plan2 accept --primary → 隔离 l（行情替身=数据隔离，
+  研究/接受/捕获全真）→ 影子 v7_mid_effective=1；命题真值/计划状态/报告分母**单独断言**
+- 覆盖面：正例全链＋缺引用（列可选证据）＋伪引用拒绝＋错主体拒绝＋缺原件（批内未核验→
+  明确下一步）＋未确认风险（保持 UNKNOWN）＋重启恢复＋变更新候选未接受（双槽）
+- 全量：pytest -q → 1390 passed, 2 skipped
+- 同类点扫描：CheckpointCondition 生产构造点全库唯一（CLI 已修）；claim_id 缺省 uuid 生成
+  仅剩程序化路径（非用户绑定面）
+- 探针：V4 场景命令为固定无 --ref 的历史形态——修复后该场景按合同仍 UNKNOWN（未给引用
+  不自动绑定），probe 无 probe_error（exit=0）；V1/V2/V3/V3b 保持 ok
+- code-quality-guard 监督审查：P2×2 已修复（--ref 无 --claims 入口缺口；缺原件+--ref 分支
+  补真实批内 ID 断言——原 or 断言掩盖实际分支）；P3×2 已修复（批内 ID 重复检测；手册版本
+  标注去除——产品版本号未 bump，留待收口统一）
+
+### 未完成项 / 留后续
+
+1. 产品版本号（start.py/cli --version/AGENTS.md 三处）第五轮全程未 bump——收口时按架构师裁决统一处理。
+2. K2a 旧测试 test_k2a_full_loop_fixture_to_active_ref 仍为直调服务形态（R11 批评点）——本卡以 test_l2_public_checkpoint.py 全链测试补齐真实入口验收；旧测试保留作服务层回归。
+3. L3（原件证据交付可重建）待实施。

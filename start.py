@@ -92,7 +92,7 @@ def show_help():
     L.append(_cmd("today", "今日工作台（待办/持仓/等待——建议≠成交）"))
     L.append(_cmd("shadow", "影子对照报告（legacy vs fusion 决策表差异观察）"))
     L.append(_cmd("plan2 <代码> mid|long <意图>", "立中期/长期投资计划（影子出真判断的前提）"))
-    L.append(_cmd("research <代码>", "单股研究工作台：中长期比较/系统草稿/待验证节点（--capture 采集财务）"))
+    L.append(_cmd("research <代码>", "单股研究工作台：中长期比较/系统草稿/待验证节点（--capture 采集财务；--claims+--checkpoint+--ref 绑检查点证据）"))
     L.append(_row())
     L.append(_row("● 分析"))
     L.append(_cmd("l <代码>", "实时深分析（自动落证据卡）"))
@@ -799,7 +799,7 @@ _COMMAND_HINTS = {
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
     "plan2": "plan2 列出计划 | plan2 <代码> mid|long <意图> [--facts a,b] [--until 日期] | plan2 accept/rm <代码>",
-        "research": "research <代码> 单股研究工作台（中长期比较/系统草稿/缺口）[--capture 采集财务]",
+        "research": "research <代码> 单股研究工作台（中长期比较/系统草稿/缺口）[--capture] [--claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID]]",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",

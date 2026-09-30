@@ -5411,6 +5411,9 @@ def research_command(rest: list):
       research <代码>            研究链（归档证据优先；无归档给具体缺口）
       research <代码> --capture  缺失季度联网补采（baostock，真实网络；已归档零重复抓取）
       research <代码> --json     输出机器可读结果（跨入口一致的数据源）
+      research <代码> --claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID]
+                                 检查点从公开入口绑定已核验证据（L2/V4：--ref 可重复；
+                                 未给引用列可选证据与缺口；伪引用/错主体拒绝）
     输出：MID/LONG 各一句资格结论与理由 + 系统草稿（已存计划库，未激活） +
     待验证节点 + 严格快照拒收摘要。chat/Web/TUI 未适配研究入口（显式未支持）。
     """
@@ -5423,22 +5426,33 @@ def research_command(rest: list):
     claims_file = None
     checkpoint_desc = ""
     confirm_risk = "--confirm-risk" in rest
+    ref_ids: list[str] = []
+    consumed: set[int] = set()
     for _i, _p in enumerate(rest):
-        if _p in ("--claims", "--checkpoint"):
+        if _p in ("--claims", "--checkpoint", "--ref"):
             # K2a 审查 P3-3：旗标在场但缺值 → 显式报错（不静默跑无主张研究）
             if _i + 1 >= len(rest) or rest[_i + 1].startswith("--"):
                 console.print(f"  [red]✗ {_p} 缺值——用法: research <代码> "
-                              f"--claims 主张.json ／ --checkpoint 描述 --confirm-risk[/red]")
+                              f"--claims 主张.json ／ --checkpoint 描述 --confirm-risk "
+                              f"[--ref 证据ID][/red]")
                 return
+            consumed.update((_i, _i + 1))
             if _p == "--claims":
                 claims_file = rest[_i + 1]
-            else:
+            elif _p == "--checkpoint":
                 checkpoint_desc = rest[_i + 1]
-    codes = [p for p in rest if not p.startswith("--") and p not in
-             (claims_file, checkpoint_desc)]
+            else:
+                ref_ids.append(rest[_i + 1])  # L2/V4：可重复（多证据引用）
+    codes = [p for _i, p in enumerate(rest)
+             if not p.startswith("--") and _i not in consumed]
     if not codes:
         console.print("  [yellow]用法: research <代码> [--capture] [--json] "
-                      "[--claims 主张.json] [--checkpoint 描述 --confirm-risk][/yellow]")
+                      "[--claims 主张.json] [--checkpoint 描述 --confirm-risk "
+                      "[--ref 证据ID]][/yellow]")
+        return
+    if ref_ids and not checkpoint_desc:
+        console.print("  [red]✗ --ref 需与 --checkpoint 成对（证据引用绑定到检查点条件）"
+                      "——用法: --checkpoint 描述 --confirm-risk --ref 证据ID[/red]")
         return
     code = normalize_stock_code(codes[0])
     if not as_json:
@@ -5452,12 +5466,35 @@ def research_command(rest: list):
             console.print(f"  [red]✗ 主张文件不可用: {e}[/red]")
             return
         console.print(f"  [dim]已导入 {len(documents)} 条主张（原文 URI/hash 可追溯）[/dim]")
+
+    # L2/V4：--ref 预校验——伪引用/错主体在入口拒绝（不产生带坏引用的评估）
+    if ref_ids and not documents:
+        # 守卫 P2-1：无主张可核验时显式拒绝（跑后诊断会误导——缺的是 --claims 不是原文）
+        console.print("  [red]✗ --ref 需配合 --claims（主张文件提供可核验证据）——"
+                      "当前没有可校验的主张，请先给 --claims 主张.json[/red]")
+        return
+    if ref_ids and documents:
+        known: dict[str, str] = {}
+        for item in documents:
+            c = item["claim"]
+            known[str(c.get("claim_id"))] = str(c.get("security_id") or "")
+        available = "、".join(sorted(known)) or "（无）"
+        for r in dict.fromkeys(ref_ids):
+            if r not in known:
+                console.print(f"  [red]✗ 引用 {r} 不在本批主张中（伪引用拒绝）——"
+                              f"可用证据ID: {available}；核对 --claims 文件后重试[/red]")
+                return
+            if known[r] and known[r] != code:
+                console.print(f"  [red]✗ 引用 {r} 主体是 {known[r]}，与本次研究 {code} "
+                              f"不符（错主体拒绝——别家公告不进本股检查点）[/red]")
+                return
     checkpoints = []
     if checkpoint_desc:
         from src.core.research import CheckpointCondition
         checkpoints.append(CheckpointCondition(
             security_id=code, horizon="", proposition_type="window_and_refutation",
-            description=checkpoint_desc, evidence_refs=[],
+            description=checkpoint_desc,
+            evidence_refs=list(dict.fromkeys(ref_ids)),
             derived_from="user_confirmed_risk",
             user_confirmed=confirm_risk))
         if not confirm_risk:
@@ -5492,6 +5529,22 @@ def research_command(rest: list):
         print(_json.dumps(result.model_dump(mode="json"), ensure_ascii=False,
                           indent=1, default=str))
         return
+
+    # L2/V4：检查点证据引用引导（未给引用列可选证据与缺口；给引用核对已核验状态）
+    if checkpoint_desc:
+        verified_ids = set(result.verified_claim_ids)
+        if not ref_ids:
+            avail = "、".join(result.verified_claim_ids) or "（无已核验主张）"
+            console.print(f"  [yellow]⚠ 检查点「{checkpoint_desc}」缺证据引用——"
+                          f"命题按 UNKNOWN 如实降级（不自动绑定任何主张）。"
+                          f"可选证据ID: {avail}；绑定用法: --ref 证据ID[/yellow]")
+        else:
+            missing = [r for r in dict.fromkeys(ref_ids) if r not in verified_ids]
+            if missing:
+                console.print(f"  [yellow]⚠ 引用 {'、'.join(missing)} 未达已核验"
+                              f"（缺原件/摘录不符/主体不符）——检查点命题按 UNKNOWN "
+                              f"如实降级；补原文后重跑（已核验: "
+                              f"{'、'.join(sorted(verified_ids)) or '无'}）[/yellow]")
     _render_research_result(console, result)
 
 
@@ -5505,12 +5558,16 @@ def _load_research_claims_file(path, security_id: str) -> list[dict]:
     校验：statement/quote_text/source_uri 必填；缺 → ValueError（人话，不静默跳过）。
     K2a 审查 P1-1：body 缺失**不回退为摘录**——正文=摘录会让「缺原件」的 typed 主张
     自证 FACT_CHECKED（核验器按设计返回 NEEDS_REVIEW，缺原件如实降级）。
+    L2/V4：claim_id 显式给则尊重（稳定引用）；缺省按（主体|主张|来源URI）内容
+    确定性生成——同输入重放不换 ID（用户可查看并经 --ref 绑定）。
     """
     from pathlib import Path as _P
+    import hashlib as _h
     raw = json.loads(_P(path).read_text(encoding="utf-8"))
     if not isinstance(raw, list):
         raise ValueError("主张文件须为 JSON 数组")
     out = []
+    seen_ids: dict[str, int] = {}
     for i, item in enumerate(raw):
         if not isinstance(item, dict):
             raise ValueError(f"第 {i+1} 条主张不是对象")
@@ -5520,10 +5577,22 @@ def _load_research_claims_file(path, security_id: str) -> list[dict]:
             raise ValueError(f"第 {i+1} 条主张缺必填字段: {'、'.join(missing)}")
         # K2a 审查 P3-4：显式给 security_id（含空串=行业级）尊重原值——不强制改写本股
         sec = str(item["security_id"]) if "security_id" in item else security_id
+        statement = str(item["statement"])
+        source_uri = str(item["source_uri"])
+        claim_id = str(item.get("claim_id") or "").strip() or \
+            "claim_" + _h.sha256(f"{sec}|{statement}|{source_uri}".encode("utf-8")
+                                 ).hexdigest()[:12]
+        if claim_id in seen_ids:
+            # 守卫 P3：批内 ID 重复（显式撞名或 hash 碰撞）——--ref 绑定会静默歧义，拒绝
+            raise ValueError(
+                f"第 {seen_ids[claim_id]+1} 条与第 {i+1} 条主张证据ID重复（{claim_id}）——"
+                "请给不同的 claim_id 或修改主张/来源使内容可区分")
+        seen_ids[claim_id] = i
         out.append({
-            "claim": {"security_id": sec,
+            "claim": {"claim_id": claim_id,
+                      "security_id": sec,
                       "subject": sec,
-                      "statement": str(item["statement"]),
+                      "statement": statement,
                       "event_type": str(item.get("event_type") or "other"),
                       "value": item.get("value"),
                       "unit": str(item.get("unit") or ""),
@@ -5533,7 +5602,7 @@ def _load_research_claims_file(path, security_id: str) -> list[dict]:
                       "fact_stage": str(item.get("fact_stage") or ""),
                       "negation_flag": item.get("negation_flag"),
                       "verification_scope": str(item.get("verification_scope") or "")},
-            "document": {"canonical_uri": str(item["source_uri"]),
+            "document": {"canonical_uri": source_uri,
                          "body": str(item.get("body") or ""),
                          "security_ids": [sec],
                          "published_at": item.get("published_at"),
@@ -5552,6 +5621,10 @@ def _render_research_result(console, result) -> None:
     console.print(f"  [dim]资料: 归档复用 {docs.get('quarters_archived_skipped', 0)} 季 · "
                   f"本次补采 {docs.get('quarters_fetched', 0)} 季 · 缺失 {docs.get('quarters_missing', 0)} 季"
                   f"（已归档零重复抓取）[/dim]")
+    # L2/V4：稳定证据ID可见——用户据此经 --ref 绑定检查点条件
+    if result.verified_claim_ids:
+        console.print(f"  已核验证据ID: [cyan]{', '.join(result.verified_claim_ids)}[/cyan] "
+                      f"（检查点绑定用法: research <代码> … --ref 证据ID）")
     for h, asm in result.assessments.items():
         st = asm["status"]
         gaps = asm["gaps"]

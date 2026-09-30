@@ -60,6 +60,10 @@ class ResearchRunResult(BaseModel):
     next_checks: list[str] = Field(default_factory=list)
     verified_claims: int = 0
     unverified_claims: int = 0
+    verified_claim_ids: list[str] = Field(
+        default_factory=list,
+        description="已核验（FACT_CHECKED）主张 ID——稳定证据引用，公开入口 --ref 可绑定"
+                    "（L2/V4：用户能查看稳定证据ID；同输入重放不换引用）")
     source_count: int = 0
     source_uris: list[str] = Field(default_factory=list, description="来源文档 URI（J3 验收「来源跳转真实可达」）")
     account_version: str = Field(default="", description="账户账本内容版本（调用方传入——J3 服务输入契约）")
@@ -256,6 +260,8 @@ class ResearchApplicationService:
             steps=steps, gaps=list(bundle.gaps), next_checks=list(bundle.next_checks),
             verified_claims=len(bundle.verified_claims),
             unverified_claims=bundle.unverified_claims,
+            verified_claim_ids=sorted({c["claim"]["claim_id"]
+                                       for c in bundle.verified_claims}),
             source_count=len(bundle.source_document_ids),
             source_uris=list(dict.fromkeys(
                 list(bundle.source_document_ids) + claim_doc_uris)),
