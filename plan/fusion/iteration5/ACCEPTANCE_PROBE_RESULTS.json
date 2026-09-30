@@ -1,0 +1,54 @@
+{
+  "baseline": "7dbe57d",
+  "synthetic": true,
+  "results": [
+    {
+      "id": "V1_missing_quote_counted_effective",
+      "observed_defect": true,
+      "quote_cutoff": null,
+      "eligible": true,
+      "drop_reasons": [],
+      "mid_count": 1,
+      "evidence_cutoff_is_capture_time": true,
+      "assessment_time": "2026-09-30T16:38:56.867089+00:00"
+    },
+    {
+      "id": "V2_target_change_deduped",
+      "observed_defect": true,
+      "targets": [
+        0.1,
+        0.2
+      ],
+      "fingerprints_equal": true,
+      "second_saved": false
+    },
+    {
+      "id": "V3_stale_ratio_consumed",
+      "observed_defect": true,
+      "ok": true,
+      "quantity": 900,
+      "ratio_stale": true,
+      "strategy_ratio": 0.1,
+      "account_total_ratio": 0.1
+    },
+    {
+      "id": "V3b_rebuilt_holding_ratio_zero",
+      "observed_defect": true,
+      "ok": true,
+      "quantity": 100,
+      "ratio_stale": true,
+      "strategy_ratio": 0.0,
+      "account_total_ratio": 0.0
+    },
+    {
+      "id": "V4_public_checkpoint_unreachable",
+      "observed_defect": true,
+      "verified_claims": 1,
+      "user_confirmed": true,
+      "cli_evidence_refs": [],
+      "cli_window": "UNKNOWN",
+      "service_with_explicit_refs_window": "TRUE",
+      "scope": "checkpoint binding only; does not claim whole MID VALID"
+    }
+  ]
+}

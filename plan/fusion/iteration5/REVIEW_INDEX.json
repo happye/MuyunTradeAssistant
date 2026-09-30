@@ -1,0 +1,105 @@
+{
+  "schema_version": 3,
+  "reviewed_at": "2026-10-01",
+  "baseline_commit": "7dbe57dba5f2c68f98018f715628c1e39bcfe140",
+  "scope": "Scoped independent K acceptance; not whole-file safety certification",
+  "report": "R11_ACCEPTANCE.md",
+  "milestones": "../../../MILESTONES.md",
+  "checks": {
+    "old_counterexamples": {
+      "count": 10,
+      "reproduced": 0,
+      "artifact": "K_COUNTEREXAMPLE_RECHECK.json"
+    },
+    "targeted_tests": {
+      "passed": 243,
+      "seconds": 8.29,
+      "full_suite_rerun": false,
+      "artifact": "TARGETED_TEST_RESULTS.txt"
+    },
+    "new_findings": {
+      "groups": [
+        "V1",
+        "V2",
+        "V3",
+        "V4"
+      ],
+      "scenarios": 5,
+      "status": "OPEN",
+      "artifact": "ACCEPTANCE_PROBE_RESULTS.json"
+    },
+    "local_originals": {
+      "points": 6,
+      "scope": "PDF hash, numeric text at recorded pages and arithmetic only",
+      "artifact": "K3_LOCAL_EVIDENCE_RESULTS.json"
+    },
+    "design_contract": {
+      "cases": 10,
+      "scope": "normative prototype only",
+      "artifact": "DESIGN_CONTRACT_RESULTS.json"
+    },
+    "production_modified": false,
+    "paid_calls": false,
+    "real_account_replay": false
+  },
+  "dependencies": {
+    "pytest": "9.1.1",
+    "pydantic": "2.12.5",
+    "PyYAML": "6.0.3",
+    "pypdf": "6.19.0"
+  },
+  "groups": {
+    "account": {
+      "src/data/account_service.py": "391a35f6991c08e41e49d05d2fa293d6d637fa85d31abae6c72c284d4c54698e",
+      "src/data/account_snapshot.py": "edbba4a9336fd12c828a68467afc0d52a5587b8b45ffa6deb4696fec9731fbec",
+      "src/data/portfolio.py": "f01673789e7e43a7c72fecf0a7e53e24aa0e379f4b4b540e104868996f5478c1",
+      "src/data/proposals.py": "743fd703f3fa5b17e02efa1d8e99fc2049c14564330c03ac92dcd5aa4c4bfb1d",
+      "src/cli/main.py": "4e9d0f9144b8b9d83e894c5de8536c135caa06a97472c3c172f9b3efcf4ed6e4"
+    },
+    "facts_and_assertions": {
+      "src/core/claim_extraction.py": "c718fb26d3fa67061e5c276b50005394893273767cb864750cc05e8c681c6450",
+      "src/core/research.py": "0e449d28c58c02affc06f10ad5b57aafb64d718dcfa4b9b7394dcb3203671fb3",
+      "src/core/factor_compute.py": "bd54c24d5ba6cdece7a0911c8f93768f4823e7858561b962d16b73f32bca5d64",
+      "src/core/research_service.py": "a6058b2d7ba52434be0c5d5fb4322c772cd1dc9c3129207eeb37f7437622453f",
+      "src/data/research_snapshot.py": "2dede2be4c795e549ccfd037c6ef72c9ee5df06a50fed9c3ef5e8acdb965c381"
+    },
+    "plan_and_observation": {
+      "src/core/research_application.py": "3ec9c067c0bc7276ec49e21c522efb4480706c80d2349afa49db68b07a0730e7",
+      "src/data/horizon_plans.py": "cb3cbe689dad32b452c0546ef8666c078f3c5c4fdc99cb5321bc381a1860b004",
+      "src/data/research_store.py": "20d399f9ee226db1599b9c07275c7a365536518174dcf0af3e1d03c3f4814ead",
+      "src/core/shadow_diff.py": "d1bd0f88f66ba5abf4730fb685d5b5f7dc4704468f830fb897bccb43577fe202"
+    },
+    "test_boundary": {
+      "tests/conftest.py": "2f6e951025f7a54c33a9affc15e7fbc0a5360bad51a9616f628dc479509f4ae9",
+      "pytest.ini": "9b6e795247cbc7e327d576c1c277e3c350e0995e7a9eb4b17d046a92b99ac666",
+      "tests/core/test_j0_facts_assessment.py": "e5e82887d8c44d3f06c7031f29501623435b50dda58512661f83e372c3f43e6a",
+      "tests/core/test_j1_mapping_boundary.py": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",
+      "tests/core/test_j2_account_service.py": "efd8af01e715061bf459f890a1ffac89b7eac182009ad38216becb2c12be6dba",
+      "tests/core/test_j3_research_application.py": "e105f31c6b31dd8799ff6120ef7cb641edc0b009a160e5cc2914b0e109279745",
+      "tests/core/test_j4_mode_observation.py": "7800e36fd2287eebbc086fcd1973dea6d9899ae7434d64b59c77a464b87ae05b",
+      "tests/core/test_claim_extraction.py": "f38ff4fe61018da01f86bb404bb0d6528ea6c7e23af71c3ddaa7a9a9a2526500",
+      "tests/core/test_claim_verification_corpus.py": "a8bea784b611490775162d24116a7a30575382a2584df522a50ebcad2ded4200",
+      "tests/core/test_research_snapshot.py": "915f88737125606312475e085ce493672785c360584cae2cf15456a830055cfe",
+      "tests/core/test_research_service.py": "7cb911b688a3ef6cdc84e0134d61b79a8fee4e5b44d1505cc473868f1c7095cf",
+      "tests/core/test_account_snapshot.py": "584ca0f34f371c926822f794ae6ea1f6f5ec51a2ca6199e7b448ddc08173d993"
+    },
+    "consumers": {
+      "start.py": "1f40b27f479a7129bcd604011d3802859a3fda9b3ad83e81e97f79de462a83f4",
+      "src/chat/tools.py": "afaad70f58c48a85af124e2e29f5b98beacd1d16b5f37e01a08fa8d4e04a2ae5",
+      "src/cli/today_service.py": "0e5656017985c220b8770420be2800b6da9e271f1ca440835e842997ba68729b",
+      "src/core/analysis_service.py": "56cc88e0716fd3b56532358d5d414529f87935c7c501882340f32adaa8a70385",
+      "src/core/decision_contract.py": "b291d586a6a66785187012977f64f169f50ef92103e41b520a91731c40355329",
+      "src/core/decision_policy.py": "4f14a720d20f49d1c2628e469849a7c20e522238f3425e535b3a4bbef839f0ef"
+    },
+    "k_tests": {
+      "tests/core/test_k0a_account_integrity.py": "687a2b32a560f69b070b3402a58aaea1d9b56632644ecf717972b50637357db9",
+      "tests/core/test_k0a_projection_intent.py": "63d7851866afe795e89ac0e7a8dfb8de193dc570d8ac72098b7e594d9ae2651a",
+      "tests/core/test_k0a_vertical_e2e.py": "8649e0e8abb438532608074b4459fe78a77e1f6d8b411064e7fb4a614dbf9e1a",
+      "tests/core/test_k0b_facts_propositions.py": "de00f06c003c41a23986f6f01711708668128c1d8b69af5d64d2672df5ebaf7a",
+      "tests/core/test_k0c_plan_observation.py": "717ed5aaff44d39cb0cd55c3c86ad1131bde17a24a4455c0f361552d382e4f93",
+      "tests/core/test_k1_shadow_v6.py": "040815ed0fca919b094be177c02c7b8af2e9b9498eb873544d2d8e7640562bf2",
+      "tests/core/test_k2a_research_loop.py": "ebfe5976bf7abb547b793678f23a74fec72167da2ca452767539cf52e4e9c63f"
+    }
+  },
+  "reuse_rule": "Check HEAD, working diff, hashes and consumers. Original closed probes do not close V findings or prove real effects."
+}

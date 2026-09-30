@@ -1,6 +1,6 @@
 # 暮云持续迭代计划
 
-**当前融合迭代入口（2026-09-27）**：[完成/未完成里程碑](fusion/STATUS.md) → [恢复入口](fusion/RESUME.md) → [第三轮J0–J5](fusion/iteration3/DELIVERY_PLAN.md)。F批、R批已有实现交付且保留部分验收待办；第三轮架构设计已交付、待实施。以下M/C表格是历史工程记录，不作为当前融合进度。
+**当前入口（2026-10-01）**：[长期里程碑与完成标准](../MILESTONES.md) → [实施/审批状态](fusion/STATUS.md) → [R11审批与第五轮](fusion/iteration5/R11_ACCEPTANCE.md) → [恢复入口](fusion/RESUME.md)。以下M/C表格与角色叙述为历史工程记录及当时作者分工，不替代当前进度或给阅读者重新分配身份。
 
 更新：2026-09-24。接手基线：`e84fac4`（v0.8.12.1）。
 

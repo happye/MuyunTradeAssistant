@@ -1,0 +1,263 @@
+{
+  "baseline": "7dbe57d",
+  "scope": "Static inventory, not proof that large functions or imports are defects",
+  "python_modules": 127,
+  "total_lines": 49475,
+  "largest_modules": [
+    {
+      "path": "src/cli/main.py",
+      "lines": 5558,
+      "largest_functions": [
+        {
+          "name": "manage_positions",
+          "line": 2126,
+          "lines": 478
+        },
+        {
+          "name": "main",
+          "line": 4979,
+          "lines": 395
+        },
+        {
+          "name": "analyze_portfolio",
+          "line": 404,
+          "lines": 367
+        }
+      ]
+    },
+    {
+      "path": "src/data/akshare_client.py",
+      "lines": 1818,
+      "largest_functions": [
+        {
+          "name": "_calculate_indicators_uncached",
+          "line": 1202,
+          "lines": 240
+        },
+        {
+          "name": "get_realtime_quote",
+          "line": 269,
+          "lines": 178
+        },
+        {
+          "name": "get_realtime_quotes",
+          "line": 555,
+          "lines": 120
+        }
+      ]
+    },
+    {
+      "path": "src/core/backtest_engine.py",
+      "lines": 1271,
+      "largest_functions": [
+        {
+          "name": "run",
+          "line": 317,
+          "lines": 460
+        },
+        {
+          "name": "_calculate_stats",
+          "line": 981,
+          "lines": 154
+        },
+        {
+          "name": "__init__",
+          "line": 180,
+          "lines": 94
+        }
+      ]
+    },
+    {
+      "path": "src/data/portfolio.py",
+      "lines": 1198,
+      "largest_functions": [
+        {
+          "name": "confirm_fill",
+          "line": 799,
+          "lines": 206
+        },
+        {
+          "name": "apply_quantity_fill",
+          "line": 1006,
+          "lines": 144
+        },
+        {
+          "name": "_save",
+          "line": 307,
+          "lines": 99
+        }
+      ]
+    },
+    {
+      "path": "src/chat/tools.py",
+      "lines": 1179,
+      "largest_functions": [
+        {
+          "name": "_analyze_stock_single",
+          "line": 266,
+          "lines": 137
+        },
+        {
+          "name": "manage_portfolio",
+          "line": 884,
+          "lines": 123
+        },
+        {
+          "name": "init_engines",
+          "line": 59,
+          "lines": 65
+        }
+      ]
+    },
+    {
+      "path": "src/core/strategy_layer.py",
+      "lines": 1172,
+      "largest_functions": [
+        {
+          "name": "process",
+          "line": 198,
+          "lines": 229
+        },
+        {
+          "name": "_update_lifecycle",
+          "line": 907,
+          "lines": 132
+        },
+        {
+          "name": "_calculate_position",
+          "line": 609,
+          "lines": 123
+        }
+      ]
+    },
+    {
+      "path": "src/scanner/scanner_engine.py",
+      "lines": 1064,
+      "largest_functions": [
+        {
+          "name": "quick_scan",
+          "line": 128,
+          "lines": 175
+        },
+        {
+          "name": "deep_analyze",
+          "line": 304,
+          "lines": 147
+        },
+        {
+          "name": "_enrich_trend_data",
+          "line": 946,
+          "lines": 77
+        }
+      ]
+    },
+    {
+      "path": "src/data/research_snapshot.py",
+      "lines": 1047,
+      "largest_functions": [
+        {
+          "name": "build",
+          "line": 274,
+          "lines": 86
+        },
+        {
+          "name": "derive_single_quarter_from_cumulative",
+          "line": 565,
+          "lines": 73
+        },
+        {
+          "name": "derive_ttm_from_single_quarters",
+          "line": 640,
+          "lines": 69
+        }
+      ]
+    }
+  ],
+  "non_cli_imports_of_cli_main": [
+    {
+      "path": "src/chat/tools.py",
+      "line": 957,
+      "names": [
+        "manage_positions"
+      ]
+    },
+    {
+      "path": "src/chat/tools.py",
+      "line": 329,
+      "names": [
+        "_watch_pool_touch"
+      ]
+    },
+    {
+      "path": "src/chat/__main__.py",
+      "line": 23,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/core/claim_llm_extractor.py",
+      "line": 114,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/core/shadow_diff.py",
+      "line": 156,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/core/benzong/auto_scorer.py",
+      "line": 63,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/data/source_check.py",
+      "line": 361,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/rag/service.py",
+      "line": 490,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/tui/app.py",
+      "line": 73,
+      "names": [
+        "load_config"
+      ]
+    },
+    {
+      "path": "src/tui/app.py",
+      "line": 233,
+      "names": [
+        "manage_positions"
+      ]
+    },
+    {
+      "path": "src/web/app.py",
+      "line": 138,
+      "names": [
+        "load_config",
+        "normalize_stock_code"
+      ]
+    },
+    {
+      "path": "src/web/app.py",
+      "line": 36,
+      "names": [
+        "load_config"
+      ]
+    }
+  ]
+}

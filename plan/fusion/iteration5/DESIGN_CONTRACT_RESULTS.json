@@ -1,0 +1,45 @@
+{
+  "scope": "Normative contract feasibility only; no production or investment-effect validation",
+  "results": [
+    {
+      "case": "complete_trace_even_when_wait",
+      "passed": true
+    },
+    {
+      "case": "missing_quote_diagnostic",
+      "passed": true
+    },
+    {
+      "case": "future_quote_diagnostic",
+      "passed": true
+    },
+    {
+      "case": "legacy_target_change_retained",
+      "passed": true
+    },
+    {
+      "case": "fusion_blocker_change_retained",
+      "passed": true
+    },
+    {
+      "case": "identical_inputs_outputs_dedup",
+      "passed": true
+    },
+    {
+      "case": "quantity_holding_unknown_weight_not_flat",
+      "passed": true
+    },
+    {
+      "case": "qualified_valuation_weight",
+      "passed": true
+    },
+    {
+      "case": "mismatched_pricing_time_blocked",
+      "passed": true
+    },
+    {
+      "case": "zero_quantity_no_holding",
+      "passed": true
+    }
+  ]
+}

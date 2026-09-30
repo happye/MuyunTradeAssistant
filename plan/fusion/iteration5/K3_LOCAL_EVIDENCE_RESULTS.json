@@ -1,0 +1,86 @@
+{
+  "scope": "Local byte identity, page text numbers and arithmetic only; no correction-announcement search, visual table audit, or vendor re-fetch",
+  "results": [
+    {
+      "point": "000002_2024Q1",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true,
+        "负债和所有者权益总计": true
+      },
+      "recalculated_ratio": "0.7270702770594169487656814799",
+      "ratio_matches": true
+    },
+    {
+      "point": "000002_2024Q2",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true,
+        "负债和股东权益总计": true
+      },
+      "recalculated_ratio": "0.7293702152630950665740463563",
+      "ratio_matches": true
+    },
+    {
+      "point": "000002_2024Q3",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true,
+        "负债和所有者权益总计": true
+      },
+      "recalculated_ratio": "0.7241644428602201408008831020",
+      "ratio_matches": true
+    },
+    {
+      "point": "600519_2024Q1",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true
+      },
+      "recalculated_ratio": "0.1295432409923625549151819762",
+      "ratio_matches": true
+    },
+    {
+      "point": "600519_2024Q2",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true
+      },
+      "recalculated_ratio": "0.1832418372773493618222030259",
+      "ratio_matches": true
+    },
+    {
+      "point": "600519_2024Q3",
+      "file_exists": true,
+      "hash_matches": true,
+      "raw_numbers_at_recorded_pages": {
+        "资产总计": true,
+        "流动负债合计": true,
+        "非流动负债合计": true,
+        "负债合计": true
+      },
+      "recalculated_ratio": "0.1362850374558152504806271428",
+      "ratio_matches": true
+    }
+  ]
+}

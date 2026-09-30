@@ -1,0 +1,26 @@
+{
+  "scope": "K acceptance and roadmap sync; no product behavior or feature documentation changes",
+  "edited": [
+    ".learnings/ERRORS.md",
+    ".learnings/LEARNINGS.md",
+    "AGENTS.md",
+    "CODEX.md",
+    "MILESTONES.md",
+    "README.md",
+    "plan/README.md",
+    "plan/fusion/README.md",
+    "plan/fusion/RESUME.md",
+    "plan/fusion/STATUS.md",
+    "plan/fusion/iteration5/DELIVERY_PLAN.md",
+    "plan/fusion/iteration5/DESIGN_VALIDATION.md",
+    "plan/fusion/iteration5/R11_ACCEPTANCE.md",
+    "plan/fusion/iteration5/README.md"
+  ],
+  "historical_reports": "Preserved; current pointers supersede old approval state",
+  "docs_markdown_enumerated": 77,
+  "shared_agent_instructions": "Only neutral roadmap pointers changed; no role reassignment",
+  "known_instruction_size": {
+    "AGENTS_lines": 444,
+    "action": "No broad historical instruction pruning during acceptance; net growth zero; detail moved to root milestones and scoped recovery"
+  }
+}

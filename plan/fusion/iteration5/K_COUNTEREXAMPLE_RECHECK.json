@@ -1,0 +1,125 @@
+{
+  "review_baseline": "def45d1",
+  "executed_at": "2026-09-30T16:33:04.649706+00:00",
+  "source_sha256": {
+    "src/core/claim_extraction.py": "c718fb26d3fa67061e5c276b50005394893273767cb864750cc05e8c681c6450",
+    "src/core/research.py": "0e449d28c58c02affc06f10ad5b57aafb64d718dcfa4b9b7394dcb3203671fb3",
+    "src/core/factor_compute.py": "bd54c24d5ba6cdece7a0911c8f93768f4823e7858561b962d16b73f32bca5d64",
+    "src/data/account_service.py": "391a35f6991c08e41e49d05d2fa293d6d637fa85d31abae6c72c284d4c54698e",
+    "src/data/account_snapshot.py": "edbba4a9336fd12c828a68467afc0d52a5587b8b45ffa6deb4696fec9731fbec",
+    "src/data/portfolio.py": "f01673789e7e43a7c72fecf0a7e53e24aa0e379f4b4b540e104868996f5478c1",
+    "src/data/proposals.py": "743fd703f3fa5b17e02efa1d8e99fc2049c14564330c03ac92dcd5aa4c4bfb1d",
+    "src/data/research_snapshot.py": "2dede2be4c795e549ccfd037c6ef72c9ee5df06a50fed9c3ef5e8acdb965c381",
+    "src/cli/main.py": "4e9d0f9144b8b9d83e894c5de8536c135caa06a97472c3c172f9b3efcf4ed6e4"
+  },
+  "synthetic": true,
+  "network": "blocked",
+  "write_boundary": "temporary root enforced by audit hook",
+  "results": [
+    {
+      "id": "D1a_metric_binding",
+      "observed_defect": false,
+      "level": "EXCERPT_GROUNDED",
+      "body": "公司营收100万元，净利润10万元。",
+      "statement": "公司净利润100万元",
+      "failures": [
+        "数值与主张谓词未绑定到同一原文局部（数值可能属于同句其他指标/主体）——需人工核对"
+      ]
+    },
+    {
+      "id": "D1b_sign",
+      "observed_defect": false,
+      "level": "REJECTED",
+      "body": "公司净利润-100万元。",
+      "statement": "公司净利润100万元",
+      "failures": [
+        "数值符号与摘录相反（摘录该数值为负值）——主张与原文矛盾"
+      ]
+    },
+    {
+      "id": "D1c_decimal",
+      "observed_defect": false,
+      "level": "NEEDS_REVIEW",
+      "body": "公司签订0.900万元订单。",
+      "statement": "公司签订900万元订单",
+      "failures": [
+        "关键数值未能在摘录定位（数值/单位组合未出现）——需人工复核"
+      ]
+    },
+    {
+      "id": "D1d_negation_binding",
+      "observed_defect": false,
+      "level": "EXCERPT_GROUNDED",
+      "body": "本期无新订单。",
+      "statement": "公司不存在偿债风险",
+      "failures": [
+        "主张谓词与摘录指标不一致（否定对象不同）——需人工核对"
+      ]
+    },
+    {
+      "id": "D2_truncated_tail_then_append",
+      "observed_defect": false,
+      "receipt": "REJECTED",
+      "before_completeness": "PARTIAL",
+      "after_completeness": "PARTIAL",
+      "isolated_events": [
+        {
+          "event_id": "corrupt_line_2",
+          "event_type": "CORRUPT_SEGMENT",
+          "reason": "账本行解析失败（JSONDecodeError）——原字节保留待人工恢复",
+          "line_no": 2,
+          "byte_offset": 295,
+          "byte_length": 13,
+          "sha256": "536ae2a8cfc0a23b"
+        }
+      ],
+      "cash": 10000.0,
+      "holdings": []
+    },
+    {
+      "id": "D3_projection_crash_gap",
+      "observed_defect": false,
+      "after_crash_ratio": 0.2,
+      "after_retry_ratio": 0.2,
+      "retry_ok": true,
+      "duplicate": true
+    },
+    {
+      "id": "D4_quantity_partial_sell_cli",
+      "observed_defect": false,
+      "remaining_quantity": 900,
+      "portfolio_record_exists": true,
+      "proposal_status": "PROPOSED",
+      "cli_output": "\n📌 确认成交\n  600519 : SELL 100 股 @ ¥10（依据建议 CLOSE_ALL）\n✓ 事件账本入账: SELL 100 股 @ ¥10 ｜ 现金变动 +1000.00 元 ｜ 版本 v05741a19606a90a6\n✓ 已记录本笔成交：已成交 100 股 / 剩余 900 股\n  ⚠ 建议（清仓）未完全达成——建议保持待确认，如继续卖出请再次执行确认\n✓ 比例视图已同步 ｜ 数量事实以账户账本为准（比例视图已标待重估）\n"
+    },
+    {
+      "id": "D5_capability_is_not_proposition",
+      "observed_defect": false,
+      "evaluation": "UNKNOWN",
+      "factor_values": {
+        "cash_conversion_v1": {
+          "status": "OK",
+          "value": -2
+        },
+        "roe_observed_v1": {
+          "status": "OK",
+          "value": -0.1
+        }
+      },
+      "scope": "real factor functions plus pure evaluator; not whole LONG VALID"
+    },
+    {
+      "id": "D6_snapshot_subject_boundary",
+      "observed_defect": false,
+      "snapshot_security": "600519",
+      "record_securities": []
+    },
+    {
+      "id": "D7_reserved_semantics",
+      "observed_defect": false,
+      "declared_already_net_available": 1000,
+      "reserved": 200,
+      "deployable": 1000.0
+    }
+  ]
+}
