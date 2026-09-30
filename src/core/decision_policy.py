@@ -39,6 +39,10 @@ from src.core.research import evaluate_invalidation_rules
 POLICY_ID_MID = "fusion_mid_v1"
 POLICY_ID_LONG = "fusion_long_v1"
 
+# 决策表语义版本（行0–行10 的裁决规则本体）。行语义变更必须 bump——shadow 观察绑定
+# 的 decision_rule_version 真实来源（L0/V1：不拿 policy_id 复制品冒充规则版本）。
+DECISION_TABLE_VERSION = "v1"
+
 
 class HorizonPlan(BaseModel):
     """PlanV2 侧挂对象（DESIGN §4.1）：保留原 TradePlan，本对象独立存在不改旧字段。"""

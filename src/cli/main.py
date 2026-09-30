@@ -552,7 +552,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             try:
                 from src.core.shadow_diff import capture_shadow
                 capture_shadow(decision_result, strategy_decision, execution_eval,
-                               pos, packet=_packet, source="la")
+                               pos, packet=_packet, source="la",
+                               quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
             except Exception as e:
                 logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
             # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
@@ -931,7 +932,8 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         try:
             from src.core.shadow_diff import capture_shadow
             capture_shadow(result, strategy_decision, execution_eval,
-                           pos, packet=_packet, source="l")
+                           pos, packet=_packet, source="l",
+                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
         # F1（plan/fusion ADR-F03）：持仓股分析后记录观察量+建议——不再把建议当

@@ -354,7 +354,8 @@ def _analyze_stock_single(stock_code: str) -> str:
         try:
             from src.core.shadow_diff import capture_shadow
             capture_shadow(decision_result, strategy_decision, execution_eval,
-                           pos, packet=_packet, source="chat")
+                           pos, packet=_packet, source="chat",
+                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
 

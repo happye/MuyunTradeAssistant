@@ -34,6 +34,15 @@ from src.core.shadow_diff import (
 _ON = {"fusion": {"mode": "capture_only"}}
 
 
+@pytest.fixture(autouse=True)
+def _isolate_account_ledger(tmp_path, monkeypatch):
+    """隔离账户账本路径——capture_shadow 的缺省读取绝不触真实 HOME
+    （account_version="" 的用例在真实账本存在的机器上会被回填，假失败）。"""
+    import src.data.account_service as _asvc
+    monkeypatch.setattr(_asvc, "DEFAULT_LEDGER_PATH", tmp_path / "no-ledger.jsonl")
+    yield
+
+
 def _dr(decision="HOLD"):
     return SimpleNamespace(decision=SimpleNamespace(value=decision), score=0.5,
                            stock=SimpleNamespace(stock_code="601318"), warnings=[])
@@ -72,7 +81,8 @@ def _capture(tmp_path, plans_store, assessment_store=None, account_version="v_te
                           source="test", config=_ON,
                           store_path=tmp_path / "shadow.jsonl",
                           plans_store=plans_store, assessment_store=assessment_store,
-                          account_version=account_version)
+                          account_version=account_version,
+                          quote_as_of="2026-09-26")  # L0：行情时点齐（v7 合同门槛）
 
 
 # ── 1. 模式解析（requested/effective 拆分）────────────────
@@ -93,7 +103,7 @@ def test_passthrough_modes_have_no_gates():
 # ── 2. 有效观察判定 ───────────────────────────────────────
 
 def _seed_accepted_plan(tmp_path, plans_store, assessment_store, code="601318"):
-    """带评估唯一真值的已激活计划（真判断路径）。"""
+    """带评估唯一真值+策略版本齐的已激活计划（真判断路径）。"""
     from src.core.decision_contract import ThesisStatus
     from src.core.decision_policy import POLICY_ID_MID, HorizonPlan
     from src.core.research import ThesisAssessment
@@ -101,6 +111,7 @@ def _seed_accepted_plan(tmp_path, plans_store, assessment_store, code="601318"):
                        accepted_at=datetime.now().isoformat(timespec="seconds"),
                        horizon="MID", policy_id=POLICY_ID_MID,
                        intent="锂电需求回暖驱动盈利兑现",
+                       policy_version="r4.research_service_v1",
                        facts_observed=["6月订单环比+30%"])
     asm = ThesisAssessment(thesis_id=f"thesis_{code}_MID", security_id=code,
                            horizon="MID", snapshot_id="snap-j4",

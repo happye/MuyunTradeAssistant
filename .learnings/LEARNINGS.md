@@ -2192,3 +2192,33 @@ K3 供应商对照首跑把 get_financial_quarterly 的 raw 值直接与发行�
 - **Resolved**: 2026-10-01
 - **Commit/PR**: 183c771 + 88ddbc6（勘误披露）
 - **Notes**: 对照脚本已按生产链路修正重登 5/5 verified_against_original；baostock_raw 键语义勘误同步账本。
+
+---
+
+## [LRN-20261001-L009] correction — 回归测试必须变异生产代码真实写入的字段
+
+**Logged**: 2026-10-01T14:30:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+L0/V2 回归测试（目标权重变化去重不吞）初版变异 `mid_binding["target_weight"]`——该散键在 shadow_v7 已删除（真实字段=`arms.fusion.target`）。测试通过只因指纹是全量投影，对任何键变化敏感；若将来有人把 `arms.*.target` 精确加入指纹排除项，V2 反例静默复发而测试网全绿。code-quality-guard 抓获（P2）。
+
+### Details
+重构删除/改名生产字段时，引用它的测试若只是「碰巧仍通过」（如全量 hash 类断言对任意键敏感），不会报错——这正是幽灵字段最危险处：测试绿≠锁死了目标语义。变异点必须与生产写入点同一字段路径。
+
+### Suggested Action
+写「字段变化必须改变 X」类回归测试时，先确认该字段的**生产写入点**（grep 赋值处），变异同一路径；重构删字段时同步检查既有测试是否变异了幽灵键。
+
+### Metadata
+- Source: error
+- Related Files: tests/core/test_l0_shadow_contract.py, src/core/shadow_diff.py
+- Tags: testing, regression-strength, refactoring
+- Pattern-Key: testing.mutate_real_field_not_ghost
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+### Resolution
+- **Resolved**: 2026-10-01
+- **Notes**: L0 卡内已改变异 `arms["fusion"]["target"]`（guard P2-1 处置）；探针 acceptance_probes.py 写 target_weight 属既有期望按红线不改写（机械通过即可）。

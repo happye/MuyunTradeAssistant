@@ -45,6 +45,22 @@ v4（J0b 评估唯一真值，2026-09-27）：
   **同一 status**；找不到/错配/过期 → REVIEW_REQUIRED（明确待复核）
 - 旧计划（无 assessment_id）→ UNESTABLISHED 降级：facts+refs 简化判断退役，
   不再可能被非空引用救成 VALID（N2 根因封堵）；计划文字保留、资料不销毁
+
+v7（L0 观察合同，2026-10-01；R11 V1/V2 修复——版本升级为独立新协议，旧 v6 不追认）：
+- **同一资格函数** `_binding_eligibility` 决定字段缺口、eligible/diagnostic 与
+  报告分母——缺任一必要字段（accepted_ref/assessment/snapshot/account_version/
+  policy_version/method/规则版本/证据截止/行情时点/两臂完整）或时点在未来 →
+  降级 diagnostic，不为凑有效样本伪造时点或版本
+- 行情时点（quote_cutoff）来自实际行情（StockData.quote_as_of：抓取时刻/最近
+  K 线日期）——不可得时如实缺省并阻塞资格；证据截止（evidence_cutoff）来自
+  **被消费评估**的 evaluated_as_of（不再用捕获墙钟冒充）；decision_rule_version
+  来自真实规则版本常量（policy_id@DECISION_TABLE_VERSION，不再复制 policy_id）
+- 两臂输出完整：每绑定 arms={legacy, fusion}×{action,target,target_state,
+  blockers,execution}——补 legacy 目标权重与分别的执行约束/阻塞
+- **输出指纹消费完整绑定语义**（两臂目标/阻塞/时点/版本全参与）——目标权重或
+  阻塞变化必须留痕（V2）；仅捕获时点变化 → 真实重复折叠；WRITE 成功才回执 saved
+- 报告分母按协议版本分列：v7_* 只数当期协议；旧记录（v6 及更早）单列 legacy_
+  records 只诊断不追认（v6_* 按记录原样计数仅供过渡观察）
 """
 
 import json
@@ -57,7 +73,11 @@ from pydantic import BaseModel, ConfigDict, Field
 
 logger = logging.getLogger(__name__)
 
-SHADOW_DERIVATION_VERSION = "shadow_v6"  # K1：v6 完整绑定合同——MID/LONG 分别登记（plan/accepted_ref/assessment/policy/method/target/blockers）+ 机器可读 drop_reasons；分别判资格、分别计分母。旧 v5/v5_k0c 记录原样保留只诊断。
+# L0：v7 完整观察合同——统一资格函数（行情/证据时点、策略/规则/方法版本、两臂
+# 完整进资格）+ 完整语义去重指纹（两臂目标/阻塞变化不吞）。旧 v5/v5_k0c/v6 记录
+# 原样保留只诊断、不进当期分母、不追认（R11：v6 缺行情时点计有效是记录合同缺陷，
+# 修正协议单独升版，不能事后追认）。
+SHADOW_DERIVATION_VERSION = "shadow_v7"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -123,12 +143,15 @@ class ShadowDiffRecord(BaseModel):
         default="", description="同输出指纹（K0c/A4：双方动作/理由/执行状态/thesis——同输入不同输出必须留痕）")
     append_status: str = Field(
         default="", description="落盘回执（K0c-3：saved=已写入 / deduped=重复去重——向调用方/诊断可见）")
-    # ── K1 shadow_v6：MID/LONG 分别登记的完整绑定（分别判资格、分别计分母）──
+    # ── K1 shadow_v6 → v7：MID/LONG 分别登记的完整绑定（分别判资格、分别计分母）──
     mid_binding: Optional[dict] = Field(
         default=None,
-        description="MID 绑定 {plan_id, plan_revision, content_hash, accepted_ref, "
-                    "assessment_id, thesis_status, policy_id, method_version, "
-                    "target_weight, blockers, eligible, drop_reasons}——None=无计划")
+        description="MID 绑定 {horizon, plan_id, plan_revision, content_hash, "
+                    "accepted_ref, active_ref, assessment_id, thesis_status, "
+                    "snapshot_id, policy_id, decision_rule_version, method_version, "
+                    "policy_version, arms{legacy,fusion}×{action,target,target_state,"
+                    "blockers,execution}, evidence_cutoff, quote_cutoff, eligible, "
+                    "drop_reasons}——None=无计划")
     long_binding: Optional[dict] = Field(
         default=None,
         description="LONG 绑定（结构同 mid_binding）——None=无计划")
@@ -240,6 +263,92 @@ def _load_verified_assessment(plan, horizon_value: str, security_id: str,
     return asm
 
 
+# ── L0/shadow_v7：统一资格函数与两臂目标状态 ──────────────────────────────
+
+_ARM_FIELDS = ("action", "target", "target_state", "blockers", "execution")
+_NO_POSITION_TARGET_ACTIONS = ("WAIT", "REVIEW")  # 不隐含数值目标仓位的动作族
+
+
+def _target_state(target, action: str) -> str:
+    """两臂目标状态（合同三值）：有数值=KNOWN；无数值且动作族不隐含目标=
+    NOT_APPLICABLE（WAIT/REVIEW）；其余（HOLD/OPEN/ADD/REDUCE/EXIT 未给数值）
+    =UNKNOWN——不拿 0 或墙钟凑 KNOWN。"""
+    if target is not None:
+        return "KNOWN"
+    return "NOT_APPLICABLE" if action in _NO_POSITION_TARGET_ACTIONS else "UNKNOWN"
+
+
+def _parse_cutoff(raw) -> Optional[datetime]:
+    """时点解析：带时区 ISO → aware datetime；纯日期（YYYY-MM-DD）→ 当日（日精度，
+    按交易所日期语义比较）；其余/不可解析 → None（资格函数按缺口处理）。"""
+    if not raw:
+        return None
+    try:
+        dt = datetime.fromisoformat(str(raw))
+    except (TypeError, ValueError):
+        return None
+    return dt
+
+
+def _cutoff_in_future(raw, as_of: datetime) -> bool:
+    """时点是否晚于捕获时点（未来时点不可比较——合同降级项）。
+    纯日期按日期比较（日精度不假造时刻）；带时区按时刻比较；naive 带时刻串
+    按日期比较（同日不误判未来——保守方向：宁漏判不冤判）。"""
+    dt = _parse_cutoff(raw)
+    if dt is None:
+        return False
+    if dt.tzinfo is None:
+        return dt.date() > as_of.date()
+    return dt > as_of
+
+
+def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[bool, list[str]]:
+    """统一资格函数（L0 合同核心）：**一个函数**决定字段缺口、eligible/diagnostic
+    与报告分母——绑定构造、记录判定、报告消费共用同一判据，不再各查各的子集
+    （R11 V1 根因：eligible 只查 accepted/ref/aid/account_version 四项）。
+
+    必要字段缺失 / 时点不可解析或在未来 / 版本缺失 / 两臂不完整 → (False, drops)。
+    缺字段如实缺省先 diagnostic——不为凑有效样本伪造时点或版本。"""
+    if not binding:
+        return False, ["no_binding"]
+    h = str(binding.get("horizon", "")).lower()
+    drops: list[str] = []
+    # 必要字段 → 缺失原因码（沿用 v6 既有约定：no_accepted_ref_X/no_assessment_X/
+    # no_snapshot_X/no_account_version；L0 新增版本与时点码）
+    for key, code in (
+        ("accepted_ref", f"no_accepted_ref_{h}"),
+        ("assessment_id", f"no_assessment_{h}"),
+        ("snapshot_id", f"no_snapshot_{h}"),
+        ("account_version", "no_account_version"),
+        ("policy_version", f"no_policy_version_{h}"),
+        ("method_version", f"no_method_version_{h}"),
+        ("decision_rule_version", f"no_decision_rule_version_{h}"),
+        ("evidence_cutoff", f"no_evidence_cutoff_{h}"),
+        ("quote_cutoff", f"no_quote_cutoff_{h}"),
+    ):
+        if not binding.get(key):
+            drops.append(code)
+    # 时点可解析性与未来检查（证据截止来自被消费评估、行情时点来自实际行情——
+    # 都不得晚于捕获时点；不可解析视同缺失）
+    for key in ("evidence_cutoff", "quote_cutoff"):
+        raw = binding.get(key)
+        if not raw:
+            continue  # 缺失已记
+        if _parse_cutoff(raw) is None:
+            drops.append(f"{key}_unparsable_{h}")
+        elif _cutoff_in_future(raw, as_of):
+            drops.append(f"{key}_future_{h}")
+    arms = binding.get("arms") or {}
+    for arm in ("legacy", "fusion"):
+        a = arms.get(arm) or {}
+        if not all(k in a for k in _ARM_FIELDS):
+            drops.append(f"{arm}_arm_incomplete_{h}")
+    # 去重保序
+    seen: set[str] = set()
+    ordered = [d for d in drops if not (d in seen or seen.add(d))]
+    return (not ordered), ordered
+
+
 def _thesis_status_for(plan, horizon_value: str, security_id: str,
                        assessment_store=None):
     """单周期逻辑状态（J0b v4：评估唯一真值——影子消费同一 Assessment，不再重判）。
@@ -333,13 +442,15 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                    *, packet=None, source: str = "", config: Optional[dict] = None,
                    store_path: Optional[Path] = None,
                    plans_store=None, assessment_store=None,
-                   account_version: str = "") -> Optional[ShadowDiffRecord]:
+                   account_version: str = "", quote_as_of: str = "") -> Optional[ShadowDiffRecord]:
     """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。
 
     plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。
     assessment_store: AssessmentStore 注入（J0b v4——None=默认 ~/.muyun/research/assessments）。
     account_version: 账户账本内容版本（J4 有效观察合同——空=尝试读默认账本；
-    无账户版本 → 观察只记 diagnostic，不进有效比较分母）。"""
+    无账户版本 → 观察只记 diagnostic，不进有效比较分母）。
+    quote_as_of: 行情时点（v7 合同——实际行情抓取时刻或最近 K 线日期，来自
+    StockData.quote_as_of；空=如实缺省 → 缺行情时点阻塞资格，只记 diagnostic）。"""
     if pos is None:
         return None
     mode_res = _load_capture_switch(config)
@@ -425,10 +536,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             long_rev, long_aid = int(getattr(up, "revision", 0) or 0), resolved
         if getattr(up, "snapshot_id", ""):
             snap_ids.add(str(up.snapshot_id))
-    has_effective = bool(account_version) and (bool(mid_aid) or bool(long_aid)) \
-        and (mid_rev > 0 or long_rev > 0)
     has_any_plan = mid_src != "simulated" or long_src != "simulated"
-    observation_kind = "effective" if has_effective else ("diagnostic" if has_any_plan else "none")
 
     hf_kwargs = dict(
         research_status=facts["research_status"] or ResearchStatus.INCOMPLETE,
@@ -464,45 +572,46 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     legacy_pos_action = getattr(strategy_decision, "position_action", None)
     legacy_pos_action_val = getattr(legacy_pos_action, "value", legacy_pos_action) or ""
 
-    # ── K1 shadow_v6：MID/LONG 分别登记完整绑定（分别判资格、分别计分母）──
+    # ── shadow_v7：MID/LONG 分别登记完整绑定（统一资格函数判资格、分别计分母）──
     def _build_binding(h, up, pkt):
-        """单周期绑定组：plan/accepted_ref/assessment/policy/method/target/blockers
-        + eligible/drop_reasons（机器可读——字段缺失按 diagnostic，不冒充合格）。
-        K1 审查 P1-1 字段核对：snapshot_id/decision_rule_version/主意图引用已补；
-        quote_cutoff 无独立数据源（行情时间戳未接线）→ 如实 None + drop_reason，
-        不伪造等值字段（随 K3 规则证据接线后启用）。"""
+        """单周期绑定组（v7 合同）：plan/accepted_ref/assessment/policy/method/
+        规则版本/两臂（action/target/target_state/blockers/execution）/时点。
+        eligible 与 drop_reasons 由统一资格函数 `_binding_eligibility` 判定——
+        字段缺失、时点在未来、版本缺失一律降级 diagnostic，不冒充合格。
+
+        字段真实来源（L0，R11 V1）：
+        - quote_cutoff ← 实际行情（调用方注入 StockData.quote_as_of）——不可得如实
+          None + 阻塞资格，不拿捕获墙钟凑数
+        - evidence_cutoff ← 被消费评估的 evaluated_as_of（核对通过的 asm）——
+          不再用捕获墙钟 as_of 冒充证据截止
+        - decision_rule_version ← 真实规则版本常量（policy_id@DECISION_TABLE_VERSION）"""
         if up is None:
             return None, [f"no_plan_{h.lower()}"]
-        drops: list[str] = []
         accepted = _source_of(up) == "user_plan_accepted"
         ref = None
         if accepted:
             try:
                 ref = store.get_accepted_ref(security_id, h)
             except Exception:
-                ref = None
-        if not accepted:
-            drops.append(f"no_accepted_ref_{h.lower()}")
-        elif ref is None:
-            # K1 审查 P2-1：接受态但绑定缺失（异常吞掉/数据不一致）——不得以空充资格
-            drops.append(f"no_accepted_ref_{h.lower()}")
-        active_ref = None
+                ref = None  # K1 审查 P2-1：接受态但绑定缺失——不得以空充资格
         try:
             active_ref = store.get_active_ref(security_id)
         except Exception:
             active_ref = None
         asm = _load_verified_assessment(up, h, security_id, assessment_store)
         aid = str(getattr(up, "assessment_id", "") or "") if asm is not None else ""
-        if not aid:
-            drops.append(f"no_assessment_{h.lower()}")
-        if not account_version:
-            drops.append("no_account_version")
-        if up.snapshot_id:
-            snapshot_id = str(up.snapshot_id)
-        else:
-            snapshot_id = ""
-            drops.append(f"no_snapshot_{h.lower()}")
+        quote_cutoff = str(quote_as_of or "").strip() or None
+        evidence_cutoff = None
+        if asm is not None and asm.evaluated_as_of is not None:
+            evidence_cutoff = asm.evaluated_as_of.isoformat(timespec="seconds")
+        from src.core.decision_policy import DECISION_TABLE_VERSION
+        policy_id = str(getattr(pkt, "policy_id", "") or "")
+        legacy_target = getattr(strategy_decision, "position_ratio", None)
+        legacy_blockers: list[str] = []
+        if bool(getattr(execution_eval, "blocked", False)):
+            legacy_blockers.append(str(getattr(execution_eval, "block_reason", "") or "执行被阻"))
         binding = {
+            "horizon": h,
             "plan_id": getattr(up, "plan_id", ""),
             "plan_revision": int(getattr(up, "revision", 0) or 0),
             "content_hash": up.content_hash(),
@@ -510,17 +619,38 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             "active_ref": active_ref,  # K1 审查 P1-1：主意图引用（README 冻结候选清单）
             "assessment_id": aid,
             "thesis_status": per_horizon_thesis.get(h, ""),
-            "snapshot_id": snapshot_id,
-            "policy_id": str(getattr(pkt, "policy_id", "") or ""),
-            "decision_rule_version": str(getattr(pkt, "policy_id", "") or ""),
+            "snapshot_id": str(getattr(up, "snapshot_id", "") or ""),
+            "account_version": str(account_version or ""),
+            "policy_id": policy_id,
+            "decision_rule_version": f"{policy_id}@{DECISION_TABLE_VERSION}",
             "method_version": str(getattr(asm, "method_version", "") or "") if asm else "",
-            "target_weight": getattr(pkt, "target_weight", None),
-            "blockers": [str(getattr(b, "detail", b)) for b in (pkt.blockers or [])],
-            "evidence_cutoff": as_of.isoformat(timespec="seconds"),
-            "quote_cutoff": None,  # 行情时间戳未接线（K3 规则证据后启用）——如实缺省
-            "eligible": bool(accepted and ref is not None and aid and account_version),
-            "drop_reasons": drops,
+            "policy_version": str(getattr(up, "policy_version", "") or ""),
+            # 两臂完整输出（R11 V1：补 legacy 目标权重与分别的执行约束/阻塞）
+            "arms": {
+                "legacy": {
+                    "action": legacy_desired,
+                    "target": legacy_target,
+                    "target_state": _target_state(legacy_target, legacy_desired),
+                    "blockers": legacy_blockers,
+                    "execution": str(getattr(getattr(execution_eval, "effective_action",
+                                                     None), "value", "") or ""),
+                },
+                "fusion": {
+                    "action": pkt.desired_action.value,
+                    "target": getattr(pkt, "target_weight", None),
+                    "target_state": _target_state(getattr(pkt, "target_weight", None),
+                                                  pkt.desired_action.value),
+                    "blockers": [str(getattr(b, "detail", b)) for b in (pkt.blockers or [])],
+                    "execution": str(getattr(getattr(pkt, "execution_status", None),
+                                             "value", "") or ""),
+                },
+            },
+            "evidence_cutoff": evidence_cutoff,
+            "quote_cutoff": quote_cutoff,
         }
+        eligible, drops = _binding_eligibility(binding, as_of=as_of)
+        binding["eligible"] = eligible
+        binding["drop_reasons"] = drops
         return binding, drops
 
     mid_binding, mid_drops = _build_binding("MID", user_plans.get("MID"), mid_packet)
@@ -528,6 +658,9 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     mid_effective = bool(mid_binding and mid_binding["eligible"])
     long_effective = bool(long_binding and long_binding["eligible"])
     v6_drop_reasons = mid_drops + long_drops
+    # 行级 observation_kind 也走同一资格结果（J4 语义：任一周期合格才算行级有效）
+    observation_kind = ("effective" if (mid_effective or long_effective)
+                        else ("diagnostic" if has_any_plan else "none"))
 
     record = ShadowDiffRecord(
         security_id=security_id,
@@ -595,19 +728,30 @@ def _input_fingerprint(security_id: str, user_plans: dict, account_version: str,
     return _h.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
 
 
+# 输出指纹排除项（v7/V2：其余全部语义字段参与——两臂绑定/目标/阻塞/时点/版本/
+# 资格结果一个不少；排除的仅是非语义字段）
+_OUTPUT_FP_EXCLUDED = frozenset({
+    "as_of",               # 捕获墙钟——时点单列，不是观察语义（V1）
+    "input_fingerprint",   # 输入侧指纹独立比较（K0c/A3 分工）
+    "output_fingerprint",  # 自身
+    "append_status",       # 落盘回执
+    "source",              # 触发入口（l/la/chat）——触发方式不是决策语义
+    "shadow_disclosure",   # 渲染串（由来源派生）
+})
+
+
 def _output_fingerprint(record: ShadowDiffRecord) -> str:
-    """同输出指纹（K0c/A4）：双方动作/目标理由/执行状态/thesis——同输入不同输出
-    （行情/证据变化导致决策翻转）不是重复观察，必须留痕。"""
+    """同输出指纹（v7/V2 重写）：对记录做**完整语义投影**后规范序列化 hash——
+    旧实现手工列举字段子集，漏掉绑定目标权重/阻塞（R11 V2：目标变化被去重吞掉）。
+    现在除捕获墙钟与回执/入口等非语义字段外全部参与：绑定两臂的目标、阻塞、
+    时点、版本变化都改变指纹——同输入不同输出必须留痕；仅捕获时点变化 → 指纹
+    不变（真实重复才可折叠）。含 derivation_version：跨协议版本永不互判重复。"""
     import hashlib as _h
-    parts = [str(record.legacy_action), str(record.legacy_desired),
-             str(record.fusion_mid_action), str(record.fusion_long_action),
-             str(record.fusion_mid_reason), str(record.fusion_long_reason),
-             str(record.sell_path), str(record.hard_exit), str(record.technical_exit),
-             str(record.research_status), str(record.mid_thesis_status),
-             str(record.long_thesis_status), str(record.execution_status),
-             str(record.execution_blocked), ";".join(sorted(record.blocking_gates)),
-             ";".join(sorted(record.delta_reasons))]
-    return _h.sha256("|".join(parts).encode("utf-8")).hexdigest()[:16]
+    d = record.model_dump(mode="json")
+    for k in _OUTPUT_FP_EXCLUDED:
+        d.pop(k, None)
+    canon = json.dumps(d, ensure_ascii=False, sort_keys=True, default=str)
+    return _h.sha256(canon.encode("utf-8")).hexdigest()[:16]
 
 
 def _append_record(store: Path, record: ShadowDiffRecord) -> bool:
@@ -645,8 +789,10 @@ def _append_record(store: Path, record: ShadowDiffRecord) -> bool:
                     record.append_status = "deduped"
                     return False
     with store.open("a", encoding="utf-8") as f:
-        record.append_status = "saved"
         f.write(record.model_dump_json() + "\n")
+    # L0：写盘成功才回执 saved（WRITE 失败回执不算观察——异常向上抛，调用方
+    # 如实告警；不出现「回了执但没落盘」的假观察）
+    record.append_status = "saved"
     return True
 
 
@@ -677,23 +823,33 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
                 by_reason[tag] = by_reason.get(tag, 0) + 1
     total = len(records)
     non_agree = sum(1 for r in records if REASON_AGREE not in (r.get("delta_reasons") or []))
-    # J4：有效观察单独计数（真实接受计划+评估可解析+账户版本齐才进有效分母；
-    # 0 有效样本 = 尚无证据——不宣称稳定性）
-    effective_n = sum(1 for r in records if r.get("observation_kind") == "effective")
-    # ── K1 shadow_v6：分别计分母 + 旧记录只诊断 ──
+    # J4：行级有效观察单独计数（真实接受计划+评估可解析+账户版本齐才进有效分母；
+    # 0 有效样本 = 尚无证据——不宣称稳定性）。v7 起只数**当期协议**记录——
+    # 旧协议记录的 effective 标签产生于旧合同（缺行情时点仍计有效），不追认。
+    current_version = SHADOW_DERIVATION_VERSION
+    cur_records = [r for r in records if r.get("derivation_version") == current_version]
+    effective_n = sum(1 for r in cur_records if r.get("observation_kind") == "effective")
+    # ── shadow_v7：当期协议分别计分母 + 旧协议记录只诊断 ──
+    cur_mid_effective = sum(1 for r in cur_records if r.get("mid_effective") is True)
+    cur_long_effective = sum(1 for r in cur_records if r.get("long_effective") is True)
+    cur_diagnostic = sum(1 for r in cur_records
+                         if r.get("mid_effective") is not True
+                         and r.get("long_effective") is not True)
+    cur_drop_counts: dict = {}
+    for r in cur_records:
+        # K1 审查 P2-3：按记录去重（同一阻塞在 MID/LONG 双 binding 各记一次，
+        # 计数按记录不按周期双倍）
+        for dr in sorted(set(r.get("v6_drop_reasons") or [])):
+            cur_drop_counts[dr] = cur_drop_counts.get(dr, 0) + 1
+    legacy_records = total - len(cur_records)
+    # 旧 v6 协议记录：按记录原样计数（仅供过渡观察——只诊断不追认，
+    # 不进当期分母；现行资格一律以 cur_* 为准）
     v6_records = [r for r in records if r.get("derivation_version") == "shadow_v6"]
-    legacy_records = total - len(v6_records)
     v6_mid_effective = sum(1 for r in v6_records if r.get("mid_effective") is True)
     v6_long_effective = sum(1 for r in v6_records if r.get("long_effective") is True)
     v6_diagnostic = sum(1 for r in v6_records
                         if r.get("mid_effective") is not True
                         and r.get("long_effective") is not True)
-    v6_drop_counts: dict = {}
-    for r in v6_records:
-        # K1 审查 P2-3：按记录去重（同一阻塞在 MID/LONG 双 binding 各记一次，
-        # 计数按记录不按周期双倍）
-        for dr in sorted(set(r.get("v6_drop_reasons") or [])):
-            v6_drop_counts[dr] = v6_drop_counts.get(dr, 0) + 1
     return {
         "total": total,
         "stocks": len(stocks),
@@ -701,11 +857,15 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
         "by_reason": by_reason,
         "diff_rate": (non_agree / total) if total else 0.0,
         "effective_observations": effective_n,
+        "protocol_version": current_version,
+        "v7_mid_effective": cur_mid_effective,
+        "v7_long_effective": cur_long_effective,
+        "v7_diagnostic": cur_diagnostic,
+        "v7_drop_counts": cur_drop_counts,
+        "legacy_records": legacy_records,
         "v6_mid_effective": v6_mid_effective,
         "v6_long_effective": v6_long_effective,
         "v6_diagnostic": v6_diagnostic,
-        "v6_drop_counts": v6_drop_counts,
-        "legacy_records": legacy_records,
         "records": records[-30:],
         "store": str(store),
     }
@@ -773,20 +933,32 @@ def render_shadow_report(report: dict) -> str:
         lines.append("  记录来源: " + "｜".join(src_parts))
     lines.append(f"  近 7 天捕获 {report['total']} 条（{report['stocks']} 只持仓）"
                  f"｜差异率 {report['diff_rate']:.0%}（非一致占比）")
-    # K1 shadow_v6：分周期有效/诊断计数 + 阻塞原因（v6 合同——旧记录只诊断）
-    v6_mid = report.get("v6_mid_effective", 0)
-    v6_long = report.get("v6_long_effective", 0)
-    v6_diag = report.get("v6_diagnostic", 0)
+    # shadow_v7：分周期有效/诊断计数 + 具体缺口（L0 验收：UI 显示具体缺口和
+    # 两周期数——旧版本记录只诊断不追认）
+    cur_mid = report.get("v7_mid_effective", 0)
+    cur_long = report.get("v7_long_effective", 0)
+    cur_diag = report.get("v7_diagnostic", 0)
     legacy_n = report.get("legacy_records", 0)
-    lines.append(f"  📐 v6 协议：有效 MID {v6_mid}｜LONG {v6_long}（分别计分母）"
-                 f"｜诊断 {v6_diag}｜旧版本记录 {legacy_n} 条（只诊断不追认）")
-    if report.get("v6_drop_counts"):
-        top_drops = sorted(report["v6_drop_counts"].items(), key=lambda kv: -kv[1])[:3]
-        drop_cn = {"no_plan": "无计划", "no_accepted_ref": "未接受", "no_assessment": "缺评估",
-                   "no_account_version": "缺账户版本"}
+    protocol = report.get("protocol_version", SHADOW_DERIVATION_VERSION)
+    lines.append(f"  📐 {protocol} 协议：有效 MID {cur_mid}｜LONG {cur_long}（分别计分母）"
+                 f"｜诊断 {cur_diag}｜旧版本记录 {legacy_n} 条（只诊断不追认）")
+    if report.get("v7_drop_counts"):
+        top_drops = sorted(report["v7_drop_counts"].items(), key=lambda kv: -kv[1])[:3]
+        drop_cn = {"no_plan": "无计划", "no_accepted_ref": "未接受",
+                   "no_assessment": "缺评估", "no_account_version": "缺账户版本",
+                   "no_snapshot": "缺证据快照", "no_policy_version": "缺策略版本",
+                   "no_method_version": "缺方法版本", "no_decision_rule_version": "缺规则版本",
+                   "no_evidence_cutoff": "缺证据截止", "no_quote_cutoff": "缺行情时点",
+                   "evidence_cutoff_future": "证据截止在未来",
+                   "quote_cutoff_future": "行情时点在未来",
+                   "evidence_cutoff_unparsable": "证据截止不可解析",
+                   "quote_cutoff_unparsable": "行情时点不可解析",
+                   "legacy_arm_incomplete": "两臂字段不全(legacy)",
+                   "fusion_arm_incomplete": "两臂字段不全(fusion)",
+                   "no_binding": "无绑定"}
         drops_txt = "、".join(f"{drop_cn.get(k.split('_mid')[0].split('_long')[0], k)}"
                               f" {n}" for k, n in top_drops)
-        lines.append(f"  [dim]阻塞原因（近 7 天）：{drops_txt}[/dim]")
+        lines.append(f"  [dim]缺口原因（近 7 天）：{drops_txt}[/dim]")
     eff = report.get("effective_observations", 0)
     if eff:
         lines.append(f"  ✅ 有效观察 {eff} 条（真实接受计划+评估可解析+账户版本齐——进有效比较）")

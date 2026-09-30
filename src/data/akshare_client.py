@@ -1217,6 +1217,9 @@ class AKShareClient:
         try:
             # 首先尝试获取实时行情
             quote = cls.get_realtime_quote(stock_code)
+            # L0（R11/V1）：行情时点——实时行情的抓取时刻（quote 为 None 时改用最近
+            # K 线日期，见下方 StockData 构造）。缓存复用时该时点随结果冻结，语义正确。
+            _quote_fetched_at = datetime.now().astimezone().isoformat(timespec="seconds")
 
             # 尝试获取历史K线计算技术指标
             df = None
@@ -1255,6 +1258,7 @@ class AKShareClient:
                     low=quote.get("low"),
                     change_pct=quote.get("change_pct"),
                     volume=quote.get("volume"),
+                    quote_as_of=_quote_fetched_at,  # L0：行情时点=抓取时刻
                     ma5=None, ma10=None, ma20=None, ma60=None,
                     avg_volume_20=None, high_60d=None, low_60d=None,
                     macd_dif=None, macd_dea=None, macd_hist=None,
@@ -1314,6 +1318,9 @@ class AKShareClient:
                 low=low_val,
                 change_pct=change_pct_val,
                 volume=volume_val,
+                # L0：行情时点——实时价用抓取时刻；无实时价（用K线收盘）用最近K线日期
+                quote_as_of=(_quote_fetched_at if quote
+                             else str(latest['日期'])[:10] if '日期' in latest else None),
                 # 均线计算
                 ma5=round(float(latest['MA5']), 2) if pd.notna(latest['MA5']) else None,
                 ma10=round(float(latest['MA10']), 2) if pd.notna(latest['MA10']) else None,
@@ -1429,6 +1436,7 @@ class AKShareClient:
                     low=quote.get("low"),
                     change_pct=quote.get("change_pct"),
                     volume=quote.get("volume"),
+                    quote_as_of=_quote_fetched_at,  # L0：行情时点=抓取时刻
                     ma5=None, ma10=None, ma20=None, ma60=None,
                     avg_volume_20=None, high_60d=None, low_60d=None,
                     macd_dif=None, macd_dea=None, macd_hist=None,

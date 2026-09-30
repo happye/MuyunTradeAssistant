@@ -243,6 +243,10 @@ class StockData(BaseModel):
     # live 路径由 calculate_indicators 填充；回测 DataFeeder._build_stock_data 不填 -> None -> 跳过减持子信号（回测公告非 point-in-time，诚实声明）
     recent_announcements: Optional[list] = Field(default=None, description="近期公告列表[{title,date,content,source}]（live 填充，回测缺省 None）")
 
+    # L0（R11/V1）：行情时点——实时行情抓取时刻（ISO 带时区）或最近 K 线日期（YYYY-MM-DD）。
+    # 影子观察资格用（quote_cutoff 真实来源）；无法取得时如实 None——不拿墙钟冒充行情时点。
+    quote_as_of: Optional[str] = Field(default=None, description="行情时点（行情抓取时刻或最近K线日期；影子观察资格用）")
+
     # v0.8.9.5：class-based Config 在 Pydantic V2 已弃用（V3 移除），改 ConfigDict
     model_config = ConfigDict(extra="allow")  # 允许额外字段
 

@@ -227,4 +227,5 @@ def _capture_shadow_for(tmp_path, plans_store, store_assessments=None, *, assess
                           packet=packet, source="test", config=cfg,
                           store_path=tmp_path / "shadow.jsonl",
                           plans_store=plans_store, assessment_store=assessment_store,
-                          account_version="v_k2a")
+                          account_version="v_k2a",
+                          quote_as_of="2026-09-26")  # L0：行情时点齐（v7 合同门槛）
