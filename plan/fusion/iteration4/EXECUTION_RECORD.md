@@ -275,11 +275,40 @@ plain_errors.py 新增 6 条 + 更新 fsync 条目：账户账本存在/账户�
 
 ## K3｜原件、字段与规则证据
 
-**状态：BLOCKED_NETWORK（2026-09-28）——下载发行人报告需外部网络，当前环境直连与代理均不可达（git push 同样失败），不伪造下载结果。**
+**状态：第一批 6/6 点位发行人原件核定完成（2026-09-30，网络恢复后实施）**
 
-| 项 | 状态 | 依据 |
-|---|---|---|
-| 原件试点剩余 5 份 | **NOT_RUN**（网络不可达） | DATA_DECISION 第一批排期；按卡规则：下载失败记 NOT_RUN/UNAVAILABLE，不用供应商交叉一致替代原件 |
-| 波次 B（currentRatio/quickRatio/assetToEquity） | **NOT_RUN** | 字段定义核定需官方来源证据（网络）；liabilityToAsset 仅万科 2024H1 单点已核定，不推广 |
-| 波次 C（cashRatio/YOYLiability） | **NOT_RUN** | 真实消费前再做（卡原文） |
-| 逐股可买数量/全市场日期化规则 | **PARTIAL（不变）** | K3 卡：先锁官方生效日/板块/数量/费用证据再接 today——证据未取得，PARTIAL 如实保留 |
+### 执行记录（K3-T1 原件试点剩余 5 份）
+
+- 下载：巨潮官方接口检索定期报告 → 下载 PDF（5/5 成功；茅台 2024H1 首次误下摘要版
+  已换全文版 1220825189；脚本 tests/artifacts/k3_original_pilot/download_reports.py，
+  下载日志 download_log.json 含全部 URL/announcement_id/sha256）
+- 提取：pypdf 确定性文本提取（extract_reports.py）——行首锚定 + **section 行级边界**
+  （K3 实测：合并表负债端与「母公司资产负债表」标题同页，页级判定会整页漏）+
+  表内自洽校验（负债合计=流动+非流动；总计行与资产总计相等，兼容茅台跨行标签
+  「负债和所有者权益（或股…东权益）总计」）——**6/6 自洽通过**
+- 对照：发行人负债率 vs baostock 供应商值（经 ISS-114 映射 apply_unit_drift_mapping
+  逐条应用——首跑漏映射暴露为 Q2/Q3 pending，修正后 5/5 verified_against_original）
+
+### 核定结果（liabilityToAsset，发行人原件 vs 供应商映射值）
+
+| 点位 | 发行人值 | 供应商值 | 差 | 核定 id | 级别 |
+|---|---|---|---|---|---|
+| 万科 2024Q1 | 0.727070 | 0.72707 | 2.8e-7 | orig_9809974a0509162a | verified_against_original |
+| 万科 2024H1 | 0.729370 | 0.7294 | 3.0e-5 | orig_6366a5eff46fb65a | verified_against_original（J1） |
+| 万科 2024Q3 | 0.724164 | 0.7242 | 3.6e-5 | orig_94df7180119a2f42 | verified_against_original |
+| 茅台 2024Q1 | 0.129543 | 0.129543 | 2.4e-7 | orig_293fc4d0073c3713 | verified_against_original |
+| 茅台 2024H1 | 0.183242 | 0.1832 | 4.2e-5 | orig_8c3ed4e84f21ceea | verified_against_original |
+| 茅台 2024Q3 | 0.136285 | 0.1363 | 1.5e-5 | orig_e2c7b74d9cc7386c | verified_against_original |
+
+- Q2/Q3 供应商值为 4 位精度（如 0.1832），发行人全精度 4 位舍入后一致——差为供应商
+  精度如实披露；Q1 两值全精度直接一致。
+- **结论**：umd_iss114_liability_v1（×100 映射）经两家样本 × 2024Q1/Q2/Q3 全部
+  6 点位发行人原件核对成立；波次 A（liabilityToAsset）第一批核定完成。
+- 原件留样：PDF 本地 tests/artifacts/k3_original_pilot/ + J1 的 000002_2024H1；
+  .gitignore 约定 artifacts 不入库（J1 同例），证据链（URL/announcement_id/sha256/
+  页码/行值/公式）完整登记于 ~/.muyun/research/originals/orig_*.json，
+  复验口令=download_reports.py / extract_reports.py / verify_and_register.py 可重放。
+- 波次 B（currentRatio/quickRatio/assetToEquity）：**NOT_RUN**（原件在手可提取，
+  按 K3 卡「字段定义核定后才进能力」单独排期——本批先负债率）。
+- 波次 C：NOT_RUN（真实消费前再做）。
+- 逐股可买数量/全市场日期化规则：**PARTIAL 不变**（规则证据未取得）。
