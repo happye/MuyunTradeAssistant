@@ -13,7 +13,8 @@
 | `tests/rag/` | RAG 摄取/检索/隔离/重排（mock 为主） | |
 | `tests/data_sources/` | 数据源测试（mock 与真实外源混合，见下） | |
 | `tests/ui/` | web/tui 集成测试（mock 底层引擎） | |
-| `tests/artifacts/` | 历史回测/issue 验证的输出产物（非脚本） | 收集期排除 |
+| `tests/artifacts/` | 历史回测/issue 验证的输出产物与**单独存储的大文件**（PDF 等，非脚本；L3 起脚本/清单不入此目录） | 收集期排除 |
+| `tests/evidence/` | 随交付入库的证据包脚本与机器可读清单（如 k3_original_pilot：清单/离线复验入口/登记工具；PDF 大文件单独存 artifacts，获取方式见清单 source_url） | 收集 |
 | `tests/rag_eval/` | RAG 检索质量评估工具 | 收集期排除 |
 
 ## 常用命令

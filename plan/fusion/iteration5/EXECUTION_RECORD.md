@@ -131,3 +131,34 @@ L0 与 L1 业务模块可分开处理，共享 CLI/计划接线串行整合。
 1. 产品版本号（start.py/cli --version/AGENTS.md 三处）第五轮全程未 bump——收口时按架构师裁决统一处理。
 2. K2a 旧测试 test_k2a_full_loop_fixture_to_active_ref 仍为直调服务形态（R11 批评点）——本卡以 test_l2_public_checkpoint.py 全链测试补齐真实入口验收；旧测试保留作服务层回归。
 3. L3（原件证据交付可重建）待实施。
+
+## L3｜原件证据交付可重建（G4/G6，T07）
+
+**状态：实施完成，待架构师复验（2026-10-01）**
+
+### 红灯
+
+tests/core/test_l3_evidence_pack.py 4红+3error 起步（raw/mapped 未分列、漂移检测/清单/离线复验入口不存在）→ 8/8 绿。
+
+### 实施
+
+| # | 内容 | 文件 |
+|---|---|---|
+| L3-T1 | 登记语义修复：供应商 **raw/mapped 分列**（旧脚本把映射值写进 baostock_raw 键——R11/L3 点名缺陷，勘误 88ddbc6 披露过）；更正检索状态 correction_search_status=not_performed 如实明示（替换固定「首发版」注记） | tests/evidence/k3_original_pilot/verify_and_register.py |
+| L3-T2 | 可注入重放：--store 临时研究库（缺省真实库=运维用法）；--supplier-cache 供应商缓存（离线重放零触网）；旧记录**漂移检测**四态 REGISTERED/IDEMPOTENT/EXISTING_DIVERGENT/SKIPPED——已有记录 vs 本轮 entry 逐字段比较，store 幂等不覆盖（登记语义漂移交人工核对，参照 L008） | 同上 |
+| L3-T3 | 可携带清单：k3_evidence_manifest_v1 六点位（URL/hash/证券/期间/字段/单位/合并范围/页/行/原值/公式/版本/更正检索状态）；000002_2024Q2 的 source_url=null 如实标注 not_recorded（J1 批次未记录，不编造）；供应商值 recorded_only；**原件数值核定与 PIT 可得性分别出状态**（pit_availability=not_assessed——核定不自动取得历史 PIT 资格） | tests/evidence/k3_original_pilot/build_evidence_manifest.py + evidence_manifest.json |
+| L3-T4 | 离线复验入口：复用 extract_reports.extract_one 同一提取链路——MISSING/HASH_MISMATCH/EXTRACT_FAILED/SELF_CHECK_FAILED/VALUE_MISMATCH/PASS 六态，失败不伪补；**真实交付清单 6/6 PASS** | tests/evidence/k3_original_pilot/verify_manifest_offline.py + offline_verification_results.json |
+| L3-T5 | 交付通道（guard P1-1）：脚本/清单从 gitignored tests/artifacts 迁至**随交付入库**的 tests/evidence/k3_original_pilot/——PDF 单独存储留 artifacts（卡面「PDF 可单独存储」），获取方式=清单 source_url+download_reports.py；tests/README.md 目录定位同步 | 目录迁移 |
+
+### 验证
+
+- 红灯→绿灯：test_l3_evidence_pack.py 8/8 passed（含交付清单本体回归——手工篡改会被拦）
+- 真实离线复验：6/6 PASS exit=0（PDF hash/重提取/算式复算全一致）
+- 全量：pytest -q → 1398 passed, 2 skipped（零网络纪律恢复——guard P1-2 修复后测试不再触 baostock）
+- code-quality-guard 监督审查：P1×2 已修复（交付通道 gitignore 吞没→迁 tests/evidence；测试真实触网→全 key 合成缓存+诚实 docstring）；P2×1 已修复（交付清单本体纳入回归）；P3×5 已修复（PASS 分支复核自洽、坏文件防护、防御取值、产物相对路径、raw_note 分点措辞）
+
+### 未完成项 / 留架构师
+
+1. 波次B（currentRatio/quickRatio/assetToEquity 逐字段核对）：按 DELIVERY_PLAN 由架构师依 G4/G5 消费方确定优先级后细化，本轮只交框架（清单 schema/复验入口已可扩展）。
+2. 真实库旧记录（旧键语义）重登：漂移检测会显式报 EXISTING_DIVERGENT——是否清理重登由用户/架构师裁决（参照 L008）。
+3. 映射 v2 未申请未实施（须限定已核定范围、追加版本、验证 v1 可重放——前置未到）。

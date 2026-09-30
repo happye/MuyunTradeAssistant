@@ -1,0 +1,270 @@
+{
+ "000002_2024Q1": {
+  "pdf": "tests\\artifacts\\k3_original_pilot\\000002_2024Q1.pdf",
+  "pages": 14,
+  "balance_sheet_pages_0based": [
+   9,
+   10
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 9,
+    "raw": "1,463,869,094,846.18",
+    "value": 1463869094846.18
+   },
+   "流动负债合计": {
+    "page_0based": 9,
+    "raw": "802,373,756,361.82",
+    "value": 802373756361.82
+   },
+   "非流动负债合计": {
+    "page_0based": 9,
+    "raw": "261,961,952,006.71",
+    "value": 261961952006.71
+   },
+   "负债合计": {
+    "page_0based": 10,
+    "raw": "1,064,335,708,368.53",
+    "value": 1064335708368.53
+   },
+   "负债和所有者权益总计": {
+    "page_0based": 10,
+    "raw": "1,463,869,094,846.18",
+    "value": 1463869094846.18
+   }
+  },
+  "liability_to_asset_issuer": 0.727070277059417,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "9b6448abe7897ee462f905fb1273630d1c157fa4f5cd2d73c8ac8ef3cd551341",
+  "security_id": "000002",
+  "security_name": "万科A",
+  "label": "2024Q1",
+  "period_end": "2024-03-31"
+ },
+ "000002_2024Q2": {
+  "pdf": "tests\\artifacts\\j1_original_pilot\\000002_2024H1.pdf",
+  "pages": 223,
+  "balance_sheet_pages_0based": [
+   20,
+   54,
+   55,
+   56,
+   57
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 54,
+    "raw": "1,422,819,020,978.85",
+    "value": 1422819020978.85
+   },
+   "流动负债合计": {
+    "page_0based": 55,
+    "raw": "786,441,354,254.96",
+    "value": 786441354254.96
+   },
+   "非流动负债合计": {
+    "page_0based": 55,
+    "raw": "251,320,461,356.81",
+    "value": 251320461356.81
+   },
+   "负债合计": {
+    "page_0based": 55,
+    "raw": "1,037,761,815,611.77",
+    "value": 1037761815611.77
+   },
+   "负债和股东权益总计": {
+    "page_0based": 55,
+    "raw": "1,422,819,020,978.85",
+    "value": 1422819020978.85
+   }
+  },
+  "liability_to_asset_issuer": 0.729370215263095,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "3c7e7373935d74d7bdea36a27c2c0782836a40e8c93cad81ca787376575e5462",
+  "security_id": "000002",
+  "security_name": "万科A",
+  "label": "2024Q2",
+  "period_end": "2024-06-30"
+ },
+ "000002_2024Q3": {
+  "pdf": "tests\\artifacts\\k3_original_pilot\\000002_2024Q3.pdf",
+  "pages": 17,
+  "balance_sheet_pages_0based": [
+   7,
+   11,
+   12
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 11,
+    "raw": "1,357,179,783,436.20",
+    "value": 1357179783436.2
+   },
+   "流动负债合计": {
+    "page_0based": 12,
+    "raw": "750,831,759,219.86",
+    "value": 750831759219.86
+   },
+   "非流动负债合计": {
+    "page_0based": 12,
+    "raw": "231,989,582,513.37",
+    "value": 231989582513.37
+   },
+   "负债合计": {
+    "page_0based": 12,
+    "raw": "982,821,341,733.23",
+    "value": 982821341733.23
+   },
+   "负债和所有者权益总计": {
+    "page_0based": 12,
+    "raw": "1,357,179,783,436.20",
+    "value": 1357179783436.2
+   }
+  },
+  "liability_to_asset_issuer": 0.7241644428602202,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "b6b0ba38fd55459ccc155f79f4df70b5f6075c6e3cd1b6f6297eb611ff825b8e",
+  "security_id": "000002",
+  "security_name": "万科A",
+  "label": "2024Q3",
+  "period_end": "2024-09-30"
+ },
+ "600519_2024Q1": {
+  "pdf": "tests\\artifacts\\k3_original_pilot\\600519_2024Q1.pdf",
+  "pages": 12,
+  "balance_sheet_pages_0based": [
+   5,
+   6
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 5,
+    "raw": "285,524,543,268.38",
+    "value": 285524543268.38
+   },
+   "流动负债合计": {
+    "page_0based": 6,
+    "raw": "36,626,674,015.39",
+    "value": 36626674015.39
+   },
+   "非流动负债合计": {
+    "page_0based": 6,
+    "raw": "361,100,702.46",
+    "value": 361100702.46
+   },
+   "负债合计": {
+    "page_0based": 6,
+    "raw": "36,987,774,717.85",
+    "value": 36987774717.85
+   }
+  },
+  "liability_to_asset_issuer": 0.12954324099236256,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "b706e237e25ff54a0bde7070a13b019a5e1eec7f412eb9d0baf33e750a7c32e2",
+  "security_id": "600519",
+  "security_name": "贵州茅台",
+  "label": "2024Q1",
+  "period_end": "2024-03-31"
+ },
+ "600519_2024Q2": {
+  "pdf": "tests\\artifacts\\k3_original_pilot\\600519_2024H1.pdf",
+  "pages": 105,
+  "balance_sheet_pages_0based": [
+   26,
+   27,
+   28,
+   29,
+   84
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 26,
+    "raw": "279,207,261,166.63",
+    "value": 279207261166.63
+   },
+   "流动负债合计": {
+    "page_0based": 26,
+    "raw": "50,806,881,664.47",
+    "value": 50806881664.47
+   },
+   "非流动负债合计": {
+    "page_0based": 27,
+    "raw": "355,569,852.88",
+    "value": 355569852.88
+   },
+   "负债合计": {
+    "page_0based": 27,
+    "raw": "51,162,451,517.35",
+    "value": 51162451517.35
+   }
+  },
+  "liability_to_asset_issuer": 0.18324183727734936,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "898b37d6529d0042aa66461bae11b84a47f9337c2ff1d572155bfa71fca77c58",
+  "security_id": "600519",
+  "security_name": "贵州茅台",
+  "label": "2024Q2",
+  "period_end": "2024-06-30"
+ },
+ "600519_2024Q3": {
+  "pdf": "tests\\artifacts\\k3_original_pilot\\600519_2024Q3.pdf",
+  "pages": 11,
+  "balance_sheet_pages_0based": [
+   5,
+   6
+  ],
+  "found": {
+   "资产总计": {
+    "page_0based": 5,
+    "raw": "286,770,722,957.69",
+    "value": 286770722957.69
+   },
+   "流动负债合计": {
+    "page_0based": 6,
+    "raw": "38,723,890,549.12",
+    "value": 38723890549.12
+   },
+   "非流动负债合计": {
+    "page_0based": 6,
+    "raw": "358,668,170.40",
+    "value": 358668170.4
+   },
+   "负债合计": {
+    "page_0based": 6,
+    "raw": "39,082,558,719.52",
+    "value": 39082558719.52
+   }
+  },
+  "liability_to_asset_issuer": 0.13628503745581524,
+  "self_checks": {
+   "liab_sum_consistent": true,
+   "total_consistent": true
+  },
+  "self_check_ok": true,
+  "file_hash": "ebeccbbe12b5b1a9dfa5ada16c956cba6fa30a6fb917f95856da16c1a719ce98",
+  "security_id": "600519",
+  "security_name": "贵州茅台",
+  "label": "2024Q3",
+  "period_end": "2024-09-30"
+ }
+}

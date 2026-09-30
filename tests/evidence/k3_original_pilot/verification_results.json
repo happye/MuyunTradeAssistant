@@ -1,0 +1,37 @@
+[
+ {
+  "key": "000002_2024Q1",
+  "verification_id": "orig_9809974a0509162a",
+  "level": "verified_against_original",
+  "issuer": 0.727070277059417,
+  "baostock": 0.72707
+ },
+ {
+  "key": "000002_2024Q3",
+  "verification_id": "orig_94df7180119a2f42",
+  "level": "verified_against_original",
+  "issuer": 0.7241644428602202,
+  "baostock": 0.7242000000000001
+ },
+ {
+  "key": "600519_2024Q1",
+  "verification_id": "orig_293fc4d0073c3713",
+  "level": "verified_against_original",
+  "issuer": 0.12954324099236256,
+  "baostock": 0.129543
+ },
+ {
+  "key": "600519_2024Q2",
+  "verification_id": "orig_8c3ed4e84f21ceea",
+  "level": "verified_against_original",
+  "issuer": 0.18324183727734936,
+  "baostock": 0.1832
+ },
+ {
+  "key": "600519_2024Q3",
+  "verification_id": "orig_e2c7b74d9cc7386c",
+  "level": "verified_against_original",
+  "issuer": 0.13628503745581524,
+  "baostock": 0.1363
+ }
+]
