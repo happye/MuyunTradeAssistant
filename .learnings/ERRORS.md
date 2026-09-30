@@ -420,3 +420,38 @@ Baostock 官方主页/API文档在本轮 web 工具仅返回 `×`，未取得字
 首次深审探针因stdout默认GBK无法输出emoji而失败，且cwd仍在TemporaryDirectory内导致Windows无法清理目录；改为显式UTF-8并用contextlib.chdir保证先恢复cwd再清理。首次pytest隔离门禁阻断pandas导入时stdlib的Windows版本探测子进程，先在门禁前预热platform.uname（只读），产品运行仍禁止子进程；随后语料测试试图往tests/artifacts写报告被正确拦截，运行器按模块重定向ARTIFACT到临时根；pytest默认日志NUL也被严格写门禁拦截，改为显式临时日志路径。最终两种运行器成功，真实portfolio及bak哈希不变。没有为通过测试开放真实账户或仓库写入。
 
 另一次读取错写src/core/research_snapshot.py（实际src/data）后用rg --files定位；网页automations.md获取失败后改读官方HTML。工具失败不计产品缺陷、不据失败页面推断官方功能。
+
+## [ERR-20261001-ARCH04] 审批探针的CLI输入格式与输出隔离
+
+**Logged**: 2026-10-01
+**Status**: resolved（最终5场景均复现且无probe_error；JSON可完整解析）
+
+第一次V4把应用服务嵌套documents形态当作CLI claims文件形态，入口正确拒收导致探针未获得回执；读实际_load_research_claims_file后改用其扁平输入。随后CLI --json直接print未被Rich console替身截获，导致结果文件含两份JSON；以redirect_stdout单独捕获受测命令后重跑，主结果为单份JSON。两项均为审查脚本错误，未计入产品缺陷。另一次凭记忆读取不存在test_k1_observation_v6.py，rg确认实际test_k1_shadow_v6.py后继续；今后先枚举文件再读取。
+
+## [ERR-20261001-HERED01] bash_heredoc_python_patch
+
+**Logged**: 2026-10-01T12:00:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: config
+
+### Summary
+同一会话内第三次踩 heredoc 陷阱：bash heredoc 内嵌 python 补丁因转义/替换串不匹配静默失效（一次 NameError：辅助函数定义替换未生效导致调用悬空；一次多行 old_string 含反斜杠续行未匹配）。memory 与纪律均有警告仍复发。
+
+### Error
+```
+NameError: name '_assert_files_in_tmp' is not defined
+（另一次：str.replace 的 old_string 含 "\\" 续行符，heredoc 传给 python 后与文件实际内容不符，replace 静默 no-op）
+```
+
+### Context
+- 命令：`./.venv/Scripts/python.exe - <<'EOF'` 形式跑多行 str.replace 补丁
+- 环境：Windows Git Bash + 中文路径；quoted heredoc 阻止了变量展开但未阻止行内转义歧义
+
+### Suggested Fix
+本环境**一律用 Write 工具写独立 .py 补丁脚本再执行**，禁止 heredoc 内嵌 python 多行补丁（memory feedback_heredoc_escaping 升级为强制规则）；补丁脚本内做 `assert old in src` 防静默 no-op，replace 计数打点。
+
+### Metadata
+- Reproducible: yes
+- Related Files: tests/core/test_k1_shadow_v6.py
+- See Also: LRN-20260924-014（subprocess encoding 同族环境陷阱）

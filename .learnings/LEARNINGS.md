@@ -2056,3 +2056,139 @@ J0–J5 实施方全量 1297 绿，架构师独立目标 78 绿，但隔离临�
 - Source: k0a_k0b_implementation
 - Pattern-Key: verification.empty_substring_membership, recovery.write_order_per_path, testing.no_fixture_edits_during_suite
 - Related Files: src/core/claim_extraction.py, src/data/portfolio.py, tests/ai_eval/claim_verification_corpus.json
+
+## [LRN-20261001-ARCH06] correction — 长期能力里程碑与实施批次分开维护
+
+**Logged**: 2026-10-01
+**Priority**: high
+**Status**: resolved（根MILESTONES已建立；每批持续维护义务保留）
+**Area**: architecture, planning, memory
+
+用户指出此前按F/R/J/K逐批设计，缺少清晰长期方向；STATUS顶部更新而总表仍TODO，RESUME仍列已修问题。根MILESTONES现在固定R需求、G能力里程碑、T必要优化/重构与V1结项门，STATUS只记当前交付审批，RESUME只做增量恢复。每次审批同步三处；只细化依赖已满足的当前窗口，设计先经反例/基线/原型验证，远期方向不得标成已验证方案。持久化职责写CODEX，不给共享AGENTS阅读者重新分配身份。
+
+- Source: user_correction_20261001
+- Pattern-Key: planning.stable_outcome_milestones_before_iteration_batches
+- Related Files: MILESTONES.md, CODEX.md, plan/fusion/STATUS.md, plan/fusion/RESUME.md
+
+## [LRN-20261001-ARCH07] insight — 字段声明和服务测试不能替代消费者与公开入口验收
+
+**Logged**: 2026-10-01
+**Priority**: P1
+**Status**: open（V1–V4承接L0/L1/L2，未改产品）
+**Area**: acceptance, qualification, public-path
+
+K交付原10探针关闭、独立243目标绿；新增探针证实quote_cutoff=None仍eligible并进分母、目标权重变化未入指纹、ratio_stale写入后策略仍读旧比例、REPL已confirm-risk但checkpoint refs固定空而不能建立。独立验收必须从字段真实来源追到资格/指纹/报告和策略消费；“端到端”需实际穿公开解析器与业务装配，不能用app.run+store.accept+影子stub替代后宣称l全链。服务显式refs正向对照证明V4是入口传参缺口，不是缺金融数据。
+
+- Source: architecture_R11_independent_acceptance
+- Pattern-Key: acceptance.declared_fields_must_reach_real_consumers
+- Related Files: plan/fusion/iteration5/R11_ACCEPTANCE.md, plan/fusion/iteration5/acceptance_probes.py
+
+## [LRN-20261001-L005] correction — 测试断言路径必须与声称的验收层级一致（R11 退回实证）
+
+**Logged**: 2026-10-01T12:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: tests
+
+### Summary
+K2a 交付报告所称「纵向全链」测试（test_k2a_full_loop_fixture_to_active_ref）实际是 app.run 直调 + stub 构造 capture_shadow，未经真实 REPL 入口——架构师 R11 判定不能支撑纵向验收，并列为本轮退回理由之一。
+
+### Details
+测试名为「full_loop」、断言了 effective 观察，读起来像全链验收；但执行路径跳过了 parse_input→run_cli→research_command 的解析与装配层（checkpoint evidence_refs=[] 的 V4 缺口恰恰只在真实入口路径上才暴露）。同类问题：验收层级（单元/集成/端到端/真实入口）必须在测试名、docstring 与断言路径三者一致。
+
+### Suggested Action
+宣称「端到端/纵向/全链」的测试必须实走真实用户入口（start.parse_input→run_cli）；跨界替身只用于数据/存储隔离，不得替换被测环节。写测试前先回答「这个测试经过哪些生产层」。
+
+### Metadata
+- Source: error
+- Related Files: tests/core/test_k2a_research_loop.py, plan/fusion/iteration5/R11_ACCEPTANCE.md
+- Tags: testing, acceptance, e2e
+- See Also: LRN-20260925-015（patch 绑定）
+- Pattern-Key: testing.assertion_level_matches_claim
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+---
+
+## [LRN-20261001-L006] correction — 交付前对照合同**原文全集**逐字段核对，不自列清单
+
+**Logged**: 2026-10-01T12:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: docs
+
+### Summary
+K1 shadow_v6 交付时 binding 字段集缩水（缺 snapshot_id/decision_rule_version/主意图引用/evidence_cutoff/quote_cutoff）且账本零披露——对照核对只对了自己列的字段清单，没有回对任务卡与 README 冻结候选的合同原文全集，架构师 R11 以「P1 字段缩水零披露」退回。
+
+### Details
+自查清单是自己写的，遗漏会原样传递；合同（任务卡/审批报告/README 候选清单）才是全集来源。字段不可实现（如行情时点无数据源）也必须显式披露+给保守降级，不能静默缺席。
+
+### Suggested Action
+每卡交付前做「合同原文逐字段 checklist」：把任务卡/审批报告里列出的每个字段/场景/披露要求抄成勾选表，逐条指认实现位置或显式披露缺口；清单本身入账本。
+
+### Metadata
+- Source: error
+- Related Files: src/core/shadow_diff.py, plan/fusion/iteration5/R11_ACCEPTANCE.md
+- Tags: acceptance, contract, disclosure
+- See Also: LRN-20261001-L007（同一审查发现的测试可失败性问题）
+- Pattern-Key: acceptance.contract_full_checklist
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+---
+
+## [LRN-20261001-L007] best_practice — 测试可失败性自查：写完自问「实现错误时它会怎么红」
+
+**Logged**: 2026-10-01T12:00:00+08:00
+**Priority**: high
+**Status**: pending
+**Area**: tests
+
+### Summary
+K1「旧记录原样保留」测试的关键语义不可失败：第二次 capture 被 dedup 吞掉后，断言 legacy=1 与 effective>=1 恰好由同一条降级记录满足——测试在「新旧并存分别计数」错误实现下依然绿。监督 agent 用探针实跑才暴露。
+
+### Details
+两次诱因：①场景构造让错误实现与本实现产生相同观测（应换账户版本使第二次不被去重）；②断言消息宣称 A 实际断言 B（"v6 独立累计"实际数的是旧记录）。另外存在恒真断言（tmp_path 与自身比较的"隔离断言"）。
+
+### Suggested Action
+每个新测试写完自问两问：①「若实现按错误方式 X，此测试哪一行变红？」答不出=空转测试，改场景或断言；②「断言的消息与断言本体是否同一件事」。场景构造要能让错误实现产生可区分观测。
+
+### Metadata
+- Source: error
+- Related Files: tests/core/test_k1_shadow_v6.py
+- Tags: testing, falsifiability
+- See Also: LRN-20261001-L005
+- Pattern-Key: testing.falsifiability_self_check
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+---
+
+## [LRN-20261001-L008] correction — 对照/复验脚本必须复用生产同一转换链路
+
+**Logged**: 2026-10-01T12:00:00+08:00
+**Priority**: medium
+**Status**: resolved
+**Area**: tests
+
+### Summary
+K3 供应商对照首跑把 get_financial_quarterly 的 raw 值直接与发行人值比对（漏掉 apply_unit_drift_mapping 生产映射步骤），误判 3 点 pending；且映射是逐 fin dict 应用而非整体列表。修正后 5/5 verified_against_original。
+
+### Details
+生产读取链=raw→apply_unit_drift_mapping（ISS-114 ×100，逐条）→canonical；对照脚本绕过映射等于用不同口径核对。另发现 save_original_verification 确定性 id 幂等不覆盖——首版误登记 pending 会挡住修正重登，需清理本任务自己的登记再重放（并在账本留痕）。
+
+### Suggested Action
+任何对照/复验/评测脚本对「生产数据的转换步骤」（映射/舍入/时点折算）必须显式调用生产同一函数，不得手写近似逻辑；幂等登记存储重放前先核对既有记录状态。
+
+### Metadata
+- Source: error
+- Related Files: tests/artifacts/k3_original_pilot/verify_and_register.py, src/data/financial_data.py
+- Tags: verification, pipeline-parity
+- Pattern-Key: verification.reuse_production_pipeline
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+### Resolution
+- **Resolved**: 2026-10-01
+- **Commit/PR**: 183c771 + 88ddbc6（勘误披露）
+- **Notes**: 对照脚本已按生产链路修正重登 5/5 verified_against_original；baostock_raw 键语义勘误同步账本。
