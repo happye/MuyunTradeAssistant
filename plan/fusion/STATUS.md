@@ -25,7 +25,9 @@
 
 ## 当前执行窗口
 
-[第五轮L0–L3](iteration5/DELIVERY_PLAN.md)为下一批：L0观察合同、L1账户读模型、L2公开检查点、L3可重建原件证据。设计验证见[原型与限制](iteration5/DESIGN_VALIDATION.md)。当前产品代码尚未实施这些修正。
+[第五轮L0–L3](iteration5/DELIVERY_PLAN.md)：L0观察合同、L1账户读模型、L2公开检查点、L3可重建原件证据。设计验证见[原型与限制](iteration5/DESIGN_VALIDATION.md)。
+
+**实施方交付（2026-10-01，待架构师复验）**：L0–L3 四卡全部实施并独立测试通过——探针 V1/V2/V3/V3b observed_defect=false（V4 历史命令形态按合同仍 UNKNOWN，通道由 L2 端到端验证）；shadow_v6→v7 升版（旧记录只诊断不追认）；测试先红后绿，全量 1398 passed；每卡 commit 前过 code-quality-guard（P1/P2 全部处置）。逐卡 commit/命令/产物/未完成项见 [EXECUTION_RECORD](iteration5/EXECUTION_RECORD.md)。**实现≠审批**：K1 冻结与 K2b 放行仍待架构师复验后裁决；效果证据零（观察样本从 v7 起算）。
 
 L0/L1/L2独立验收通过后，架构师再裁定K1冻结与K2b；后续中期完整样板、长期质量/估值、组合、效果与工程收敛已有G0–G8承接，未到前置时不铺开细节。
 
