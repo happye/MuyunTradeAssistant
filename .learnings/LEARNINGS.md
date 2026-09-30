@@ -2222,3 +2222,33 @@ L0/V2 回归测试（目标权重变化去重不吞）初版变异 `mid_binding[
 ### Resolution
 - **Resolved**: 2026-10-01
 - **Notes**: L0 卡内已改变异 `arms["fusion"]["target"]`（guard P2-1 处置）；探针 acceptance_probes.py 写 target_weight 属既有期望按红线不改写（机械通过即可）。
+
+---
+
+## [LRN-20261001-L010] correction — 哨兵值 None 必须区分语义来源（无持仓 ≠ 有仓未知）
+
+**Logged**: 2026-10-01T16:30:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: design
+
+### Summary
+L1 把 StrategyState.current_position_ratio 改为 Optional（None=有仓但权重未知）后，四个装配点（chat/scanner/tui/web）在 strategy_state=None（真无持仓）时兜底传了 None——orchestrator 把 None 解读为「有仓未知」→ 非持仓股的建仓建议被吞成 HOLD。code-quality-guard 实测复现（同一数据 cli 给 OPEN、chat 给 HOLD_POSITION），正是防矫枉过正红线。
+
+### Details
+None 作为哨兵值进入类型系统时，「缺省兜底」和「显式语义」共用同一个值但含义不同：无持仓（0.0=FLAT）≠ 有仓权重未知（None）。调用方区分不了两种 None，只能由产生侧区分——兜底写 None 等于把「没有」伪装成「有但不知道」。
+
+### Suggested Action
+引入 Optional 哨兵语义时：(1) 逐点审计所有产生 None 的路径，兜底值必须回到「最保守的正确缺省」（无持仓=0.0）；(2) 补「缺省路径不触发新语义」的对照回归测试；(3) 让监督审查专门检查 None 流向。
+
+### Metadata
+- Source: error
+- Related Files: src/chat/tools.py, src/scanner/scanner_engine.py, src/tui/app.py, src/web/app.py, src/core/orchestrator.py
+- Tags: design, sentinel-value, regression-risk
+- Pattern-Key: design.sentinel_none_needs_origin_discipline
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+### Resolution
+- **Resolved**: 2026-10-01
+- **Notes**: L1 卡内四处兜底改回 0.0；test_unknown_weight_blocks_precise_add 补对照2（0.0+FLAT+BUY → OPEN 不被阻）；strategy_layer EXIT 分支补 None 守卫（P1-2）。

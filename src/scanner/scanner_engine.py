@@ -395,15 +395,14 @@ class ScannerEngine:
                 result["stock_name"] = name
 
                 # 获取持仓状态（如果有）
-                current_ratio = 0.0
                 strategy_state = None
                 has_position = False
                 entry_price = None
                 pos = positions_by_code.get(code)
                 if pos is not None:
-                    current_ratio = pos.current_ratio
-                    strategy_state = pm.to_strategy_state(code)
-                    has_position = pos.current_ratio > 0
+                    # L1（V3）：权重按资格判定（None=未知）；有仓判定数量感知
+                    strategy_state = pm.strategy_state_for(code, stock_data)
+                    has_position = pos.current_ratio > 0 or pos.quantity_held > 0
                     entry_price = pos.entry_price
 
                 # 调用Orchestrator七层分析（含买卖点 Layer 3.75）
@@ -412,7 +411,8 @@ class ScannerEngine:
                 # 止损与大顶信号在持仓股上失效（chat H1 同类缺口）
                 decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                     data=stock_data,
-                    current_position_ratio=current_ratio,
+                    current_position_ratio=(strategy_state.current_position_ratio
+                                            if strategy_state is not None else 0.0),
                     strategy_state=strategy_state,
                     ai_enabled=ai_enabled,
                     has_position=has_position,

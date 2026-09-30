@@ -393,7 +393,8 @@ class DecisionEngine:
         # v0.6.0: 止损仓位感知——空仓时止损降级为WATCH（保护性观望）
         for sig in stop_loss_signals:
             if sig.signal == SignalType.SELL and sig.confidence >= 0.8:
-                if current_position_ratio > 0:
+                # L1（V3）：None=有仓（数量事实）但权重未知——按持仓处理（保护性卖出不吞）
+                if current_position_ratio is None or current_position_ratio > 0:
                     # 有仓位：止损一票否决，卖出保护本金
                     return SignalType.SELL, f"⚠️ 止损信号覆盖：{', '.join(sig.reason[:2])}"
                 else:
@@ -682,18 +683,25 @@ class DecisionEngine:
                 if has_deep_stop:
                     # 深度止损：全部清仓（趋势走坏，避免越套越深）
                     return PositionAction.CLOSE_ALL, 0.0
-                elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+                elif current_position_ratio is not None and \
+                        0 < current_position_ratio < self.LOW_POSITION_CLEAR:
                     # 仓位已经很低（<10%），直接清仓
                     return PositionAction.CLOSE_ALL, 0.0
+                elif current_position_ratio is None:
+                    # L1（V3）：权重未知——减仓意图保留，不伪造精确目标
+                    return PositionAction.REDUCE, None
                 else:
                     # 浅层止损：减仓留65%底仓（短期走弱不等于趋势反转，温和减仓）
                     target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                     return PositionAction.REDUCE, target
-            elif current_position_ratio > 0 and current_position_ratio < self.LOW_POSITION_CLEAR:
+            elif current_position_ratio is not None and \
+                    0 < current_position_ratio < self.LOW_POSITION_CLEAR:
                 # 仓位已经很低（<10%），减仓没有意义，直接清仓
                 return PositionAction.CLOSE_ALL, 0.0
             elif has_take_profit:
                 # 止盈：减仓留50%底仓（分批止盈，第49章）
+                if current_position_ratio is None:
+                    return PositionAction.REDUCE, None  # L1：权重未知不伪造目标
                 target = current_position_ratio * self.TAKE_PROFIT_KEEP
                 return PositionAction.REDUCE, target
             else:
@@ -701,6 +709,8 @@ class DecisionEngine:
                 # 完全相同（都用 NORMAL_REDUCE_KEEP=0.65，0.4 是死分档）且注释「留50%」
                 # 与常量矛盾。合并为单分支：减仓留 65%（趋势走坏温和减仓）。
                 # 若未来想让强卖出真留 50%（TAKE_PROFIT_KEEP），属策略改动需 A/B 立项。
+                if current_position_ratio is None:
+                    return PositionAction.REDUCE, None  # L1：权重未知不伪造目标
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                 return PositionAction.REDUCE, target
 
@@ -709,15 +719,22 @@ class DecisionEngine:
                 # 强买入：建仓到较高比例或加仓
                 target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 # 如果已有持仓，这是加仓信号
+                # L1（V3）：None=有仓但权重未知——精确加仓被阻（不假增仓），持仓事实保留
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 return PositionAction.OPEN, target
             elif buy_score >= 0.25:
                 # 中等买入：试探建仓
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO, cap)
                 return PositionAction.OPEN, target
             else:
                 # 弱买入：极轻仓
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO * 0.5, cap)
                 return PositionAction.OPEN, target
 
@@ -725,6 +742,8 @@ class DecisionEngine:
             # HOLD：维持当前仓位（加仓信号，趋势确认）
             if buy_score > sell_score * 1.5:
                 # 偏多：建议加仓
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 return PositionAction.ADD, target
             else:

@@ -85,7 +85,13 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
                 f" ｜ {prop.created_at[:10]} 来自 {prop.source or '?'}"
                 f" ｜ 实际成交后: pos confirm {code}")
         if pos is not None:
-            card.lines.append(f"当前持仓 {pos.current_ratio:.0%}（记录未变——建议尚未记为成交）")
+            # L1（V3）：数量账户权重待重估——如实显示数量事实，不冒充已知比例
+            if pos.weight_unknown:
+                card.lines.append(
+                    f"持仓 {pos.quantity_held}股（[权重待重估]——数量账户比例视图过期，"
+                    "估值与NAV齐后自动锁定）")
+            else:
+                card.lines.append(f"当前持仓 {pos.current_ratio:.0%}（记录未变——建议尚未记为成交）")
         view.needs_action.append(card)
 
     # 继续持有：无待办的持仓
@@ -104,6 +110,17 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
         if pos.holding_verification == "LEGACY_UNVERIFIED":
             legacy_count += 1
         card = TodayCard(stock_code=code, stock_name=pos.stock_name, bucket="holding")
+        # L1（V3）：数量账户权重待重估——显示数量事实，不用过期比例做超限判断
+        # （T01：过期比例不得给风险预算）
+        if pos.weight_unknown:
+            detail = f"持仓 {pos.quantity_held}股（[权重待重估]——比例视图过期）"
+            if pos.entry_price and pos.entry_price > 0:
+                detail += f" ｜ 成本 {pos.entry_price}"
+            if pos.lifecycle:
+                detail += f" ｜ {pos.lifecycle}"
+            card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
+            view.holding.append(card)
+            continue
         detail = f"仓位 {pos.current_ratio:.0%}"
         if pos.entry_price and pos.entry_price > 0:
             detail += f" ｜ 成本 {pos.entry_price}"

@@ -510,7 +510,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             continue
 
         # 分析
-        strategy_state = pm.to_strategy_state(pos.stock_code)
+        # L1（V3）：装配边界接估值输入（行情时点+账户 NAV）——数量账户权重资格统一判定
+        strategy_state = pm.strategy_state_for(pos.stock_code, stock_data)
 
         if not has_indicators:
             # 无技术指标，只显示行情
@@ -519,7 +520,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             continue
 
         try:
-            has_position = pos is not None and pos.current_ratio > 0
+            # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）不得按空仓分析
+            has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
             decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                 stock_data,
                 current_position_ratio=strategy_state.current_position_ratio,
@@ -862,12 +864,18 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
 
         # ===== 读取持仓记录 =====
         pm = PortfolioManager()
-        strategy_state = pm.to_strategy_state(stock_code)
+        # L1（V3）：装配边界接估值输入（行情时点+账户 NAV）——权重资格统一判定
+        strategy_state = pm.strategy_state_for(stock_code, stock_data)
         pos = pm.get_position(stock_code)
         if pos:
             console.print(f"\n[bold green]📂 持仓记录[/bold green]")
             console.print(f"  生命周期: {pos.lifecycle}")
-            console.print(f"  当前仓位: {pos.current_ratio:.0%}")
+            if pos.weight_unknown:
+                # L1：数量账户权重待重估——如实显示数量事实，不冒充已知比例
+                console.print(f"  当前仓位: [yellow]权重待重估[/yellow]（数量账户 {pos.quantity_held}股，"
+                              f"比例视图过期——估值与NAV齐后自动锁定）")
+            else:
+                console.print(f"  当前仓位: {pos.current_ratio:.0%}")
             if pos.last_action_semantic:
                 console.print(f"  上次动作语义: {pos.last_action_semantic}")
             if pos.last_sell_path:
@@ -894,7 +902,8 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         event_config = config.get("event", None)
         entry_exit_config = config.get("entry_exit", None)
         orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
-        has_position = pos is not None and pos.current_ratio > 0
+        # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）不得按空仓分析
+        has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
             current_position_ratio=strategy_state.current_position_ratio,
@@ -1607,7 +1616,9 @@ def _watch_pool_touch(result, strategy_decision, sd, pos=None):
     """
     try:
         from src.cli import session_state
-        if pos is not None and getattr(pos, "current_ratio", 0) > 0:
+        # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）是持仓，不入观察池
+        if pos is not None and ((getattr(pos, "current_ratio", 0) or 0) > 0
+                                or getattr(pos, "quantity_held", 0) > 0):
             return None   # 持仓股走「继续持有」分支，不入观察池
         if result is None or sd is None or not sd.price:
             return None
@@ -1645,7 +1656,9 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     strategy_decision=None（旧调用方/降级）才回退原始信号口径（含观察池文案）。
     """
     ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
-    has_pos = pos is not None and pos.current_ratio > 0
+    # L1（V3）：有仓判定数量感知——重建仓不得因旧比例 0 被播报成空仓口径
+    has_pos = pos is not None and ((getattr(pos, "current_ratio", 0) or 0) > 0
+                                   or getattr(pos, "quantity_held", 0) > 0)
     decision = result.decision.value if result is not None else "?"
     lines: list[tuple] = []  # (color|None, text)
 
@@ -2299,6 +2312,12 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             change = None
         elif ratio and ratio > 0:
             change = ratio  # 用户显式给的部分成交比例
+        elif fill_action == "SELL" and target.target_ratio is None:
+            # L1（P2-3）：权重待重估的减仓建议不带目标数字——缺省推导会变成
+            # 「全比例卖出」（伪造规模）。要求显式给规模。
+            console.print(f"[yellow]⚠ {stock_code} 该建议权重待重估（数量账户比例视图过期，"
+                          "无目标数字）——请用 --qty 给实际成交股数，或 --ratio 给本笔比例[/yellow]")
+            return
         else:
             # 缺省 = 建议全额：目标 - 当前（仅比例路径使用）
             change = (pos_now.current_ratio or 0.0) - (target.target_ratio or 0.0) \
@@ -2480,9 +2499,13 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"  仓位: {ratio:.0%}" + (f"  开仓价: {price:.2f}" if price > 0 else ""))
 
         # 报告2.3 笨总教学十"永不满仓留底牌"：总仓位>80% 警告留底牌
+        # L1：None=存在权重待重估持仓——总仓位未知，不冒充判断
         try:
             _total_ratio = pm.get_total_position_ratio()
-            if _total_ratio > 0.80:
+            if _total_ratio is None:
+                console.print(f"  [yellow]⚠ 存在权重待重估持仓（数量账户比例视图过期）——"
+                              f"总仓位未知，暂无法判断80%底牌线；重估后再看[/yellow]")
+            elif _total_ratio > 0.80:
                 console.print(f"  [yellow]⚠ 总仓位 {_total_ratio:.0%}>80%，笨总教学十：任何时候给自己留一张底牌（建议≤80%，预留20%应对突发/抄底）[/yellow]")
         except Exception:
             pass

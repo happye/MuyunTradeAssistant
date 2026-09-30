@@ -91,22 +91,22 @@ def _analyze_work(code):
     if not stock_data:
         return {"error": f"无法获取 {code} 数据"}
     pos = None
-    current_ratio = 0.0
     strategy_state = None
     try:
         for p in _portfolio.list_positions():
             if p.stock_code == code:
                 pos = p
-                current_ratio = p.current_ratio
-                strategy_state = _portfolio.to_strategy_state(code)
+                # L1（V3）：权重按资格判定（None=未知）；有仓判定数量感知
+                strategy_state = _portfolio.strategy_state_for(code, stock_data)
                 break
     except Exception as e:
         # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
         logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
-    has_position = pos is not None and pos.current_ratio > 0
+    has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
     dr, sd, ee, ai = _orchestrator.analyze(
         stock_data,
-        current_position_ratio=current_ratio,
+        current_position_ratio=(strategy_state.current_position_ratio
+                                if strategy_state is not None else 0.0),
         strategy_state=strategy_state,
         ai_enabled=True,
         has_position=has_position,

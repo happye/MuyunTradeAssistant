@@ -296,7 +296,6 @@ def _analyze_stock_single(stock_code: str) -> str:
 
         # 获取持仓状态（v0.8.7.8 H05：双侧代码规范化，带前缀/空格输入也能匹配持仓）
         pm = _portfolio_manager
-        current_ratio = 0.0
         strategy_state = None
         pos = None
         norm_code = _normalize_code(stock_code)
@@ -305,17 +304,19 @@ def _analyze_stock_single(stock_code: str) -> str:
             for p in positions:
                 if _normalize_code(p.stock_code) == norm_code:
                     pos = p
-                    current_ratio = p.current_ratio
-                    strategy_state = pm.to_strategy_state(stock_code)
+                    strategy_state = pm.strategy_state_for(stock_code, stock_data)
                     break
 
-        has_position = pos is not None and pos.current_ratio > 0
+        # L1（V3）：有仓判定数量感知；权重按资格判定结果（None=未知）传策略层
+        # ——不再直传记录里的过期比例
+        has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
         # 执行7层分析（审查修复 H1：补齐 has_position/entry_price/high_since_entry/trade_plan，
         # 与 CLI l 一致；原漏传 -> 即使持仓 has_position=False，fundamental_alert/top_signal/
         # force_exit/PlanGuard 全失效，chat 与 CLI 对同一持仓股给不同决策）
         decision_result, strategy_decision, execution_eval, ai_result = _orchestrator.analyze(
             stock_data,
-            current_position_ratio=current_ratio,
+            current_position_ratio=(strategy_state.current_position_ratio
+                                    if strategy_state is not None else 0.0),
             strategy_state=strategy_state,
             ai_enabled=True,
             has_position=has_position,

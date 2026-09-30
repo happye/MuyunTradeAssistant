@@ -172,6 +172,21 @@ class PositionRecord:
         self.ratio_stale = ratio_stale
         self.quantity_fact = quantity_fact
 
+    @property
+    def quantity_held(self) -> int:
+        """数量事实股数（无数量事实/非法=0）——有仓判定用（L1：数量决定有无仓，
+        旧比例 0 不等于无仓）。"""
+        try:
+            return int((self.quantity_fact or {}).get("quantity") or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    @property
+    def weight_unknown(self) -> bool:
+        """权重未知（L1）：数量账户（quantity>0）且比例视图过期——消费者不得拿
+        current_ratio 冒充已知权重。"""
+        return self.ratio_stale and self.quantity_held > 0
+
     def to_dict(self) -> dict:
         """转为YAML可序列化的字典"""
         d = {
@@ -426,17 +441,61 @@ class PortfolioManager:
             for code, data in positions.items()
         ]
 
-    def get_total_position_ratio(self) -> float:
+    def get_total_position_ratio(self) -> Optional[float]:
         """所有持仓 current_ratio 之和（0-1+，可能>1表示满仓+杠杆）。
+
+        L1（T01）：任一数量账户持仓权重未知（ratio_stale 且 quantity>0）→ 返回
+        None——不拿部分已知和冒充总仓位（过期比例不得给风险预算）。
 
         报告2.3 笨总教学十"永不满仓留底牌"：建议总仓位<=80%，预留20%底牌。
         """
-        return sum(p.current_ratio for p in self.list_positions())
+        positions = self.list_positions()
+        if any(p.weight_unknown for p in positions):
+            return None
+        return sum(p.current_ratio for p in positions)
 
-    def to_strategy_state(self, stock_code: str) -> StrategyState:
+    def account_nav(self) -> tuple[Optional[float], Optional[str]]:
+        """账户 NAV 与定价时点（L1 权重资格估值的 NAV 来源）。
+
+        读默认账户账本快照（惰性 import 防循环）；无账本/NAV 未录入 → (None, None)
+        ——不发明数字。"""
+        try:
+            from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
+            if not DEFAULT_LEDGER_PATH.exists():
+                return None, None
+            snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
+            nav = snap.nav
+            nav_day = snap.nav_priced_at.strftime("%Y-%m-%d") if snap.nav_priced_at else None
+            return nav, nav_day
+        except Exception as e:
+            logger.debug(f"账户 NAV 读取失败（权重按未知处理）: {e}")
+            return None, None
+
+    def strategy_state_for(self, stock_code: str, stock_data) -> StrategyState:
+        """装配边界便捷入口（L1）：自动接估值输入（行情价/行情时点 + 账户 NAV）
+        → 权重资格判定。l/la/chat/scanner/TUI/Web 统一走此入口——跨入口
+        相同账户版本得到相同事实（T01）。"""
+        price = getattr(stock_data, "price", None)
+        price_as_of = getattr(stock_data, "quote_as_of", None)
+        nav, nav_day = self.account_nav()
+        return self.to_strategy_state(stock_code, price=price, price_as_of=price_as_of,
+                                      nav=nav, nav_as_of=nav_day)
+
+    def to_strategy_state(self, stock_code: str, *, price: Optional[float] = None,
+                          price_as_of: Optional[str] = None,
+                          nav: Optional[float] = None,
+                          nav_as_of: Optional[str] = None) -> StrategyState:
         """将持仓记录转为StrategyState（供策略层使用）
 
         如果没有持仓记录，返回默认的FLAT状态。
+
+        L1（R11/V3）数量账户读取资格：
+        - 数量事实>0 → 有仓（数量决定有无仓；旧比例 0 不等于无仓）
+        - 权重需合格估值：价格与 NAV **同日窗**（保守相等判定，DESIGN_VALIDATION：
+          不自行放宽容差）且数量×价格/NAV 可算 → 用已知数字锁定；
+          否则 current_position_ratio=None（权重未知）——不拿过期比例冒充，
+          也不用 0 假装未知。派生只读不改账（迁移不反造历史）。
+        - RATIO_ONLY 账户（无数量事实）→ 既有 float 比例直通，语义零变化。
         """
         pos = self.get_position(stock_code)
         if pos is None:
@@ -459,11 +518,28 @@ class PortfolioManager:
             except ValueError:
                 last_decision = None
 
+        # L1：权重资格（数量账户 → 合格估值才给数字，否则 None=未知）
+        current_ratio: Optional[float] = pos.current_ratio
+        if pos.weight_unknown:
+            current_ratio = None
+            q = pos.quantity_held
+            p_day = str(price_as_of or "")[:10]
+            n_day = str(nav_as_of or "")[:10]
+            if (price is not None and price > 0 and nav is not None and nav > 0
+                    and p_day and p_day == n_day):
+                derived = q * float(price) / float(nav)
+                if derived <= 1.0:
+                    current_ratio = derived  # 合格估值——用已知数字锁定
+                else:
+                    # 杠杆异常（>100%）超出比例字段语义——按未知处理并留痕，不截断伪造
+                    logger.info(
+                        f"to_strategy_state {stock_code}: 数量×价格/NAV={derived:.3f}>1"
+                        f"（杠杆/数据异常）——权重按未知处理，请核对估值输入")
         return StrategyState(
             lifecycle=lifecycle,
             entry_date=pos.entry_date,
             entry_price=pos.entry_price,
-            current_position_ratio=pos.current_ratio,
+            current_position_ratio=current_ratio,
             recent_signals=ss.get("recent_signals", []),
             inertia_counter=ss.get("inertia_counter", 0),
             last_decision=last_decision,
@@ -753,10 +829,19 @@ class PortfolioManager:
         if pos_action not in ("ADD", "REDUCE", "CLOSE_ALL"):
             return None
         existing = self.get_position(stock_code)
-        if existing is None or (existing.current_ratio or 0) <= 0:
+        # L1（V3）：非持仓判定数量感知——重建仓（旧比例 0、数量>0）已持股，
+        # 不得因旧比例 0 漏建议；真非持仓 = 无记录或（比例 0 且无数量事实）
+        if existing is None or ((existing.current_ratio or 0) <= 0
+                                and existing.quantity_held <= 0):
             return None  # 非持仓不产生建议（TASKS F1：所有分析入口都不能伪造持仓）
-        target_ratio = strategy_decision.position_ratio if strategy_decision.position_ratio > 0 else (
-            strategy_decision.new_state.current_position_ratio if pos_action != "CLOSE_ALL" else 0.0)
+        # L1：position_ratio=None（权重未知）→ 建议不带伪造目标（target_ratio 本就可空）
+        raw_ratio = strategy_decision.position_ratio
+        if pos_action == "CLOSE_ALL":
+            target_ratio: Optional[float] = 0.0
+        elif raw_ratio is not None and raw_ratio > 0:
+            target_ratio = raw_ratio
+        else:
+            target_ratio = strategy_decision.new_state.current_position_ratio
         reasons = getattr(strategy_decision, "strategy_reasons", None) or []
         prop = Proposal(
             stock_code=stock_code,

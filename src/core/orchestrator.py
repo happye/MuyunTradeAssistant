@@ -264,7 +264,7 @@ class Orchestrator:
                     decision_result, ai_result.score_adjustment, "AI Modifier")
 
                 # 应用仓位调节（传递给Strategy Layer通过decision_result）
-                if ai_result.position_cap < 1.0:
+                if ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, ai_result.position_cap
                     )
@@ -295,7 +295,7 @@ class Orchestrator:
                 # F2：方向感知——看空事件增量不削弱卖出强度
                 self._apply_sentiment_to_decision(
                     decision_result, event_ai_result.score_adjustment, "Event Layer")
-                if event_ai_result.position_cap < 1.0:
+                if event_ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, event_ai_result.position_cap
                     )
@@ -318,7 +318,7 @@ class Orchestrator:
                     decision_result, ai_result.score_adjustment, "Event Layer")
 
                 # 应用仓位调节
-                if ai_result.position_cap < 1.0:
+                if ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, ai_result.position_cap
                     )
@@ -445,9 +445,11 @@ class Orchestrator:
 
         # Layer 4: 策略层过滤（Strategy Layer）
         if strategy_state is None:
+            # L1（V3）：None=有仓但权重未知——生命周期按 HOLD（不得按空仓分析）
+            _flat = (current_position_ratio is not None and current_position_ratio <= 0)
             strategy_state = StrategyState(
                 current_position_ratio=current_position_ratio,
-                lifecycle=TradeLifecycle.FLAT if current_position_ratio <= 0 else TradeLifecycle.HOLD,
+                lifecycle=TradeLifecycle.FLAT if _flat else TradeLifecycle.HOLD,
             )
 
         # 跳法A（MarketState 降级）：把笨总 mode 透传给策略层，气宗走固定长持参数
@@ -528,7 +530,8 @@ class Orchestrator:
                 }
 
         # AI仓位上限影响Strategy Layer的仓位建议
-        if ai_result and ai_result.position_cap < 1.0:
+        if ai_result and ai_result.position_cap < 1.0 \
+                and strategy_decision.position_ratio is not None:
             original_ratio = strategy_decision.position_ratio
             strategy_decision.position_ratio = min(
                 strategy_decision.position_ratio, ai_result.position_cap

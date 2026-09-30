@@ -458,7 +458,8 @@ class StrategyLayer:
         - 空仓(SELL/WATCH方向)时，BUY需要更高置信度 → 降级为WATCH
         """
         if current_decision == SignalType.SELL and state.last_decision in (SignalType.BUY, SignalType.HOLD):
-            if state.current_position_ratio > 0:
+            # L1：None=有仓（数量事实）但权重未知——按持仓处理（惯性降级不吞卖出意图）
+            if state.current_position_ratio is None or state.current_position_ratio > 0:
                 # 持仓中收到SELL信号但惯性期未过 → 降级为HOLD（观察而非行动）
                 return SignalType.HOLD
         elif current_decision == SignalType.BUY and state.last_decision in (SignalType.SELL, SignalType.WATCH):
@@ -612,13 +613,15 @@ class StrategyLayer:
         state: MarketState,
         decision_result: DecisionResult,
         strategy_state: StrategyState,
-    ) -> tuple[PositionAction, float]:
+    ) -> tuple[PositionAction, Optional[float]]:
         """根据最终决策、市场状态和策略状态计算仓位
 
         与旧版本的关键区别：
         - 仓位管理逻辑从DecisionEngine迁移到StrategyLayer
         - 增加了交易生命周期感知（FLAT/OPEN/HOLD/EXIT/COOLDOWN）
         - 增加了策略状态感知（当前仓位、反转次数等）
+        - L1（V3）：current_position_ratio=None=有仓但权重未知——精确新增被阻、
+          减仓意图保留但目标不伪造（None），退出/硬风险路径不变
         """
         cap = self.POSITION_CAPS.get(state, 0.30)
         current_position_ratio = strategy_state.current_position_ratio
@@ -682,22 +685,30 @@ class StrategyLayer:
         )
 
         if final_signal == SignalType.SELL:
-            if current_position_ratio <= 0:
+            # L1（V3）：None=有仓但权重未知（数量事实）——不得按空仓吞掉卖出意图
+            if current_position_ratio is not None and current_position_ratio <= 0:
                 return PositionAction.STAY_OUT, 0.0
             if has_stop_loss:
                 if stop_loss_exit:
                     return PositionAction.CLOSE_ALL, 0.0
                 elif trend_exit:
                     return PositionAction.CLOSE_ALL, 0.0
+                elif current_position_ratio is None:
+                    # 权重未知：减仓意图保留，不伪造精确目标（过期比例×keep=假数字）
+                    return PositionAction.REDUCE, None
                 else:
                     target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                     return PositionAction.REDUCE, target
             elif trend_exit:
                 return PositionAction.CLOSE_ALL, 0.0
             elif valid_take_profit:
+                if current_position_ratio is None:
+                    return PositionAction.REDUCE, None
                 target = current_position_ratio * take_profit_keep
                 return PositionAction.REDUCE, target
             else:
+                if current_position_ratio is None:
+                    return PositionAction.REDUCE, None
                 target = current_position_ratio * self.NORMAL_REDUCE_KEEP
                 return PositionAction.REDUCE, target
 
@@ -705,20 +716,30 @@ class StrategyLayer:
             # v0.8.5 阶段 3.3: 高仓位上限只给 (RISK_ON + 高质量信号) 双条件
             if buy_score >= 0.4:
                 target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                if current_position_ratio is None:
+                    # L1（V3）：有仓（数量事实）但权重未知——精确加仓被阻（不假增仓，
+                    # 同 fusion 行6 预算未知→HOLD 语义）；持仓事实保留
+                    return PositionAction.HOLD_POSITION, 0.0
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 return PositionAction.OPEN, target
             elif buy_score >= 0.25:
                 target = min(self.OPEN_RATIO, cap)
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 return PositionAction.OPEN, target
             else:
                 target = min(self.OPEN_RATIO * 0.5, cap)
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 return PositionAction.OPEN, target
 
         elif final_signal == SignalType.HOLD:
             if buy_score > sell_score * 1.5:
                 # 同上：HOLD+强 BUY 偏向时也按双条件判定
                 target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
+                if current_position_ratio is None:
+                    return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
                 else:
@@ -743,7 +764,9 @@ class StrategyLayer:
             return None
 
         current_position_ratio = strategy_state.current_position_ratio
-        if current_position_ratio <= 0 or sell_path == "flat_sell" or position_action == PositionAction.STAY_OUT:
+        # L1：None=有仓（数量事实）但权重未知——不得按空仓吞掉卖出描述
+        if (current_position_ratio is not None and current_position_ratio <= 0) \
+                or sell_path == "flat_sell" or position_action == PositionAction.STAY_OUT:
             return "空仓卖出信号: 不执行减仓"
         if sell_path == "stop_loss_exit":
             return "止损触发: 清仓保护本金"
@@ -769,7 +792,10 @@ class StrategyLayer:
         if final_signal != SignalType.SELL:
             return None
 
-        if strategy_state.current_position_ratio <= 0 or position_action == PositionAction.STAY_OUT:
+        # L1：None=有仓（数量事实）但权重未知——不得推断 flat_sell（吞掉退出意图）
+        if (strategy_state.current_position_ratio is not None
+                and strategy_state.current_position_ratio <= 0) \
+                or position_action == PositionAction.STAY_OUT:
             return "flat_sell"
 
         action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
@@ -1021,8 +1047,9 @@ class StrategyLayer:
                 # 方向转回看多 → 回到HOLD
                 new_state.lifecycle = TradeLifecycle.HOLD
                 new_state.current_position_ratio = position_ratio
-            # EXIT状态下如果已清仓 → COOLDOWN
-            if new_state.current_position_ratio <= 0:
+            # EXIT状态下如果已清仓 → COOLDOWN（L1：None=有仓但权重未知——不进清仓冷却）
+            if new_state.current_position_ratio is not None \
+                    and new_state.current_position_ratio <= 0:
                 new_state.lifecycle = TradeLifecycle.COOLDOWN
                 new_state.cooldown_remaining = self.COOLDOWN_AFTER_CLOSE_DAYS
                 new_state.cooldown_reason = "close_all"

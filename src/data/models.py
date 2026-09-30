@@ -263,7 +263,9 @@ class StrategyState(BaseModel):
     # 持仓信息
     entry_date: Optional[str] = Field(default=None, description="开仓日期")
     entry_price: Optional[float] = Field(default=None, description="开仓均价")
-    current_position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例")
+    # L1（R11/V3）：None=有仓（数量事实>0）但权重未知（无合格估值重估）——
+    # 不得以 0 假装未知、不得拿过期比例冒充已知；消费者按「None=未知」分支处理。
+    current_position_ratio: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="当前仓位比例（None=权重未知——数量账户待重估）")
 
     unrealized_profit_pct: float = Field(default=0.0, description="浮动盈亏百分比")
     days_held: int = Field(default=0, description="持仓天数")
@@ -385,7 +387,7 @@ class StrategyDecision(BaseModel):
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
     action_semantic: Optional[str] = Field(default=None, description="收紧后的交易语义: ENTRY/ADD/HOLD/TRIM/EXIT/STOP")
     sell_path: Optional[str] = Field(default=None, description="卖出路径: flat_sell/stop_loss_trim/stop_loss_exit/take_profit_trim/trend_exit/weak_sell/top_signal/fundamental_alert")
-    position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例")
+    position_ratio: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例（None=权重未知——减仓意图保留但不伪造精确目标，L1）")
     # 跳法A 阶段2: 高位止盈3维度大顶信号（宏观/板块/个股），非空=强制离场，PlanGuard 不可压制
     top_signal: Optional[str] = Field(default=None, description="高位止盈大顶信号描述（如'宏观:成交额破10万亿'），触发即强制 SELL")
     # ISS-053: 基本面恶化硬退出（被ST/业绩预亏），独立通道（非 top_signal），PlanGuard 规则4.5 不可压制
@@ -482,7 +484,7 @@ class DecisionResult(BaseModel):
     warnings: list[str] = Field(default_factory=list, description="风险提示")
     trace: list[DecisionTrace] = Field(default_factory=list, description="决策追溯路径")
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
-    position_ratio: float = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例(0-1)")
+    position_ratio: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例(0-1)（None=权重未知不伪造精确目标，L1）")
 
     # v0.8.3 Phase C: 买卖点覆盖标记
     overridden_by: Optional[str] = Field(default=None, description="被覆盖来源（entry_exit/ai_modifier/stop_loss等）")
