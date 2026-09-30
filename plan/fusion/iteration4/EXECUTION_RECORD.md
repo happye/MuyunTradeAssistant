@@ -304,6 +304,15 @@ plain_errors.py 新增 6 条 + 更新 fsync 条目：账户账本存在/账户�
   精度如实披露；Q1 两值全精度直接一致。
 - **结论**：umd_iss114_liability_v1（×100 映射）经两家样本 × 2024Q1/Q2/Q3 全部
   6 点位发行人原件核对成立；波次 A（liabilityToAsset）第一批核定完成。
+- **监督审查勘误（2026-10-01）**：①3 份核定 JSON 的 baostock_raw 键首版误登记映射后
+  值（与 J1 同名键语义漂移）——已更正为供应商原始值并单列 mapped_value（raw×100
+  闭环经独立重放确认）；②映射注册表 umd_iss114_liability_v1 的 verification_level
+  仍为 cross_checked_pending_original——**升级/追加 v2 留待后续批**（代码纪律：映射
+  修订=追加新条目不覆盖；本批账本为升级依据）；③pending→verified 重登的变更留痕
+  由本条与本勘误说明承载（_atomic_write_json 一次性写语义无历史文件）；④「Q1 全精度
+  直接一致」措辞更正：供应商 Q1 值为 5-6 位精度、差 2.4e-7~2.8e-7（非字面全精度相等）；
+  ⑤更正公告检索与页面原文人工复核未做（DATA_DECISION §4 最少条目两项弱满足，如实
+  披露——交人工复核批次补齐）。
 - 原件留样：PDF 本地 tests/artifacts/k3_original_pilot/ + J1 的 000002_2024H1；
   .gitignore 约定 artifacts 不入库（J1 同例），证据链（URL/announcement_id/sha256/
   页码/行值/公式）完整登记于 ~/.muyun/research/originals/orig_*.json，
