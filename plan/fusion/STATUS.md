@@ -1,6 +1,6 @@
 # 融合项目当前状态与里程碑
 
-**唯一当前状态入口**｜更新2026-09-28｜实施交付基线`def45d1`/v0.8.24。**深审 D1–D7 与 R10 A1–A4 全部 11 个反例已修复关闭（K0a/K0b/K0c），K2a 公开研究闭环已实施——架构师探针 10/10 不再复现（0 缺陷），全量 1354+ 绿。** 下一步 = [第四轮任务卡](iteration4/DELIVERY_PLAN.md)：**K1 v6 已实施（正式冻结待架构师纵向验收）→ K2b 归并 `l`（待 K1 冻结）**；K3 第一批 6/6 点位发行人原件核定完成（波次 A liabilityToAsset 全点位 verified_against_original；波次 B/C 与规则证据未启动）；K4 待 K1 冻结+真实观察+付费显式授权。账本见 [iteration4/EXECUTION_RECORD.md](iteration4/EXECUTION_RECORD.md)。
+**唯一当前状态入口**｜更新2026-09-28｜实施交付基线`def45d1`/v0.8.24。**深审 D1–D7 与 R10 A1–A4 全部 11 个反例已修复关闭（K0a/K0b/K0c），K2a 公开研究闭环已实施——架构师探针 10/10 不再复现（0 缺陷），全量 1354+ 绿。** 下一步 = [第四轮任务卡](iteration4/DELIVERY_PLAN.md)：**K1 v6 已实施（正式冻结待架构师纵向验收）→ K2b 归并 `l`（待 K1 冻结）**；K3 第一批 6/6 点位发行人原件核定完成（波次 A liabilityToAsset 全点位 verified_against_original；波次 B/C 与规则证据未启动）；K4 待 K1 冻结+真实观察+付费显式授权。账本见 [iteration4/EXECUTION_RECORD.md](iteration4/EXECUTION_RECORD.md)。**实施方报告（致架构师，六卡交付+六项裁决请求）已入库：[实施方报告_K系列交付.md](iteration4/实施方报告_K系列交付.md)。**
 
 新对话先读本页、[RESUME](RESUME.md)、[深审](iteration4/DEEP_ARCHITECTURE_REVIEW.md) 与 [K 任务卡](iteration4/DELIVERY_PLAN.md)，按 [当前复查索引](iteration4/REVIEW_INDEX.json) 复核变化。不要先从第一轮长账本开始重读。实施和设计是不同交付，本页勾选只对写明范围有效。
 
