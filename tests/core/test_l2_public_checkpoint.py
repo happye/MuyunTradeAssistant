@@ -139,8 +139,8 @@ def test_v4_full_chain_research_accept_shadow(tmp_path, monkeypatch):
     # 单独断言：命题真值 / 计划状态 / 报告分母——三者独立核对
     assert _window_value(r2["assessment_ids"]["MID"]) == "TRUE"
     assert store.get(CODE, "MID").activated
-    assert report["v7_mid_effective"] == 1, \
-        f"已接受计划+可解析评估+账户版本+行情时点齐 → 影子有效分母 1: {report['v7_drop_counts']}"
+    assert report["cur_mid_effective"] == 1, \
+        f"已接受计划+可解析评估+账户版本+行情时点齐 → 影子有效分母 1: {report['cur_drop_counts']}"
 
 
 # ── 缺引用/伪引用/错主体/缺原件/未确认风险 ─────────────────────────

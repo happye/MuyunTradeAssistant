@@ -571,6 +571,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 capture_shadow(decision_result, strategy_decision, execution_eval,
                                pos, packet=_packet, source="la",
                                quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                               quote_fetched_at=str(getattr(stock_data, "quote_fetched_at", "") or ""),
                                account_context=acct_ctx)
             except Exception as e:
                 logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
@@ -637,6 +638,11 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             )
             if ai_str:
                 console.print(f"  {ai_str}")
+            # M1（W2 用户收益）：降级行情如实说明来源时点（la 批量与 l 同口径）
+            if getattr(stock_data, "price_source", None) == "baostock":
+                _eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
+                console.print(f"  [yellow]⚠ 行情降级：Baostock 日线收盘"
+                              f"{f'（{_eff}）' if _eff else ''}（非实时）——当前权重待重估[/yellow]")
 
             # 买卖点信息
             if strategy_decision and strategy_decision.entry_exit:
@@ -846,6 +852,11 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
     console.print(f"  股票: {stock_data.stock_name} ({stock_data.stock_code})")
     console.print(f"  当前价: {stock_data.price}")
     console.print(f"  涨跌幅: {stock_data.change_pct}%")
+    # M1（W2 用户收益）：降级行情如实说明来源时点——不把降级收盘冒充实时价
+    if getattr(stock_data, "price_source", None) == "baostock":
+        eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
+        console.print(f"  [yellow]⚠ 行情降级：Baostock 日线收盘"
+                      f"{f'（{eff}）' if eff else ''}（非实时）——当前权重待重估[/yellow]")
 
     # 产业链定位（ISS-061 v5：图谱命中即展示一行，只读不进评分；不在链内不显示）
     try:
@@ -973,6 +984,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             capture_shadow(result, strategy_decision, execution_eval,
                            pos, packet=_packet, source="l",
                            quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                           quote_fetched_at=str(getattr(stock_data, "quote_fetched_at", "") or ""),
                            account_context=acct_ctx)
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")

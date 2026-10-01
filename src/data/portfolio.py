@@ -265,12 +265,36 @@ POSITION_NONE = "NONE"
 POSITION_UNKNOWN = "UNKNOWN"
 
 
+def _quote_day(raw) -> Optional[str]:
+    """来源时点 → 交易日（YYYY-MM-DD，按交易所时区解释——M1 合同）。
+
+    - aware（带偏移）→ 归一 Asia/Shanghai 后取日（同一实际时刻的不同偏移可比）；
+      时区库不可用 → None（不做错误换算）
+    - naive 带时刻（新浪本地墙钟形态）→ 直接取日（已是交易所本地时间）
+    - 纯日期 / 不可解析但前 10 位形如日期 → 原样取前 10 位
+    - 其余 → None（明确未知，不靠墙钟补齐）"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    try:
+        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return s[:10] if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-" else None
+    if dt.tzinfo is not None:
+        try:
+            from zoneinfo import ZoneInfo
+            dt = dt.astimezone(ZoneInfo("Asia/Shanghai"))
+        except Exception:
+            return None
+    return dt.date().isoformat()
+
+
 def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Optional[float], str]:
     """数量×价格/NAV 的合格估值门（L1 资格语义的共享核心——to_strategy_state 与
     AccountContext 装配共用同一判据，消费者不再各自判读）。
 
-    M0 口径（与 L1 一致）：价格与 NAV **同日窗保守相等**才锁定；M1 将在此升级
-    时点语义（来源时区/未来时点），调用方契约不变。
+    M1 口径（R12 W2）：价格与 NAV **同日窗保守相等**（按交易所时区归一）才锁定；
+    缺失/未来时点拒绝（不靠墙钟补齐）；降级旧日收盘与当天 NAV 不拼当前权重。
 
     Returns:
         (weight, reason)：weight=None 时 reason 为人话资格缺口（不拿过期比例
@@ -279,10 +303,18 @@ def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Opt
         return None, "无数量事实"
     if price is None or price <= 0 or nav is None or nav <= 0:
         return None, "缺价格或NAV"
-    p_day = str(price_as_of or "")[:10]
-    n_day = str(nav_as_of or "")[:10]
+    p_day = _quote_day(price_as_of)
+    n_day = _quote_day(nav_as_of)
     if not p_day or not n_day:
         return None, "缺行情或NAV时点"
+    # 未来时点判定与 _quote_day 同基准（上海交易日历视角）；时区库不可用回退本地
+    try:
+        from zoneinfo import ZoneInfo
+        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+    except Exception:
+        today = datetime.now().astimezone().date().isoformat()
+    if p_day > today or n_day > today:
+        return None, "行情或NAV时点在未来"
     if p_day != n_day:
         return None, "价格与NAV时点不一致（保守同日窗）"
     derived = int(quantity) * float(price) / float(nav)

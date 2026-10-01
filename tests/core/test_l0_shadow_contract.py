@@ -1,13 +1,13 @@
-"""L0 观察协议合同回归测试（plan/fusion iteration5，DELIVERY_PLAN L0；R11 V1/V2 反例）
+"""L0 观察协议合同回归测试（plan/fusion iteration5 L0 基础上经 M1 升 v8；R11 V1/V2 反例）
 
-锁死语义（同一资格函数决定字段缺口、diagnostic/effective、报告分母——shadow_v7）：
+锁死语义（同一资格函数决定字段缺口、diagnostic/effective、报告分母——当期协议 v8）：
 1. V1：缺行情时点仍计有效 → 关闭——quote_cutoff 缺失/未来 → drop_reasons 机器可读、
    eligible=False、报告当期协议 MID 有效分母不计；证据截止来自被消费评估
    （不等于捕获墙钟）；decision_rule_version 来自真实规则版本常量
 2. V2：目标权重/阻塞变化被去重吞掉 → 关闭——输出指纹消费完整两臂绑定语义；
    仅捕获时点变化 → 真实重复折叠（WRITE 回执与磁盘一致）
 3. 缺任一必要字段（policy_version/行情/证据截止等）→ 降级 diagnostic
-4. 旧协议记录（shadow_v6）仅诊断不追认——现行协议分母只数 shadow_v7
+4. 旧协议记录（v6/v7 及更早）仅诊断不追认——现行协议分母只数当期（v8）
 5. 两臂（legacy/fusion）输出完整：action/target/target_state/blockers/execution
 6. UI 报告显示具体缺口（人话）与两周期分别计数
 
@@ -157,7 +157,7 @@ def test_v1_missing_quote_stays_diagnostic(tmp_path):
     assert any("quote" in r for r in mb["drop_reasons"]), \
         f"缺行情时点原因必须机器可读: {mb['drop_reasons']}"
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl", days=7)
-    assert report["v7_mid_effective"] == 0, "当期协议 MID 有效分母不计缺时点记录"
+    assert report["cur_mid_effective"] == 0, "当期协议 MID 有效分母不计缺时点记录"
     _assert_files_in_tmp(tmp_path)
 
 
@@ -180,7 +180,7 @@ def test_v1_full_fields_eligible_and_real_sources(tmp_path):
     assert mb["decision_rule_version"] == f"{POLICY_ID_MID}@{DECISION_TABLE_VERSION}"
     assert mb["policy_version"] == POLICY_VERSION
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl", days=7)
-    assert report["v7_mid_effective"] == 1 and report["v7_long_effective"] == 0
+    assert report["cur_mid_effective"] == 1 and report["cur_long_effective"] == 0
     _assert_files_in_tmp(tmp_path)
 
 
@@ -330,13 +330,13 @@ def test_v6_old_records_diagnostic_only(tmp_path):
     }
     store.write_text(json.dumps(old_v6, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store, account_version="v_l0_next")
-    assert rec.derivation_version == "shadow_v7"
+    assert rec.derivation_version == "shadow_v8"
     assert rec.append_status == "saved", "新旧协议记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v7"
+    assert report["protocol_version"] == "shadow_v8"
     assert report["legacy_records"] == 1, "旧协议记录只诊断（单列计数）"
-    assert report["v7_mid_effective"] == 1, "当期分母只数 shadow_v7"
-    assert report["v6_mid_effective"] == 1, "v6 计数按记录原样（仅供过渡观察）"
+    assert report["cur_mid_effective"] == 1, "当期分母只数当期协议"
+    assert report["older_versions"]["shadow_v6"]["mid_effective"] == 1, "v6 计数按记录原样（仅供过渡观察）"
     assert report["effective_observations"] == 1, "行级有效观察不追认旧协议记录"
     text = render_shadow_report(report)
     assert "只诊断不追认" in text

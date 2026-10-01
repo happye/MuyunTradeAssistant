@@ -535,6 +535,14 @@ class AKShareClient:
                 preclose_f = float(preclose) if preclose else 0.0
                 price_f = float(price)
                 change_pct = round((price_f - preclose_f) / preclose_f * 100, 2) if preclose_f else 0.0
+                # M1（R12 W2）：新浪源时间（fields[30]=日期、[31]=时间，交易所本地墙钟）
+                # 解析为 effective_at——有源时间才带，坏值/缺失明确未知（不拿抓取墙钟补）
+                effective_at = None
+                if len(fields) >= 32:
+                    d, t = fields[30].strip(), fields[31].strip()
+                    if (len(d) == 10 and d[4] == "-" and d[7] == "-"
+                            and len(t) == 8 and t[2] == ":" and t[5] == ":"):
+                        effective_at = f"{d}T{t}"
                 out[code] = {
                     "stock_code": code,
                     "stock_name": name,
@@ -547,6 +555,8 @@ class AKShareClient:
                     "change_pct": change_pct,
                     "source": "sina_batch",
                 }
+                if effective_at:
+                    out[code]["effective_at"] = effective_at
             except (ValueError, IndexError):
                 continue
         return out
@@ -1001,6 +1011,10 @@ class AKShareClient:
         注意：Baostock不是真正的实时行情，但能获取最近交易日的K线数据，
         包含开盘、收盘、最高、最低、成交量，比完全无数据好。
 
+        M1（R12 W2）：原行 date 保留为 effective_at（日精度）——上层不得拿
+        抓取墙钟冒充行情时点。提取逻辑纯函数化（_baostock_quote_from_row），
+        可离线接供应商行复验。
+
         Args:
             stock_code: 股票代码
 
@@ -1049,26 +1063,7 @@ class AKShareClient:
 
             # 取最近一条（最后一行）
             latest = data_list[-1]
-            fields = rs.fields  # ['date', 'code', 'open', 'high', 'low', 'close', 'preclose', 'volume', 'amount']
-
-            close_val = float(latest[fields.index('close')])
-            preclose_val = float(latest[fields.index('preclose')])
-            change_pct_val = 0.0
-            if preclose_val != 0:
-                change_pct_val = round((close_val - preclose_val) / preclose_val * 100, 2)
-
-            return {
-                "stock_code": code,
-                "stock_name": code,  # Baostock日K线不含名称，由上层用候选股数据补充
-                "price": close_val,
-                "open": float(latest[fields.index('open')]),
-                "high": float(latest[fields.index('high')]),
-                "low": float(latest[fields.index('low')]),
-                "close_yesterday": preclose_val,
-                "volume": int(float(latest[fields.index('volume')])),
-                "change_pct": change_pct_val,
-                "source": "baostock"
-            }
+            return cls._baostock_quote_from_row(rs.fields, latest, code)
 
         except Exception as e:
             logger.warning(f"_fetch_baostock_realtime异常 {stock_code}: {e}")
@@ -1077,6 +1072,38 @@ class AKShareClient:
                 logger.warning("检测到socket异常，重置Baostock连接")
                 _baostock_logout()
             return None
+
+    @staticmethod
+    def _baostock_quote_from_row(fields, row, code: str) -> Optional[dict]:
+        """Baostock 日线行 → 行情 dict（M1/W2 纯函数化提取）。
+
+        原行 date 保留为 effective_at（日精度）——降级旧日收盘的**有效时点**；
+        上层据此与 NAV 时点比对，不再被抓取墙钟顶替。缺 date 字段的脏行
+        如实不带 effective_at（明确未知，不编造）。"""
+        close_val = float(row[fields.index('close')])
+        preclose_val = float(row[fields.index('preclose')])
+        change_pct_val = 0.0
+        if preclose_val != 0:
+            change_pct_val = round((close_val - preclose_val) / preclose_val * 100, 2)
+        effective_at = None
+        if 'date' in fields:
+            raw = str(row[fields.index('date')] or "").strip()
+            effective_at = raw[:10] if len(raw) >= 10 else None
+        quote = {
+            "stock_code": code,
+            "stock_name": code,  # Baostock日K线不含名称，由上层用候选股数据补充
+            "price": close_val,
+            "open": float(row[fields.index('open')]),
+            "high": float(row[fields.index('high')]),
+            "low": float(row[fields.index('low')]),
+            "close_yesterday": preclose_val,
+            "volume": int(float(row[fields.index('volume')])),
+            "change_pct": change_pct_val,
+            "source": "baostock",
+        }
+        if effective_at:
+            quote["effective_at"] = effective_at
+        return quote
 
     @classmethod
     def _fetch_baostock_kline(
@@ -1217,9 +1244,16 @@ class AKShareClient:
         try:
             # 首先尝试获取实时行情
             quote = cls.get_realtime_quote(stock_code)
-            # L0（R11/V1）：行情时点——实时行情的抓取时刻（quote 为 None 时改用最近
-            # K 线日期，见下方 StockData 构造）。缓存复用时该时点随结果冻结，语义正确。
+            # M1（R12 W2）：三个时点分离——
+            #   quote_as_of      = 价格**有效时点**（来源行自带：新浪 fields[30]/31、
+            #                      Baostock 原行 date、无实时价时最近 K 线日期）；
+            #                      无可靠源时点 → 明确 None，**抓取墙钟永不做行情时点**
+            #   quote_fetched_at = 抓取时刻（诊断留痕——只解释数据新鲜度，不取得
+            #                      估值/有效比较资格）
+            #   price_source     = 来源（预取/缓存随 dict/对象携带原元数据）
             _quote_fetched_at = datetime.now().astimezone().isoformat(timespec="seconds")
+            _quote_effective_at = (quote or {}).get("effective_at")
+            _quote_source = (quote or {}).get("source")
 
             # 尝试获取历史K线计算技术指标
             df = None
@@ -1258,7 +1292,10 @@ class AKShareClient:
                     low=quote.get("low"),
                     change_pct=quote.get("change_pct"),
                     volume=quote.get("volume"),
-                    quote_as_of=_quote_fetched_at,  # L0：行情时点=抓取时刻
+                    # M1：行情时点=来源有效时点（无源时点如实 None——不拿抓取墙钟）
+                    quote_as_of=_quote_effective_at,
+                    quote_fetched_at=_quote_fetched_at,
+                    price_source=_quote_source,
                     ma5=None, ma10=None, ma20=None, ma60=None,
                     avg_volume_20=None, high_60d=None, low_60d=None,
                     macd_dif=None, macd_dea=None, macd_hist=None,
@@ -1318,9 +1355,12 @@ class AKShareClient:
                 low=low_val,
                 change_pct=change_pct_val,
                 volume=volume_val,
-                # L0：行情时点——实时价用抓取时刻；无实时价（用K线收盘）用最近K线日期
-                quote_as_of=(_quote_fetched_at if quote
+                # M1：行情时点——实时价用来源有效时点（无源时点如实 None）；
+                # 无实时价（用K线收盘）用最近K线日期（来源行自带日期）
+                quote_as_of=(_quote_effective_at if quote
                              else str(latest['日期'])[:10] if '日期' in latest else None),
+                quote_fetched_at=_quote_fetched_at,
+                price_source=_quote_source,
                 # 均线计算
                 ma5=round(float(latest['MA5']), 2) if pd.notna(latest['MA5']) else None,
                 ma10=round(float(latest['MA10']), 2) if pd.notna(latest['MA10']) else None,
@@ -1436,7 +1476,10 @@ class AKShareClient:
                     low=quote.get("low"),
                     change_pct=quote.get("change_pct"),
                     volume=quote.get("volume"),
-                    quote_as_of=_quote_fetched_at,  # L0：行情时点=抓取时刻
+                    # M1：行情时点=来源有效时点（无源时点如实 None——不拿抓取墙钟）
+                    quote_as_of=_quote_effective_at,
+                    quote_fetched_at=_quote_fetched_at,
+                    price_source=_quote_source,
                     ma5=None, ma10=None, ma20=None, ma60=None,
                     avg_volume_20=None, high_60d=None, low_60d=None,
                     macd_dif=None, macd_dea=None, macd_hist=None,

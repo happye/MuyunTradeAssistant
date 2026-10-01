@@ -245,7 +245,14 @@ class StockData(BaseModel):
 
     # L0（R11/V1）：行情时点——实时行情抓取时刻（ISO 带时区）或最近 K 线日期（YYYY-MM-DD）。
     # 影子观察资格用（quote_cutoff 真实来源）；无法取得时如实 None——不拿墙钟冒充行情时点。
-    quote_as_of: Optional[str] = Field(default=None, description="行情时点（行情抓取时刻或最近K线日期；影子观察资格用）")
+    # M1（R12 W2）语义修正：本字段=价格**有效时点**（来源行自带：新浪 fields[30]/31、
+    # Baostock 原行 date、无实时价时最近 K 线日期）；抓取墙钟移入 quote_fetched_at。
+    quote_as_of: Optional[str] = Field(default=None, description="价格有效时点（来源行自带，可日精度）；无可靠源时点=None——抓取墙钟不冒充")
+
+    # M1（R12 W2）：抓取时点（诊断留痕——解释数据新鲜度，不取得估值/有效比较资格）
+    quote_fetched_at: Optional[str] = Field(default=None, description="行情抓取时刻（ISO 带时区，诊断用）")
+    # M1：来源标识（随预取/缓存携带原元数据；降级提示与诊断用）
+    price_source: Optional[str] = Field(default=None, description="行情来源（sina_batch/baostock/em_all/etf_all）")
 
     # v0.8.9.5：class-based Config 在 Pydantic V2 已弃用（V3 移除），改 ConfigDict
     model_config = ConfigDict(extra="allow")  # 允许额外字段

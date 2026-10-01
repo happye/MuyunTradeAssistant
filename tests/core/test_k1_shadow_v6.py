@@ -1,12 +1,12 @@
 """K1 shadow_v6 观察协议回归测试（plan/fusion iteration4，DELIVERY_PLAN K1）
 
-L0/shadow_v7 更新（iteration5，R11 V1/V2 修复）：协议版本升至 shadow_v7——
+L0/shadow_v7（iteration5）→ M1 升 shadow_v8（iteration6，R12 W2）：三时点分离——
 完整资格合同（行情/证据时点、策略/规则/方法版本进资格）+ 完整语义去重指纹。
 本文件断言随合同升级同步（同等严格度：分别登记/分别判资格/分别计分母/
 旧记录只诊断的语义不变，缺行情时点不得 effective 为新增门槛）。
 
 锁死语义（架构师合同——冻结=记录可比较，不等于策略效果或发布门通过）：
-1. shadow_v7 记录按 **MID/LONG 分别**登记完整绑定（plan_id/revision/content_hash/
+1. shadow_v8 记录按 **MID/LONG 分别**登记完整绑定（plan_id/revision/content_hash/
    accepted_ref/assessment_id/status/policy_id/method_version/两臂/时点/版本）
    ——字段缺失按 diagnostic，机器可读 drop_reasons
 2. 分别判资格、分别计分母：一周期合格不把另一周期算入
@@ -137,7 +137,7 @@ def test_k1_v6_record_registers_per_horizon_bindings(tmp_path):
     asm_store = AssessmentStore(tmp_path / "research")
     _seed_accepted_plan(tmp_path, plans, asm_store)
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == SHADOW_DERIVATION_VERSION == "shadow_v7"
+    assert rec.derivation_version == SHADOW_DERIVATION_VERSION == "shadow_v8"
     assert rec.mid_binding, "MID 已接受计划必须登记完整绑定"
     mb = rec.mid_binding
     for key in ("plan_id", "plan_revision", "content_hash", "accepted_ref",
@@ -176,11 +176,11 @@ def test_k1_v6_report_counts_only_v6_effective(tmp_path):
     asm_store = AssessmentStore(tmp_path / "research")
     _seed_accepted_plan(tmp_path, plans, asm_store)
     rec_v7 = _capture(tmp_path, plans, asm_store)
-    assert rec_v7.derivation_version == "shadow_v7"
+    assert rec_v7.derivation_version == "shadow_v8"
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl", days=7)
     assert report["effective_observations"] >= 1, "当期有效观察计入"
-    assert report.get("v7_mid_effective", 0) >= 1, "MID 分母单独计数"
-    assert report.get("v7_long_effective", 0) == 0, "LONG 不搭 MID 的车（分别计分母）"
+    assert report.get("cur_mid_effective", 0) >= 1, "MID 分母单独计数"
+    assert report.get("cur_long_effective", 0) == 0, "LONG 不搭 MID 的车（分别计分母）"
     assert report.get("legacy_records", 0) == 0, "无旧版本记录时 legacy 计数为 0"
 
 
@@ -188,7 +188,7 @@ def test_k1_v6_old_records_kept_diagnostic(tmp_path):
     """旧 shadow_v6 记录原样保留（不改写、不追认），报告标注 legacy 计数。
     降版本对照：改变账户版本使第二次 capture 不被去重——新旧记录真实并存，
     分别断言计数与逐字段原样；v6 记录的旧 effective 标签按原样计数（v6_mid_
-    effective）但不进当期分母（v7_mid_effective 只数当期协议）。"""
+    effective）但不进当期分母（cur_mid_effective 只数当期协议）。"""
     _isolation_assert(tmp_path)
     plans = HorizonPlanStore(tmp_path / "plans.json")
     asm_store = AssessmentStore(tmp_path / "research")
@@ -204,14 +204,14 @@ def test_k1_v6_old_records_kept_diagnostic(tmp_path):
     store_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # 新捕获：换账户版本 → 输入指纹变化 → 不被去重（与旧记录真实并存）
     rec_v7 = _capture(tmp_path, plans, asm_store, account_version="v_v6_next")
-    assert rec_v7.derivation_version == "shadow_v7"
+    assert rec_v7.derivation_version == "shadow_v8"
     assert rec_v7.append_status == "saved", "新旧记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store_path, days=7)
     _assert_files_in_tmp(tmp_path)
     assert report.get("legacy_records") == 1, "旧记录原样保留并单独计数"
-    assert report["v7_mid_effective"] == 1, "当期协议 MID 有效观察独立累计（不来自旧记录）"
-    assert report["v7_long_effective"] == 0, "LONG 不搭车"
-    assert report["v6_mid_effective"] == 1, "v6 记录按原样计数（仅供过渡观察）"
+    assert report["cur_mid_effective"] == 1, "当期协议 MID 有效观察独立累计（不来自旧记录）"
+    assert report["cur_long_effective"] == 0, "LONG 不搭车"
+    assert report["older_versions"]["shadow_v6"]["mid_effective"] == 1, "v6 记录按原样计数（仅供过渡观察）"
     assert report["effective_observations"] == 1, "行级有效观察不追认旧协议记录"
     # 旧记录逐字段原样（除我们模拟修改的版本号）
     lines_now = store_path.read_text(encoding="utf-8").splitlines()
@@ -221,7 +221,7 @@ def test_k1_v6_old_records_kept_diagnostic(tmp_path):
             continue
         assert old_now.get(k) == v, f"旧记录字段 {k} 被改写"
     # 新记录排在旧记录之后（追加序）
-    assert json.loads(lines_now[1])["derivation_version"] == "shadow_v7"
+    assert json.loads(lines_now[1])["derivation_version"] == "shadow_v8"
 
 
 def test_k1_v6_dual_horizon_both_eligible_counted_separately(tmp_path):
@@ -256,5 +256,5 @@ def test_k1_v6_dual_horizon_both_eligible_counted_separately(tmp_path):
     assert rec.long_binding["plan_id"] == "p2_600519_long_v6", \
         "LONG binding 必须是 LONG 自己的计划（不误搭 MID 数据）"
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl", days=7)
-    assert report["v7_mid_effective"] == 1 and report["v7_long_effective"] == 1, \
+    assert report["cur_mid_effective"] == 1 and report["cur_long_effective"] == 1, \
         "双周期分别计分母（各 1，不是合计 1）"

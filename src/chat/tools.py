@@ -383,6 +383,7 @@ def _analyze_stock_single(stock_code: str) -> str:
             capture_shadow(decision_result, strategy_decision, execution_eval,
                            pos, packet=_packet, source="chat",
                            quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                           quote_fetched_at=str(getattr(stock_data, "quote_fetched_at", "") or ""),
                            account_context=acct_ctx)
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
@@ -392,6 +393,11 @@ def _analyze_stock_single(stock_code: str) -> str:
             stock_data, decision_result, strategy_decision,
             execution_eval, ai_result
         )
+        # M1（W2 用户收益）：降级行情如实说明来源时点（chat 与 l/la 同口径）
+        if getattr(stock_data, "price_source", None) == "baostock":
+            _eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
+            result += (f"\n\n⚠ 行情降级：Baostock 日线收盘{f'（{_eff}）' if _eff else ''}"
+                       "（非实时）——当前权重待重估。")
 
         # 审查修复H1：回写观察量到portfolio.yaml（与CLI一致）；原chat只读不写->
         # 持仓股策略状态冻结，chat与CLI随时间分歧。仅持仓股（非持仓不伪造持仓）。
