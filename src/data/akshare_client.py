@@ -342,6 +342,8 @@ class AKShareClient:
                                 "high": float(data.get('最高', 0)),
                                 "low": float(data.get('最低', 0)),
                                 "close_yesterday": float(data.get('昨收', 0)),
+                                "source": "etf_all",
+                                "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                             }
                     logger.info(f"ETF接口未找到 {stock_code} 的行情数据")
                 else:
@@ -425,6 +427,8 @@ class AKShareClient:
                     "high": float(data.get('最高', data.get('high', 0))),
                     "low": float(data.get('最低', data.get('low', 0))),
                     "close_yesterday": float(data.get('昨收', data.get('close', 0))),
+                    "source": "em_all",
+                    "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }
             except Exception as e:
                 last_error = e
@@ -554,6 +558,8 @@ class AKShareClient:
                     "volume": int(float(volume)) if volume else 0,
                     "change_pct": change_pct,
                     "source": "sina_batch",
+                    # N2：原抓取时刻随行记录（预取复用不打新时点）
+                    "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                 }
                 if effective_at:
                     out[code]["effective_at"] = effective_at
@@ -626,6 +632,7 @@ class AKShareClient:
                                     "low": float(d.get('最低', 0) or 0),
                                     "close_yesterday": float(d.get('昨收', 0) or 0),
                                     "source": "em_all",
+                                    "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                                 }
                     else:
                         circuit_breaker.record_failure("em_all")
@@ -660,6 +667,7 @@ class AKShareClient:
                                 "low": float(d.get('最低', 0) or 0),
                                 "close_yesterday": float(d.get('昨收', 0) or 0),
                                 "source": "etf_all",
+                                "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
                             }
                 else:
                     circuit_breaker.record_failure("etf_all")
@@ -1100,6 +1108,8 @@ class AKShareClient:
             "volume": int(float(row[fields.index('volume')])),
             "change_pct": change_pct_val,
             "source": "baostock",
+            # N2：原抓取时刻随行记录（预取复用不打新时点）
+            "fetched_at": datetime.now().astimezone().isoformat(timespec="seconds"),
         }
         if effective_at:
             quote["effective_at"] = effective_at
@@ -1249,9 +1259,11 @@ class AKShareClient:
             #                      Baostock 原行 date、无实时价时最近 K 线日期）；
             #                      无可靠源时点 → 明确 None，**抓取墙钟永不做行情时点**
             #   quote_fetched_at = 抓取时刻（诊断留痕——只解释数据新鲜度，不取得
-            #                      估值/有效比较资格）
+            #                      估值/有效比较资格）；N2：优先消费 quote 携带的
+            #                      原抓取时刻（预取复用不打新时点）
             #   price_source     = 来源（预取/缓存随 dict/对象携带原元数据）
-            _quote_fetched_at = datetime.now().astimezone().isoformat(timespec="seconds")
+            _quote_fetched_at = (str((quote or {}).get("fetched_at") or "").strip()
+                                 or datetime.now().astimezone().isoformat(timespec="seconds"))
             _quote_effective_at = (quote or {}).get("effective_at")
             _quote_source = (quote or {}).get("source")
 
@@ -1360,7 +1372,8 @@ class AKShareClient:
                 quote_as_of=(_quote_effective_at if quote
                              else str(latest['日期'])[:10] if '日期' in latest else None),
                 quote_fetched_at=_quote_fetched_at,
-                price_source=_quote_source,
+                # N2：纯 K 线回退说明已知来源形态（K 线行日期，非实时）——不冒充实时
+                price_source=(_quote_source if quote else "kline_only"),
                 # 均线计算
                 ma5=round(float(latest['MA5']), 2) if pd.notna(latest['MA5']) else None,
                 ma10=round(float(latest['MA10']), 2) if pd.notna(latest['MA10']) else None,

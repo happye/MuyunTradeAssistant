@@ -274,7 +274,11 @@ def test_capture_time_only_change_deduped(tmp_path):
     lines = (tmp_path / "shadow.jsonl").read_text(encoding="utf-8").splitlines()
     assert len(lines) == 1 and json.loads(lines[0]).get("output_fingerprint")
     later = rec.model_copy(deep=True)
-    later.as_of = (datetime.fromisoformat(rec.as_of) + timedelta(minutes=5)).isoformat(timespec="seconds")
+    # 同日跨分钟推进（午夜窗口安全：+5min 跨日则改推 -5min，仍保证不同分钟）
+    shifted = datetime.fromisoformat(rec.as_of) + timedelta(minutes=5)
+    if shifted.date() != datetime.fromisoformat(rec.as_of).date():
+        shifted = datetime.fromisoformat(rec.as_of) - timedelta(minutes=5)
+    later.as_of = shifted.isoformat(timespec="seconds")
     assert _output_fingerprint(later) == rec.output_fingerprint, \
         "仅捕获时点变化不得改变输出指纹（真实重复才可折叠）"
     assert _append_record(tmp_path / "shadow.jsonl", later) is False
@@ -300,7 +304,8 @@ def test_arms_complete_in_binding(tmp_path):
         for key in ("action", "target", "target_state", "blockers", "execution"):
             assert key in a, f"{arm} 臂缺 {key}: {a}"
     assert arms["legacy"]["action"] == "HOLD"
-    assert arms["legacy"]["target"] == 0.1 and arms["legacy"]["target_state"] == "KNOWN"
+    # N1（X2）：legacy 臂消费规范包——HOLD 不给数值目标（旧断言 .1/KNOWN 是混用原始值）
+    assert arms["legacy"]["target"] is None and arms["legacy"]["target_state"] == "UNKNOWN"
     assert arms["fusion"]["action"] == "HOLD"
     assert arms["fusion"]["target"] is None and arms["fusion"]["target_state"] == "UNKNOWN"
     _assert_files_in_tmp(tmp_path)
@@ -330,10 +335,10 @@ def test_v6_old_records_diagnostic_only(tmp_path):
     }
     store.write_text(json.dumps(old_v6, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store, account_version="v_l0_next")
-    assert rec.derivation_version == "shadow_v8"
+    assert rec.derivation_version == "shadow_v9"
     assert rec.append_status == "saved", "新旧协议记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v8"
+    assert report["protocol_version"] == "shadow_v9"
     assert report["legacy_records"] == 1, "旧协议记录只诊断（单列计数）"
     assert report["cur_mid_effective"] == 1, "当期分母只数当期协议"
     assert report["older_versions"]["shadow_v6"]["mid_effective"] == 1, "v6 计数按记录原样（仅供过渡观察）"

@@ -295,34 +295,42 @@ def _analyze_stock_single(stock_code: str) -> str:
             return TOOL_ERROR_MARK + f"无法获取 {stock_code} 的数据，请检查股票代码是否正确"
 
         # 获取持仓状态（v0.8.7.8 H05：双侧代码规范化，带前缀/空格输入也能匹配持仓）
+        # N0（R13 X1）：ctx 不以遍历到投影为前置——先装配账本事实再匹配投影；
+        # 账本有仓投影缺失时 has_position/退出方向仍成立
         pm = _portfolio_manager
         strategy_state = None
         pos = None
         norm_code = _normalize_code(stock_code)
         acct_ctx = None
+        acct_facts = None
         if pm:
+            acct_facts = pm.request_account_facts()
             positions = pm.list_positions()
             for p in positions:
                 if _normalize_code(p.stock_code) == norm_code:
                     pos = p
-                    # M0：请求级账户事实一次装配（同源上下文贯穿策略/终态包/影子）
-                    acct_facts = pm.request_account_facts()
                     acct_ctx = acct_facts.context_for(
                         p.stock_code, price=getattr(stock_data, "price", None),
                         price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
-                    # M0/B2：直调 to_strategy_state 共享请求级 NAV/版本
-                    strategy_state = pm.to_strategy_state(
-                        p.stock_code, price=getattr(stock_data, "price", None),
-                        price_as_of=getattr(stock_data, "quote_as_of", None),
-                        nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
                     break
+            if acct_ctx is None:
+                # 无投影记录——ctx 仍按账本事实装配（代码形态归一匹配投影键）
+                acct_ctx = acct_facts.context_for(
+                    norm_code, price=getattr(stock_data, "price", None),
+                    price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
+            # N0：ctx 是策略状态的事实源（投影旧比例不再二次判读）
+            strategy_state = pm.to_strategy_state(
+                pos.stock_code if pos is not None else norm_code,
+                price=getattr(stock_data, "price", None),
+                price_as_of=getattr(stock_data, "quote_as_of", None),
+                nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+                account_context=acct_ctx)
 
         # L1（V3）：有仓判定数量感知；权重按资格判定结果（None=未知）传策略层
         # ——不再直传记录里的过期比例
-        # M0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
+        # M0/N0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
         has_position = (acct_ctx.position_state in ("HELD", "UNKNOWN")
-                        if acct_ctx is not None else
-                        (pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)))
+                        if acct_ctx is not None else False)
         # 执行7层分析（审查修复 H1：补齐 has_position/entry_price/high_since_entry/trade_plan，
         # 与 CLI l 一致；原漏传 -> 即使持仓 has_position=False，fundamental_alert/top_signal/
         # force_exit/PlanGuard 全失效，chat 与 CLI 对同一持仓股给不同决策）
@@ -393,10 +401,12 @@ def _analyze_stock_single(stock_code: str) -> str:
             stock_data, decision_result, strategy_decision,
             execution_eval, ai_result
         )
-        # M1（W2 用户收益）：降级行情如实说明来源时点（chat 与 l/la 同口径）
-        if getattr(stock_data, "price_source", None) == "baostock":
+        # M1/N2（W2 用户收益）：降级行情如实说明来源时点（chat 与 l/la 同口径）
+        if getattr(stock_data, "price_source", None) in ("baostock", "kline_only"):
             _eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
-            result += (f"\n\n⚠ 行情降级：Baostock 日线收盘{f'（{_eff}）' if _eff else ''}"
+            _src_txt = ("Baostock 日线收盘" if getattr(stock_data, "price_source", None) == "baostock"
+                        else "K 线收盘（实时行情未取得）")
+            result += (f"\n\n⚠ 行情降级：{_src_txt}{f'（{_eff}）' if _eff else ''}"
                        "（非实时）——当前权重待重估。")
 
         # 审查修复H1：回写观察量到portfolio.yaml（与CLI一致）；原chat只读不写->

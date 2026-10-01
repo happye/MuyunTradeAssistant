@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.25"  # v0.8.25=M0/M1（账户事实同源闭环修W1+行情来源时间修W2，shadow_v8）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.26"  # v0.8.26=N0/N1/N2（ctx同源贯穿修X1+两臂规范包与版本资格修X2+时间严格解析修X3，shadow_v9/表v3）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -1675,12 +1675,16 @@ def run_cli(mode: str, args: dict):
         # 防不同代码集同数量碰撞继承无关的失败记录（监督员批 3 核对项）
         _tk = "手动多代码 " + ",".join(codes[:4]) + ("…" if len(codes) > 4 else "")
         _ss.batch_task_start("l", _tk, codes)
+        # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
+        from src.data.portfolio import PortfolioManager as _PM_multi
+        _acct_facts = _PM_multi().request_account_facts()
         for i, code in enumerate(codes, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(codes)}] {code}")
             print(f"{'='*60}")
             try:
-                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True,
+                             account_facts=_acct_facts)
                 _ss.mark_deep_analyzed([code], source="手动多代码")
                 _ss.batch_task_mark("l", _tk, code, True)
                 ok += 1
@@ -1707,12 +1711,15 @@ def run_cli(mode: str, args: dict):
         _la_codes = [pos.stock_code for pos in positions]
         _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
         _ss_la.batch_task_start("la", _tk_la, _la_codes)
+        # N0/B2：la 批次共享同一账户事实（同版本；下一命令重新读）
+        _acct_facts = pm.request_account_facts()
         for i, pos in enumerate(positions, 1):
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")
             print(f"{'='*60}")
             try:
-                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
+                             compact=True, account_facts=_acct_facts)
                 _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, True)
             except SystemExit:
                 print(f"  [!] {pos.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
@@ -1769,13 +1776,17 @@ def run_cli(mode: str, args: dict):
         ok = 0
         # C2：批量任务账本（tasks 命令可查进度与失败项）
         session_state.batch_task_start("l all", src_label, [it["code"] for it in new_items])
+        # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
+        from src.data.portfolio import PortfolioManager as _PM_all
+        _acct_facts = _PM_all().request_account_facts()
         for i, it in enumerate(new_items, 1):
             code, name = it["code"], it.get("name", "")
             print(f"\n{'='*60}")
             print(f"  [{i}/{len(new_items)}] {name or code} ({code})")
             print(f"{'='*60}")
             try:
-                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True)
+                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
+                             compact=True, account_facts=_acct_facts)
                 # 成功才记当日已析（失败下次自动重试）；逐只落盘，Ctrl-C 中断不丢记录
                 session_state.mark_deep_analyzed([code], source=src_label)
                 session_state.batch_task_mark("l all", src_label, code, True)

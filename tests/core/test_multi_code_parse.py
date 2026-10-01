@@ -220,7 +220,7 @@ def test_run_cli_live_multi_dispatch_wiring(monkeypatch):
     monkeypatch.setattr(AKShareClient, "get_realtime_quotes", lambda codes, retry=1: {})
     calls, marks = [], []
     with _swap(cli_main, "analyze_live",
-               lambda code, ai_overrides=None, ai_debug=False, compact=False:
+               lambda code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None:
                calls.append((code, compact))), \
          _swap(ss, "mark_deep_analyzed", lambda codes, source="": marks.append((codes, source))), \
          _quiet():

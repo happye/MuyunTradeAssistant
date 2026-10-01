@@ -1,10 +1,13 @@
-"""实施方全量隔离离线测试 runner（M0/M1 交付验证；参照 iteration6/review_test_runner.py 的守卫口径）。
+"""实施方全量隔离离线测试 runner（N 批交付验证；参照 iteration6/review_test_runner.py 的守卫口径）。
+
+结果写 iteration7/FULL_TEST_RESULTS.txt——不覆写 iteration6 的 M 批受审证据（R13 引用）。
+本 runner 属实施方工具（HOME 重定向+保护哈希）；socket/越界写阻断属架构师 runner 职责。
 
 - HOME/USERPROFILE → 一次性临时目录（conftest 已做，双保险）
 - 全量 pytest -q（离线缺省；test_all_api.py 由 conftest 收集期排除）
 - 保护文件哈希前后核对：portfolio.yaml / portfolio.yaml.bak / knowledge/index/*
 - 知识库文件集合前后一致
-- 结果追加写入 plan/fusion/iteration6/FULL_TEST_RESULTS.txt
+- 结果写入 plan/fusion/iteration7/FULL_TEST_RESULTS.txt
 """
 import hashlib
 import os
@@ -55,7 +58,7 @@ def main() -> int:
         out.append("---- tail ----")
         out.extend(proc.stdout.strip().splitlines()[-60:])
     text = "\n".join(out)
-    (REPO / "plan" / "fusion" / "iteration6" / "FULL_TEST_RESULTS.txt").write_text(
+    (REPO / "plan" / "fusion" / "iteration7" / "FULL_TEST_RESULTS.txt").write_text(
         text, encoding="utf-8")
     print(text)
     return 0 if (proc.returncode == 0 and hashes_ok and files_ok) else 2

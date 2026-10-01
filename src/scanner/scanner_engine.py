@@ -399,10 +399,19 @@ class ScannerEngine:
                 has_position = False
                 entry_price = None
                 pos = positions_by_code.get(code)
+                # N0（R13 X1 同类点）：ctx 装配不以投影存在为前置——账本有仓无投影
+                # 不得按空仓分析；has_position 由 ctx 三态判定
+                _acct_facts = pm.request_account_facts()
+                _acct_ctx = _acct_facts.context_for(
+                    code, price=getattr(stock_data, "price", None),
+                    price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
+                strategy_state = pm.to_strategy_state(
+                    code, price=getattr(stock_data, "price", None),
+                    price_as_of=getattr(stock_data, "quote_as_of", None),
+                    nav=_acct_facts.nav, nav_as_of=_acct_facts.nav_day,
+                    account_context=_acct_ctx)
+                has_position = _acct_ctx.position_state in ("HELD", "UNKNOWN")
                 if pos is not None:
-                    # L1（V3）：权重按资格判定（None=未知）；有仓判定数量感知
-                    strategy_state = pm.strategy_state_for(code, stock_data)
-                    has_position = pos.current_ratio > 0 or pos.quantity_held > 0
                     entry_price = pos.entry_price
 
                 # 调用Orchestrator七层分析（含买卖点 Layer 3.75）

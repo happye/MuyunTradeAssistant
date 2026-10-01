@@ -153,7 +153,7 @@ def test_quote_as_of_kline_only_uses_kline_date(monkeypatch):
     sd = AKShareClient._calculate_indicators_uncached("600519")
     assert sd.quote_as_of == BS_DAY
     assert sd.quote_fetched_at is not None
-    assert sd.price_source in (None, ""), "无实时价时 price_source 如实缺省"
+    assert sd.price_source == "kline_only", "N2：纯 K 线回退显式标注来源形态（已知日期、非实时）"
 
 
 def test_quote_as_of_unknown_source_time_stays_none(monkeypatch):
@@ -307,7 +307,7 @@ def test_shadow_v8_records_fetched_at_diagnostic(tmp_path, monkeypatch):
     plans, asm_store = _seed_accepted_mid(tmp_path)
     rec = _capture(tmp_path, plans, asm_store,
                    quote_fetched_at="2026-10-01T10:00:00+08:00")
-    assert rec.derivation_version == "shadow_v8"
+    assert rec.derivation_version == "shadow_v9"
     mb = rec.mid_binding
     assert mb["quote_cutoff"] == BS_DAY
     assert mb["quote_fetched_at"] == "2026-10-01T10:00:00+08:00"
@@ -328,7 +328,12 @@ def test_shadow_v8_dedup_ignores_fetch_time_only(tmp_path, monkeypatch):
     # （datetime 类型不可变——以子类替身替换 shadow 模块的 datetime 引用，推进 2 分钟
     #   走「同日跨分钟」去重规则）
     from unittest.mock import patch as _patch
-    later = (datetime.now().astimezone() + timedelta(minutes=2)).isoformat(timespec="seconds")
+    shift = timedelta(minutes=2)
+    base = datetime.now().astimezone()
+    # 午夜窗口安全：+2min 跨日则改推 -2min（仍保证不同分钟、同日）
+    if (base + shift).date() != base.date():
+        shift = timedelta(minutes=-2)
+    later = (base + shift).isoformat(timespec="seconds")
 
     class _FakeDT(datetime):
         @classmethod
@@ -361,10 +366,10 @@ def test_shadow_v8_report_buckets_old_protocols(tmp_path, monkeypatch):
               "delta_reasons": ["agree"]}
     store.write_text(json.dumps(old_v7, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == "shadow_v8"
+    assert rec.derivation_version == "shadow_v9"
     assert rec.append_status == "saved", "新旧协议记录并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v8"
+    assert report["protocol_version"] == "shadow_v9"
     assert report["legacy_records"] == 1
     assert report["cur_mid_effective"] == 1, "当期分母只数 shadow_v8"
     v7_bucket = report["older_versions"].get("shadow_v7")

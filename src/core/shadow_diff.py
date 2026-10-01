@@ -46,6 +46,17 @@ v4（J0b 评估唯一真值，2026-09-27）：
 - 旧计划（无 assessment_id）→ UNESTABLISHED 降级：facts+refs 简化判断退役，
   不再可能被非空引用救成 VALID（N2 根因封堵）；计划文字保留、资料不销毁
 
+v9（N1 两臂规范包与版本资格，2026-10-01；R13 X2 修复——修正候选协议，旧 v8 不追认）：
+- **两臂各投影自己的规范包**：legacy 臂消费最终 legacy DecisionPacket
+  （action/target/blockers/execution_status 同枚举同语义），原始
+  StrategyDecision 字段只留 legacy_trace——不再混用原始值与规范值
+  （正比例 HOLD 的 .1/KNOWN、execution=动作名 两种混用关闭）
+- **有效版本资格**：仅当期已验证组合（生成版本 RESEARCH_SERVICE_VERSION ×
+  评估方法 ASSERTION_METHOD_VERSION × 当前决策表 DECISION_TABLE_VERSION）
+  进有效分母；未知/不兼容版本 → drop_reasons 机器可读、按 diagnostic 统计
+  （版本字符串存在≠兼容；不改写历史计划的 policy_version 原值）
+- 旧桶 MID/LONG 独立计数（diagnostic=两者皆无）；表规则变化随行5/行6 升 v3
+
 v8（M1 行情来源时点与观察合同，2026-10-01；R12 W2 修复——独立新协议，旧 v7 不追认）：
 - **三时点分离**：binding 增 quote_fetched_at（采集时点，诊断留痕）——quote_cutoff
   仍是价格**有效时点**（来源行自带，可日精度）且唯一进资格门；抓取墙钟不冒充
@@ -89,7 +100,9 @@ logger = logging.getLogger(__name__)
 # v8（M1/W2）：三时点分离（有效时点 vs 采集时点 vs 捕获墙钟）——binding 增
 # quote_fetched_at（诊断不入资格）、输出指纹排除采集时点、报告分桶通用化
 # （cur_*/older_versions）。旧 v7/v6 及更早只诊断不追认。
-SHADOW_DERIVATION_VERSION = "shadow_v8"
+# v9（N1/X2）：两臂各投影自己的规范包 + 有效版本资格门（当期已验证组合之外
+# 一律 diagnostic）。旧 v8 及更早保持原件和诊断分桶，不追认。
+SHADOW_DERIVATION_VERSION = "shadow_v9"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -350,6 +363,24 @@ def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[b
             drops.append(f"{key}_unparsable_{h}")
         elif _cutoff_in_future(raw, as_of):
             drops.append(f"{key}_future_{h}")
+    # N1（X2）：有效版本资格——仅当期已验证组合（生成版本×评估方法×当前决策表）
+    # 进有效分母；未知/不兼容版本按 diagnostic 统计（版本字符串存在≠兼容；
+    # 不改写历史计划的 policy_version 原值——历史来源只降级不追认）
+    try:
+        from src.core.research_service import (
+            ASSERTION_METHOD_VERSION, RESEARCH_SERVICE_VERSION,
+        )
+        from src.core.decision_policy import DECISION_TABLE_VERSION
+        if str(binding.get("policy_version") or "") != RESEARCH_SERVICE_VERSION:
+            drops.append(f"unsupported_policy_version_{h}")
+        if str(binding.get("method_version") or "") != ASSERTION_METHOD_VERSION:
+            drops.append(f"unsupported_method_version_{h}")
+        expected_rule = (f"{binding.get('policy_id', '')}@{DECISION_TABLE_VERSION}")
+        if str(binding.get("decision_rule_version") or "") != expected_rule:
+            drops.append(f"unsupported_rule_version_{h}")
+    except Exception:
+        # 版本常量不可得（导入异常）——保守按不兼容处理
+        drops.append(f"unsupported_version_combo_{h}")
     arms = binding.get("arms") or {}
     for arm in ("legacy", "fusion"):
         a = arms.get(arm) or {}
@@ -470,7 +501,11 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     留痕；缺它不降资格——资格门是有效时点，不是抓取墙钟）。
     account_context: AccountContext（M0 同源上下文——position_state/合格权重/
     account_version 一份事实贯穿两臂；None=旧调用方按 pos.current_ratio 推导）。"""
-    if pos is None:
+    if pos is None and not (account_context is not None
+                            and getattr(account_context, "position_state", "") in
+                            ("HELD", "UNKNOWN")):
+        # N0（X1）：无投影但 ctx 有仓/未知——影子仍捕获（退出方向保留）；
+        # 仅真正的"无上下文/已知空仓"缺位
         return None
     mode_res = _load_capture_switch(config)
     if mode_res is None:
@@ -640,13 +675,15 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             evidence_cutoff = asm.evaluated_as_of.isoformat(timespec="seconds")
         from src.core.decision_policy import DECISION_TABLE_VERSION
         policy_id = str(getattr(pkt, "policy_id", "") or "")
-        legacy_target = getattr(strategy_decision, "position_ratio", None)
-        # M0：HOLD 不取内部占位 0——空/0 占位不解释为目标清仓（两臂 target 取规范终态）
-        if legacy_desired == "HOLD" and (legacy_target is None or legacy_target <= 1e-9):
-            legacy_target = None
-        legacy_blockers: list[str] = []
-        if bool(getattr(execution_eval, "blocked", False)):
-            legacy_blockers.append(str(getattr(execution_eval, "block_reason", "") or "执行被阻"))
+        # N1（X2）：两臂各投影自己的规范包——legacy 臂消费最终 legacy
+        # DecisionPacket（build_decision_packet 产物），原始 StrategyDecision
+        # 字段只留 legacy_trace；execution 同枚举（ExecutionStatus）、阻塞同语义
+        legacy_target = getattr(packet, "target_weight", None)
+        legacy_action = str(getattr(packet.desired_action, "value", "") or "")
+        legacy_blockers = [str(getattr(b, "detail", b))
+                           for b in (getattr(packet, "blockers", None) or [])]
+        legacy_execution = str(getattr(getattr(packet, "execution_status", None),
+                                       "value", "") or "")
         binding = {
             "horizon": h,
             "plan_id": getattr(up, "plan_id", ""),
@@ -665,12 +702,11 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             # 两臂完整输出（R11 V1：补 legacy 目标权重与分别的执行约束/阻塞）
             "arms": {
                 "legacy": {
-                    "action": legacy_desired,
+                    "action": legacy_action,
                     "target": legacy_target,
-                    "target_state": _target_state(legacy_target, legacy_desired),
+                    "target_state": _target_state(legacy_target, legacy_action),
                     "blockers": legacy_blockers,
-                    "execution": str(getattr(getattr(execution_eval, "effective_action",
-                                                     None), "value", "") or ""),
+                    "execution": legacy_execution,
                 },
                 "fusion": {
                     "action": pkt.desired_action.value,
@@ -899,11 +935,13 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
         bucket = older_versions.setdefault(
             v, {"records": 0, "mid_effective": 0, "long_effective": 0, "diagnostic": 0})
         bucket["records"] += 1
+        # N1（X2）：MID/LONG 独立计数（旧实现 if/elif 让双有效记录只计 MID）；
+        # diagnostic = 两者皆无
         if r.get("mid_effective") is True:
             bucket["mid_effective"] += 1
-        elif r.get("long_effective") is True:
+        if r.get("long_effective") is True:
             bucket["long_effective"] += 1
-        else:
+        if r.get("mid_effective") is not True and r.get("long_effective") is not True:
             bucket["diagnostic"] += 1
     return {
         "total": total,

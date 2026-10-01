@@ -1,6 +1,6 @@
 {
   "scope": "isolated prototype for M2 pre-work, not production wiring",
-  "passed": 16,
+  "passed": 25,
   "cases": [
     {
       "case": "normal_accepted_plan_visible",
@@ -15,7 +15,15 @@
       "pass": true
     },
     {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
       "case": "daily_view_keeps_accepted_1",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
       "pass": true
     },
     {
@@ -23,7 +31,11 @@
       "pass": true
     },
     {
-      "case": "normal_zero_plan_mutation",
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "missing_store_status_ok",
       "pass": true
     },
     {
@@ -31,7 +43,7 @@
       "pass": true
     },
     {
-      "case": "missing_zero_write",
+      "case": "zero_write_after_view",
       "pass": true
     },
     {
@@ -43,7 +55,7 @@
       "pass": true
     },
     {
-      "case": "view_zero_write",
+      "case": "zero_write_after_view",
       "pass": true
     },
     {
@@ -63,7 +75,31 @@
       "pass": true
     },
     {
-      "case": "mismatch_zero_write",
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "old_method_plan_flags_version_note",
+      "pass": true
+    },
+    {
+      "case": "old_method_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "restart_read_consistent",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_status_distinct",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_no_research_suggestion",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_no_horizon_detail",
       "pass": true
     }
   ]

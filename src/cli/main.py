@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.25[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.26[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -521,7 +521,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         strategy_state = pm.to_strategy_state(
             pos.stock_code, price=getattr(stock_data, "price", None),
             price_as_of=getattr(stock_data, "quote_as_of", None),
-            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
+            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+            account_context=acct_ctx)
 
         if not has_indicators:
             # 无技术指标，只显示行情
@@ -638,10 +639,12 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             )
             if ai_str:
                 console.print(f"  {ai_str}")
-            # M1（W2 用户收益）：降级行情如实说明来源时点（la 批量与 l 同口径）
-            if getattr(stock_data, "price_source", None) == "baostock":
+            # M1/N2（W2 用户收益）：降级行情如实说明来源时点（la 批量与 l 同口径）
+            if getattr(stock_data, "price_source", None) in ("baostock", "kline_only"):
                 _eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
-                console.print(f"  [yellow]⚠ 行情降级：Baostock 日线收盘"
+                _src_txt = ("Baostock 日线收盘" if getattr(stock_data, "price_source", None) == "baostock"
+                            else "K 线收盘（实时行情未取得）")
+                console.print(f"  [yellow]⚠ 行情降级：{_src_txt}"
                               f"{f'（{_eff}）' if _eff else ''}（非实时）——当前权重待重估[/yellow]")
 
             # 买卖点信息
@@ -795,7 +798,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
-def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False, compact: bool = False):
+def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False,
+                 compact: bool = False, account_facts=None):
     """实时行情分析模式（通过AKShare）
 
     compact=True 时只输出顶部"人话摘要"面板，跳过详细报告与笨总摘要
@@ -852,10 +856,12 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
     console.print(f"  股票: {stock_data.stock_name} ({stock_data.stock_code})")
     console.print(f"  当前价: {stock_data.price}")
     console.print(f"  涨跌幅: {stock_data.change_pct}%")
-    # M1（W2 用户收益）：降级行情如实说明来源时点——不把降级收盘冒充实时价
-    if getattr(stock_data, "price_source", None) == "baostock":
+    # M1/N2（W2 用户收益）：降级行情如实说明来源时点——不把降级收盘冒充实时价
+    _psrc = getattr(stock_data, "price_source", None)
+    if _psrc in ("baostock", "kline_only"):
         eff = str(getattr(stock_data, "quote_as_of", "") or "")[:10]
-        console.print(f"  [yellow]⚠ 行情降级：Baostock 日线收盘"
+        src_txt = ("Baostock 日线收盘" if _psrc == "baostock" else "K 线收盘（实时行情未取得）")
+        console.print(f"  [yellow]⚠ 行情降级：{src_txt}"
                       f"{f'（{eff}）' if eff else ''}（非实时）——当前权重待重估[/yellow]")
 
     # 产业链定位（ISS-061 v5：图谱命中即展示一行，只读不进评分；不在链内不显示）
@@ -893,16 +899,21 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         pm = PortfolioManager()
         # M0：请求级账户事实一次装配（同源上下文——HELD/NONE/UNKNOWN+合格权重+版本）
         # 估值门共享同一份 NAV/版本（策略状态与最终包/影子不再各自读账本）
-        acct_facts = pm.request_account_facts()
+        # N0（X1）：批量入口（la/l all/多代码）经 account_facts 共享同一请求版本；
+        # 单股调用缺省自建（下一命令重新读——无全局缓存）
+        acct_facts = account_facts if account_facts is not None else pm.request_account_facts()
         acct_ctx = acct_facts.context_for(
             stock_code, price=getattr(stock_data, "price", None),
             price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
         # L1（V3）：装配边界接估值输入（行情时点+账户 NAV）——权重资格统一判定
         # M0/B2：直调 to_strategy_state 共享请求级 NAV/版本（不再逐股回读账本）
+        # N0（X1）：ctx 是策略状态的事实源（投影旧比例不再二次判读；
+        # 账本有仓无投影不生成 FLAT/0）
         strategy_state = pm.to_strategy_state(
             stock_code, price=getattr(stock_data, "price", None),
             price_as_of=getattr(stock_data, "quote_as_of", None),
-            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
+            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+            account_context=acct_ctx)
         pos = pm.get_position(stock_code)
         if pos:
             console.print(f"\n[bold green]📂 持仓记录[/bold green]")
@@ -1004,7 +1015,8 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         # F2：传 execution_eval——摘要第一节以终态+执行可行性判定（PROBES A/B 修复）
         try:
             _print_plain_summary(result, strategy_decision, stock_data, pos,
-                                 watch_info=_watch_info, execution_eval=execution_eval)
+                                 watch_info=_watch_info, execution_eval=execution_eval,
+                                 account_context=acct_ctx)
         except Exception as e:
             logger.debug(f"人话摘要渲染失败(不影响主流程): {e}")
 
@@ -1687,7 +1699,8 @@ def _watch_pool_touch(result, strategy_decision, sd, pos=None):
         return None
 
 
-def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None, execution_eval=None) -> None:
+def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None,
+                         execution_eval=None, account_context=None) -> None:
     """l 输出顶部的白话结论面板：该做什么/为什么/什么阶段/笨总怎么看。
 
     纯展示层翻译，不改任何决策逻辑；渲染失败静默降级（调用方包 try）。
@@ -1697,11 +1710,37 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     病根（PROBES A/B 实证）：旧版读原始 DecisionResult/entry_exit，PlanGuard
     压制后的 HOLD 被播报成"卖出信号"、后置强制退出被播报成"什么都不用做"。
     strategy_decision=None（旧调用方/降级）才回退原始信号口径（含观察池文案）。
+    N0（R13 X1）：提供 account_context 时账户事实以 ctx 为判据——账本有仓无
+    投影/待对账/合格估值来源都如实显示（不再以 pos 存在或 weight_unknown 单判）。
     """
     ee = (strategy_decision.entry_exit or {}) if strategy_decision else {}
-    # L1（V3）：有仓判定数量感知——重建仓不得因旧比例 0 被播报成空仓口径
-    has_pos = pos is not None and ((getattr(pos, "current_ratio", 0) or 0) > 0
-                                   or getattr(pos, "quantity_held", 0) > 0)
+    # L1（V3）/N0：有仓判定数量感知——ctx 优先（无投影有仓也是"有仓"）
+    if account_context is not None:
+        has_pos = account_context.position_state in ("HELD", "UNKNOWN")
+    else:
+        has_pos = pos is not None and ((getattr(pos, "current_ratio", 0) or 0) > 0
+                                       or getattr(pos, "quantity_held", 0) > 0)
+
+    def _account_fact_note() -> str:
+        """N0：退出/减仓方向保留的账户事实注解（ctx 为判据，兼容旧 pos 判据）。"""
+        if account_context is not None:
+            st = account_context.position_state
+            if st == "HELD" and pos is None:
+                return (f"账本有仓 {account_context.quantity or '?'} 股，但持仓投影缺失——待对账；"
+                        "退出方向保留。")
+            if st == "UNKNOWN":
+                return (f"账户事实待对账：{account_context.weight_reason or '账实不一致'}"
+                        "——退出方向保留。")
+            if st == "HELD" and account_context.confirmed_weight is None:
+                q = account_context.quantity if account_context.quantity else (
+                    getattr(pos, "quantity_held", 0) if pos is not None else 0)
+                return (f"账户事实：持有 {q or '?'} 股（权重待重估）——退出/减仓方向保留。")
+            return ""
+        if pos is not None and getattr(pos, "weight_unknown", False):
+            return (f"账户事实：持有 {getattr(pos, 'quantity_held', 0) or 0} 股"
+                    "（权重待重估）——退出方向保留。")
+        return ""
+
     decision = result.decision.value if result is not None else "?"
     lines: list[tuple] = []  # (color|None, text)
 
@@ -1719,18 +1758,18 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
                 lines.append((None, f"原因：{ee['exit_reason']}"))
             elif v["reason"]:
                 lines.append((None, f"原因：{v['reason']}"))
-            # M0：权重待重估时明确数量事实与方向保留（W1 用户收益——不与"无仓等待"矛盾）
-            if pos is not None and getattr(pos, "weight_unknown", False):
-                lines.append((None, f"账户事实：持有 {getattr(pos, 'quantity_held', 0) or 0} 股"
-                                    "（权重待重估）——退出方向保留。"))
+            # M0/N0：权重待重估时明确数量事实与方向保留（ctx 判据——不与"无仓等待"矛盾）
+            _note = _account_fact_note()
+            if _note:
+                lines.append((None, _note))
         elif v["bucket"] == "REDUCE":
             lines.append(("red", "减仓纪律触发：按计划减一部分仓位。"))
             if v["reason"]:
                 lines.append((None, f"原因：{v['reason']}"))
-            # M0：权重待重估时明确数量事实与方向保留（用户收益：不出现矛盾口径）
-            if pos is not None and getattr(pos, "weight_unknown", False):
-                lines.append((None, f"账户事实：持有 {getattr(pos, 'quantity_held', 0) or 0} 股"
-                                    "（权重待重估）——减仓方向保留，待重估后锁定比例。"))
+            # M0/N0：权重待重估时明确数量事实与方向保留（ctx 判据——不出现矛盾口径）
+            _note = _account_fact_note()
+            if _note:
+                lines.append((None, _note))
         elif v["bucket"] == "ADD":
             lines.append(("yellow", "加仓条件成立：按计划加仓（注意总仓位纪律，别打满）。"))
         elif v["bucket"] == "OPEN":
@@ -1832,15 +1871,23 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     # 2) 股票现在处于什么阶段
     lines.append((None, f"当前阶段：{_plain_stage(sd)}"))
 
-    # 3) 持仓盈亏
-    if has_pos and pos.entry_price and sd is not None and sd.price:
+    # 3) 持仓盈亏（N0：合格估值显示派生权重及来源；无投影有仓给待对账诊断）
+    if has_pos and pos is not None and pos.entry_price and sd is not None and sd.price:
         pnl = (sd.price - pos.entry_price) / pos.entry_price * 100
         # M0：权重待重估如实显示数量事实（不打印过期比例 0%）
-        if getattr(pos, "weight_unknown", False):
+        if (account_context is not None and account_context.confirmed_weight is not None
+                and "合格估值" in (account_context.weight_reason or "")):
+            lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
+                                f"仓位 {account_context.confirmed_weight:.0%}"
+                                "（合格估值：数量×价格/NAV）"))
+        elif getattr(pos, "weight_unknown", False):
             lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
                                 f"持有 {getattr(pos, 'quantity_held', 0) or 0} 股（权重待重估）"))
         else:
             lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，仓位 {pos.current_ratio:.0%}"))
+    elif account_context is not None and account_context.position_state == "HELD" and pos is None:
+        lines.append((None, f"账本有仓 {account_context.quantity or '?'} 股，"
+                            "但持仓投影缺失——待对账（退出方向保留）。"))
 
     # 4) 笨总怎么看（当日缓存，不跑 AI）
     brief = _cached_benzong_brief(sd.stock_code.split(".")[0] if sd else "") if sd else None
@@ -5191,7 +5238,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.25 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.26 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",

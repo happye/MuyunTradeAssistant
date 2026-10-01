@@ -180,17 +180,34 @@ class MuyunTUI(App):
             return None
         pos = None
         strategy_state = None
+        acct_ctx = None
         try:
+            # N0（R13 X1 同类点）：ctx 装配不以投影存在为前置
+            acct_facts = self._portfolio.request_account_facts()
+            acct_ctx = acct_facts.context_for(
+                code, price=getattr(stock_data, "price", None),
+                price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
             for p in self._portfolio.list_positions():
                 if p.stock_code == code:
                     pos = p
-                    # L1（V3）：权重按资格判定（None=未知）；有仓判定数量感知
-                    strategy_state = self._portfolio.strategy_state_for(code, stock_data)
+                    strategy_state = self._portfolio.to_strategy_state(
+                        code, price=getattr(stock_data, "price", None),
+                        price_as_of=getattr(stock_data, "quote_as_of", None),
+                        nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+                        account_context=acct_ctx)
                     break
+            if strategy_state is None:
+                strategy_state = self._portfolio.to_strategy_state(
+                    code, price=getattr(stock_data, "price", None),
+                    price_as_of=getattr(stock_data, "quote_as_of", None),
+                    nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+                    account_context=acct_ctx)
         except Exception as e:
             # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
             logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
-        has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
+        # N0：有仓判定 ctx 三态（HELD/UNKNOWN 保守 True；无投影账本有仓不漏）
+        has_position = (acct_ctx.position_state in ("HELD", "UNKNOWN")
+                        if acct_ctx is not None else False)
         dr, sd, ee, ai = self._orchestrator.analyze(
             stock_data,
             current_position_ratio=(strategy_state.current_position_ratio

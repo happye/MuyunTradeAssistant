@@ -265,57 +265,70 @@ POSITION_NONE = "NONE"
 POSITION_UNKNOWN = "UNKNOWN"
 
 
-def _quote_day(raw) -> Optional[str]:
-    """来源时点 → 交易日（YYYY-MM-DD，按交易所时区解释——M1 合同）。
+def _parse_source_time(raw):
+    """来源时点**严格解析**（N2/R13 X3）：返回 (交易所时区 aware datetime, 是否
+    时刻精度)；非法 → None（明确未知——不截取坏字符串救回日期）。
 
-    - aware（带偏移）→ 归一 Asia/Shanghai 后取日（同一实际时刻的不同偏移可比）；
-      时区库不可用 → None（不做错误换算）
-    - naive 带时刻（新浪本地墙钟形态）→ 直接取日（已是交易所本地时间）
-    - 纯日期 / 不可解析但前 10 位形如日期 → 原样取前 10 位
-    - 其余 → None（明确未知，不靠墙钟补齐）"""
+    - 带偏移的 aware 时刻 → 归一 Asia/Shanghai（同一实际时刻不同偏移等价）
+    - naive 带时刻（新浪本地墙钟形态）→ 显式按 Asia/Shanghai 解释
+    - 纯日期（YYYY-MM-DD，日历合法）→ 当日 00:00 上海（日精度——按日期判未来，
+      不伪造盘中时点）
+    - 非法日历（2026-02-30）/非法时刻（99:99:99）/垃圾尾巴/空 → None"""
     s = str(raw or "").strip()
     if not s:
         return None
     try:
+        from zoneinfo import ZoneInfo
+        sh = ZoneInfo("Asia/Shanghai")
+    except Exception:
+        return None
+    if len(s) == 10 and s[4] == "-" and s[7] == "-":
+        try:
+            d = datetime.strptime(s, "%Y-%m-%d").date()
+        except ValueError:
+            return None  # 非法日历（如 2026-02-30）
+        return datetime(d.year, d.month, d.day, tzinfo=sh), False
+    try:
         dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
     except ValueError:
-        return s[:10] if len(s) >= 10 and s[4:5] == "-" and s[7:8] == "-" else None
-    if dt.tzinfo is not None:
-        try:
-            from zoneinfo import ZoneInfo
-            dt = dt.astimezone(ZoneInfo("Asia/Shanghai"))
-        except Exception:
-            return None
-    return dt.date().isoformat()
+        return None
+    try:
+        dt = (dt.replace(tzinfo=sh) if dt.tzinfo is None else dt.astimezone(sh))
+    except Exception:
+        return None
+    return dt, True
 
 
 def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Optional[float], str]:
     """数量×价格/NAV 的合格估值门（L1 资格语义的共享核心——to_strategy_state 与
     AccountContext 装配共用同一判据，消费者不再各自判读）。
 
-    M1 口径（R12 W2）：价格与 NAV **同日窗保守相等**（按交易所时区归一）才锁定；
-    缺失/未来时点拒绝（不靠墙钟补齐）；降级旧日收盘与当天 NAV 不拼当前权重。
+    N2 口径（R13 X3）：真实解析区分合法日精度与时刻精度；**先按实际时刻比较
+    未来、再取交易所日**（当天未来时刻拒绝）；缺失/非法/未来拒绝（不靠墙钟
+    补齐）；finite 检查防 NaN/Inf 混入资格；降级旧日收盘与当天 NAV 不拼当前权重。
 
     Returns:
         (weight, reason)：weight=None 时 reason 为人话资格缺口（不拿过期比例
         冒充、不用 0 假装未知）。"""
     if quantity is None or int(quantity) <= 0:
         return None, "无数量事实"
-    if price is None or price <= 0 or nav is None or nav <= 0:
-        return None, "缺价格或NAV"
-    p_day = _quote_day(price_as_of)
-    n_day = _quote_day(nav_as_of)
-    if not p_day or not n_day:
-        return None, "缺行情或NAV时点"
-    # 未来时点判定与 _quote_day 同基准（上海交易日历视角）；时区库不可用回退本地
+    if price is None or not math.isfinite(float(price)) or price <= 0 \
+            or nav is None or not math.isfinite(float(nav)) or nav <= 0:
+        return None, "缺价格或NAV（或非有限数值）"
+    p = _parse_source_time(price_as_of)
+    n = _parse_source_time(nav_as_of)
+    if p is None or n is None:
+        return None, "行情或NAV时点不可解析/缺失"
     try:
         from zoneinfo import ZoneInfo
-        today = datetime.now(ZoneInfo("Asia/Shanghai")).date().isoformat()
+        now_sh = datetime.now(ZoneInfo("Asia/Shanghai"))
     except Exception:
-        today = datetime.now().astimezone().date().isoformat()
-    if p_day > today or n_day > today:
-        return None, "行情或NAV时点在未来"
-    if p_day != n_day:
+        now_sh = datetime.now().astimezone()
+    for label, (dt, has_time) in (("行情", p), ("NAV", n)):
+        # 时刻精度先比实际时刻（当天未来时刻拒绝）；日精度按交易所日期判未来
+        if (dt > now_sh) if has_time else (dt.date() > now_sh.date()):
+            return None, f"{label}时点在未来"
+    if p[0].date() != n[0].date():
         return None, "价格与NAV时点不一致（保守同日窗）"
     derived = int(quantity) * float(price) / float(nav)
     if derived > 1.0:
@@ -354,6 +367,8 @@ class RequestAccountFacts:
         self.nav_day: Optional[str] = None
         self._quantities: dict[str, int] = {}
         self._ledger_present = False
+        self._read_failed = False      # N0：读取失败≠明确空仓（UNKNOWN 待对账）
+        self._ledger_partial = False   # N0：隔离事件/PARTIAL——冻结精确权重
         try:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
             if Path(DEFAULT_LEDGER_PATH).exists():
@@ -361,12 +376,16 @@ class RequestAccountFacts:
                 self._ledger_present = True
                 self.account_version = str(snap.account_version or "")
                 self.nav = snap.nav
-                self.nav_day = (snap.nav_priced_at.strftime("%Y-%m-%d")
+                # N2：NAV 原时点保留偏移传资格门（不先 strftime 丢时区）
+                self.nav_day = (snap.nav_priced_at.isoformat(timespec="seconds")
                                 if snap.nav_priced_at else None)
                 self._quantities = {h.security_id: int(h.quantity or 0)
                                     for h in snap.holdings}
+                if snap.isolated_events or snap.data_completeness == "PARTIAL":
+                    self._ledger_partial = True
         except Exception as e:
-            logger.debug(f"请求级账户事实读取失败（按未对账处理）: {e}")
+            self._read_failed = True
+            logger.warning(f"请求级账户事实读取失败（本次按未对账处理，不当作空仓）: {e}")
 
     def _ledger_quantity(self, stock_code: str) -> int:
         """账本数量事实（代码形态归一：600519 / 600519.SZ / sh600519 都能命中）。"""
@@ -381,12 +400,16 @@ class RequestAccountFacts:
         return 0
 
     def _weight_for(self, quantity: int, price, price_as_of) -> tuple[Optional[float], str]:
-        return _qualified_weight(quantity, price, price_as_of, self.nav, self.nav_day)
+        w, reason = _qualified_weight(quantity, price, price_as_of, self.nav, self.nav_day)
+        if self._ledger_partial:
+            # N0：隔离事件（PARTIAL）——精确权重一律冻结，原因保留原缺口说明
+            return None, f"{reason}；账本含隔离事件——待对账"
+        return w, reason
 
     def context_for(self, stock_code: str, *, price: Optional[float] = None,
                     price_as_of: Optional[str] = None) -> AccountContext:
         """装配单股上下文（数量事实决定持仓；RATIO_ONLY 保留比例判持仓；
-        冲突/未对账明确 UNKNOWN——不编造数量）。"""
+        冲突/未对账明确 UNKNOWN——不编造数量；账本读取失败≠明确空仓）。"""
         pm = self._pm
         version = self.account_version
 
@@ -402,6 +425,22 @@ class RequestAccountFacts:
         except Exception as e:
             logger.debug(f"持仓读取失败 {stock_code}（按未对账处理）: {e}")
             return _ctx(POSITION_UNKNOWN, reason="持仓记录读取失败——账户未对账")
+
+        if self._read_failed:
+            # N0（X1）：账本快照读取失败——不能当作明确空仓（NONE/0）；
+            # 投影记录独立成立的比例语义仍有效（下方分支处理）
+            if pos is None:
+                return _ctx(POSITION_UNKNOWN,
+                            reason="账户账本读取失败——未对账（不当作空仓）")
+            if pos.quantity_fact is not None:
+                # 数量账户投影在、账本读不到——无法核对，保守未对账
+                q = pos.quantity_held
+                if q > 0:
+                    return _ctx(POSITION_UNKNOWN, quantity=q,
+                                reason="账本读取失败且存在数量投影——未对账")
+                return _ctx(POSITION_NONE, quantity=0, weight=0.0,
+                            reason="账本读取失败；投影记录亦无持仓")
+            # RATIO_ONLY 落到下方既有分支（投影比例语义不依赖账本）
 
         ledger_q = self._ledger_quantity(stock_code)
         if pos is None:
@@ -647,7 +686,9 @@ class PortfolioManager:
                 return None, None
             snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
             nav = snap.nav
-            nav_day = snap.nav_priced_at.strftime("%Y-%m-%d") if snap.nav_priced_at else None
+            # N2（X3）：NAV 原时点保留偏移传资格门（不先 strftime 丢时区）
+            nav_day = (snap.nav_priced_at.isoformat(timespec="seconds")
+                       if snap.nav_priced_at else None)
             return nav, nav_day
         except Exception as e:
             logger.debug(f"账户 NAV 读取失败（权重按未知处理）: {e}")
@@ -679,10 +720,11 @@ class PortfolioManager:
     def to_strategy_state(self, stock_code: str, *, price: Optional[float] = None,
                           price_as_of: Optional[str] = None,
                           nav: Optional[float] = None,
-                          nav_as_of: Optional[str] = None) -> StrategyState:
+                          nav_as_of: Optional[str] = None,
+                          account_context: Optional[AccountContext] = None) -> StrategyState:
         """将持仓记录转为StrategyState（供策略层使用）
 
-        如果没有持仓记录，返回默认的FLAT状态。
+        如果没有持仓记录且未提供账户上下文，返回默认的FLAT状态。
 
         L1（R11/V3）数量账户读取资格：
         - 数量事实>0 → 有仓（数量决定有无仓；旧比例 0 不等于无仓）
@@ -691,10 +733,33 @@ class PortfolioManager:
           否则 current_position_ratio=None（权重未知）——不拿过期比例冒充，
           也不用 0 假装未知。派生只读不改账（迁移不反造历史）。
         - RATIO_ONLY 账户（无数量事实）→ 既有 float 比例直通，语义零变化。
+
+        N0（R13 X1）：提供 account_context 时**ctx 是持仓/权重的唯一事实源**——
+        策略层不再从投影比例二次判读（旧比例 .1 与账本事实并存的形态必须给
+        ctx 合格权重）；账本有仓而无投影不生成 FLAT/0（重建仓语义、成本未知
+        不伪造）。生命周期/保护期等元数据仍来自投影（缺失时按 ctx 派生）。
         """
         pos = self.get_position(stock_code)
+        if pos is None and account_context is None:
+            return StrategyState()  # 默认FLAT（旧调用方无上下文——既有语义）
+
+        # N0：ctx 为事实源时的派生（投影缺失也要给合法 StrategyState）
         if pos is None:
-            return StrategyState()  # 默认FLAT
+            if account_context.position_state == POSITION_HELD:
+                # 账本有仓、投影缺失——重建仓语义（X1 主反例：不得 FLAT/0）
+                return StrategyState(
+                    lifecycle=TradeLifecycle.OPEN,
+                    entry_price=None,  # 成本未知——不从价格伪造
+                    current_position_ratio=account_context.confirmed_weight,
+                )
+            if account_context.position_state == POSITION_UNKNOWN:
+                # 持仓未知——不声称有仓生命周期；权重未知（None），
+                # 退出方向由 has_position（ctx 驱动）保守保留
+                return StrategyState(
+                    lifecycle=TradeLifecycle.FLAT,
+                    current_position_ratio=account_context.confirmed_weight,
+                )
+            return StrategyState()  # 已知空仓
 
         # 解析lifecycle
         try:
@@ -716,18 +781,23 @@ class PortfolioManager:
         # L1：权重资格（数量账户 → 合格估值才给数字，否则 None=未知）
         # M0：资格判据抽为 _qualified_weight 共享核心（to_strategy_state 与
         # AccountContext 同一判据——消费者不再各自判读）
-        current_ratio: Optional[float] = pos.current_ratio
-        if pos.weight_unknown:
-            current_ratio = None
-            q = pos.quantity_held
-            qualified, reason = _qualified_weight(q, price, price_as_of, nav, nav_as_of)
-            if qualified is not None:
-                current_ratio = qualified  # 合格估值——用已知数字锁定
-            elif "杠杆" in reason or "异常" in reason:
-                # 杠杆异常（>100%）超出比例字段语义——按未知处理并留痕，不截断伪造
-                logger.info(
-                    f"to_strategy_state {stock_code}: {reason}——权重按未知处理，"
-                    "请核对估值输入")
+        # N0（X1）：提供 ctx 时 ctx 合格权重是唯一事实源——不再从投影比例
+        # 二次判读（旧比例 .1 与账本事实并存的形态必须给 ctx 权重）
+        if account_context is not None:
+            current_ratio: Optional[float] = account_context.confirmed_weight
+        else:
+            current_ratio = pos.current_ratio
+            if pos.weight_unknown:
+                current_ratio = None
+                q = pos.quantity_held
+                qualified, reason = _qualified_weight(q, price, price_as_of, nav, nav_as_of)
+                if qualified is not None:
+                    current_ratio = qualified  # 合格估值——用已知数字锁定
+                elif "杠杆" in reason or "异常" in reason:
+                    # 杠杆异常（>100%）超出比例字段语义——按未知处理并留痕，不截断伪造
+                    logger.info(
+                        f"to_strategy_state {stock_code}: {reason}——权重按未知处理，"
+                        "请核对估值输入")
         return StrategyState(
             lifecycle=lifecycle,
             entry_date=pos.entry_date,

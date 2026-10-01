@@ -45,7 +45,12 @@ POLICY_ID_LONG = "fusion_long_v1"
 # 行2/5/6/8/9/10 裁决在 HELD+未知权重下翻转（WAIT→REVIEW/OPEN→HOLD 等）；
 # position_state=None 路径与 v1 逐字节等价（旧行为兼容锚在
 # test_horizon_backward_compat_without_state）。
-DECISION_TABLE_VERSION = "v2"
+# v3（N1，2026-10-01，R13 X2）：受影响行=行5、行6——
+#   行5：UNKNOWN（持仓未知）技术退出 REDUCE→REVIEW（规模待对账，不给无规模减仓）；
+#   行6：HELD+未知权重即使 budget=True 也 HOLD（预算已知不掩盖权重缺口）。
+#   其余行零变化；position_state=None 推导路径随 v3 同步迁移（confirmed=None →
+#   UNKNOWN → 行5 REVIEW，旧行为 REDUCE——迁移锚 test_no_position_state_migration_is_explicit）。
+DECISION_TABLE_VERSION = "v3"
 
 
 class HorizonPlan(BaseModel):
@@ -242,17 +247,25 @@ def evaluate_horizon(plan: HorizonPlan, facts: HorizonFacts, security_id: str,
     # 到此 thesis_status 必为 VALID（UNESTABLISHED 落行10）；按技术/价位推进
     valid = facts.thesis_status is ThesisStatus.VALID
 
-    # ── 行5（MID）：逻辑 VALID 且预设技术退出成立 → REDUCE/EXIT ──
+    # ── 行5（MID）：逻辑 VALID 且预设技术退出成立 → REDUCE/REVIEW/WAIT ──
     if plan.horizon is Horizon.MID and valid and facts.technical_exit_triggered:
-        if held or not known:
+        if held:
             return act(DesiredAction.REDUCE,
                        "决策表行5: MID 逻辑 VALID 且预设技术退出成立——不通过'长拿'口号压制此周期的退出",
                        exec_status=ExecutionStatus.ELIGIBLE)
+        if not known:
+            # v3（N1）：持仓未知——减仓规模待对账，不给无规模 REDUCE
+            return act(DesiredAction.REVIEW,
+                       "决策表行5: 技术退出成立但持仓未知——REVIEW（规模待对账）")
         return act(DesiredAction.WAIT, "决策表行5: 技术退出成立但无持仓——WAIT")
 
     # ── 行6（MID）：逻辑 VALID、入场条件成立且预算可用 → ADD 或 HOLD / OPEN ──
     if plan.horizon is Horizon.MID and valid and facts.entry_condition_met:
         if held:
+            if not known:
+                # v3（N1）：HELD+未知权重——预算已知不掩盖权重缺口，冻结精确新增
+                return act(DesiredAction.HOLD,
+                           "决策表行6: 逻辑与入场条件成立但权重未知——HOLD（不假增仓；预算已知不弥补权重缺口）")
             if facts.budget_available is True:
                 return act(DesiredAction.ADD, "决策表行6: MID 逻辑 VALID+入场条件+预算可用——依加仓计划 ADD",
                            exec_status=ExecutionStatus.ELIGIBLE)
