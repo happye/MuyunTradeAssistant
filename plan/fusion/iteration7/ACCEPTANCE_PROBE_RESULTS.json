@@ -1,0 +1,151 @@
+{
+  "baseline_commit": "73ba0055a66f3d05d15018a5955e97af727b5c8d",
+  "synthetic": true,
+  "scope": "Real adapters and isolated stores. Chat upstream strategy/market are fixtures; no live account.",
+  "contract_assertions": {
+    "failed": 15,
+    "passed": 2
+  },
+  "groups": [
+    "X1",
+    "X2",
+    "X3",
+    "X4 (M2 prototype only)"
+  ],
+  "protected_files": 7,
+  "protected_hashes_and_knowledge_set_unchanged": true,
+  "results": [
+    {
+      "case": "X1_strategy_context",
+      "projection": true,
+      "state": "HELD",
+      "quantity": 100,
+      "context_weight": null,
+      "strategy_weight": 0.1,
+      "lifecycle": "OPEN"
+    },
+    {
+      "case": "X1_strategy_context",
+      "projection": false,
+      "state": "HELD",
+      "quantity": 100,
+      "context_weight": null,
+      "strategy_weight": 0.0,
+      "lifecycle": "FLAT"
+    },
+    {
+      "case": "X1_chat_no_projection",
+      "has_position": false,
+      "strategy_weight": 0.0,
+      "terminal": "WAIT",
+      "account_version": null
+    },
+    {
+      "case": "X1_ledger_read_failure",
+      "state": "NONE",
+      "weight": 0.0,
+      "reason": "无持仓记录"
+    },
+    {
+      "case": "X2_hold_target",
+      "packet_target": null,
+      "arm": {
+        "action": "HOLD",
+        "target": 0.1,
+        "target_state": "KNOWN",
+        "blockers": [],
+        "execution": "HOLD_POSITION"
+      },
+      "effective": true
+    },
+    {
+      "case": "X2_execution",
+      "packet_execution": "ELIGIBLE",
+      "legacy": "REDUCE",
+      "fusion": "ELIGIBLE"
+    },
+    {
+      "case": "X2_version_gate",
+      "version": "UNSUPPORTED_FUTURE_VERSION",
+      "effective": true,
+      "drops": []
+    },
+    {
+      "case": "X2_horizon_unknown",
+      "action": "REDUCE"
+    },
+    {
+      "case": "X2_horizon_add",
+      "action": "ADD"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-02-30",
+      "weight": 0.1,
+      "reason": "合格估值锁定"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-09-30T99:99:99",
+      "weight": 0.1,
+      "reason": "合格估值锁定"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-09-30garbage",
+      "weight": 0.1,
+      "reason": "合格估值锁定"
+    },
+    {
+      "case": "X3_future_time",
+      "now": "2026-10-01 22:03:28.061124+08:00",
+      "quote": "2026-10-01 23:59:59+08:00",
+      "weight": 0.1,
+      "reason": "合格估值锁定"
+    },
+    {
+      "case": "W2_positive",
+      "source_day": "2026-09-29",
+      "effective_at": "2026-09-29",
+      "fetched_at": "2026-10-01T22:03:28+08:00",
+      "weight": null
+    },
+    {
+      "case": "X2_old_bucket",
+      "bucket": {
+        "records": 1,
+        "mid_effective": 1,
+        "long_effective": 0,
+        "diagnostic": 0
+      },
+      "current_mid": 0
+    },
+    {
+      "case": "M2_readonly_positive",
+      "repeated_reads": 3,
+      "hashes_equal": true
+    },
+    {
+      "case": "M2_corrupt_store",
+      "corrupted": true,
+      "view": {
+        "security_id": "600519",
+        "as_of": "2026-10-01T22:03:28+08:00",
+        "horizons": {
+          "MID": {
+            "has_plan": false,
+            "candidate_available": false
+          },
+          "LONG": {
+            "has_plan": false,
+            "candidate_available": false
+          }
+        },
+        "next_steps": [
+          "MID 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）",
+          "LONG 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）"
+        ]
+      }
+    }
+  ]
+}

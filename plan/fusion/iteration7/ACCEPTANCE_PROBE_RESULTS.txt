@@ -1,0 +1,311 @@
+R13_RESULT {"case": "X1_strategy_context", "projection": true, "state": "HELD", "quantity": 100, "context_weight": null, "strategy_weight": 0.1, "lifecycle": "OPEN"}
+FR13_RESULT {"case": "X1_strategy_context", "projection": false, "state": "HELD", "quantity": 100, "context_weight": null, "strategy_weight": 0.0, "lifecycle": "FLAT"}
+FR13_RESULT {"case": "X1_chat_no_projection", "has_position": false, "strategy_weight": 0.0, "terminal": "WAIT", "account_version": null}
+FR13_RESULT {"case": "X1_ledger_read_failure", "state": "NONE", "weight": 0.0, "reason": "无持仓记录"}
+FR13_RESULT {"case": "X2_hold_target", "packet_target": null, "arm": {"action": "HOLD", "target": 0.1, "target_state": "KNOWN", "blockers": [], "execution": "HOLD_POSITION"}, "effective": true}
+FR13_RESULT {"case": "X2_execution", "packet_execution": "ELIGIBLE", "legacy": "REDUCE", "fusion": "ELIGIBLE"}
+FR13_RESULT {"case": "X2_version_gate", "version": "UNSUPPORTED_FUTURE_VERSION", "effective": true, "drops": []}
+FR13_RESULT {"case": "X2_horizon_unknown", "action": "REDUCE"}
+FR13_RESULT {"case": "X2_horizon_add", "action": "ADD"}
+FR13_RESULT {"case": "X3_bad_date", "stamp": "2026-02-30", "weight": 0.1, "reason": "合格估值锁定"}
+FR13_RESULT {"case": "X3_bad_date", "stamp": "2026-09-30T99:99:99", "weight": 0.1, "reason": "合格估值锁定"}
+FR13_RESULT {"case": "X3_bad_date", "stamp": "2026-09-30garbage", "weight": 0.1, "reason": "合格估值锁定"}
+FR13_RESULT {"case": "X3_future_time", "now": "2026-10-01 22:03:28.061124+08:00", "quote": "2026-10-01 23:59:59+08:00", "weight": 0.1, "reason": "合格估值锁定"}
+2026-10-01 22:03:28,074 - src.data.akshare_client - WARNING - ⚠ 只拿到价格、没拿到历史K线，本次无法做技术面分析——重跑即可｜原始：历史K线获取失败 600519，降级返回实时数据（无技术指标）
+FR13_RESULT {"case": "W2_positive", "source_day": "2026-09-29", "effective_at": "2026-09-29", "fetched_at": "2026-10-01T22:03:28+08:00", "weight": null}
+.R13_RESULT {"case": "X2_old_bucket", "bucket": {"records": 1, "mid_effective": 1, "long_effective": 0, "diagnostic": 0}, "current_mid": 0}
+FR13_RESULT {"case": "M2_readonly_positive", "repeated_reads": 3, "hashes_equal": true}
+2026-10-01 22:03:28,207 - src.data.horizon_plans - WARNING - ⚠ 计划文件读不出来（可能损坏）——影子对照按无计划处理，分析结论不受影响；恢复计划功能需手工检查 ~/.muyun/horizon_plans.json｜原始：horizon_plans.json 读取失败（损坏保护生效，本次按空处理且不会覆盖原文件）: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+.R13_RESULT {"case": "M2_corrupt_store", "corrupted": true, "view": {"security_id": "600519", "as_of": "2026-10-01T22:03:28+08:00", "horizons": {"MID": {"has_plan": false, "candidate_available": false}, "LONG": {"has_plan": false, "candidate_available": false}}, "next_steps": ["MID 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）", "LONG 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）"]}}
+F
+================================== FAILURES ===================================
+______________ test_account_strategy_consumes_same_context[True] ______________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_account_strategy_consumes0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5154B6D10>
+projection = True
+
+    @pytest.mark.parametrize("projection", [True, False])
+    def test_account_strategy_consumes_same_context(tmp_path, monkeypatch, projection):
+        pm, _ = seed(tmp_path, monkeypatch, projection)
+        facts = pm.request_account_facts()
+        ctx = facts.context_for(m0.CODE, price=10, price_as_of=m0.PRICE_DAY)
+        state = pm.to_strategy_state(m0.CODE, price=10, price_as_of=m0.PRICE_DAY,
+                                     nav=facts.nav, nav_as_of=facts.nav_day)
+        emit("X1_strategy_context", projection=projection, state=ctx.position_state,
+             quantity=ctx.quantity, context_weight=ctx.confirmed_weight,
+             strategy_weight=state.current_position_ratio, lifecycle=state.lifecycle)
+        assert ctx.position_state == "HELD" and ctx.confirmed_weight is None
+>       assert state.current_position_ratio == ctx.confirmed_weight
+E       AssertionError: assert 0.1 == None
+E        +  where 0.1 = StrategyState(lifecycle=<TradeLifecycle.OPEN: 'OPEN'>, entry_date='2026-10-01', entry_price=10.0, current_position_rat...duce_reason=None, reduce_protection_remaining=0, min_hold_remaining=5, add_protection_remaining=0, last_tick_date=None).current_position_ratio
+E        +  and   None = AccountContext(security_id='600519', position_state='HELD', quantity=100, confirmed_weight=None, weight_reason='缺价格或NAV', account_version='ve3353992b93228a8').confirmed_weight
+
+plan\fusion\iteration7\acceptance_probes.py:54: AssertionError
+_____________ test_account_strategy_consumes_same_context[False] ______________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_account_strategy_consumes1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5154BE790>
+projection = False
+
+    @pytest.mark.parametrize("projection", [True, False])
+    def test_account_strategy_consumes_same_context(tmp_path, monkeypatch, projection):
+        pm, _ = seed(tmp_path, monkeypatch, projection)
+        facts = pm.request_account_facts()
+        ctx = facts.context_for(m0.CODE, price=10, price_as_of=m0.PRICE_DAY)
+        state = pm.to_strategy_state(m0.CODE, price=10, price_as_of=m0.PRICE_DAY,
+                                     nav=facts.nav, nav_as_of=facts.nav_day)
+        emit("X1_strategy_context", projection=projection, state=ctx.position_state,
+             quantity=ctx.quantity, context_weight=ctx.confirmed_weight,
+             strategy_weight=state.current_position_ratio, lifecycle=state.lifecycle)
+        assert ctx.position_state == "HELD" and ctx.confirmed_weight is None
+>       assert state.current_position_ratio == ctx.confirmed_weight
+E       AssertionError: assert 0.0 == None
+E        +  where 0.0 = StrategyState(lifecycle=<TradeLifecycle.FLAT: 'FLAT'>, entry_date=None, entry_price=None, current_position_ratio=0.0, ...duce_reason=None, reduce_protection_remaining=0, min_hold_remaining=0, add_protection_remaining=0, last_tick_date=None).current_position_ratio
+E        +  and   None = AccountContext(security_id='600519', position_state='HELD', quantity=100, confirmed_weight=None, weight_reason='缺价格或NAV（账本数量事实；比例视图待重估）', account_version='va03b0c0c9c712646').confirmed_weight
+
+plan\fusion\iteration7\acceptance_probes.py:54: AssertionError
+_________________ test_chat_ledger_only_holding_retains_exit __________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_chat_ledger_only_holding_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5154CEF90>
+
+    def test_chat_ledger_only_holding_retains_exit(tmp_path, monkeypatch):
+        pm, _ = seed(tmp_path, monkeypatch, False)
+        stock = m0._stub_market(m0.CODE)
+        dr = DecisionResult(stock=stock, state=MarketState.TRANSITION,
+                            decision=SignalType.SELL, score=.8)
+        seen = {}
+        def analyze(*args, **kwargs):
+            seen.update(kwargs)
+            return dr, m0._sd("CLOSE_ALL", 0, sell_path="fundamental_alert"), m0._eval(), None
+        packets = []
+        original = analysis.build_decision_packet
+        def build(*args, **kwargs):
+            pkt = original(*args, **kwargs)
+            packets.append(pkt)
+            return pkt
+        monkeypatch.setattr(chat, "_portfolio_manager", pm)
+        monkeypatch.setattr(chat, "_orchestrator", SimpleNamespace(analyze=analyze))
+        monkeypatch.setattr(chat, "_get_stock_data_with_timeout", lambda code: stock)
+        monkeypatch.setattr(formatter, "format_analysis_result", lambda *args: "fixture")
+        monkeypatch.setattr(m0.cli_main, "_watch_pool_touch", lambda *args: None)
+        monkeypatch.setattr(analysis, "build_decision_packet", build)
+        result = chat.analyze_stock(m0.CODE)
+        assert packets, result
+        emit("X1_chat_no_projection", has_position=seen["has_position"],
+             strategy_weight=seen["current_position_ratio"],
+             terminal=packets[-1].desired_action.value,
+             account_version=packets[-1].portfolio_revision)
+>       assert seen["has_position"] is True
+E       assert False is True
+
+plan\fusion\iteration7\acceptance_probes.py:84: AssertionError
+_________________ test_unreadable_ledger_is_unknown_not_flat __________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_unreadable_ledger_is_unkn0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5154AF050>
+
+    def test_unreadable_ledger_is_unknown_not_flat(tmp_path, monkeypatch):
+        pm, _ = seed(tmp_path, monkeypatch, False)
+        with patch.object(accounts.AccountService, "snapshot", side_effect=OSError("fixture read error")):
+            ctx = pm.request_account_facts().context_for(m0.CODE)
+        emit("X1_ledger_read_failure", state=ctx.position_state,
+             weight=ctx.confirmed_weight, reason=ctx.weight_reason)
+>       assert ctx.position_state == "UNKNOWN" and ctx.confirmed_weight is None
+E       AssertionError: assert ('NONE' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + NONE)
+
+plan\fusion\iteration7\acceptance_probes.py:94: AssertionError
+_______________ test_shadow_legacy_hold_uses_normalized_target ________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_shadow_legacy_hold_uses_n0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5154960D0>
+
+    def test_shadow_legacy_hold_uses_normalized_target(tmp_path, monkeypatch):
+        pkt, rec = capture(tmp_path, monkeypatch)
+        arm = rec.mid_binding["arms"]["legacy"]
+        emit("X2_hold_target", packet_target=pkt.target_weight, arm=arm,
+             effective=rec.mid_effective)
+>       assert arm["target"] == pkt.target_weight
+E       AssertionError: assert 0.1 == None
+E        +  where None = DecisionPacket(schema_version='fusion.v1', decision_id='0f6e720c31a34d27ae3202a9b130caed', security_id='600519', excha...egacyTrace(decision='SELL', action_strength=0.85, position_action='HOLD_POSITION', position_ratio=0.1, sell_path=None)).target_weight
+
+plan\fusion\iteration7\acceptance_probes.py:125: AssertionError
+____________________ test_shadow_execution_uses_same_enum _____________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_shadow_execution_uses_sam0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A515674890>
+
+    def test_shadow_execution_uses_same_enum(tmp_path, monkeypatch):
+        pkt, rec = capture(tmp_path, monkeypatch, action="REDUCE", weight=.1, ratio=.05)
+        arm = rec.mid_binding["arms"]["legacy"]
+        emit("X2_execution", packet_execution=pkt.execution_status.value,
+             legacy=arm["execution"], fusion=rec.mid_binding["arms"]["fusion"]["execution"])
+>       assert arm["execution"] == pkt.execution_status.value
+E       AssertionError: assert 'REDUCE' == 'ELIGIBLE'
+E         
+E         - ELIGIBLE
+E         + REDUCE
+
+plan\fusion\iteration7\acceptance_probes.py:133: AssertionError
+__________________ test_unknown_policy_version_not_effective __________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_unknown_policy_version_no0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A515669950>
+
+    def test_unknown_policy_version_not_effective(tmp_path, monkeypatch):
+        _, rec = capture(tmp_path, monkeypatch, policy_version="UNSUPPORTED_FUTURE_VERSION")
+        emit("X2_version_gate", version=rec.mid_binding["policy_version"],
+             effective=rec.mid_effective, drops=rec.mid_binding["drop_reasons"])
+>       assert rec.mid_effective is False
+E       AssertionError: assert True is False
+E        +  where True = ShadowDiffRecord(security_id='600519', as_of='2026-10-01T22:03:28+08:00', source='', legacy_action='HOLD_POSITION', le...is_unestablished'], derivation_version='shadow_v8', shadow_disclosure='分周期对照——MID=用户已确认计划——真判断；LONG=模拟计划（非用户确认，仅对照观察）').mid_effective
+
+plan\fusion\iteration7\acceptance_probes.py:140: AssertionError
+___________________ test_horizon_unknown_reduce_goes_review ___________________
+
+    def test_horizon_unknown_reduce_goes_review():
+        pkt = m0.evaluate_horizon(m0._plan(), m0._hf(thesis_status="VALID", technical_exit_triggered=True),
+                                 m0.CODE, confirmed_ratio=None, position_state="UNKNOWN")
+        emit("X2_horizon_unknown", action=pkt.desired_action.value)
+>       assert pkt.desired_action.value == "REVIEW"
+E       AssertionError: assert 'REDUCE' == 'REVIEW'
+E         
+E         - REVIEW
+E         + REDUCE
+
+plan\fusion\iteration7\acceptance_probes.py:147: AssertionError
+___________ test_horizon_held_unknown_budget_true_still_freezes_add ___________
+
+    def test_horizon_held_unknown_budget_true_still_freezes_add():
+        pkt = m0.evaluate_horizon(m0._plan(), m0._hf(thesis_status="VALID", entry_condition_met=True,
+                                                   budget_available=True),
+                                 m0.CODE, confirmed_ratio=None, position_state="HELD")
+        emit("X2_horizon_add", action=pkt.desired_action.value)
+>       assert pkt.desired_action.value == "HOLD"
+E       AssertionError: assert 'ADD' == 'HOLD'
+E         
+E         - HOLD
+E         + ADD
+
+plan\fusion\iteration7\acceptance_probes.py:155: AssertionError
+______________ test_bad_date_never_qualifies_weight[2026-02-30] _______________
+
+stamp = '2026-02-30'
+
+    @pytest.mark.parametrize("stamp", ["2026-02-30", "2026-09-30T99:99:99", "2026-09-30garbage"])
+    def test_bad_date_never_qualifies_weight(stamp):
+        weight, reason = portfolio._qualified_weight(100, 10, stamp, 10000, stamp[:10])
+        emit("X3_bad_date", stamp=stamp, weight=weight, reason=reason)
+>       assert weight is None
+E       assert 0.1 is None
+
+plan\fusion\iteration7\acceptance_probes.py:162: AssertionError
+__________ test_bad_date_never_qualifies_weight[2026-09-30T99:99:99] __________
+
+stamp = '2026-09-30T99:99:99'
+
+    @pytest.mark.parametrize("stamp", ["2026-02-30", "2026-09-30T99:99:99", "2026-09-30garbage"])
+    def test_bad_date_never_qualifies_weight(stamp):
+        weight, reason = portfolio._qualified_weight(100, 10, stamp, 10000, stamp[:10])
+        emit("X3_bad_date", stamp=stamp, weight=weight, reason=reason)
+>       assert weight is None
+E       assert 0.1 is None
+
+plan\fusion\iteration7\acceptance_probes.py:162: AssertionError
+___________ test_bad_date_never_qualifies_weight[2026-09-30garbage] ___________
+
+stamp = '2026-09-30garbage'
+
+    @pytest.mark.parametrize("stamp", ["2026-02-30", "2026-09-30T99:99:99", "2026-09-30garbage"])
+    def test_bad_date_never_qualifies_weight(stamp):
+        weight, reason = portfolio._qualified_weight(100, 10, stamp, 10000, stamp[:10])
+        emit("X3_bad_date", stamp=stamp, weight=weight, reason=reason)
+>       assert weight is None
+E       assert 0.1 is None
+
+plan\fusion\iteration7\acceptance_probes.py:162: AssertionError
+____________________ test_same_day_future_time_is_rejected ____________________
+
+    def test_same_day_future_time_is_rejected():
+        from zoneinfo import ZoneInfo
+        now = datetime.now(ZoneInfo("Asia/Shanghai"))
+        future = now.replace(hour=23, minute=59, second=59, microsecond=0)
+        if future <= now:
+            pytest.skip("End of trading-zone day")
+        weight, reason = portfolio._qualified_weight(100, 10, future.isoformat(), 10000,
+                                                     now.date().isoformat())
+        emit("X3_future_time", now=now, quote=future, weight=weight, reason=reason)
+>       assert weight is None
+E       assert 0.1 is None
+
+plan\fusion\iteration7\acceptance_probes.py:174: AssertionError
+___________________ test_old_protocol_counts_both_horizons ____________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_old_protocol_counts_both_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5156C5490>
+
+    def test_old_protocol_counts_both_horizons(tmp_path, monkeypatch):
+        _, rec = capture(tmp_path, monkeypatch)
+        row = rec.model_dump(mode="json")
+        row.update(derivation_version="shadow_v7", mid_effective=True, long_effective=True)
+        path = tmp_path / "older.jsonl"
+        path.write_text(json.dumps(row) + "\n", encoding="utf-8")
+        report = shadow.build_shadow_report(store_path=path, days=7)
+        bucket = report["older_versions"]["shadow_v7"]
+        emit("X2_old_bucket", bucket=bucket, current_mid=report["cur_mid_effective"])
+        assert report["cur_mid_effective"] == 0
+>       assert bucket["mid_effective"] == 1 and bucket["long_effective"] == 1
+E       assert (1 == 1 and 0 == 1)
+
+plan\fusion\iteration7\acceptance_probes.py:203: AssertionError
+_________________ test_m2_corrupt_store_not_reported_as_empty _________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_24h___vz/pytest/test_m2_corrupt_store_not_repo0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001A5156C9010>
+
+    def test_m2_corrupt_store_not_reported_as_empty(tmp_path, monkeypatch):
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+        m0._isolate(tmp_path, monkeypatch)
+        path = tmp_path / "bad_plans.json"
+        path.write_text("{broken", encoding="utf-8")
+        plans = HorizonPlanStore(path)
+        proto = prototype()
+        before = proto._tree_hash([tmp_path])
+        view = proto.daily_research_view(m0.CODE, plans_store=plans,
+            assessment_store=AssessmentStore(tmp_path / "research"), as_of=datetime.now().astimezone())
+        assert proto._tree_hash([tmp_path]) == before
+        emit("M2_corrupt_store", corrupted=plans.corrupted, view=view)
+        assert plans.corrupted
+>       assert "损坏" in json.dumps(view, ensure_ascii=False)
+E       assert '损坏' in '{"security_id": "600519", "as_of": "2026-10-01T22:03:28+08:00", "horizons": {"MID": {"has_plan": false, "candidate_av...["MID 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）", "LONG 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）"]}'
+E        +  where '{"security_id": "600519", "as_of": "2026-10-01T22:03:28+08:00", "horizons": {"MID": {"has_plan": false, "candidate_av...["MID 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）", "LONG 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）"]}' = <function dumps at 0x000001A4069AB880>({'security_id': '600519', 'as_of': '2026-10-01T22:03:28+08:00', 'horizons': {'MID': {'has_plan': False, 'candidate_ava... ['MID 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）', 'LONG 无研究记录——research 600519 --claims <主张文件> 建立（查询不自动补采）']}, ensure_ascii=False)
+E        +    where <function dumps at 0x000001A4069AB880> = json.dumps
+
+plan\fusion\iteration7\acceptance_probes.py:240: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.horizon_plans:horizon_plans.py:68 ⚠ 计划文件读不出来（可能损坏）——影子对照按无计划处理，分析结论不受影响；恢复计划功能需手工检查 ~/.muyun/horizon_plans.json｜原始：horizon_plans.json 读取失败（损坏保护生效，本次按空处理且不会覆盖原文件）: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_account_strategy_consumes_same_context[True]
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_account_strategy_consumes_same_context[False]
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_chat_ledger_only_holding_retains_exit
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_unreadable_ledger_is_unknown_not_flat
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_shadow_legacy_hold_uses_normalized_target
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_shadow_execution_uses_same_enum
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_unknown_policy_version_not_effective
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_horizon_unknown_reduce_goes_review
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_horizon_held_unknown_budget_true_still_freezes_add
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_bad_date_never_qualifies_weight[2026-02-30]
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_bad_date_never_qualifies_weight[2026-09-30T99:99:99]
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_bad_date_never_qualifies_weight[2026-09-30garbage]
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_same_day_future_time_is_rejected
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_old_protocol_counts_both_horizons
+FAILED plan/fusion/iteration7/acceptance_probes.py::test_m2_corrupt_store_not_reported_as_empty
+15 failed, 2 passed in 3.38s
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True

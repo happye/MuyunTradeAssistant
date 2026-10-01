@@ -2306,3 +2306,49 @@ W1 病根不是某一个调用点传错参数：l/la/chat 三入口各自拿 `po
 ### Resolution
 - **Resolved**: 2026-10-01
 - **Notes**: M0 卡落地 AccountContext/RequestAccountFacts（commit 21da3ff）；M1 卡落地三时点分离与 shadow_v8（commit 96f6f1d）；19 场景规范合同逐条测试锚定（test_m0_account_terminal/test_m1_quote_time）。
+
+---
+
+## [LRN-20261001-ARCH10] insight — 同源上下文必须取代旧读出口，不能只新增字段
+
+**Logged**: 2026-10-01
+**Priority**: high
+**Status**: pending
+**Area**: architecture
+
+R13独立381目标回归绿，但17合同场景15红/2绿：RequestAccountFacts已引入，to_strategy_state仍读投影；chat只在投影存在时装配ctx，账本100股/无投影的CLOSE_ALL变WAIT。shadow有规范包却继续拿原始比例和动作枚举，任意非空生成版本能进有效桶；时间解析失败截前10位又把坏日期救成合格估值。
+
+行动：N0让策略/展示/建议消费同ctx，保留读失败/空仓差异；N1两臂各投影规范包并落实版本组合门；N2严格日期/时刻解析。端到端测试须在一次调用中断言风险触发→最终包，不用“入口跑过+另手造包”代替；计数器必须真正断言、哈希须取前后两次，禁止自比较。详见[R13](../plan/fusion/iteration7/R13_ACCEPTANCE.md)。
+
+**See Also**: LRN-20261001-ARCH08、LRN-20261001-L011。L011的resolved只说明M0实现交付，不表示所有消费者已独立验收；当前全链状态以R13为准。未改产品，本记录不是修复。
+**Pattern-Key**: design.context_must_replace_old_consumers
+
+---
+
+## [LRN-20261002-L012] pattern — 给多分支共享机制接线时，逐分支核对符号可用性与替身签名
+
+**Logged**: 2026-10-02T00:40:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: process
+
+### Summary
+N0 给批量入口接请求级账户事实：start.py 三个批量分支（多代码 l / la / l all）都加了 `PortfolioManager().request_account_facts()`，但 `from src.data.portfolio import PortfolioManager` 只在 la 分支 import——分支互斥，另两分支运行期 UnboundLocalError 整批全灭。guard 用 4 个既有测试红实证（l all/live_multi/chat 多代码同路径）。另一面：`analyze_live` 新增 account_facts 形参后，测试里的 analyze_live 替身没跟着加形参 → TypeError 被批量 try 吞成「分析失败」。
+
+### Details
+同一机制接到多个互斥分支时，「在 A 分支能跑」不等于「B 分支能跑」——import 是分支局部的事实。替身函数签名是真实签名的镜像契约，真实签名加参必须同步替身，否则错误被调用方的 try/except 吃掉表现为静默失败。
+
+### Suggested Action
+跨分支接线后：(1) 逐分支核对所引用符号的 import 可达性（或提到分支外公共位置）；(2) 改真实函数签名时 grep 全部替身（fake/stub/lambda）同步形参；(3) 批量路径的既有接线测试（live_scan_all/multi_code_parse）必须随批跑。
+
+### Metadata
+- Source: error
+- Related Files: start.py, tests/core/test_live_scan_all.py, tests/core/test_multi_code_parse.py
+- Tags: process, branch-isolation, test-double-signature, same-class-scan
+- Pattern-Key: process.multi_branch_wiring_needs_per_branch_symbol_check
+- Recurrence-Count: 1
+- First-Seen: 2026-10-02
+
+### Resolution
+- **Resolved**: 2026-10-02
+- **Notes**: 两分支补局部 import；替身签名补 account_facts 形参；guard P1 三条（含 scanner/TUI/Web 同类点）全部修复后全量 1482 passed。

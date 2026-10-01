@@ -1,0 +1,32 @@
+{
+  "date": "2026-10-01",
+  "head": "73ba0055a66f3d05d15018a5955e97af727b5c8d",
+  "missing_links": [],
+  "json_and_ast": "PASS",
+  "product_worktree_changes": [],
+  "changed_source_paths_since_R12": [
+    "src/chat/tools.py",
+    "src/cli/main.py",
+    "src/core/analysis_service.py",
+    "src/core/decision_policy.py",
+    "src/core/orchestrator.py",
+    "src/core/shadow_diff.py",
+    "src/data/akshare_client.py",
+    "src/data/models.py",
+    "src/data/portfolio.py",
+    "start.py",
+    "tests/core/test_k1_shadow_v6.py",
+    "tests/core/test_l0_shadow_contract.py",
+    "tests/core/test_l2_public_checkpoint.py"
+  ],
+  "fingerprinted_files": 68,
+  "docs": [
+    "plan\\fusion\\iteration7\\DELIVERY_PLAN.md",
+    "plan\\fusion\\iteration7\\R13_ACCEPTANCE.md",
+    "plan\\fusion\\iteration7\\README.md",
+    "MILESTONES.md",
+    "plan\\fusion\\STATUS.md",
+    "plan\\fusion\\RESUME.md",
+    "plan\\fusion\\README.md"
+  ]
+}

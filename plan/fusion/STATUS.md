@@ -1,46 +1,45 @@
 # 融合项目当前实施与审批状态
 
-**更新：2026-10-01（M 批交付）｜受审HEAD：679afa6（M0 `21da3ff`/M1 `96f6f1d` 待独立复验）｜整体未完成。** 长期愿景、能力里程碑与必要重构统一在根目录 [MILESTONES.md](../../MILESTONES.md)；本页只记录当前交付、审批和下一动作。恢复职责见 [RESUME](RESUME.md)。
+**更新：2026-10-02（N 批交付）｜受审HEAD：73ba005（N0–N2 交付待独立复验）｜v0.8.26｜整体未完成。** 长期目标及完成标准见根[MILESTONES](../../MILESTONES.md)，恢复见[RESUME](RESUME.md)。
 
 ## 当前审批
 
-上一轮：实施方[L系列报告](iteration5/实施方报告_L系列交付.md)已完成独立审批：[R12](iteration6/R12_ACCEPTANCE.md)——分项接收，L0/L1退回补齐（W1/W2两P1）。K1暂不冻结，K2b生产归并暂不放行，fusion effective仍capture_only。
+[M系列交付](iteration6/实施方报告_M系列交付.md)已完成[R13独立审批](iteration7/R13_ACCEPTANCE.md)：**分项接收、M0/M1整卡退回补齐；K1不冻结，M2/K2b生产不放行，effective保持capture_only。** R12既有通过范围不重复审批。
 
-**M 批已实施待独立复验**（实施方报告[实施方报告_M系列交付](iteration6/实施方报告_M系列交付.md)，逐卡账本[EXECUTION_RECORD](iteration6/EXECUTION_RECORD.md)）：M0 修W1（AccountContext/RequestAccountFacts 同源闭环，规范动作视图19场景对齐，表版本v2）、M1 修W2（三时点分离，shadow_v8）、M2 仅隔离原型。目标回归420全绿、隔离离线全量见[FULL_TEST_RESULTS](iteration6/FULL_TEST_RESULTS.txt)。**实现≠审批；W1/W2修复以架构师按修正后源码指纹的独立复验为准。**
+**N 批已实施待独立复验**（实施方报告[实施方报告_N系列交付](iteration7/实施方报告_N系列交付.md)，逐卡账本[EXECUTION_RECORD](iteration7/EXECUTION_RECORD.md)）：N0 修X1（ctx 贯穿策略/chat/建议/摘要，无投影不按空仓，读取失败/PARTIAL 待对账，scanner/TUI/Web 同类点接线）、N1 修X2（两臂各投影规范包+有效版本资格门，行5/行6 升 v3，shadow_v9）、N2 修X3（严格解析/先比时刻再取日/finite/NAV 偏移保留，kline_only 标注）、M2 原型按 X4 补证据（25 场景）。联合目标回归 **30文件462 passed**、隔离离线全量 **1482 passed, 2 skipped**（[FULL_TEST_RESULTS](iteration7/FULL_TEST_RESULTS.txt)，保护哈希不变）。**实现≠审批。**
 
 | 块 | 当前状态 | 剩余/承接 | 长期里程碑 |
 |---|---|---|---|
-| K0a/L1账户 | 策略读数/总权重未知通过；W1修复已实施 | M0同源闭环待独立复验；复验过后裁定K1冻结 | G1/G5/T01 |
-| K0b事实/命题 | 带明确范围限制通过 | 只认证已支持门；LONG规则/数据仍不完整，不能整体背书自然语言 | G1/G3/G4 |
-| K0c/L0计划/去重 | V2当前arms字段变化指纹通过 | B1墙钟变化使研究revision增长；M2只读视图原型16场景通过、生产接线待放行 | G2/G6/T03 |
-| K2a/L2公开研究 | 公开引用与检查点TRUE通过 | 全MID评估正例仍UNESTABLISHED，完整样板待G3 | G2/G3/T02 |
-| K1/L0观察合同 | 字段门进步；W1/W2修复落地 | shadow_v8协议（旧v7/v6只诊断不追认）；M0/M1联合复验后裁定冻结 | G6/T03 |
-| K2b统一l | M2限定设计+原型已验证，生产未放行 | M0/M1独立过门后实施只读研究视图；不自动重跑生成草稿 | G2 |
-| K3/L3原件与规则 | 可跟踪清单与6/6离线复验接收；整体PARTIAL | J1缺URL、更正/人工/PIT/异机获取、B/C/规则仍未完成 | G4/G5/T07 |
-| K4真实观察 | 待协议冻结；合格样本未验收 | v8起按新协议积累；旧v7/v6保留诊断不追认 | G6 |
-| E1b/E5b | NOT_RUN | 前置包未齐且未获付费授权；不以资源上限代授权 | G6 |
+| K0a/L1/M0账户 | X1 修复已实施（ctx 贯穿策略/无投影/读取失败/建议/摘要/scanner-TUI-Web） | N0 待独立复验；复验后联合裁定 K1 冻结 | G1/G2/G5/T01 |
+| K0b事实/命题 | 既有明确范围通过不变 | LONG规则/数据不完整，不整体背书自然语言 | G1/G3/G4 |
+| K0c/L0计划/去重 | 规范两臂与版本资格已实施（N1） | N1 待独立复验；完整 MID 评估正例仍待 G3 | G2/G6/T03 |
+| K2a/L2公开研究 | 公开引用与checkpoint TRUE通过 | 完整MID评估正例仍待G3，不以checkpoint替代VALID | G2/G3/T02 |
+| K1/M1观察合同 | X2/X3 修复已实施（shadow_v9 候选+表 v3；严格时间解析） | N1/N2 待独立复验；冻结仍须独立审批 | G1/G6/T03 |
+| K2b/M2统一l | 原型按 X4 补证据（损坏库区分/真前后哈希/旧方法/重启读取，25 场景） | 生产未放行；待 N0–N2 联合过门+合同冻结 | G2/G7/T02 |
+| K3/L3原件与规则 | 可跟踪清单与6/6离线复验历史范围接收；PARTIAL | J1缺URL、更正/人工/PIT/异机获取、B/C/规则未完成 | G4/G5/T07 |
+| K4真实观察 | 未验收合格真实样本 | shadow_v9 经冻结后再积累，旧 v8 及更早只诊断不追认 | G6 |
+| E1b/E5b | NOT_RUN | 前置不齐且未获付费授权 | G6 |
 | E2b–E4b | BLOCKED_DATA | 严格历史信息集/样本覆盖不足 | G6 |
-| E6b及其他效果 | NOT_RUN/待证据 | 账户与组合资格、场景和指标冻结后回放 | G5/G6 |
-| 性能/跨端/必要重构 | PARTIAL | 根里程碑T01–T07持续跟踪；B2请求内同版本已随M0落地；先测量再细化 | G7 |
+| E6b及其他效果 | NOT_RUN/待证据 | 账户组合资格、场景与指标冻结后回放 | G5/G6 |
+| 性能/跨端/必要重构 | PARTIAL | 批量入口同请求快照已接线（la/l all/多代码）；T01–T07持续维护 | G7 |
 
 ## 当前执行窗口
 
-[第六轮M0–M2](iteration6/DELIVERY_PLAN.md)：**M0/M1 已实施并全量验证（待独立复验）；M2 仅隔离原型（16场景，生产接线未放行）**。设计验证见[19场景与B1/B2基线](iteration6/DESIGN_VALIDATION.md)；M 批全量隔离证据见 [FULL_TEST_RESULTS](iteration6/FULL_TEST_RESULTS.txt)。
+[第七轮N0–N2任务卡](iteration7/DELIVERY_PLAN.md)：**N0/N1/N2 已实施并联合回归（待独立复验）；M2 仅原型补证据，生产前置不变。**
 
-版本统一 **v0.8.25**（start.py/banner/--version/README/AGENTS.md 同步；src/__version__=0.1.0 经核定无消费者不动）。CACHE_VERSION 未动（笨总评分域零改动）。M0/M1独立验收通过后再裁定K1冻结与M2生产接线；后续完整MID样板、LONG质量/估值、组合、效果与工程收敛已有G0–G8承接，未到前置时不铺开细节。
+决策表 **v3**（受影响行=行5/行6，注释登记）、观察协议 **shadow_v9 候选**（旧 v8 及更早只诊断不追认）、产品版本 **v0.8.26**（五处同步）。版本追认不等于合同冻结；冻结仍须独立复验。CACHE_VERSION评分域不变不动。
 
-## 发布与数据边界
+已收口：摘要 pos 判据披露（N0 ctx 判据）、预取 fetched_at 复用时刻（N2 携带原值）、NAV 偏移丢失（N2 保留到资格门）。完整MID、LONG、组合、效果与工程收敛继续由G0–G8承接。
 
-- 不自动修真实账户或覆写历史记录。M0/M1修复未改变确认协议/账本/旧核定记录；R12时点的W1/W2未修复声明随独立复验更新。测试全程隔离临时根，7个保护持仓/知识库文件哈希与文件集合经全量前后核对不变（见FULL_TEST_RESULTS）。
-- 事实核验、计算能力、命题成立、计划接受与有效观察分别判定；测试数量不能替代用户工作流和效果证据。
-- 新旧shadow协议分别计数：v8为当期协议，v7/v6及更早进older_versions只诊断不追认。
-- 原件数值核定不等于严格PIT资格；映射修订追加版本，限定证券/字段/期间/来源范围，不全域升格。
-- 非实盘下单；主决策不晋级；未授权不调用付费AI。
+## 数据与协作边界
 
-## 历史交付索引
+- 不自动修真实账户/投影，不覆盖历史观察或核定登记。真实库五条旧登记保留；未来变更先明确范围、dry-run和追加修订。
+- N 批改产品源码/测试（逐卡 guard 审查）；架构师 R13 文档同步与实施方 N 批文档分层汇合于工作树，随交付落库。已有持仓/知识库/本地资料工作树变更保留。
+- 测试成功、事实核实、命题成立、计划接受、有效观察、投资效果分列；不以测试数量或版本号代验收。
+- 零付费AI；非实盘下单，主策略不晋级。
 
-[早期M/C工程批](../README.md) → [F账本](EXECUTION_RECORD.md) → [R账本](iteration2/EXECUTION_RECORD.md) → [J账本](iteration3/EXECUTION_RECORD.md) → [K账本](iteration4/EXECUTION_RECORD.md) → [L账本](iteration5/EXECUTION_RECORD.md) → [M账本](iteration6/EXECUTION_RECORD.md)。历史PASS只对当时范围生效；最新受检源码指纹待架构师复验后更新 [REVIEW_INDEX](iteration6/REVIEW_INDEX.json)。
+## 历史与恢复
 
-## 持续更新规则
+[F账本](EXECUTION_RECORD.md) → [R账本](iteration2/EXECUTION_RECORD.md) → [J账本](iteration3/EXECUTION_RECORD.md) → [K账本](iteration4/EXECUTION_RECORD.md) → [L账本](iteration5/EXECUTION_RECORD.md) → [M账本](iteration6/EXECUTION_RECORD.md) → [N账本](iteration7/EXECUTION_RECORD.md) → [R13审批](iteration7/R13_ACCEPTANCE.md)。历史结果保留，各自仅对受审范围生效。
 
-实施方每子交付更新代码commit/命令/产物/未完成项；架构师审批后同时更新根MILESTONES对应G/T、本页当前动作、RESUME和复查指纹。实现、审批、真实效果分列，不能只改本页顶部而留下总表/恢复记忆矛盾。角色按用户当前指派，不由共享文档自动分配。
+最新增量复查以[iteration7/REVIEW_INDEX](iteration7/REVIEW_INDEX.json)为基准（N 批复验时架构师更新）；交付/审批同步MILESTONES、STATUS、RESUME。无新交付不重复已知红例，不擅自代实施Agent改产品。

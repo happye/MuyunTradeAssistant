@@ -1,0 +1,145 @@
+{
+  "schema_version": 5,
+  "reviewed_at": "2026-10-01",
+  "baseline_commit": "73ba0055a66f3d05d15018a5955e97af727b5c8d",
+  "prior_review": "../iteration6/REVIEW_INDEX.json",
+  "scope": "Incremental M0/M1 and M2 prototype acceptance; not whole-file certification",
+  "report": "R13_ACCEPTANCE.md",
+  "milestones": "../../../MILESTONES.md",
+  "checks": {
+    "targeted_tests": {
+      "files": 27,
+      "passed": 381,
+      "full_suite_rerun": false,
+      "artifact": "TARGETED_TEST_RESULTS.txt"
+    },
+    "contract_probes": {
+      "failed": 15,
+      "passed": 2,
+      "artifact": "ACCEPTANCE_PROBE_RESULTS.json"
+    },
+    "open_findings": [
+      "X1",
+      "X2",
+      "X3",
+      "X4"
+    ],
+    "W1_scope": "Accepted when quantity projection exists; remaining consumer gaps X1",
+    "W2_scope": "Old Baostock source date preserved; time validation gaps X3",
+    "K1_frozen": false,
+    "M2_production_authorized": false
+  },
+  "changed_since_R12": [
+    "src/chat/tools.py",
+    "src/cli/main.py",
+    "src/core/analysis_service.py",
+    "src/core/decision_policy.py",
+    "src/core/orchestrator.py",
+    "src/core/shadow_diff.py",
+    "src/data/akshare_client.py",
+    "src/data/models.py",
+    "src/data/portfolio.py",
+    "start.py",
+    "tests/core/test_k1_shadow_v6.py",
+    "tests/core/test_l0_shadow_contract.py",
+    "tests/core/test_l2_public_checkpoint.py"
+  ],
+  "groups": {
+    "account": {
+      "src/data/account_service.py": "391a35f6991c08e41e49d05d2fa293d6d637fa85d31abae6c72c284d4c54698e",
+      "src/data/account_snapshot.py": "edbba4a9336fd12c828a68467afc0d52a5587b8b45ffa6deb4696fec9731fbec",
+      "src/data/portfolio.py": "6679f4a562981c498c5a9b9acec4ec5ef9a4175850bb43cfd581d64433eff2ed",
+      "src/data/proposals.py": "743fd703f3fa5b17e02efa1d8e99fc2049c14564330c03ac92dcd5aa4c4bfb1d",
+      "src/cli/main.py": "3eb86c062cc2b9c0cd4a969d903e7979aadbf95fd97ad491288bbf228a9f202c"
+    },
+    "facts_and_assertions": {
+      "src/core/claim_extraction.py": "c718fb26d3fa67061e5c276b50005394893273767cb864750cc05e8c681c6450",
+      "src/core/research.py": "0e449d28c58c02affc06f10ad5b57aafb64d718dcfa4b9b7394dcb3203671fb3",
+      "src/core/factor_compute.py": "bd54c24d5ba6cdece7a0911c8f93768f4823e7858561b962d16b73f32bca5d64",
+      "src/core/research_service.py": "a6058b2d7ba52434be0c5d5fb4322c772cd1dc9c3129207eeb37f7437622453f",
+      "src/data/research_snapshot.py": "2dede2be4c795e549ccfd037c6ef72c9ee5df06a50fed9c3ef5e8acdb965c381"
+    },
+    "plan_and_observation": {
+      "src/core/research_application.py": "5024ab369ecada494cacb65ccda232f5a7783882626aeb85de623ca081180a6e",
+      "src/data/horizon_plans.py": "cb3cbe689dad32b452c0546ef8666c078f3c5c4fdc99cb5321bc381a1860b004",
+      "src/data/research_store.py": "20d399f9ee226db1599b9c07275c7a365536518174dcf0af3e1d03c3f4814ead",
+      "src/core/shadow_diff.py": "40315df3bbc1fae16f415eb32ff6fdb549fd5bf37782e274d41160db1e304d2d"
+    },
+    "test_boundary": {
+      "tests/conftest.py": "2f6e951025f7a54c33a9affc15e7fbc0a5360bad51a9616f628dc479509f4ae9",
+      "pytest.ini": "9b6e795247cbc7e327d576c1c277e3c350e0995e7a9eb4b17d046a92b99ac666",
+      "tests/core/test_j0_facts_assessment.py": "e5e82887d8c44d3f06c7031f29501623435b50dda58512661f83e372c3f43e6a",
+      "tests/core/test_j1_mapping_boundary.py": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",
+      "tests/core/test_j2_account_service.py": "efd8af01e715061bf459f890a1ffac89b7eac182009ad38216becb2c12be6dba",
+      "tests/core/test_j3_research_application.py": "e105f31c6b31dd8799ff6120ef7cb641edc0b009a160e5cc2914b0e109279745",
+      "tests/core/test_j4_mode_observation.py": "4d0c984c890e01bb18d3d3f58f1e377ae8b399b345cf0646e0f1fb1d7fe7e534",
+      "tests/core/test_claim_extraction.py": "f38ff4fe61018da01f86bb404bb0d6528ea6c7e23af71c3ddaa7a9a9a2526500",
+      "tests/core/test_claim_verification_corpus.py": "a8bea784b611490775162d24116a7a30575382a2584df522a50ebcad2ded4200",
+      "tests/core/test_research_snapshot.py": "915f88737125606312475e085ce493672785c360584cae2cf15456a830055cfe",
+      "tests/core/test_research_service.py": "7cb911b688a3ef6cdc84e0134d61b79a8fee4e5b44d1505cc473868f1c7095cf",
+      "tests/core/test_account_snapshot.py": "584ca0f34f371c926822f794ae6ea1f6f5ec51a2ca6199e7b448ddc08173d993"
+    },
+    "consumers": {
+      "start.py": "68f024fae8a5092ba517688dcc4bf0c5d9b018c12e0411cd586a8286526944af",
+      "src/chat/tools.py": "a33d14c282cc523264d099dd97c50fa709046b2cc0686c4dbc8355c1586c59e9",
+      "src/cli/today_service.py": "b2580384d09e46bae66b5a8a7acc6404507c847e0ad9dfed4638b60b4d0776d3",
+      "src/core/analysis_service.py": "af3788c8e412dbba1cc56fcd82cf7d9040a78e0b884f03e8cde49b6cd263afe5",
+      "src/core/decision_contract.py": "b291d586a6a66785187012977f64f169f50ef92103e41b520a91731c40355329",
+      "src/core/decision_policy.py": "974e5aabf1256519fb63f9b98ef6aa135fea32ac1cb2faea20aa9463327e3c63"
+    },
+    "k_tests": {
+      "tests/core/test_k0a_account_integrity.py": "687a2b32a560f69b070b3402a58aaea1d9b56632644ecf717972b50637357db9",
+      "tests/core/test_k0a_projection_intent.py": "63d7851866afe795e89ac0e7a8dfb8de193dc570d8ac72098b7e594d9ae2651a",
+      "tests/core/test_k0a_vertical_e2e.py": "8649e0e8abb438532608074b4459fe78a77e1f6d8b411064e7fb4a614dbf9e1a",
+      "tests/core/test_k0b_facts_propositions.py": "de00f06c003c41a23986f6f01711708668128c1d8b69af5d64d2672df5ebaf7a",
+      "tests/core/test_k0c_plan_observation.py": "717ed5aaff44d39cb0cd55c3c86ad1131bde17a24a4455c0f361552d382e4f93",
+      "tests/core/test_k1_shadow_v6.py": "d7a93a118611204dc1fb8a0b9211299cb8f447e54ebe5f3830e2ad3ff6c30f04",
+      "tests/core/test_k2a_research_loop.py": "cc313058d1b7f8e1bc2f5b8b5d5f7c91ce5efc34a0b2e445ee283e916bfd0f91"
+    },
+    "L_delivery_and_consumers": {
+      "src/core/analysis_service.py": "af3788c8e412dbba1cc56fcd82cf7d9040a78e0b884f03e8cde49b6cd263afe5",
+      "src/core/decision_contract.py": "b291d586a6a66785187012977f64f169f50ef92103e41b520a91731c40355329",
+      "src/data/akshare_client.py": "aaf49b877455847cf65e0b12129ee16fdff4d537bba75c36833eb81511107ea9",
+      "src/data/models.py": "5d814872acd6d433aa739e6b93403f17962ca8c1ff5320b7048f6ce3c04c7f8c",
+      "src/core/strategy_layer.py": "44f2dc990f17065c8b8304dc37943da3722dd17bbecda3e6dad86fd55912edc1",
+      "src/core/decision_engine.py": "36fbc4d5ff608fd47f29a4cba4e6ada5a45cab101431e3c0b3e0fcc0578b642d",
+      "src/core/orchestrator.py": "448c478a5c2e426affcdc96262729c7112b24b137f117030f363c5ffdd0dfd89",
+      "src/chat/tools.py": "a33d14c282cc523264d099dd97c50fa709046b2cc0686c4dbc8355c1586c59e9",
+      "src/scanner/scanner_engine.py": "35599033d6dbd208e6893705e17641b25f12da9f4d1af9168478ab6170f7dd5b",
+      "src/tui/app.py": "ad8f3e4979a35d334bb0215fc6b005991ed799ef43c8a366b4ef8fd4adf27e31",
+      "src/web/app.py": "4361f2f3ad610b66786f5bd1beca63a44fbf36ac3bb7cd906a5e41c3468ed08d",
+      "tests/core/test_l0_shadow_contract.py": "08c6b12831783a2535339b1628a8dde92fb4ffb25f94d8524c319ff2774fb5af",
+      "tests/core/test_l1_account_reading.py": "8d3d2013743450fcd45c965ff1eb38c2cfb3fe6a46e569d10754ebfbcb56bc81",
+      "tests/core/test_l2_public_checkpoint.py": "8329b629e00441ab5e149f9e9e16566eadc27ac9e95661b41be064729a2e80dc",
+      "tests/core/test_l3_evidence_pack.py": "d45451d00a125abd65e703cb3a53448e0a54149361f1017dcfe6d3b497b11c11",
+      "tests/evidence/k3_original_pilot/build_evidence_manifest.py": "1abf7ae587462f40110a802e0767046dd012648e1b6c2855a582fd9f15acee77",
+      "tests/evidence/k3_original_pilot/download_log.json": "0d7a5cc8710b011008eb81411c1e581fe1f60db360b9e1b85afaf05d834e7a4e",
+      "tests/evidence/k3_original_pilot/evidence_manifest.json": "4fbe2c9539dc06883b2f5e48ee062b431c5498eb3dcd71ef40860f3cf0642a38",
+      "tests/evidence/k3_original_pilot/extract_reports.py": "c31cefa3f53e8169abb9f4016fa7fd310b3262dca33380c14d5df8a8d7372f37",
+      "tests/evidence/k3_original_pilot/extract_results.json": "a5ce306da345ec34bdf8433348fac73ee335990aef1ea0b92085249b9fb8a094",
+      "tests/evidence/k3_original_pilot/offline_verification_results.json": "7d7aafd4d9917c4d951a416501be684f835f3036b1a85ffdc160133e899ceb69",
+      "tests/evidence/k3_original_pilot/verification_results.json": "6ee9962bc021658333c9fbd5c00d998c26dfd3a85c14292e9ecae9f9bf222e17",
+      "tests/evidence/k3_original_pilot/verify_and_register.py": "35f9c020915b415c7bb8cfd205a5a2e115e7440444809191920788a386ac3615",
+      "tests/evidence/k3_original_pilot/verify_manifest_offline.py": "d799744d7bef0b0792c847d3c4fa9363e74937fba7b85240f03383c81378f246"
+    },
+    "M_delivery_and_consumers": {
+      "src/data/portfolio.py": "6679f4a562981c498c5a9b9acec4ec5ef9a4175850bb43cfd581d64433eff2ed",
+      "src/core/shadow_diff.py": "40315df3bbc1fae16f415eb32ff6fdb549fd5bf37782e274d41160db1e304d2d",
+      "src/core/analysis_service.py": "af3788c8e412dbba1cc56fcd82cf7d9040a78e0b884f03e8cde49b6cd263afe5",
+      "src/core/decision_policy.py": "974e5aabf1256519fb63f9b98ef6aa135fea32ac1cb2faea20aa9463327e3c63",
+      "src/data/akshare_client.py": "aaf49b877455847cf65e0b12129ee16fdff4d537bba75c36833eb81511107ea9",
+      "src/data/models.py": "5d814872acd6d433aa739e6b93403f17962ca8c1ff5320b7048f6ce3c04c7f8c",
+      "src/core/orchestrator.py": "448c478a5c2e426affcdc96262729c7112b24b137f117030f363c5ffdd0dfd89",
+      "src/cli/main.py": "3eb86c062cc2b9c0cd4a969d903e7979aadbf95fd97ad491288bbf228a9f202c",
+      "src/chat/tools.py": "a33d14c282cc523264d099dd97c50fa709046b2cc0686c4dbc8355c1586c59e9",
+      "src/cli/evidence.py": "4fd9ff75f95c028a36e8e1003ed56753930efbfe880cb4ee62fb3709df32e0dc",
+      "tests/core/test_m0_account_terminal.py": "10b43646dd599f1f252c8747aff415faa64a2ff7c40eef0230534d4509d109d3",
+      "tests/data_sources/test_m1_quote_time.py": "d05e98e85c2bebcb3e5a62cea1bbf05f3b18e05aacd78115b7d0505685b9fe8f",
+      "tests/core/test_analysis_service.py": "a06a9fec428ed7201aa3cf925348ec745c455d786a2373c716bdcb39b3b2d34a",
+      "tests/core/test_horizon_policy.py": "d9a0ca075c15af2cd6df5b29fe193b3b71b9072fc224eeebafd1e32eb70c2257",
+      "tests/core/test_batch_quotes.py": "f08bbbbbc06a8a7a181ccd641a7adfb28be4d836c6bfd1a793d03b554d3a00a2",
+      "tests/core/test_iss089_realtime_quote.py": "91c9a1b86e897e3d664d94b2b9a5c2a5903b614409e7746fe02f9b710193ac90",
+      "plan/fusion/iteration6/m2_readonly_view_prototype.py": "b1273bf41bd3268725821032cf99209c9089d0ef6ce68c1446757d802de8f342"
+    }
+  }
+}

@@ -6,7 +6,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。当前v0.8.25基础上第六轮M0/M1已实施（修W1/W2两P1：账户事实到最终行动同源闭环、行情来源时间三时点分离+shadow_v8），M2仅隔离原型待M0/M1独立复验；[R12独立审批](plan/fusion/iteration6/R12_ACCEPTANCE.md)为分项接收，K1未冻结、K2b生产待放行，详见[当前状态](plan/fusion/STATUS.md)。测试历史不等于整体功能或效果验收。
+**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。当前v0.8.26基础上第七轮N0/N1/N2已实施（修 R13 退回项 X1–X3：账户 ctx 贯穿所有消费者、影子两臂各投影规范包+有效版本资格、时间资格严格解析；shadow_v9 候选/决策表 v3），M2 原型按 X4 补证据、生产未放行；K1 未冻结，待[独立复验](plan/fusion/iteration7/DELIVERY_PLAN.md)裁定，详见[当前状态](plan/fusion/STATUS.md)；测试历史不等于整体功能或效果验收。
 
 > 📖 历史版本记录见 [v0.8.3里程碑归档](docs/archive/v0.8.3_里程碑.md)；当前长期进度以根目录MILESTONES.md为准。
 > 📖 **案例验证报告请参阅 [C4 案例验证](docs/archive/v0.8.3_C4_案例验证报告.md)（已归档）**
@@ -395,13 +395,23 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.26 (N0/N1/N2——同源消费补齐 + 观察合同版本资格 + 时间严格解析) - 2026-10-02
+
+plan/fusion iteration7 N0–N2（修 R13 退回项 X1–X3；账本 plan/fusion/iteration7/EXECUTION_RECORD.md）。
+
+- 🆕 **账户 ctx 贯穿所有消费者（N0，修 X1）**：`to_strategy_state` 增 account_context——策略层不再从投影旧比例二次判读；账本有仓无投影不生成 FLAT/0（重建仓语义、成本未知不伪造）；chat 入口 ctx 不以遍历到投影为前置（无投影硬退出同一调用内 EXIT+账户版本）；账本读取失败→UNKNOWN 待对账（不当作空仓）、隔离事件/PARTIAL 冻结精确权重；scanner/TUI/Web 同类点接线；la/l all/多代码批量共享同请求账户版本（真断言读取次数=1）；摘要面板以待对账/派生权重来源如实显示
+- 🆕 **影子两臂各消费规范包 + 有效版本资格（N1，修 X2）**：legacy 臂消费最终 legacy DecisionPacket（action/target/blockers/execution_status 同枚举）——正比例 HOLD 的 .1/KNOWN 与 execution=动作名 两种混用关闭；仅当期已验证组合（生成版本×评估方法×决策表 v3）进有效分母，未知版本→diagnostic；行5 UNKNOWN 技术退出→REVIEW、行6 未知权重即使预算可用也 HOLD；旧桶 MID/LONG 独立计数。协议升 **shadow_v9**（旧 v8 及更早只诊断不追认）、决策表 **v3**（受影响行5/行6）
+- 🆕 **时间资格严格解析（N2，修 X3）**：非法日历/非法时刻/垃圾尾巴/当天未来时刻一律拒绝（不截取坏字符串救回）；naive 显式按 Asia/Shanghai 解释、aware 归一、日精度按日期判未来；NAV 原时点保留偏移到资格门；price/NAV finite 检查；纯 K 线回退显式标注 kline_only（l/la/chat 降级提示扩展）
+- 🔧 M2 原型按 R13 X4 补证据：损坏库显式失败状态（不装空库）、真前后哈希、旧方法场景、重启读取（25 场景）
+- 测试 1440→**1482** passed（+42：N0 12 例 / N1 13 例 / N2 17 例；部分既有断言按新合同更新）；guard 审查 P1×3（批量分支 import 崩溃/午夜窗口测试/scanner-TUI-Web 同类点）全部修复
+
 ### v0.8.25 (M0/M1——账户事实同源闭环 + 行情来源时间) - 2026-10-01
 
-plan/fusion iteration6 M0/M1（修 R12 两 P1：W1/W2；账本 plan/fusion/iteration6/EXECUTION_RECORD.md）。
+plan/fusion iteration6 M0/M1（R12 W1/W2修复交付；账本 plan/fusion/iteration6/EXECUTION_RECORD.md）。R13独立审批只接收下述已验证范围，其余由N0–N2补齐。
 
-- 🆕 **账户事实到最终行动的同源闭环（M0，修 W1）**：新增 `AccountContext`/`RequestAccountFacts`——请求级一次装配账本快照（同批次同账户版本、下一请求刷新），显式区分持仓三态 HELD/NONE/UNKNOWN 与权重资格；数量事实决定持仓、账本数量优先（投影滞后不吞仓）、冲突转待对账；l/la/chat→最终包→周期决策表→影子→证据/建议全程消费同一上下文。有股旧比例 0 的清仓/减仓不再被吞成 WAIT（未知权重 REDUCE 保留方向、已知空仓减仓信号转人工复核、有仓未知权重冻结新增）；摘要面板如实显示「持有 N 股（权重待重估）——退出方向保留」。决策表版本升 `fusion_*@v2`
-- 🆕 **行情来源时间三时点分离（M1，修 W2）**：价格有效时点（Baostock 原行 date/新浪源时间/最近 K 线日期，可日精度）与抓取时点、来源分离——抓取墙钟永不做行情时点；无可靠源时点明确未知。旧日收盘 × 当天 NAV 保持权重未知（不再错锁 10%），估值门按交易所时区归一+未来时点拒绝。影子协议升 **shadow_v8**（绑定增采集时点诊断、纯抓取时间变化去重不虚增、报告分桶 cur_*/older_versions——旧 v7/v6 只诊断不追认）。l/la/chat 降级行情如实提示「Baostock 日线收盘（日期）（非实时）——当前权重待重估」
-- 🔧 M2 仅隔离原型（`plan/fusion/iteration6/m2_readonly_view_prototype.py` 16 场景——只读日常研究视图合同演示）：生产接线待 M0/M1 独立复验通过
+- 🆕 **账户事实到最终行动的同源闭环（M0，修 W1）**：新增 `AccountContext`/`RequestAccountFacts`——请求级一次装配账本快照（同批次同账户版本、下一请求刷新），显式区分持仓三态 HELD/NONE/UNKNOWN 与权重资格；数量事实决定持仓、账本数量优先（上下文装配已识别，消费者仍有遗漏）、冲突转待对账；已接入l/la/chat的最终包、影子和证据字段；R13发现策略、chat无投影分支、建议及摘要尚未完全同源。数量投影存在时，有股旧比例 0 的清仓/减仓在最终适配器不再被吞成 WAIT（未知权重 REDUCE 保留方向、已知空仓减仓信号转人工复核、有仓未知权重冻结新增）；摘要面板如实显示「持有 N 股（权重待重估）——退出方向保留」。决策表版本升 `fusion_*@v2`
+- 🆕 **行情来源时间三时点分离（M1，修 W2）**：价格有效时点（Baostock 原行 date/新浪源时间/最近 K 线日期，可日精度）与抓取时点、来源分离——抓取墙钟永不做行情时点；无可靠源时点明确未知。旧日收盘 × 当天 NAV 保持权重未知（不再错锁 10%），估值门已做交易所日期归一；R13发现非法日期和当天未来时刻仍可通过，待N2严格校验。影子协议升 **shadow_v8**（绑定增采集时点诊断、纯抓取时间变化去重不虚增、报告分桶 cur_*/older_versions——旧 v7/v6 只诊断不追认）。l/la/chat 降级行情如实提示「Baostock 日线收盘（日期）（非实时）——当前权重待重估」
+- 🔧 M2 仅隔离原型（`plan/fusion/iteration6/m2_readonly_view_prototype.py` 16 场景——只读日常研究视图合同演示）：正常重复读取零写入已独立验证，损坏库视图和失败场景仍待补；生产接线待N0–N2联合独立过门并冻结修正合同
 - 测试 1398→**1440** passed（+42；M0 28 例 + M1 14 例新增，部分既有用例按规范合同合并更新）
 
 ### v0.8.24 (J2–J5——账户确认闭环 + 研究链接线 + 有效模式观察 + 收口) - 2026-09-27
