@@ -1,0 +1,18 @@
+........................................................................ [ 25%]
+........................................................................ [ 51%]
+........................................................................ [ 76%]
+.................................................................        [100%]
+============================== warnings summary ===============================
+tests/core/test_l2_public_checkpoint.py::test_v4_full_chain_research_accept_shadow
+  <frozen importlib._bootstrap>:241: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
+
+tests/core/test_l2_public_checkpoint.py::test_v4_full_chain_research_accept_shadow
+  <frozen importlib._bootstrap>:241: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
+
+tests/core/test_l2_public_checkpoint.py::test_v4_full_chain_research_accept_shadow
+  <frozen importlib._bootstrap>:241: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+281 passed, 3 warnings in 124.60s (0:02:04)
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+sys:1: ResourceWarning: unclosed <socket.socket fd=5840, family=2, type=1, proto=0>

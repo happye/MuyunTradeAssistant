@@ -1,6 +1,6 @@
 # 暮云持续迭代计划
 
-**当前入口（2026-10-01）**：[长期里程碑与完成标准](../MILESTONES.md) → [实施/审批状态](fusion/STATUS.md) → [R11审批与第五轮](fusion/iteration5/R11_ACCEPTANCE.md) → [恢复入口](fusion/RESUME.md)。以下M/C表格与角色叙述为历史工程记录及当时作者分工，不替代当前进度或给阅读者重新分配身份。
+**当前入口（2026-10-01）**：[长期里程碑与完成标准](../MILESTONES.md) → [实施/审批状态](fusion/STATUS.md) → [R12审批与第六轮](fusion/iteration6/R12_ACCEPTANCE.md) → [恢复入口](fusion/RESUME.md)。以下M/C表格与角色叙述为历史工程记录及当时作者分工，不替代当前进度或给阅读者重新分配身份；第六轮M卡须带目录与早期M卡区分。
 
 更新：2026-09-24。接手基线：`e84fac4`（v0.8.12.1）。
 

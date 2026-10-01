@@ -1,0 +1,100 @@
+{
+  "schema_version": 4,
+  "reviewed_at": "2026-10-01",
+  "baseline_commit": "679afa66da061a54b3902843af2502da4b5282e6",
+  "scope": "Scoped L acceptance, consumer/source probes; not whole-file certification",
+  "report": "R12_ACCEPTANCE.md",
+  "milestones": "../../../MILESTONES.md",
+  "checks": {
+    "targeted_tests": {
+      "passed": 281,
+      "full_suite_rerun": false,
+      "artifact": "TARGETED_TEST_RESULTS.txt"
+    },
+    "open_findings": [
+      "W1",
+      "W2"
+    ],
+    "local_originals_passed": 6,
+    "normative_design_cases_passed": 19
+  },
+  "groups": {
+    "account": {
+      "src/data/account_service.py": "391a35f6991c08e41e49d05d2fa293d6d637fa85d31abae6c72c284d4c54698e",
+      "src/data/account_snapshot.py": "edbba4a9336fd12c828a68467afc0d52a5587b8b45ffa6deb4696fec9731fbec",
+      "src/data/portfolio.py": "b826956dab0a107c9cc6d5eb3e6670672ee40542d778c067ba2c050ddc3a38b0",
+      "src/data/proposals.py": "743fd703f3fa5b17e02efa1d8e99fc2049c14564330c03ac92dcd5aa4c4bfb1d",
+      "src/cli/main.py": "fce085e66430c664d28c77993a8448e9276fb1f6ed0aa753d4d008424f2cf66d"
+    },
+    "facts_and_assertions": {
+      "src/core/claim_extraction.py": "c718fb26d3fa67061e5c276b50005394893273767cb864750cc05e8c681c6450",
+      "src/core/research.py": "0e449d28c58c02affc06f10ad5b57aafb64d718dcfa4b9b7394dcb3203671fb3",
+      "src/core/factor_compute.py": "bd54c24d5ba6cdece7a0911c8f93768f4823e7858561b962d16b73f32bca5d64",
+      "src/core/research_service.py": "a6058b2d7ba52434be0c5d5fb4322c772cd1dc9c3129207eeb37f7437622453f",
+      "src/data/research_snapshot.py": "2dede2be4c795e549ccfd037c6ef72c9ee5df06a50fed9c3ef5e8acdb965c381"
+    },
+    "plan_and_observation": {
+      "src/core/research_application.py": "5024ab369ecada494cacb65ccda232f5a7783882626aeb85de623ca081180a6e",
+      "src/data/horizon_plans.py": "cb3cbe689dad32b452c0546ef8666c078f3c5c4fdc99cb5321bc381a1860b004",
+      "src/data/research_store.py": "20d399f9ee226db1599b9c07275c7a365536518174dcf0af3e1d03c3f4814ead",
+      "src/core/shadow_diff.py": "ae5bffd86f8845b426050591cc03db0c0ffbb9d34731d2a4870045ebdb9a65b9"
+    },
+    "test_boundary": {
+      "tests/conftest.py": "2f6e951025f7a54c33a9affc15e7fbc0a5360bad51a9616f628dc479509f4ae9",
+      "pytest.ini": "9b6e795247cbc7e327d576c1c277e3c350e0995e7a9eb4b17d046a92b99ac666",
+      "tests/core/test_j0_facts_assessment.py": "e5e82887d8c44d3f06c7031f29501623435b50dda58512661f83e372c3f43e6a",
+      "tests/core/test_j1_mapping_boundary.py": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",
+      "tests/core/test_j2_account_service.py": "efd8af01e715061bf459f890a1ffac89b7eac182009ad38216becb2c12be6dba",
+      "tests/core/test_j3_research_application.py": "e105f31c6b31dd8799ff6120ef7cb641edc0b009a160e5cc2914b0e109279745",
+      "tests/core/test_j4_mode_observation.py": "4d0c984c890e01bb18d3d3f58f1e377ae8b399b345cf0646e0f1fb1d7fe7e534",
+      "tests/core/test_claim_extraction.py": "f38ff4fe61018da01f86bb404bb0d6528ea6c7e23af71c3ddaa7a9a9a2526500",
+      "tests/core/test_claim_verification_corpus.py": "a8bea784b611490775162d24116a7a30575382a2584df522a50ebcad2ded4200",
+      "tests/core/test_research_snapshot.py": "915f88737125606312475e085ce493672785c360584cae2cf15456a830055cfe",
+      "tests/core/test_research_service.py": "7cb911b688a3ef6cdc84e0134d61b79a8fee4e5b44d1505cc473868f1c7095cf",
+      "tests/core/test_account_snapshot.py": "584ca0f34f371c926822f794ae6ea1f6f5ec51a2ca6199e7b448ddc08173d993"
+    },
+    "consumers": {
+      "start.py": "afb1366e321884392fc714225ab1afd54fc6b89ba0fe8119357b855dbb1a9c93",
+      "src/chat/tools.py": "5447aa538af9a053cb9e004aa96becf08c0d7b7d60e66d342ebef10291f2cc57",
+      "src/cli/today_service.py": "b2580384d09e46bae66b5a8a7acc6404507c847e0ad9dfed4638b60b4d0776d3",
+      "src/core/analysis_service.py": "56cc88e0716fd3b56532358d5d414529f87935c7c501882340f32adaa8a70385",
+      "src/core/decision_contract.py": "b291d586a6a66785187012977f64f169f50ef92103e41b520a91731c40355329",
+      "src/core/decision_policy.py": "7afdf99e9601fffcf6a74552e7e38313de3a3e5ff3c5d0147ad5e80269cdacbe"
+    },
+    "k_tests": {
+      "tests/core/test_k0a_account_integrity.py": "687a2b32a560f69b070b3402a58aaea1d9b56632644ecf717972b50637357db9",
+      "tests/core/test_k0a_projection_intent.py": "63d7851866afe795e89ac0e7a8dfb8de193dc570d8ac72098b7e594d9ae2651a",
+      "tests/core/test_k0a_vertical_e2e.py": "8649e0e8abb438532608074b4459fe78a77e1f6d8b411064e7fb4a614dbf9e1a",
+      "tests/core/test_k0b_facts_propositions.py": "de00f06c003c41a23986f6f01711708668128c1d8b69af5d64d2672df5ebaf7a",
+      "tests/core/test_k0c_plan_observation.py": "717ed5aaff44d39cb0cd55c3c86ad1131bde17a24a4455c0f361552d382e4f93",
+      "tests/core/test_k1_shadow_v6.py": "9125aae015cd33134768214b51541e46488db4281e1688b322700f1d621dae1f",
+      "tests/core/test_k2a_research_loop.py": "cc313058d1b7f8e1bc2f5b8b5d5f7c91ce5efc34a0b2e445ee283e916bfd0f91"
+    },
+    "L_delivery_and_consumers": {
+      "src/core/analysis_service.py": "56cc88e0716fd3b56532358d5d414529f87935c7c501882340f32adaa8a70385",
+      "src/core/decision_contract.py": "b291d586a6a66785187012977f64f169f50ef92103e41b520a91731c40355329",
+      "src/data/akshare_client.py": "ea9bcf53dfc921bb46e41929af562b8dbf9da1f41cc55e7f181fa44a94d7cf5b",
+      "src/data/models.py": "cdbaa28edc9806046c74bf9e5a027511f5b65251edb52ffb2adaeb97acdce2c6",
+      "src/core/strategy_layer.py": "44f2dc990f17065c8b8304dc37943da3722dd17bbecda3e6dad86fd55912edc1",
+      "src/core/decision_engine.py": "36fbc4d5ff608fd47f29a4cba4e6ada5a45cab101431e3c0b3e0fcc0578b642d",
+      "src/core/orchestrator.py": "7436f5780eb42e5feed0d4f20eebf192962f12c5225cc9e2a23ad98599c39dc3",
+      "src/chat/tools.py": "5447aa538af9a053cb9e004aa96becf08c0d7b7d60e66d342ebef10291f2cc57",
+      "src/scanner/scanner_engine.py": "35599033d6dbd208e6893705e17641b25f12da9f4d1af9168478ab6170f7dd5b",
+      "src/tui/app.py": "ad8f3e4979a35d334bb0215fc6b005991ed799ef43c8a366b4ef8fd4adf27e31",
+      "src/web/app.py": "4361f2f3ad610b66786f5bd1beca63a44fbf36ac3bb7cd906a5e41c3468ed08d",
+      "tests/core/test_l0_shadow_contract.py": "87c59ea8408e5b26dc8f3a7e47c7bc71e727cf017551bee16f34bbd3d42b348f",
+      "tests/core/test_l1_account_reading.py": "8d3d2013743450fcd45c965ff1eb38c2cfb3fe6a46e569d10754ebfbcb56bc81",
+      "tests/core/test_l2_public_checkpoint.py": "9ec4f99b1ae9cfc9a8237d7c044cf8a5146c936e64d4ffac9ccd9981c40acddb",
+      "tests/core/test_l3_evidence_pack.py": "d45451d00a125abd65e703cb3a53448e0a54149361f1017dcfe6d3b497b11c11",
+      "tests/evidence/k3_original_pilot/build_evidence_manifest.py": "1abf7ae587462f40110a802e0767046dd012648e1b6c2855a582fd9f15acee77",
+      "tests/evidence/k3_original_pilot/download_log.json": "0d7a5cc8710b011008eb81411c1e581fe1f60db360b9e1b85afaf05d834e7a4e",
+      "tests/evidence/k3_original_pilot/evidence_manifest.json": "4fbe2c9539dc06883b2f5e48ee062b431c5498eb3dcd71ef40860f3cf0642a38",
+      "tests/evidence/k3_original_pilot/extract_reports.py": "c31cefa3f53e8169abb9f4016fa7fd310b3262dca33380c14d5df8a8d7372f37",
+      "tests/evidence/k3_original_pilot/extract_results.json": "a5ce306da345ec34bdf8433348fac73ee335990aef1ea0b92085249b9fb8a094",
+      "tests/evidence/k3_original_pilot/offline_verification_results.json": "7d7aafd4d9917c4d951a416501be684f835f3036b1a85ffdc160133e899ceb69",
+      "tests/evidence/k3_original_pilot/verification_results.json": "6ee9962bc021658333c9fbd5c00d998c26dfd3a85c14292e9ecae9f9bf222e17",
+      "tests/evidence/k3_original_pilot/verify_and_register.py": "35f9c020915b415c7bb8cfd205a5a2e115e7440444809191920788a386ac3615",
+      "tests/evidence/k3_original_pilot/verify_manifest_offline.py": "d799744d7bef0b0792c847d3c4fa9363e74937fba7b85240f03383c81378f246"
+    }
+  }
+}

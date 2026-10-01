@@ -1,0 +1,82 @@
+{
+  "scope": "normative prototype, not production or investment validation",
+  "passed": 19,
+  "cases": [
+    {
+      "case": "unknown_weight_exit",
+      "pass": true
+    },
+    {
+      "case": "unknown_weight_reduce",
+      "pass": true
+    },
+    {
+      "case": "unknown_weight_add",
+      "pass": true
+    },
+    {
+      "case": "flat_exit",
+      "pass": true
+    },
+    {
+      "case": "unknown_presence_exit",
+      "pass": true
+    },
+    {
+      "case": "unknown_presence_reduce",
+      "pass": true
+    },
+    {
+      "case": "hold_has_no_zero_target",
+      "pass": true
+    },
+    {
+      "case": "known_same_day",
+      "pass": true
+    },
+    {
+      "case": "old_close_current_nav",
+      "pass": true
+    },
+    {
+      "case": "unknown_source_time",
+      "pass": true
+    },
+    {
+      "case": "future_time",
+      "pass": true
+    },
+    {
+      "case": "naive_time",
+      "pass": true
+    },
+    {
+      "case": "timezone_same_instant",
+      "pass": true
+    },
+    {
+      "case": "batch_one_account_read",
+      "pass": true
+    },
+    {
+      "case": "next_request_refreshes",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_0",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_1",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_2",
+      "pass": true
+    },
+    {
+      "case": "daily_view_zero_plan_mutation",
+      "pass": true
+    }
+  ]
+}

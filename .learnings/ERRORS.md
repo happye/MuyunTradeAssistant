@@ -1,5 +1,17 @@
 # Errors
 
+## [ERR-20261001-ARCH05] R12 probe fixture missing required model fields
+
+**Logged**: 2026-10-01 | **Status**: resolved | **Area**: review tooling
+
+B2首次构造StockData漏stock_name/volume，Pydantic拒绝；没有产品失败结论。补完整fixture后独立重跑确认probe_errors=0。避免用多命令shell末命令成功掩盖先前探针非零；最终收口工具逐项验证JSON中的probe_error。
+
+## [ERR-20261001-ARCH06] Native FAISS write bypassed Python review guard
+
+**Logged**: 2026-10-01 | **Status**: resolved | **Area**: review isolation
+
+初次281目标测试虽绿，14:43:14生成仓库knowledge/index/index.faiss.tmp（16,740,045字节），后续replace被拒；portfolio/bak哈希不变。文件hash、清理条件及限制见iteration6/R12_ACCEPTANCE.md。已对可选RAG/原生写边界和知识库文件前后检查补防护，保留首次日志，重跑目标集。没有事前知识库全量hash，不能把Git无变化扩大为首次全目录无写入。
+
 Command failures and integration errors.
 
 ---

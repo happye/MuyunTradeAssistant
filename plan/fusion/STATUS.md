@@ -1,23 +1,23 @@
 # 融合项目当前实施与审批状态
 
-**更新：2026-10-01｜受审HEAD：7dbe57d｜整体未完成。** 长期愿景、能力里程碑与必要重构统一在根目录 [MILESTONES.md](../../MILESTONES.md)；本页只记录当前交付、审批和下一动作。恢复职责见 [RESUME](RESUME.md)。
+**更新：2026-10-01｜受审HEAD：679afa6｜整体未完成。** 长期愿景、能力里程碑与必要重构统一在根目录 [MILESTONES.md](../../MILESTONES.md)；本页只记录当前交付、审批和下一动作。恢复职责见 [RESUME](RESUME.md)。
 
 ## 当前审批
 
-实施方[K系列报告](iteration4/实施方报告_K系列交付.md)已完成独立审批：[R11](iteration5/R11_ACCEPTANCE.md)。结论为**分项接收、整批退回补齐**。K1暂不冻结，K2b生产归并暂不放行，fusion effective仍capture_only。
+实施方[L系列报告](iteration5/实施方报告_L系列交付.md)已完成独立审批：[R12](iteration6/R12_ACCEPTANCE.md)。结论为**分项接收，L0/L1退回补齐**。L2公开引用与L3六点离线证据范围通过；K1暂不冻结，K2b生产归并暂不放行，fusion effective仍capture_only。
 
-独立证据：原10探针不再复现；243目标测试通过；新5场景归为V1–V4四类验收缺口；K3六点本地PDF/hash/页内数值/算式核对通过。实施方1360全量结果本轮未独立重跑；没有实际收益或合格前瞻观察证据提交。
+独立证据：281目标测试通过、持仓文件哈希未变；V1/V2/V3策略读数修复通过，V4显式引用正例通过（历史无引用负例仍UNKNOWN）。W1有股旧比例0时清仓被最终包/影子变成WAIT，W2旧日收盘被标为当前抓取时间，均已复现。原件六点6/6离线复验。实施方1398 passed/2 skipped全量未独立重跑；未取得实际收益或合格前瞻观察证据。
 
 | 块 | 当前状态 | 剩余/承接 | 长期里程碑 |
 |---|---|---|---|
-| K0a账户 | 原D2/D3/D4/D7修复通过，完整卡PARTIAL | V3过期比例仍给策略，重建仓数量>0而比例0；L1统一消费者 | G1/G5/T01 |
+| K0a/L1账户 | 策略读数/总权重未知通过，完整链PARTIAL | W1终态适配/周期表仍以旧比例判持仓→M0；W2估值时点→M1 | G1/G5/T01 |
 | K0b事实/命题 | 带明确范围限制通过 | 只认证已支持门；LONG规则/数据仍不完整，不能整体背书自然语言 | G1/G3/G4 |
-| K0c计划/去重 | 原A场景接收，完整合同PARTIAL | V2目标/阻塞变化指纹不全→L0；墙钟候选频增随G2收敛 | G2/G6/T03 |
-| K2a公开研究 | 通道实现接收，闭环PARTIAL | V4公开checkpoint没有证据refs；L2真实入口全链 | G2/G3/T02 |
-| K1观察合同 | 退回修改，未冻结 | V1缺quote仍eligible，截止/两臂字段与指纹合同补齐→L0 | G6/T03 |
-| K2b统一l | 待实施，生产接线未放行 | L0/L1/L2过门后细化并实施 | G2 |
-| K3原件与规则 | 六点本地数值证据接收；整体PARTIAL | 更正/人工复核、便携清单与登记脚本→L3；B/C/规则未完成 | G4/G5/T07 |
-| K4真实观察 | 待协议冻结；合格样本未验收 | 旧v6保留诊断，新协议冻结后从零积累，不追认 | G6 |
+| K0c/L0计划/去重 | V2当前arms字段变化指纹通过 | B1墙钟变化使研究revision增长；M2查询/刷新分离 | G2/G6/T03 |
+| K2a/L2公开研究 | 公开引用与检查点TRUE通过 | 全MID评估正例仍UNESTABLISHED，完整样板待G3 | G2/G3/T02 |
+| K1/L0观察合同 | 字段门进步，未冻结 | W1/W2来源与终态边界→M0/M1联合复验；修正协议升版 | G6/T03 |
+| K2b统一l | M2限定设计已验证，生产未放行 | M0/M1独立过门后实施只读研究视图；不自动重跑生成草稿 | G2 |
+| K3/L3原件与规则 | 可跟踪清单与6/6离线复验接收；整体PARTIAL | J1缺URL、更正/人工/PIT/异机获取、B/C/规则仍未完成 | G4/G5/T07 |
+| K4真实观察 | 待协议冻结；合格样本未验收 | 旧v7及更早保留诊断，修正协议冻结后积累，不追认 | G6 |
 | E1b/E5b | NOT_RUN | 前置包未齐且未获付费授权；不以资源上限代授权 | G6 |
 | E2b–E4b | BLOCKED_DATA | 严格历史信息集/样本覆盖不足 | G6 |
 | E6b及其他效果 | NOT_RUN/待证据 | 账户与组合资格、场景和指标冻结后回放 | G5/G6 |
@@ -25,15 +25,15 @@
 
 ## 当前执行窗口
 
-[第五轮L0–L3](iteration5/DELIVERY_PLAN.md)：L0观察合同、L1账户读模型、L2公开检查点、L3可重建原件证据。设计验证见[原型与限制](iteration5/DESIGN_VALIDATION.md)。
+[第六轮M0–M2](iteration6/DELIVERY_PLAN.md)：**M0账户事实到终态、M1行情来源时间可开工；M2仅隔离原型/回归准备，生产需前置审批**。设计验证见[19场景与B1/B2基线](iteration6/DESIGN_VALIDATION.md)。
 
-**实施方交付（2026-10-01，待架构师复验）**：L0–L3 四卡全部实施并独立测试通过——探针 V1/V2/V3/V3b observed_defect=false（V4 历史命令形态按合同仍 UNKNOWN，通道由 L2 端到端验证）；shadow_v6→v7 升版（旧记录只诊断不追认）；测试先红后绿，全量 1398 passed；每卡 commit 前过 code-quality-guard（P1/P2 全部处置）。**交付浓缩与裁决请求见[实施方报告](iteration5/实施方报告_L系列交付.md)**，逐卡 commit/命令/产物/未完成项见 [EXECUTION_RECORD](iteration5/EXECUTION_RECORD.md)。**实现≠审批**：K1 冻结与 K2b 放行仍待架构师复验后裁决；效果证据零（观察样本从 v7 起算）。
+**L批历史交付现已审批**：逐卡commit与实施方全量证据见[报告](iteration5/实施方报告_L系列交付.md)和[实施账本](iteration5/EXECUTION_RECORD.md)。独立审批以R12为准，不将实施方自测当最终放行。M批尚未实施。
 
-L0/L1/L2独立验收通过后，架构师再裁定K1冻结与K2b；后续中期完整样板、长期质量/估值、组合、效果与工程收敛已有G0–G8承接，未到前置时不铺开细节。
+M0/M1独立验收通过后再裁定K1冻结与M2生产接线；后续完整MID样板、LONG质量/估值、组合、效果与工程收敛已有G0–G8承接，未到前置时不铺开细节。
 
 ## 发布与数据边界
 
-- 不自动修真实账户或覆写历史记录。原成交缺陷已修的具体范围保留认可，V3读取缺口修复前不能声称数量账户整条决策链已经统一。
+- 不自动修真实账户或覆写历史记录。原成交与策略读数修复保留认可，W1/W2修复前不能声称数量账户整条决策链已经统一。五条旧原件核定记录保留，未来追加修订而非清理重登。
 - 事实核验、计算能力、命题成立、计划接受与有效观察分别判定；测试数量不能替代用户工作流和效果证据。
 - 新旧shadow协议分别计数，旧标签不得追认为新合格样本。本轮未读取用户实时影子账本数量。
 - 原件数值核定不等于严格PIT资格；映射修订追加版本，限定证券/字段/期间/来源范围，不全域升格。
@@ -41,7 +41,7 @@ L0/L1/L2独立验收通过后，架构师再裁定K1冻结与K2b；后续中期�
 
 ## 历史交付索引
 
-[M/C工程批](../README.md) → [F账本](EXECUTION_RECORD.md) → [R账本](iteration2/EXECUTION_RECORD.md) → [J账本](iteration3/EXECUTION_RECORD.md) → [K账本](iteration4/EXECUTION_RECORD.md)。历史PASS只对当时范围生效；最新受检源码指纹为[第五轮REVIEW_INDEX](iteration5/REVIEW_INDEX.json)。
+[早期M/C工程批](../README.md) → [F账本](EXECUTION_RECORD.md) → [R账本](iteration2/EXECUTION_RECORD.md) → [J账本](iteration3/EXECUTION_RECORD.md) → [K账本](iteration4/EXECUTION_RECORD.md) → [L账本](iteration5/EXECUTION_RECORD.md)。第六轮M卡与早期工程M卡须带目录区分。历史PASS只对当时范围生效；最新受检源码指纹为[第六轮REVIEW_INDEX](iteration6/REVIEW_INDEX.json)。
 
 ## 持续更新规则
 

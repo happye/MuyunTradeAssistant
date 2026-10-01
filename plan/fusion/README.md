@@ -1,6 +1,6 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-> **当前入口（2026-10-01）：[长期里程碑](../../MILESTONES.md) → [STATUS](STATUS.md) → [R11审批](iteration5/R11_ACCEPTANCE.md)。** K系列分项接收、整批待补齐，当前窗口L0–L3；下文保留融合愿景与第一轮历史设计，不替代当前进度。按 [RESUME](RESUME.md) 增量恢复，角色由用户会话指派。
+> **当前入口（2026-10-01）：[长期里程碑](../../MILESTONES.md) → [STATUS](STATUS.md) → [R12审批](iteration6/R12_ACCEPTANCE.md)。** L系列分项接收，当前窗口M0/M1修复终态持仓语义和行情来源时间，M2只读研究接线待前置；下文保留融合愿景与第一轮历史设计，不替代当前进度。按 [RESUME](RESUME.md) 增量恢复，角色由用户会话指派。
 
 日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付 → F0–F9 已全部实施 VERIFIED**（v0.8.20，1121 tests；实施状态与证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)；**致架构师汇报与下一轮设计议题见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)**）。
 

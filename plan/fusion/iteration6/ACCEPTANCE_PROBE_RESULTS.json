@@ -1,0 +1,156 @@
+{
+  "baseline": "679afa6",
+  "synthetic": true,
+  "results": [
+    {
+      "id": "V1_missing_quote_counted_effective",
+      "observed_defect": false,
+      "quote_cutoff": null,
+      "eligible": false,
+      "drop_reasons": [
+        "no_policy_version_mid",
+        "no_quote_cutoff_mid"
+      ],
+      "mid_count": 0,
+      "evidence_cutoff_is_capture_time": false,
+      "assessment_time": "2026-10-01T06:48:00.502139+00:00"
+    },
+    {
+      "id": "V2_target_change_deduped",
+      "observed_defect": false,
+      "targets": [
+        0.1,
+        0.2
+      ],
+      "fingerprints_equal": false,
+      "second_saved": true
+    },
+    {
+      "id": "V3_stale_ratio_consumed",
+      "observed_defect": false,
+      "ok": true,
+      "quantity": 900,
+      "ratio_stale": true,
+      "strategy_ratio": null,
+      "account_total_ratio": null
+    },
+    {
+      "id": "V3b_rebuilt_holding_ratio_zero",
+      "observed_defect": false,
+      "ok": true,
+      "quantity": 100,
+      "ratio_stale": true,
+      "strategy_ratio": null,
+      "account_total_ratio": null
+    },
+    {
+      "id": "V4_public_checkpoint_unreachable",
+      "observed_defect": true,
+      "verified_claims": 1,
+      "user_confirmed": true,
+      "cli_evidence_refs": [],
+      "cli_window": "UNKNOWN",
+      "service_with_explicit_refs_window": "TRUE",
+      "assessment_status": "UNESTABLISHED",
+      "scope": "checkpoint binding only; does not claim whole MID VALID"
+    },
+    {
+      "id": "V4_explicit_ref_positive",
+      "observed_defect": false,
+      "verified_claims": 1,
+      "user_confirmed": true,
+      "cli_evidence_refs": [
+        "order1"
+      ],
+      "cli_window": "TRUE",
+      "service_with_explicit_refs_window": "TRUE",
+      "assessment_status": "UNESTABLISHED",
+      "scope": "checkpoint binding only; does not claim whole MID VALID"
+    },
+    {
+      "id": "W1_quantity_exit_lost_at_terminal",
+      "observed_defect": true,
+      "quantity": 100,
+      "strategy_weight": null,
+      "raw_projection": 0.0,
+      "strategy_exit": "CLOSE_ALL",
+      "terminal_action": "WAIT",
+      "shadow_mid_action": "WAIT",
+      "adapter_reduce_with_unknown_weight": "WAIT",
+      "scope": "real adapters; call arguments match l/la/chat, no live account"
+    },
+    {
+      "id": "W1b_shadow_stale_weight",
+      "observed_defect": false,
+      "legacy_target": null,
+      "fusion_arm": {
+        "action": "REDUCE",
+        "target": null,
+        "target_state": "UNKNOWN",
+        "blockers": [],
+        "execution": "ELIGIBLE"
+      },
+      "effective": true,
+      "strategy_weight": null,
+      "stale_projection": 0.1
+    },
+    {
+      "id": "W2_old_close_relabelled_current",
+      "observed_defect": true,
+      "source_row_date": "2026-09-29",
+      "returned_quote_as_of": "2026-10-01T14:48:01+08:00",
+      "source": "baostock",
+      "weight_with_todays_nav": 0.1
+    },
+    {
+      "id": "B1_research_auto_run_revision_baseline",
+      "same_material": true,
+      "as_of_delta_seconds": 1,
+      "same_run_id": false,
+      "same_snapshot_id": false,
+      "first_revisions": {
+        "MID": 1,
+        "LONG": 1
+      },
+      "second_revisions": {
+        "MID": 2,
+        "LONG": 2
+      },
+      "second_kinds": {
+        "MID": "updated",
+        "LONG": "updated"
+      },
+      "scope": "K2b preflight; different as_of is a legitimate new evaluation, not old fixed-input idempotency failure"
+    },
+    {
+      "id": "B2_per_symbol_account_replay",
+      "measurements": [
+        {
+          "symbols": 1,
+          "ledger_replays": 1,
+          "elapsed_ms": 0.606
+        },
+        {
+          "symbols": 10,
+          "ledger_replays": 10,
+          "elapsed_ms": 5.3
+        },
+        {
+          "symbols": 30,
+          "ledger_replays": 30,
+          "elapsed_ms": 15.245
+        }
+      ],
+      "scope": "synthetic one-event ledger, call-count baseline only; not production p95"
+    },
+    {
+      "id": "V2_current_schema_target_positive",
+      "observed_defect": false,
+      "field": "mid_binding.arms.fusion.target",
+      "targets": [
+        0.1,
+        0.2
+      ]
+    }
+  ]
+}

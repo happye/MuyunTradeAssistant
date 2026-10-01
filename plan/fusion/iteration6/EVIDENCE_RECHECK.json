@@ -1,0 +1,50 @@
+{
+ "manifest": "tests\\evidence\\k3_original_pilot\\evidence_manifest.json",
+ "total": 6,
+ "passed": 6,
+ "failed": 0,
+ "points": [
+  {
+   "key": "000002_2024Q1",
+   "status": "PASS",
+   "file_hash": "9b6448abe7897ee462f905fb1273630d1c157fa4f5cd2d73c8ac8ef3cd551341",
+   "recomputed_value": 0.727070277059417,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  },
+  {
+   "key": "000002_2024Q2",
+   "status": "PASS",
+   "file_hash": "3c7e7373935d74d7bdea36a27c2c0782836a40e8c93cad81ca787376575e5462",
+   "recomputed_value": 0.729370215263095,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  },
+  {
+   "key": "000002_2024Q3",
+   "status": "PASS",
+   "file_hash": "b6b0ba38fd55459ccc155f79f4df70b5f6075c6e3cd1b6f6297eb611ff825b8e",
+   "recomputed_value": 0.7241644428602202,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  },
+  {
+   "key": "600519_2024Q1",
+   "status": "PASS",
+   "file_hash": "b706e237e25ff54a0bde7070a13b019a5e1eec7f412eb9d0baf33e750a7c32e2",
+   "recomputed_value": 0.12954324099236256,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  },
+  {
+   "key": "600519_2024Q2",
+   "status": "PASS",
+   "file_hash": "898b37d6529d0042aa66461bae11b84a47f9337c2ff1d572155bfa71fca77c58",
+   "recomputed_value": 0.18324183727734936,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  },
+  {
+   "key": "600519_2024Q3",
+   "status": "PASS",
+   "file_hash": "ebeccbbe12b5b1a9dfa5ada16c956cba6fa30a6fb917f95856da16c1a719ce98",
+   "recomputed_value": 0.13628503745581524,
+   "supplier": "recorded_only（离线不可重算——不复算不冒充）"
+  }
+ ]
+}

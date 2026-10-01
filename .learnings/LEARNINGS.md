@@ -2225,6 +2225,30 @@ L0/V2 回归测试（目标权重变化去重不吞）初版变异 `mid_binding[
 
 ---
 
+## [LRN-20261001-ARCH08] insight — 资格必须贯穿来源、适配器与最终消费
+
+**Logged**: 2026-10-01
+**Priority**: high
+**Status**: pending
+**Area**: architecture
+
+R12：L1的StrategyState None修复已通过，但l/la/chat最终包和shadow仍直接用旧比例；100股/旧比例0的CLOSE_ALL变WAIT。仅换成None仍吞REDUCE，需显式持仓状态与权重资格两个维度。L0有quote_as_of字段，但Baostock原始date丢失，旧日收盘被重标抓取时刻后参与当天NAV估值。新增字段或helper测试通过不能替代生产来源→最终动作的组合验证。
+
+行动：第六轮M0/M1先做真实消费者反例，再收口同请求账户上下文、行情来源时点和规范终态；引用[独立结果](../plan/fusion/iteration6/ACCEPTANCE_PROBE_RESULTS.json)。关联ARCH07/L010；产品缺陷仍待实施，不以本记录当修复。
+
+---
+
+## [LRN-20261001-ARCH09] correction — Python审计不覆盖原生扩展文件写入
+
+**Logged**: 2026-10-01
+**Priority**: high
+**Status**: resolved
+**Area**: testing
+
+R12验证工具初次目标集进入可选RAG，FAISS原生write_index在仓库生成index.faiss.tmp，Python守卫只能拦后续replace。仅assert portfolio哈希不够。已记录临时文件hash，按精确路径+hash清理本轮产物；隔离runner禁用非待验RAG加载，守卫原生写入口，并追加知识库文件集合/哈希前后检查后重跑。完整披露在R12。此关闭只指本次runner补救，不承诺审计hook是操作系统沙箱。
+
+---
+
 ## [LRN-20261001-L010] correction — 哨兵值 None 必须区分语义来源（无持仓 ≠ 有仓未知）
 
 **Logged**: 2026-10-01T16:30:00+08:00
