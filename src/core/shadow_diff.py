@@ -442,7 +442,8 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                    *, packet=None, source: str = "", config: Optional[dict] = None,
                    store_path: Optional[Path] = None,
                    plans_store=None, assessment_store=None,
-                   account_version: str = "", quote_as_of: str = "") -> Optional[ShadowDiffRecord]:
+                   account_version: str = "", quote_as_of: str = "",
+                   account_context=None) -> Optional[ShadowDiffRecord]:
     """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。
 
     plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。
@@ -450,18 +451,32 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     account_version: 账户账本内容版本（J4 有效观察合同——空=尝试读默认账本；
     无账户版本 → 观察只记 diagnostic，不进有效比较分母）。
     quote_as_of: 行情时点（v7 合同——实际行情抓取时刻或最近 K 线日期，来自
-    StockData.quote_as_of；空=如实缺省 → 缺行情时点阻塞资格，只记 diagnostic）。"""
+    StockData.quote_as_of；空=如实缺省 → 缺行情时点阻塞资格，只记 diagnostic）。
+    account_context: AccountContext（M0 同源上下文——position_state/合格权重/
+    account_version 一份事实贯穿两臂；None=旧调用方按 pos.current_ratio 推导）。"""
     if pos is None:
         return None
     mode_res = _load_capture_switch(config)
     if mode_res is None:
         return None
 
+    # M0：同源账户上下文——权重资格与持仓状态一次装配，不再从 pos.current_ratio
+    # 重复判读（W1 根因：旧比例 0 被当成无仓/已知权重，清仓被两臂吞成 WAIT）
+    if account_context is not None:
+        ctx_weight = getattr(account_context, "confirmed_weight", None)
+        ctx_state = getattr(account_context, "position_state", None)
+        if not account_version:
+            account_version = str(getattr(account_context, "account_version", "") or "")
+    else:
+        ctx_weight = getattr(pos, "current_ratio", None)
+        ctx_state = None  # 旧调用方：决策表/适配器按 ratio 推导（兼容语义）
+
     if packet is None:
         from src.core.analysis_service import build_decision_packet
         packet = build_decision_packet(
             decision_result, strategy_decision, execution_eval,
-            confirmed_ratio=getattr(pos, "current_ratio", None), source=source or "shadow")
+            confirmed_ratio=ctx_weight, position_state=ctx_state,
+            source=source or "shadow")
 
     facts = _derive_facts(strategy_decision, packet)
     from src.core.decision_contract import (
@@ -548,7 +563,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     )
 
     horizon_packets: list = []
-    confirmed_ratio = getattr(pos, "current_ratio", None)
+    confirmed_ratio = ctx_weight
     per_horizon_thesis: dict[str, str] = {}
     for horizon in (Horizon.MID, Horizon.LONG):
         up = user_plans.get(horizon.value)
@@ -563,7 +578,8 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             horizon, security_id, as_of, trade_plan=getattr(pos, "trade_plan", None))
         horizon_packets.append(
             evaluate_horizon(plan, HorizonFacts(**hf), security_id,
-                             confirmed_ratio=confirmed_ratio))
+                             confirmed_ratio=confirmed_ratio,
+                             position_state=ctx_state))
     mid_packet, long_packet = horizon_packets[0], horizon_packets[1]
 
     legacy_desired = packet.desired_action.value
@@ -607,6 +623,9 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         from src.core.decision_policy import DECISION_TABLE_VERSION
         policy_id = str(getattr(pkt, "policy_id", "") or "")
         legacy_target = getattr(strategy_decision, "position_ratio", None)
+        # M0：HOLD 不取内部占位 0——空/0 占位不解释为目标清仓（两臂 target 取规范终态）
+        if legacy_desired == "HOLD" and (legacy_target is None or legacy_target <= 1e-9):
+            legacy_target = None
         legacy_blockers: list[str] = []
         if bool(getattr(execution_eval, "blocked", False)):
             legacy_blockers.append(str(getattr(execution_eval, "block_reason", "") or "执行被阻"))

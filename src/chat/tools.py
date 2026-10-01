@@ -299,17 +299,30 @@ def _analyze_stock_single(stock_code: str) -> str:
         strategy_state = None
         pos = None
         norm_code = _normalize_code(stock_code)
+        acct_ctx = None
         if pm:
             positions = pm.list_positions()
             for p in positions:
                 if _normalize_code(p.stock_code) == norm_code:
                     pos = p
-                    strategy_state = pm.strategy_state_for(stock_code, stock_data)
+                    # M0：请求级账户事实一次装配（同源上下文贯穿策略/终态包/影子）
+                    acct_facts = pm.request_account_facts()
+                    acct_ctx = acct_facts.context_for(
+                        p.stock_code, price=getattr(stock_data, "price", None),
+                        price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
+                    # M0/B2：直调 to_strategy_state 共享请求级 NAV/版本
+                    strategy_state = pm.to_strategy_state(
+                        p.stock_code, price=getattr(stock_data, "price", None),
+                        price_as_of=getattr(stock_data, "quote_as_of", None),
+                        nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
                     break
 
         # L1（V3）：有仓判定数量感知；权重按资格判定结果（None=未知）传策略层
         # ——不再直传记录里的过期比例
-        has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
+        # M0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
+        has_position = (acct_ctx.position_state in ("HELD", "UNKNOWN")
+                        if acct_ctx is not None else
+                        (pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)))
         # 执行7层分析（审查修复 H1：补齐 has_position/entry_price/high_since_entry/trade_plan，
         # 与 CLI l 一致；原漏传 -> 即使持仓 has_position=False，fundamental_alert/top_signal/
         # force_exit/PlanGuard 全失效，chat 与 CLI 对同一持仓股给不同决策）
@@ -335,18 +348,31 @@ def _analyze_stock_single(stock_code: str) -> str:
         # C1：分析证据落盘（JSONL + 证据卡），失败不影响分析
         # F2：构造 DecisionPacket → 证据卡携带终态字段
         _packet = None
+        # M2 对齐（guard P2）：无持仓管理器/无记录 → 已知空仓（与 l 的 context_for
+        # 对同场景的 NONE 口径一致——不把"无记录"当"组合未知"）
+        if acct_ctx is not None:
+            _pkt_weight, _pkt_state = acct_ctx.confirmed_weight, acct_ctx.position_state
+        elif pos is not None:
+            _pkt_weight, _pkt_state = pos.current_ratio, None
+        else:
+            _pkt_weight, _pkt_state = 0.0, "NONE"
+        _pkt_version = acct_ctx.account_version if acct_ctx is not None else ""
         try:
             from src.core.analysis_service import build_decision_packet
             _packet = build_decision_packet(
                 decision_result, strategy_decision, execution_eval,
-                confirmed_ratio=(pos.current_ratio if pos is not None else 0.0),
+                confirmed_ratio=_pkt_weight,
+                position_state=_pkt_state,
+                account_version=_pkt_version,
                 source="chat")
         except Exception as e:
             logger.info(f"chat DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
         try:
             from src.cli.evidence import record_evidence
             record_evidence(decision_result, strategy_decision, source="chat",
-                            packet=_packet)
+                            packet=_packet,
+                            position_state=_pkt_state,
+                            account_version=_pkt_version)
         except Exception as e:
             logger.debug(f"chat 分析证据钩子异常(不影响主流程): {e}")
 
@@ -356,7 +382,8 @@ def _analyze_stock_single(stock_code: str) -> str:
             from src.core.shadow_diff import capture_shadow
             capture_shadow(decision_result, strategy_decision, execution_eval,
                            pos, packet=_packet, source="chat",
-                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
+                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                           account_context=acct_ctx)
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
 

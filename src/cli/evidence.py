@@ -24,7 +24,7 @@ _REPORT_DIR = Path(__file__).resolve().parents[2] / "分析报告" / "analysis"
 
 
 def record_evidence(decision_result, strategy_decision, *, source: str,
-                    packet=None) -> Optional[dict]:
+                    packet=None, position_state=None, account_version=None) -> Optional[dict]:
     """从一次深分析结果提取证据：JSONL 追加 + 人话证据卡落盘。
 
     失败不抛异常（返回 None，分析主流程不受影响——证据是附属产出）。
@@ -36,6 +36,8 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
         packet: DecisionPacket（F2 终态，可选；传入时追加 decision_id/desired_action/
                 target_weight/execution_status/research_status/policy_id 终态字段——
                 旧记录缺这些字段=「当时未记录」，diff 侧同步消费）
+        position_state: 账户事实三态 HELD/NONE/UNKNOWN（M0 追加式——旧记录缺=未记录）
+        account_version: 账本内容版本（M0 追加式；缺省回退 packet.portfolio_revision）
     """
     try:
         stock = decision_result.stock
@@ -71,6 +73,12 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
                 "research_status": packet.research_status.value,
                 "policy_id": packet.policy_id,
             })
+        if position_state:
+            rec["position_state"] = position_state  # M0：账户事实三态（追加式）
+        av = account_version or (getattr(packet, "portfolio_revision", None)
+                                 if packet is not None else None)
+        if av:
+            rec["account_version"] = av  # M0：账户版本（追加式）
         _STATE_DIR.mkdir(parents=True, exist_ok=True)
         with _EVIDENCE_FILE.open("a", encoding="utf-8") as f:
             f.write(json.dumps(rec, ensure_ascii=False) + "\n")
@@ -208,7 +216,7 @@ def diff_evidence(code: str) -> Optional[dict]:
 
     changes = {}
     for field in ("decision", "position_action", "sell_path",
-                  "desired_action", "execution_status"):
+                  "desired_action", "execution_status", "position_state"):
         if (old.get(field) or None) != (new.get(field) or None):
             changes[field] = (old.get(field), new.get(field))
     for field in ("price", "score", "target_weight"):

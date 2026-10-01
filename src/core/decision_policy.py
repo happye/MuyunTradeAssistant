@@ -41,7 +41,11 @@ POLICY_ID_LONG = "fusion_long_v1"
 
 # 决策表语义版本（行0–行10 的裁决规则本体）。行语义变更必须 bump——shadow 观察绑定
 # 的 decision_rule_version 真实来源（L0/V1：不拿 policy_id 复制品冒充规则版本）。
-DECISION_TABLE_VERSION = "v1"
+# v2（M0，2026-10-01）：position_state 输入维度接入——数量账户人群（W1 实证）的
+# 行2/5/6/8/9/10 裁决在 HELD+未知权重下翻转（WAIT→REVIEW/OPEN→HOLD 等）；
+# position_state=None 路径与 v1 逐字节等价（旧行为兼容锚在
+# test_horizon_backward_compat_without_state）。
+DECISION_TABLE_VERSION = "v2"
 
 
 class HorizonPlan(BaseModel):
@@ -123,21 +127,30 @@ class HorizonFacts(BaseModel):
 
 def evaluate_horizon(plan: HorizonPlan, facts: HorizonFacts, security_id: str,
                      *, confirmed_ratio: Optional[float] = None,
+                     position_state: Optional[str] = None,
                      as_of: Optional[datetime] = None) -> DecisionPacket:
     """周期决策表（DESIGN §4.2，从上到下首个决定性条件优先）→ DecisionPacket。
 
     Args:
         plan: 已确认（或待确认）的 PlanV2
         facts: 本轮事实输入
-        confirmed_ratio: 已确认仓位（None=组合信息未知——不给精确目标）
+        confirmed_ratio: 已确认权重（None=权重未知——不给精确目标）
+        position_state: 账户事实三态 HELD/NONE/UNKNOWN（M0 同源上下文；None=旧
+            调用方按 confirmed_ratio 推导）。HELD+未知权重保留 EXIT/REDUCE、
+            冻结新增；NONE 已知空仓不做退出；UNKNOWN 持仓未知保留退出、
+            减仓转复核——与最终包适配器同一规范动作视图（R12 W1）
         as_of: 决策截止时点（缺省取当前带时区时间）
 
     Returns:
         DecisionPacket（policy_id 绑定 plan 的策略ID；reason 首条 = 命中的决策表行）
     """
     as_of = as_of or datetime.now().astimezone()
-    held = confirmed_ratio is not None and confirmed_ratio > 1e-9
-    known = confirmed_ratio is not None
+    if position_state is None:
+        held = confirmed_ratio is not None and confirmed_ratio > 1e-9
+        known = confirmed_ratio is not None
+    else:
+        held = position_state == "HELD"
+        known = (confirmed_ratio is not None) or position_state == "NONE"
     reasons: list[str] = []
 
     # 未支持行业：质量/估值研究口径不适用（DESIGN §4.2 行4b）——不填通用数字强行纳入
@@ -351,12 +364,13 @@ class PolicyIntent:
 
 def evaluate_horizon_intent(plan: HorizonPlan, facts: HorizonFacts, security_id: str,
                             *, confirmed_ratio: Optional[float] = None,
+                            position_state: Optional[str] = None,
                             as_of: Optional[datetime] = None) -> PolicyIntent:
     """周期决策表 → PolicyIntent（与 evaluate_horizon 同一张表裁决，剥执行语义：
     execution_status/executable_action 不产出——影子/工作台展示意图，执行资格由
     账户预算+交易规则后的 DecisionPacket 单独给出，R3 验收7）。"""
     pkt = evaluate_horizon(plan, facts, security_id, confirmed_ratio=confirmed_ratio,
-                           as_of=as_of)
+                           position_state=position_state, as_of=as_of)
     return PolicyIntent(
         desired_action=pkt.desired_action,
         reason_codes=list(pkt.reason_codes),

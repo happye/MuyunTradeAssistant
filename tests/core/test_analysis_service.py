@@ -115,10 +115,14 @@ def test_clamp_open_with_position_to_add():
     assert p.desired_action is DesiredAction.ADD
 
 
-def test_clamp_reduce_without_position_to_wait():
+def test_clamp_reduce_without_position_to_review():
+    """已知空仓 + REDUCE 信号 → REVIEW（M0 规范合同：账实不符交人工复核）。
+
+    旧断言为 WAIT（iteration6 design_contract_probe 19 场景规范前）——
+    R12 W1 收口后统一为 REVIEW：不编造"等待条件"，也不吞减仓方向。"""
     p = build_decision_packet(_dr("SELL"), _sd("SELL", "REDUCE", 0.0), _eval(False),
                               confirmed_ratio=0.0)
-    assert p.desired_action is DesiredAction.WAIT and p.target_weight is None
+    assert p.desired_action is DesiredAction.REVIEW and p.target_weight is None
 
 
 def test_clamp_close_all_on_empty_to_wait():

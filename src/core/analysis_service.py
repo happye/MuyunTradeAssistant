@@ -41,6 +41,8 @@ def build_decision_packet(
     execution_eval,
     *,
     confirmed_ratio: Optional[float] = None,
+    position_state: Optional[str] = None,
+    account_version: str = "",
     source: str = "",
 ) -> DecisionPacket:
     """末端七层结果 → DecisionPacket（唯一终态）。
@@ -49,7 +51,12 @@ def build_decision_packet(
         decision_result: DecisionResult（原始信号聚合，只作诊断投影）
         strategy_decision: StrategyDecision（**末端**：PlanGuard/force_exit/Execution 后）
         execution_eval: ExecutionEvaluation（执行层评估，可 None）
-        confirmed_ratio: 已确认仓位（portfolio.yaml 事实，0-1；None=组合信息未知）
+        confirmed_ratio: 已确认权重（合格估值 0-1；None=权重未知——不是 0）
+        position_state: 账户事实三态 HELD/NONE/UNKNOWN（M0 同源上下文；None=旧
+            调用方按 confirmed_ratio 推导：>0→HELD、==0→NONE、None→UNKNOWN）。
+            **数量事实决定持仓；RATIO_ONLY 比例判持仓；权重资格独立于持仓**——
+            有仓未知权重保留 EXIT/REDUCE 方向、冻结新增（R12 W1 根因收口）
+        account_version: 账本内容版本（进 portfolio_revision——批量结果同版本可核对）
         source: 触发来源（l/la/chat/web/tui），仅诊断
 
     Returns:
@@ -57,6 +64,17 @@ def build_decision_packet(
     """
     pos_action = strategy_decision.position_action.value
     terminal_decision = strategy_decision.decision.value
+    # M0：持仓状态与权重资格分离（position_state 显式传入；旧调用方按 ratio 推导兼容）
+    if position_state is None:
+        if confirmed_ratio is None:
+            position_state = "UNKNOWN"
+        elif confirmed_ratio > 1e-9:
+            position_state = "HELD"
+        else:
+            position_state = "NONE"
+    held = position_state == "HELD"
+    known_empty = position_state == "NONE"
+    unknown_presence = position_state == "UNKNOWN"
     has_confirmed = confirmed_ratio is not None and confirmed_ratio > 1e-9
     known_confirmed = confirmed_ratio is not None
 
@@ -68,23 +86,48 @@ def build_decision_packet(
         if reason not in reason_codes:
             reason_codes.append(reason)
 
-    # ── desired_action 映射（含对旧七层输出的防御性钳制）──
+    # ── desired_action 映射（含对旧七层输出的防御性钳制；M0 规范动作视图）──
     if pos_action == "OPEN":
-        desired = DesiredAction.ADD if has_confirmed else DesiredAction.OPEN
-        if has_confirmed:
-            _clamp("适配钳制: 已持仓时 OPEN 转 ADD")
+        if held:
+            desired = DesiredAction.ADD if has_confirmed else DesiredAction.HOLD
+            if has_confirmed:
+                _clamp("适配钳制: 已持仓时 OPEN 转 ADD")
+            else:
+                _clamp("适配钳制: 有仓权重未知，OPEN 冻结为 HOLD（不给精确目标）")
+        else:
+            desired = DesiredAction.OPEN
     elif pos_action == "ADD":
-        desired = DesiredAction.ADD if has_confirmed else DesiredAction.OPEN
-        if not has_confirmed:
-            _clamp("适配钳制: 无持仓时 ADD 转 OPEN")
+        if held:
+            desired = DesiredAction.ADD if has_confirmed else DesiredAction.HOLD
+            if not has_confirmed:
+                _clamp("适配钳制: 有仓权重未知，ADD 冻结为 HOLD（不给精确目标）")
+        else:
+            desired = DesiredAction.OPEN
+            if not known_empty:
+                _clamp("适配钳制: 持仓未知时 ADD 转 OPEN（有条件方向）")
+            else:
+                _clamp("适配钳制: 无持仓时 ADD 转 OPEN")
     elif pos_action == "REDUCE":
-        desired = DesiredAction.REDUCE if has_confirmed else DesiredAction.WAIT
-        if not has_confirmed:
-            _clamp("适配钳制: 无持仓无减仓对象，REDUCE 转 WAIT")
+        if held:
+            # 有仓事实：减仓方向保留——权重未知只影响目标（None），不再吞成 WAIT（W1）
+            desired = DesiredAction.REDUCE
+            if not has_confirmed:
+                _clamp("适配钳制: 权重未知保留减仓方向（目标待重估）")
+        elif unknown_presence:
+            desired = DesiredAction.REVIEW
+            _clamp("适配钳制: 持仓未知的减仓信号转人工复核")
+        else:
+            desired = DesiredAction.REVIEW
+            _clamp("适配钳制: 无持仓的减仓信号转人工复核（账实不符待核对）")
     elif pos_action == "CLOSE_ALL":
-        desired = DesiredAction.EXIT if (not known_confirmed or has_confirmed) else DesiredAction.WAIT
-        if desired is not DesiredAction.EXIT:
+        if known_empty:
+            desired = DesiredAction.WAIT
             _clamp("适配钳制: 已确认空仓，清仓建议转 WAIT")
+        else:
+            # HELD / UNKNOWN：退出方向保留（未知不吞退出——W1/W1b 根因收口）
+            desired = DesiredAction.EXIT
+            if unknown_presence:
+                _clamp("适配钳制: 持仓未知保留退出方向")
     elif pos_action == "HOLD_POSITION":
         desired = DesiredAction.HOLD
     else:  # STAY_OUT
@@ -163,6 +206,8 @@ def build_decision_packet(
         executable_action=(desired if execution_status is ExecutionStatus.ELIGIBLE else None),
         blockers=blockers,
         reason_codes=reason_codes,
+        # M0：账户版本随包下发（同请求同版本可核对；空=未装配）
+        portfolio_revision=(account_version or None),
         legacy_trace=LegacyTrace(
             decision=decision_result.decision.value,
             action_strength=float(decision_result.score),

@@ -440,6 +440,9 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
     orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
+    # M0：请求级账户事实一次装配（B2）——同批次所有股票共享同一账户版本，
+    # 下一命令重新读；不再逐股重复判读 pos.current_ratio（W1 根因收口）
+    acct_facts = pm.request_account_facts()
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -511,7 +514,14 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
 
         # 分析
         # L1（V3）：装配边界接估值输入（行情时点+账户 NAV）——数量账户权重资格统一判定
-        strategy_state = pm.strategy_state_for(pos.stock_code, stock_data)
+        # M0：同源账户上下文（HELD/NONE/UNKNOWN+合格权重+版本）一次装配逐股消费
+        acct_ctx = acct_facts.context_for(
+            pos.stock_code, price=getattr(stock_data, "price", None),
+            price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
+        strategy_state = pm.to_strategy_state(
+            pos.stock_code, price=getattr(stock_data, "price", None),
+            price_as_of=getattr(stock_data, "quote_as_of", None),
+            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
 
         if not has_indicators:
             # 无技术指标，只显示行情
@@ -521,7 +531,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
 
         try:
             # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）不得按空仓分析
-            has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
+            # M0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
+            has_position = acct_ctx.position_state in ("HELD", "UNKNOWN")
             decision_result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
                 stock_data,
                 current_position_ratio=strategy_state.current_position_ratio,
@@ -540,13 +551,17 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 from src.core.analysis_service import build_decision_packet
                 _packet = build_decision_packet(
                     decision_result, strategy_decision, execution_eval,
-                    confirmed_ratio=pos.current_ratio if pos is not None else None,
+                    confirmed_ratio=acct_ctx.confirmed_weight,
+                    position_state=acct_ctx.position_state,
+                    account_version=acct_ctx.account_version,
                     source="la")
             except Exception as e:
                 logger.info(f"DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
             try:
                 _evidence.record_evidence(decision_result, strategy_decision,
-                                          source="analyze_live", packet=_packet)
+                                          source="analyze_live", packet=_packet,
+                                          position_state=acct_ctx.position_state,
+                                          account_version=acct_ctx.account_version)
             except Exception as e:
                 logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             # 影子差异捕获（plan/fusion 影子阶段前置）：legacy 终态 vs fusion_mid/long
@@ -555,7 +570,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 from src.core.shadow_diff import capture_shadow
                 capture_shadow(decision_result, strategy_decision, execution_eval,
                                pos, packet=_packet, source="la",
-                               quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
+                               quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                               account_context=acct_ctx)
             except Exception as e:
                 logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
             # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
@@ -864,8 +880,18 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
 
         # ===== 读取持仓记录 =====
         pm = PortfolioManager()
+        # M0：请求级账户事实一次装配（同源上下文——HELD/NONE/UNKNOWN+合格权重+版本）
+        # 估值门共享同一份 NAV/版本（策略状态与最终包/影子不再各自读账本）
+        acct_facts = pm.request_account_facts()
+        acct_ctx = acct_facts.context_for(
+            stock_code, price=getattr(stock_data, "price", None),
+            price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
         # L1（V3）：装配边界接估值输入（行情时点+账户 NAV）——权重资格统一判定
-        strategy_state = pm.strategy_state_for(stock_code, stock_data)
+        # M0/B2：直调 to_strategy_state 共享请求级 NAV/版本（不再逐股回读账本）
+        strategy_state = pm.to_strategy_state(
+            stock_code, price=getattr(stock_data, "price", None),
+            price_as_of=getattr(stock_data, "quote_as_of", None),
+            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day)
         pos = pm.get_position(stock_code)
         if pos:
             console.print(f"\n[bold green]📂 持仓记录[/bold green]")
@@ -902,8 +928,8 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         event_config = config.get("event", None)
         entry_exit_config = config.get("entry_exit", None)
         orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
-        # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）不得按空仓分析
-        has_position = pos is not None and (pos.current_ratio > 0 or pos.quantity_held > 0)
+        # M0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
+        has_position = acct_ctx.position_state in ("HELD", "UNKNOWN")
         result, strategy_decision, execution_eval, ai_result = orchestrator.analyze(
             stock_data,
             current_position_ratio=strategy_state.current_position_ratio,
@@ -926,13 +952,17 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             from src.core.analysis_service import build_decision_packet
             _packet = build_decision_packet(
                 result, strategy_decision, execution_eval,
-                confirmed_ratio=(pos.current_ratio if pos is not None else 0.0),
+                confirmed_ratio=acct_ctx.confirmed_weight,
+                position_state=acct_ctx.position_state,
+                account_version=acct_ctx.account_version,
                 source="l")
         except Exception as e:
             logger.info(f"DecisionPacket 构造失败（证据卡将缺终态字段，不影响分析）: {e}")
         try:
             _evidence.record_evidence(result, strategy_decision, source="live_multi",
-                                      packet=_packet)
+                                      packet=_packet,
+                                      position_state=acct_ctx.position_state,
+                                      account_version=acct_ctx.account_version)
         except Exception as e:
             logger.debug(f"分析证据钩子异常(不影响主流程): {e}")
             _watch_info = None
@@ -942,7 +972,8 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             from src.core.shadow_diff import capture_shadow
             capture_shadow(result, strategy_decision, execution_eval,
                            pos, packet=_packet, source="l",
-                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""))
+                           quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
+                           account_context=acct_ctx)
         except Exception as e:
             logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
         # F1（plan/fusion ADR-F03）：持仓股分析后记录观察量+建议——不再把建议当
@@ -1676,10 +1707,18 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
                 lines.append((None, f"原因：{ee['exit_reason']}"))
             elif v["reason"]:
                 lines.append((None, f"原因：{v['reason']}"))
+            # M0：权重待重估时明确数量事实与方向保留（W1 用户收益——不与"无仓等待"矛盾）
+            if pos is not None and getattr(pos, "weight_unknown", False):
+                lines.append((None, f"账户事实：持有 {getattr(pos, 'quantity_held', 0) or 0} 股"
+                                    "（权重待重估）——退出方向保留。"))
         elif v["bucket"] == "REDUCE":
             lines.append(("red", "减仓纪律触发：按计划减一部分仓位。"))
             if v["reason"]:
                 lines.append((None, f"原因：{v['reason']}"))
+            # M0：权重待重估时明确数量事实与方向保留（用户收益：不出现矛盾口径）
+            if pos is not None and getattr(pos, "weight_unknown", False):
+                lines.append((None, f"账户事实：持有 {getattr(pos, 'quantity_held', 0) or 0} 股"
+                                    "（权重待重估）——减仓方向保留，待重估后锁定比例。"))
         elif v["bucket"] == "ADD":
             lines.append(("yellow", "加仓条件成立：按计划加仓（注意总仓位纪律，别打满）。"))
         elif v["bucket"] == "OPEN":
@@ -1784,7 +1823,12 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     # 3) 持仓盈亏
     if has_pos and pos.entry_price and sd is not None and sd.price:
         pnl = (sd.price - pos.entry_price) / pos.entry_price * 100
-        lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，仓位 {pos.current_ratio:.0%}"))
+        # M0：权重待重估如实显示数量事实（不打印过期比例 0%）
+        if getattr(pos, "weight_unknown", False):
+            lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
+                                f"持有 {getattr(pos, 'quantity_held', 0) or 0} 股（权重待重估）"))
+        else:
+            lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，仓位 {pos.current_ratio:.0%}"))
 
     # 4) 笨总怎么看（当日缓存，不跑 AI）
     brief = _cached_benzong_brief(sd.stock_code.split(".")[0] if sd else "") if sd else None

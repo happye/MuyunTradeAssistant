@@ -25,6 +25,7 @@ import math
 import os
 import logging
 import uuid
+from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
 from typing import NamedTuple, Optional
@@ -257,6 +258,155 @@ class PositionRecord:
         )
 
 
+# ── M0（plan/fusion iteration6）：账户事实到最终行动的同源上下文 ──────────────
+# 账户事实三态：HELD=有仓事实（数量/比例）；NONE=已知空仓；UNKNOWN=未对账或读取异常
+POSITION_HELD = "HELD"
+POSITION_NONE = "NONE"
+POSITION_UNKNOWN = "UNKNOWN"
+
+
+def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Optional[float], str]:
+    """数量×价格/NAV 的合格估值门（L1 资格语义的共享核心——to_strategy_state 与
+    AccountContext 装配共用同一判据，消费者不再各自判读）。
+
+    M0 口径（与 L1 一致）：价格与 NAV **同日窗保守相等**才锁定；M1 将在此升级
+    时点语义（来源时区/未来时点），调用方契约不变。
+
+    Returns:
+        (weight, reason)：weight=None 时 reason 为人话资格缺口（不拿过期比例
+        冒充、不用 0 假装未知）。"""
+    if quantity is None or int(quantity) <= 0:
+        return None, "无数量事实"
+    if price is None or price <= 0 or nav is None or nav <= 0:
+        return None, "缺价格或NAV"
+    p_day = str(price_as_of or "")[:10]
+    n_day = str(nav_as_of or "")[:10]
+    if not p_day or not n_day:
+        return None, "缺行情或NAV时点"
+    if p_day != n_day:
+        return None, "价格与NAV时点不一致（保守同日窗）"
+    derived = int(quantity) * float(price) / float(nav)
+    if derived > 1.0:
+        return None, f"数量×价格/NAV={derived:.3f}>1（杠杆/数据异常）"
+    return derived, "合格估值锁定"
+
+
+@dataclass(frozen=True)
+class AccountContext:
+    """一次分析请求内装配的单股账户事实上下文（M0，修 W1 根因）。
+
+    显式区分「有无持仓」（数量事实/比例）与「权重资格」（合格估值）——
+    策略→最终包→周期策略→影子→摘要/证据/diff/建议消费同一份，不再各自从
+    pos.current_ratio 重复判读（W1：旧比例 0 被当成无仓/已知权重吞掉清仓）。
+    confirmed_weight=None 表示权重未知——不是 0。"""
+
+    security_id: str
+    position_state: str = POSITION_UNKNOWN   # HELD / NONE / UNKNOWN
+    quantity: Optional[int] = None           # 数量事实股数（RATIO_ONLY/未知=None）
+    confirmed_weight: Optional[float] = None
+    weight_reason: str = ""                  # 资格/缺口原因（人话）
+    account_version: str = ""                # 账本内容版本（同请求一致）
+
+
+class RequestAccountFacts:
+    """一次命令请求的账户事实装配器（M0/B2）。
+
+    构造时读账户快照**一次**（内容版本+NAV+各股数量），同请求所有股票共享
+    同一账户版本；下一命令新建本实例重新读——**禁止全局长寿命缓存**（B2：
+    请求内 30 次消费同版本，下一请求才刷新）。"""
+
+    def __init__(self, pm: "PortfolioManager"):
+        self._pm = pm
+        self.account_version = ""
+        self.nav: Optional[float] = None
+        self.nav_day: Optional[str] = None
+        self._quantities: dict[str, int] = {}
+        self._ledger_present = False
+        try:
+            from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
+            if Path(DEFAULT_LEDGER_PATH).exists():
+                snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
+                self._ledger_present = True
+                self.account_version = str(snap.account_version or "")
+                self.nav = snap.nav
+                self.nav_day = (snap.nav_priced_at.strftime("%Y-%m-%d")
+                                if snap.nav_priced_at else None)
+                self._quantities = {h.security_id: int(h.quantity or 0)
+                                    for h in snap.holdings}
+        except Exception as e:
+            logger.debug(f"请求级账户事实读取失败（按未对账处理）: {e}")
+
+    def _ledger_quantity(self, stock_code: str) -> int:
+        """账本数量事实（代码形态归一：600519 / 600519.SZ / sh600519 都能命中）。"""
+        raw = str(stock_code or "").strip()
+        candidates = [raw, raw.split(".")[0]]
+        digits = "".join(ch for ch in raw if ch.isdigit())
+        if len(digits) >= 6:
+            candidates.append(digits[-6:])
+        for c in candidates:
+            if c in self._quantities:
+                return self._quantities[c]
+        return 0
+
+    def _weight_for(self, quantity: int, price, price_as_of) -> tuple[Optional[float], str]:
+        return _qualified_weight(quantity, price, price_as_of, self.nav, self.nav_day)
+
+    def context_for(self, stock_code: str, *, price: Optional[float] = None,
+                    price_as_of: Optional[str] = None) -> AccountContext:
+        """装配单股上下文（数量事实决定持仓；RATIO_ONLY 保留比例判持仓；
+        冲突/未对账明确 UNKNOWN——不编造数量）。"""
+        pm = self._pm
+        version = self.account_version
+
+        def _ctx(state, quantity=None, weight=None, reason="") -> AccountContext:
+            return AccountContext(security_id=stock_code, position_state=state,
+                                  quantity=quantity, confirmed_weight=weight,
+                                  weight_reason=reason, account_version=version)
+
+        if getattr(pm, "_corrupted", False):
+            return _ctx(POSITION_UNKNOWN, reason="持仓文件读取异常——账户未对账")
+        try:
+            pos = pm.get_position(stock_code)
+        except Exception as e:
+            logger.debug(f"持仓读取失败 {stock_code}（按未对账处理）: {e}")
+            return _ctx(POSITION_UNKNOWN, reason="持仓记录读取失败——账户未对账")
+
+        ledger_q = self._ledger_quantity(stock_code)
+        if pos is None:
+            if ledger_q > 0:
+                w, reason = self._weight_for(ledger_q, price, price_as_of)
+                if w is None:
+                    reason += "（账本数量事实；比例视图待重估）"
+                return _ctx(POSITION_HELD, quantity=ledger_q, weight=w, reason=reason)
+            return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="无持仓记录")
+
+        proj_q = pos.quantity_held if pos.quantity_fact is not None else None
+        if ledger_q > 0:
+            # 账本数量事实优先（事实源=事件账本；含 RATIO_ONLY 记录+期初导入未同步
+            # quantity_fact 的形态——账本有股不吞持仓）
+            if proj_q is not None and proj_q != ledger_q:
+                return _ctx(POSITION_HELD, quantity=ledger_q, weight=None,
+                            reason="数量投影与账本不一致——待对账（不编造数量）")
+            w, reason = self._weight_for(ledger_q, price, price_as_of)
+            return _ctx(POSITION_HELD, quantity=ledger_q, weight=w, reason=reason)
+        if self._ledger_present and proj_q is not None and proj_q > 0:
+            # 记录说有仓、账本说无仓——持仓事实本身矛盾 → 保守未对账
+            return _ctx(POSITION_UNKNOWN, quantity=proj_q,
+                        reason="数量记录与账本冲突（记录有仓/账本无仓）——待对账")
+        if proj_q is not None:
+            # 数量账户投影事实（账本缺席或无该股事件时以投影为准）
+            if proj_q > 0:
+                w, reason = self._weight_for(proj_q, price, price_as_of)
+                return _ctx(POSITION_HELD, quantity=proj_q, weight=w, reason=reason)
+            return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="记录与账本均无持仓")
+
+        # RATIO_ONLY：比例判持仓（既有语义零变化）
+        if (pos.current_ratio or 0) > 0:
+            return _ctx(POSITION_HELD, weight=pos.current_ratio,
+                        reason="RATIO_ONLY 比例直通")
+        return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="比例 0（无数量事实）")
+
+
 class PortfolioManager:
     """持仓记录管理器
 
@@ -471,15 +621,28 @@ class PortfolioManager:
             logger.debug(f"账户 NAV 读取失败（权重按未知处理）: {e}")
             return None, None
 
-    def strategy_state_for(self, stock_code: str, stock_data) -> StrategyState:
+    def strategy_state_for(self, stock_code: str, stock_data, *,
+                           nav: Optional[float] = None,
+                           nav_as_of: Optional[str] = None) -> StrategyState:
         """装配边界便捷入口（L1）：自动接估值输入（行情价/行情时点 + 账户 NAV）
-        → 权重资格判定。l/la/chat/scanner/TUI/Web 统一走此入口——跨入口
-        相同账户版本得到相同事实（T01）。"""
+        → 权重资格判定。scanner/TUI/Web 等无请求上下文的消费方走此入口。
+
+        M0 起 l/la/chat 走 RequestAccountFacts 一次装配 + to_strategy_state 直调
+        （请求内同版本、不逐股回读账本——B2）；本入口缺省行为不变（逐股读
+        默认账本 NAV）。"""
         price = getattr(stock_data, "price", None)
         price_as_of = getattr(stock_data, "quote_as_of", None)
-        nav, nav_day = self.account_nav()
+        if nav is None and nav_as_of is None:
+            nav, nav_day = self.account_nav()
+        else:
+            nav_day = nav_as_of
         return self.to_strategy_state(stock_code, price=price, price_as_of=price_as_of,
                                       nav=nav, nav_as_of=nav_day)
+
+    def request_account_facts(self) -> RequestAccountFacts:
+        """请求级账户事实装配器（M0）：l/la/chat 每次命令开头调用一次，
+        逐股 `context_for` 共享同一账户版本；下一命令重新调用刷新。"""
+        return RequestAccountFacts(self)
 
     def to_strategy_state(self, stock_code: str, *, price: Optional[float] = None,
                           price_as_of: Optional[str] = None,
@@ -519,22 +682,20 @@ class PortfolioManager:
                 last_decision = None
 
         # L1：权重资格（数量账户 → 合格估值才给数字，否则 None=未知）
+        # M0：资格判据抽为 _qualified_weight 共享核心（to_strategy_state 与
+        # AccountContext 同一判据——消费者不再各自判读）
         current_ratio: Optional[float] = pos.current_ratio
         if pos.weight_unknown:
             current_ratio = None
             q = pos.quantity_held
-            p_day = str(price_as_of or "")[:10]
-            n_day = str(nav_as_of or "")[:10]
-            if (price is not None and price > 0 and nav is not None and nav > 0
-                    and p_day and p_day == n_day):
-                derived = q * float(price) / float(nav)
-                if derived <= 1.0:
-                    current_ratio = derived  # 合格估值——用已知数字锁定
-                else:
-                    # 杠杆异常（>100%）超出比例字段语义——按未知处理并留痕，不截断伪造
-                    logger.info(
-                        f"to_strategy_state {stock_code}: 数量×价格/NAV={derived:.3f}>1"
-                        f"（杠杆/数据异常）——权重按未知处理，请核对估值输入")
+            qualified, reason = _qualified_weight(q, price, price_as_of, nav, nav_as_of)
+            if qualified is not None:
+                current_ratio = qualified  # 合格估值——用已知数字锁定
+            elif "杠杆" in reason or "异常" in reason:
+                # 杠杆异常（>100%）超出比例字段语义——按未知处理并留痕，不截断伪造
+                logger.info(
+                    f"to_strategy_state {stock_code}: {reason}——权重按未知处理，"
+                    "请核对估值输入")
         return StrategyState(
             lifecycle=lifecycle,
             entry_date=pos.entry_date,

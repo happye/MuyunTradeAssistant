@@ -565,9 +565,14 @@ class Orchestrator:
 
         return decision_result, strategy_decision, execution_eval, ai_result
 
-    def analyze_packet(self, data, *, confirmed_ratio=None, source: str = "analyze_packet",
-                       **analyze_kwargs):
+    def analyze_packet(self, data, *, confirmed_ratio=None,
+                       position_state: Optional[str] = None, account_version: str = "",
+                       source: str = "analyze_packet", **analyze_kwargs):
         """F2 适配出口（DESIGN ADR-F01）：旧 analyze 返回协议保留，新消费方走这里拿唯一终态。
+
+        M0：position_state/account_version 透传 build_decision_packet（同源账户
+        上下文——数量决定持仓、权重资格独立；只传 confirmed_ratio 的调用方按旧
+        推导兼容）。
 
         Returns:
             (DecisionPacket, DecisionResult, StrategyDecision, ExecutionEvaluation, ai_result)
@@ -579,7 +584,8 @@ class Orchestrator:
             data, **analyze_kwargs)
         packet = build_decision_packet(
             decision_result, strategy_decision, execution_eval,
-            confirmed_ratio=confirmed_ratio, source=source)
+            confirmed_ratio=confirmed_ratio, position_state=position_state,
+            account_version=account_version, source=source)
         return packet, decision_result, strategy_decision, execution_eval, ai_result
 
     def get_available_skills(self) -> list[str]:
