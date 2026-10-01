@@ -252,7 +252,7 @@ class StockData(BaseModel):
     # M1（R12 W2）：抓取时点（诊断留痕——解释数据新鲜度，不取得估值/有效比较资格）
     quote_fetched_at: Optional[str] = Field(default=None, description="行情抓取时刻（ISO 带时区，诊断用）")
     # M1：来源标识（随预取/缓存携带原元数据；降级提示与诊断用）
-    price_source: Optional[str] = Field(default=None, description="行情来源（sina_batch/baostock/em_all/etf_all）")
+    price_source: Optional[str] = Field(default=None, description="行情来源（sina_batch/baostock/em_all/etf_all/kline_only——kline_only=纯K线回退，日期已知非实时）")
 
     # v0.8.9.5：class-based Config 在 Pydantic V2 已弃用（V3 移除），改 ConfigDict
     model_config = ConfigDict(extra="allow")  # 允许额外字段
