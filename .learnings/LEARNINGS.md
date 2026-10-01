@@ -2276,3 +2276,33 @@ None 作为哨兵值进入类型系统时，「缺省兜底」和「显式语义
 ### Resolution
 - **Resolved**: 2026-10-01
 - **Notes**: L1 卡内四处兜底改回 0.0；test_unknown_weight_blocks_precise_add 补对照2（0.0+FLAT+BUY → OPEN 不被阻）；strategy_layer EXIT 分支补 None 守卫（P1-2）。
+
+---
+
+## [LRN-20261001-L011] pattern — 决策链横切的「事实判据」必须单点装配、全链消费（M0/W1 教训）
+
+**Logged**: 2026-10-01T20:30:00+08:00
+**Priority**: high
+**Status**: resolved
+**Area**: design
+
+### Summary
+W1 病根不是某一个调用点传错参数：l/la/chat 三入口各自拿 `pos.current_ratio`（旧比例，可能过期为 0）判持仓，最终包/周期表/影子又各自再判一遍——同一事实被 5 处重复判读，修掉一处仍有四处。R12 独立对照证明「只改调用参数传 None 仍不够」（适配器对未知权重 REDUCE 也给 WAIT）。
+
+### Details
+跨层消费同一事实（有无持仓/权重资格）时，每层各自判读=每层都是独立故障点；且判据漂移（0 当未知/0 当空仓）会在层间互相掩盖。修法是装配一次、显式携带语义（三态+合格权重+原因+版本）、全链消费同一份——判据改动只发生在单点。请求级装配还顺带修了 B2（同请求多股重复重放账本）。
+
+### Suggested Action
+新增跨层事实时：先问「谁装配、谁消费、有没有第二处判读」；装配点给三态显式值而非让消费方从原始字段推断；决策表/协议随语义变化升版本（DECISION_TABLE_VERSION v1→v2、shadow_v8），不让旧观察混入新口径分母。
+
+### Metadata
+- Source: task
+- Related Files: src/data/portfolio.py, src/core/analysis_service.py, src/core/decision_policy.py, src/core/shadow_diff.py
+- Tags: design, single-source-of-truth, decision-chain, versioning
+- Pattern-Key: design.cross_layer_fact_needs_single_assembly
+- Recurrence-Count: 1
+- First-Seen: 2026-10-01
+
+### Resolution
+- **Resolved**: 2026-10-01
+- **Notes**: M0 卡落地 AccountContext/RequestAccountFacts（commit 21da3ff）；M1 卡落地三时点分离与 shadow_v8（commit 96f6f1d）；19 场景规范合同逐条测试锚定（test_m0_account_terminal/test_m1_quote_time）。

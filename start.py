@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.24"  # v0.8.24=J2/J3/J4/J5（账户确认闭环+研究链接线+有效模式观察+兼容收口）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.25"  # v0.8.25=M0/M1（账户事实同源闭环修W1+行情来源时间修W2，shadow_v8）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

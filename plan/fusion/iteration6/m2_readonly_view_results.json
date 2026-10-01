@@ -1,0 +1,70 @@
+{
+  "scope": "isolated prototype for M2 pre-work, not production wiring",
+  "passed": 16,
+  "cases": [
+    {
+      "case": "normal_accepted_plan_visible",
+      "pass": true
+    },
+    {
+      "case": "normal_no_candidate",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_0",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_1",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_2",
+      "pass": true
+    },
+    {
+      "case": "normal_zero_plan_mutation",
+      "pass": true
+    },
+    {
+      "case": "missing_shows_next_step",
+      "pass": true
+    },
+    {
+      "case": "missing_zero_write",
+      "pass": true
+    },
+    {
+      "case": "candidate_visible_without_replacing_primary",
+      "pass": true
+    },
+    {
+      "case": "candidate_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "view_zero_write",
+      "pass": true
+    },
+    {
+      "case": "repeated_view_no_new_candidate",
+      "pass": true
+    },
+    {
+      "case": "candidate_revision_stable",
+      "pass": true
+    },
+    {
+      "case": "mismatched_assessment_shows_review_not_valid",
+      "pass": true
+    },
+    {
+      "case": "mismatch_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "mismatch_zero_write",
+      "pass": true
+    }
+  ]
+}
