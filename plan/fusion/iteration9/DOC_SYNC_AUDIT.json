@@ -1,0 +1,684 @@
+{
+  "scope": "Incremental R15 handoff; historical approvals preserved, no broad archive rewrite",
+  "local_links_checked": [
+    "MILESTONES.md",
+    "plan/fusion/STATUS.md",
+    "plan/fusion/RESUME.md",
+    "plan/fusion/iteration9/R15_ACCEPTANCE.md",
+    "plan/fusion/iteration9/DELIVERY_PLAN.md"
+  ],
+  "files": [
+    {
+      "file": ".learnings/ERRORS.md",
+      "lines": 491,
+      "utf8_bytes": 23805,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": ".learnings/FEATURE_REQUESTS.md",
+      "lines": 81,
+      "utf8_bytes": 2884,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": ".learnings/LEARNINGS.md",
+      "lines": 2434,
+      "utf8_bytes": 157876,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "AGENTS.md",
+      "lines": 444,
+      "utf8_bytes": 50581,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "CLAUDE.md",
+      "lines": 154,
+      "utf8_bytes": 13829,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "CODEX.md",
+      "lines": 39,
+      "utf8_bytes": 3862,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-07-17_免费股票数据源调研.md",
+      "lines": 322,
+      "utf8_bytes": 26877,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-10_笨总视频理念优化报告.md",
+      "lines": 153,
+      "utf8_bytes": 11713,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-12_未做事项评估.md",
+      "lines": 114,
+      "utf8_bytes": 8218,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-16_行业数据层跨模块适用性评估.md",
+      "lines": 67,
+      "utf8_bytes": 5437,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-23_美债风险文档评估+量化拥挤监测思路.md",
+      "lines": 206,
+      "utf8_bytes": 17253,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-24_景气度客观数据源评估.md",
+      "lines": 69,
+      "utf8_bytes": 4689,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-29_大规模分层回测矩阵报告.md",
+      "lines": 63,
+      "utf8_bytes": 4457,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-29_对抗审查42项裁决与修复报告.md",
+      "lines": 136,
+      "utf8_bytes": 16163,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-29_第三轮对抗审查C区块裁决与修复报告.md",
+      "lines": 76,
+      "utf8_bytes": 8462,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-29_第二轮对抗审查27项裁决与修复报告.md",
+      "lines": 159,
+      "utf8_bytes": 19602,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-30_修复方887d400落地复核报告.md",
+      "lines": 61,
+      "utf8_bytes": 5603,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-30_第五轮对抗审查E区块延后项执行报告.md",
+      "lines": 54,
+      "utf8_bytes": 6099,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-08-30_第四轮对抗审查D区块裁决与修复报告.md",
+      "lines": 113,
+      "utf8_bytes": 13087,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-05_RAG知识库融合73篇新文章_方案.md",
+      "lines": 156,
+      "utf8_bytes": 9903,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-05_RAG系统深度审查报告.md",
+      "lines": 135,
+      "utf8_bytes": 14082,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-05_代码重构交接文档.md",
+      "lines": 126,
+      "utf8_bytes": 9602,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-05_瘦身重构会话方案.md",
+      "lines": 62,
+      "utf8_bytes": 4795,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-11_chat工具轮次20轮_改动说明与对抗审查报告.md",
+      "lines": 166,
+      "utf8_bytes": 11246,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-11_RAG评估体系现状与业界标准对照报告.md",
+      "lines": 174,
+      "utf8_bytes": 12009,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-11_测试体系架构梳理报告.md",
+      "lines": 235,
+      "utf8_bytes": 14248,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-13_市场恐慌指数_评估与实现方案.md",
+      "lines": 321,
+      "utf8_bytes": 27010,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-14_笨总评分新维度设计方案.md",
+      "lines": 199,
+      "utf8_bytes": 21388,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-26_交接_R系列第二轮接手.md",
+      "lines": 83,
+      "utf8_bytes": 7816,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-27_交接_J系列第三轮接手.md",
+      "lines": 67,
+      "utf8_bytes": 8350,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-09-27_交接_第四轮K系列接手.md",
+      "lines": 88,
+      "utf8_bytes": 10558,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/2026-10-01_交接_第五轮L系列接手.md",
+      "lines": 81,
+      "utf8_bytes": 11094,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/AI协作工作范式.md",
+      "lines": 207,
+      "utf8_bytes": 7584,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/AI系统说明.md",
+      "lines": 697,
+      "utf8_bytes": 35333,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-07-17_UI可行性评估.md",
+      "lines": 133,
+      "utf8_bytes": 7778,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-07-17_WebUI设计方案.md",
+      "lines": 354,
+      "utf8_bytes": 16035,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-07-21_Chat功能说明.md",
+      "lines": 203,
+      "utf8_bytes": 12438,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-08-14_chat问题交接.md",
+      "lines": 88,
+      "utf8_bytes": 6392,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-08-15_chat行业分析深度优化方案.md",
+      "lines": 206,
+      "utf8_bytes": 14011,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-08-16_chat行业分析交接.md",
+      "lines": 60,
+      "utf8_bytes": 4892,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md",
+      "lines": 105,
+      "utf8_bytes": 8450,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/2026-09-25_交接_C批次实施与F系列接手.md",
+      "lines": 132,
+      "utf8_bytes": 12249,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md",
+      "lines": 7,
+      "utf8_bytes": 10003,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md",
+      "lines": 8,
+      "utf8_bytes": 27029,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/ai_investment_advisor_spec.md",
+      "lines": 243,
+      "utf8_bytes": 3407,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260829_待裁决清单.md",
+      "lines": 149,
+      "utf8_bytes": 17513,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260829_第三轮_待裁决清单.md",
+      "lines": 326,
+      "utf8_bytes": 13542,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260829_第二轮_待裁决清单.md",
+      "lines": 124,
+      "utf8_bytes": 17030,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260830_G区块_待裁决清单.md",
+      "lines": 154,
+      "utf8_bytes": 11454,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260830_H区块_待裁决清单.md",
+      "lines": 118,
+      "utf8_bytes": 9280,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/audit/对抗审查_20260830_遗留清理待裁决清单.md",
+      "lines": 129,
+      "utf8_bytes": 7863,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/ISS-016_方案设计.md",
+      "lines": 370,
+      "utf8_bytes": 16135,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/rag_eval_report.md",
+      "lines": 92,
+      "utf8_bytes": 4974,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/README.md",
+      "lines": 77,
+      "utf8_bytes": 4331,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.0_迭代规划.md",
+      "lines": 324,
+      "utf8_bytes": 10077,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.0_里程碑.md",
+      "lines": 284,
+      "utf8_bytes": 12211,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.1_Pro_RAG_技术设计文档.md",
+      "lines": 47,
+      "utf8_bytes": 868,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.1_RAG_技术设计文档.md",
+      "lines": 92,
+      "utf8_bytes": 1407,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.1_里程碑.md",
+      "lines": 223,
+      "utf8_bytes": 7561,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.2_迭代规划.md",
+      "lines": 756,
+      "utf8_bytes": 23086,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.2_里程碑.md",
+      "lines": 191,
+      "utf8_bytes": 13751,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.3_C4_案例验证报告.md",
+      "lines": 113,
+      "utf8_bytes": 4219,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.3_迭代规划.md",
+      "lines": 677,
+      "utf8_bytes": 23102,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.3_里程碑.md",
+      "lines": 179,
+      "utf8_bytes": 8057,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.5_扩样本验证报告.md",
+      "lines": 117,
+      "utf8_bytes": 5705,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.5_阶段3_final.md",
+      "lines": 146,
+      "utf8_bytes": 6924,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.6.3_交接.md",
+      "lines": 162,
+      "utf8_bytes": 10219,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/v0.8.6.6_交接.md",
+      "lines": 160,
+      "utf8_bytes": 9132,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/投资系统架构升级_v0.7.0.md",
+      "lines": 129,
+      "utf8_bytes": 1866,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/投资系统架构升级_v0.7.2.md",
+      "lines": 274,
+      "utf8_bytes": 4177,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/archive/投资系统架构升级_v0.8.0.md",
+      "lines": 275,
+      "utf8_bytes": 5141,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/chat模块架构文档.md",
+      "lines": 277,
+      "utf8_bytes": 27741,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/README.md",
+      "lines": 51,
+      "utf8_bytes": 3510,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/TradePlan_使用指南.md",
+      "lines": 208,
+      "utf8_bytes": 10398,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/v0.8.6_调研报告.md",
+      "lines": 382,
+      "utf8_bytes": 18712,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/全局审查交接.md",
+      "lines": 102,
+      "utf8_bytes": 7676,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/回测到实盘对齐指南.md",
+      "lines": 122,
+      "utf8_bytes": 9192,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/实盘操作指南.md",
+      "lines": 285,
+      "utf8_bytes": 11066,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/技术架构文档.md",
+      "lines": 1088,
+      "utf8_bytes": 48985,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/报错速查手册.md",
+      "lines": 297,
+      "utf8_bytes": 26348,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/数据接口台账.md",
+      "lines": 82,
+      "utf8_bytes": 8838,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/笨总6维评分_说明文档.md",
+      "lines": 245,
+      "utf8_bytes": 16034,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/美债收益率完整底层逻辑+隐性风险监测体系（可直接用于AI量化监测）.md",
+      "lines": 237,
+      "utf8_bytes": 9022,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "docs/选股与持仓规划实战工作流.md",
+      "lines": 275,
+      "utf8_bytes": 14965,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "ISSUES.md",
+      "lines": 2201,
+      "utf8_bytes": 259574,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "MILESTONES.md",
+      "lines": 114,
+      "utf8_bytes": 15092,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "plan/fusion/iteration9/DELIVERY_PLAN.md",
+      "lines": 73,
+      "utf8_bytes": 8619,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "plan/fusion/iteration9/R15_ACCEPTANCE.md",
+      "lines": 42,
+      "utf8_bytes": 5856,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "plan/fusion/README.md",
+      "lines": 104,
+      "utf8_bytes": 8814,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "plan/fusion/RESUME.md",
+      "lines": 39,
+      "utf8_bytes": 4440,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "plan/fusion/STATUS.md",
+      "lines": 34,
+      "utf8_bytes": 3600,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "README.md",
+      "lines": 1349,
+      "utf8_bytes": 104293,
+      "current_review_reference": true,
+      "decision": "updated_current_handoff"
+    },
+    {
+      "file": "使用手册.md",
+      "lines": 1688,
+      "utf8_bytes": 90886,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "全局对抗审查清单.md",
+      "lines": 248,
+      "utf8_bytes": 26382,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "审查覆盖台账.md",
+      "lines": 131,
+      "utf8_bytes": 15281,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    },
+    {
+      "file": "开发问题根因复盘_20260829.md",
+      "lines": 270,
+      "utf8_bytes": 14137,
+      "current_review_reference": false,
+      "decision": "preserved_no_R15_contract_change"
+    }
+  ]
+}

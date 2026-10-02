@@ -1,44 +1,36 @@
 # 融合项目当前实施与审批状态
 
-**更新：2026-10-02（O0–O2 交付，待独立验收）｜交付基线：基线 `4eb5c1b` + O 批实施提交｜v0.8.27｜整体未完成。** 长期目标见根[MILESTONES](../../MILESTONES.md)，恢复见[RESUME](RESUME.md)。R14 审批状态（下方"当前审批"）未被本更新覆盖。
+**更新：2026-10-02（R15独立审批）｜受审HEAD：28c32cf｜v0.8.27｜整体未完成。** 长期路线见[MILESTONES](../../MILESTONES.md)，恢复见[RESUME](RESUME.md)。
 
-## 当前审批
+## 当前裁决
 
-[N系列交付](iteration7/实施方报告_N系列交付.md)已完成[R14独立审批](iteration8/R14_ACCEPTANCE.md)：**分项接收，整卡补齐；K1不冻结，M2/K2b生产不放行，capture_only不变。** R12/R13已通过范围不重开。
+[O批交付](iteration8/实施方报告_O系列交付.md)已完成[R15](iteration9/R15_ACCEPTANCE.md)：**O1/O2接收，Y3/Y4关闭；O0部分接收，Z1–Z3待补。K1未冻结，M2/K2b生产未放行，capture_only不变。** R12–R14已通过范围不重复审批，M2原型仍按R14接收。
 
-独立30文件**423 passed**；R13合同重放**17/17通过**；新增6条检查**5失败/1通过**，归为Y1–Y4（不是5个P1）；M2原型**25项断言通过**。实施方全量1482 passed/2 skipped/1 deselected仅引用，未独立重跑。实施报告462与本次423须按收集清单核对，不算39个失败。7保护文件哈希/知识库集合不变；[证据索引](iteration8/REVIEW_INDEX.json)。
+独立**33文件462 passed**；合同13项**9 passed/4 failed**（R14六项全绿；新增7项3绿4红，分三组发现）。O1真实捕获→存储→报告的未来naive/过去naive正反例通过。实施方全量1521 passed/2 skipped/1 deselected仅引用未独立重跑。测试7保护文件哈希/知识库集合均未变。[指纹与证据](iteration9/REVIEW_INDEX.json)。
 
-| 块 | 接收范围 | 当前剩余 | 长期里程碑 |
+| 块 | 已接收 | 剩余/下一动作 | 里程碑 |
 |---|---|---|---|
-| K0a/L1/M0/N0账户 | 策略ctx、单股/聊天无投影退出、部分异常分支 | Y1零投影+读失败/PARTIAL无lot仍判空；Y2 la漏账本独有持仓→O0 | G1/G2/G5/T01 |
-| K0b事实/命题 | 既有明确范围通过不变 | LONG规则/数据不完整，不整体背书自然语言 | G1/G3/G4 |
-| K0c/L0/N1计划 | 规范两臂/生成版本门/旧桶计数、MID行5/6 | Y4 LONG行8未知权重仍ADD→O2；完整MID正例待G3 | G2/G4/G6/T03 |
-| K2a/L2公开研究 | 公开引用/checkpoint TRUE通过 | 完整MID评估正例，不以checkpoint替代VALID | G2/G3/T02 |
-| K1/M1/N2观察合同 | 估值严格时间/NAV偏移/finite/原fetched_at | Y3 shadow未来naive仍有效→O1；shadow_v9未冻结 | G1/G6/T03 |
-| K2b/M2统一l | 原型损坏库/零写/旧方法/重启，25断言通过 | O0–O2联合独立过门+合同冻结前生产不放行 | G2/G7/T02 |
-| K3/L3原件与规则 | 6/6原件离线复验历史范围接收；PARTIAL | J1缺URL、更正/人工/PIT/异机获取、B/C/规则未完成 | G4/G5/T07 |
-| K4真实观察 | 未验收合格真实样本 | 修正合同冻结后积累；旧v9及更早不追认 | G6 |
-| E1b/E5b | NOT_RUN | 前置不齐且未获付费授权 | G6 |
-| E2b–E4b | BLOCKED_DATA | 严格历史信息集/覆盖不足 | G6 |
-| E6b及其他效果 | NOT_RUN/待证据 | 账户组合资格/场景/指标冻结后回放 | G5/G6 |
-| 性能/跨端/必要重构 | PARTIAL | T01–T07持续维护；B2不是性能瓶颈证明 | G7 |
+| O0账户/批量 | R14具体异常反例、账本独有股进la/CLI、混合去重/一次快照、单股失败续跑 | Z1 PARTIAL+零投影仍判空；Z2记录解码失败清单却完整→P0 | G1/G2/G5/T01 |
+| O0展示 | 单股最终包和摘要消费ctx范围通过 | Z3 chat混合清单漏股、l/la启动提示仍FLAT→P1 | G2/G7/T01 |
+| O1时间 | 共用解析，naive时刻/偏移/日精度矩阵，捕获落盘分母一致 | Y3关闭；无变化不重开设计 | G1/G6/T03 |
+| O2 LONG规则 | 行8未知权重HOLD、已知权重ADD、硬退出优先，表v4 | Y4关闭；LONG完整数据/研究仍未完成 | G4/G6/T03 |
+| K1观察合同 | shadow_v10候选、旧协议独立桶 | 账户残余阻断冻结；不晋级策略 | G6 |
+| M2日常研究 | 原型25断言R14接收；接口/入口/验收方案已细化 | DESIGN_READY，P0/P1过门+合同冻结前不接生产 | G2/G3/G7/T02 |
+| L2公开研究 | 公开引用/checkpoint TRUE | 完整MID VALID证据样板未完成 | G3 |
+| L3原件 | 六点核定范围通过 | 缺URL、更正/人工/PIT/异机获取及LONG波次B待办 | G4/G5/T07 |
+| K4/效果实验 | 无已验收合格真实样本 | E1b/E5b NOT_RUN；E2b–E4b BLOCKED_DATA；其余前置未齐 | G6 |
+| 多端与工程 | 请求级事实、部分清单已接线 | today卡并集/analyze_industry/TUI/Web清单尚未归并；T01–T07未整体关闭 | G2/G7 |
 
-## 当前执行窗口
+## 当前任务与披露
 
-[第八轮O0–O2任务卡](iteration8/DELIVERY_PLAN.md)已交待实施职责与验收边界：O0异常账户+持仓集合；O1同源时间资格；O2 LONG未知权重。Claude Code负责产品实施，Codex负责复验。建议v0.8.27/表v4/shadow_v10候选，旧观察原件保留。
+[P0/P1任务与M2设计](iteration9/DELIVERY_PLAN.md)：P0固定账户状态组合矩阵和异常返回；P1共享清单/ctx进入查仓和启动提示。Claude Code实施、Codex独立复验。建议v0.8.28、表v4不改，账户输入语义变化随shadow_v11候选登记；旧观察不改写、不追认。
 
-**[O0–O2 已实施交付](iteration8/实施方报告_O系列交付.md)（2026-10-02，待架构师独立验收）**：Y1–Y4 全部红→绿——Y1 异常账户（读取失败+旧零投影/PARTIAL无幸存lot）不再判空仓（UNKNOWN/None/待对账、不反推数量）；Y2 la/CLI批量清单经同一请求快照形成（账本独有持仓到达同次分析/终态/影子记录；snapshot==1+下一请求新版本；异常不输出"当前无持仓"），三处扫描排除集与 chat 查仓同类接线；Y3 时点解析收敛 `src/core/source_time.py`（naive按上海实际时刻，估值门as_of参数化），**shadow_v10候选**；Y4 LONG行8未知权重冻结HOLD，**表v4**（受影响行8，None推导路径零变化）。口径核对：同HEAD复现30文件423 passed；33文件（+O批3）=462 passed（423+39）；462/423=收集文件集不同。guard审查1×P0+2×P1+3×P2全部修复后复核可合入；全量1521 passed/2 skipped/1 deselected、7保护文件哈希不变。证据见 [FULL_TEST_RESULTS](iteration8/FULL_TEST_RESULTS.txt)/[TARGETED_TEST_RESULTS_O](iteration8/TARGETED_TEST_RESULTS_O.txt)。实施账本 [iteration8/EXECUTION_RECORD](iteration8/EXECUTION_RECORD.md)。
+**[P0/P1 已实施交付](iteration9/实施方报告_P系列交付.md)（2026-10-02，待架构师独立验收）**：Z1 PARTIAL保护贯穿投影分支（旧零投影→UNKNOWN/None/待对账）；Z2 holding_entries投影枚举失败传播incomplete（账本独立持仓保留、la不说"当前无持仓"）；Z3 chat get_portfolio全路径共享清单+ l/la启动提示按ctx三态（不再同屏宣称FLAT；pos存在但ctx未对账追加缺口原因）。固定验收矩阵9行参数化落回归（tests/core/test_p0_account_exception_matrix.py 14项(含guard补row10) + tests/chat/test_p1_shared_portfolio_view.py 9项）；多端支持范围转录[ISSUES.md ISS-116](../../ISSUES.md)持久台账。目标回归35文件485 passed（=R15基准462+23）；guard两轮复核可合入；全量1544/2/1与保护哈希见 [FULL_TEST_RESULTS](iteration9/FULL_TEST_RESULTS.txt)/[TARGETED_TEST_RESULTS_P](iteration9/TARGETED_TEST_RESULTS_P.txt)。实施账本 [iteration9/EXECUTION_RECORD](iteration9/EXECUTION_RECORD.md)。
 
-追认v0.8.26/表v3/shadow_v9命名，不等于冻结或策略晋级。正常账本缺席的RATIO_ONLY兼容通过；decision_rule_version同表达式不另列阻断，不宣传为通用兼容屏障。预取fetched_at及摘要ctx已实现，不再笼统留后续；具体未覆盖项以Y1–Y4为准。
+正常无数量账本RATIO_ONLY兼容接收，不强制用户迁移；正常la无差异不是拒收理由。但投影解码失败同样影响旧比例模式，不能笼统说全部异常合同只在数量账户生效。历史N批462解释仍缺旧清单，不背书；本轮33文件462已实证。
 
-## 数据与协作边界
+## 协作与恢复
 
-- 不自动修真实账户/投影，不覆盖历史观察/核定登记；真实库五条旧登记保留。
-- R14产物与入口文档本轮仅落盘未Git提交；此前本地持仓/知识库/资料变更保留，iteration7旧探针仍未跟踪。
-- 计算成功、事实核实、命题成立、计划接受、有效观察、投资效果分列。零付费AI，非实盘下单，主策略不晋级。
+R14文档已随28c32cf落库；R15资产和当前入口同步仅落盘未Git提交。iteration7旧探针未跟踪、本地持仓/知识库/备份/.claude/.zcode/教材均保留。禁止清理真实状态、自动补投影或覆盖历史证据。
 
-## 历史与恢复
-
-[F](EXECUTION_RECORD.md)→[R](iteration2/EXECUTION_RECORD.md)→[J](iteration3/EXECUTION_RECORD.md)→[K](iteration4/EXECUTION_RECORD.md)→[L](iteration5/EXECUTION_RECORD.md)→[M](iteration6/EXECUTION_RECORD.md)→[N](iteration7/EXECUTION_RECORD.md)→[R13](iteration7/R13_ACCEPTANCE.md)→[R14](iteration8/R14_ACCEPTANCE.md)。
-
-最新增量基准为[iteration8/REVIEW_INDEX](iteration8/REVIEW_INDEX.json)。无新交付不重复已知红例，不越权代写产品；交付/审批同步MILESTONES、STATUS、RESUME。
+[R13](iteration7/R13_ACCEPTANCE.md)→[R14](iteration8/R14_ACCEPTANCE.md)→[O实施账本](iteration8/EXECUTION_RECORD.md)→[R15](iteration9/R15_ACCEPTANCE.md)。新交付按最新指纹增量复验；无新交付不重复已知红例、不代写产品。付费实验未授权，非实盘下单，整体未完成。

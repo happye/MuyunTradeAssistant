@@ -1,0 +1,152 @@
+R14_RESULT {"case": "Y4_long_unknown_weight", "action": "HOLD", "target": null, "execution": "NOT_NEEDED"}
+.R14_RESULT {"case": "Y3_naive_future_quote", "quote": "2026-10-02T23:59:59", "as_of": "2026-10-02 12:00:00+08:00", "effective": false, "reasons": ["quote_cutoff_future_mid"]}
+2026-10-02 20:15:47,726 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-02 20:15:47,726 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+2026-10-02 20:15:47,727 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-02 20:15:47,727 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+.R14_RESULT {"case": "Y1_partial_no_remaining_lot", "state": "UNKNOWN", "weight": null, "reason": "账本存在隔离事件（部分不可读）——无剩余持仓记录不足以证明空仓，待对账", "isolated": 1}
+.R14_RESULT {"case": "compat_ratio_only_missing_ledger", "state": "HELD", "weight": 0.1}
+2026-10-02 20:15:47,767 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture read failure
+.R14_RESULT {"case": "Y1_read_failure_zero_projection", "state": "UNKNOWN", "weight": null, "reason": "账本读取失败；旧数量投影为 0 不足以证明空仓——待对账"}
+2026-10-02 20:15:49,421 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-02 20:15:49,682 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-02 20:15:51,570 - src.core.ai_modifier - WARNING - ⚠ AI情绪调节本次缺席——纯技术面决策，核心结论不受影响｜原始：AI Modifier分析异常: Connection error.
+2026-10-02 20:15:51,588 - src.data.akshare_client - WARNING - Baostock登录失败: 网络接收错误。
+2026-10-02 20:15:54,710 - src.scanner.market_cache - WARNING - ⚠ 新浪和东财都暂时挂了（可能被限流），60秒后自动重试——成交额/宽度数据暂缺，不影响买卖点｜原始：MarketCache: 全市场行情源均失败(新浪间歇失效+东财断连)，改用主题词/单股模式
+2026-10-02 20:15:54,714 - src.core.benzong.data_provider - WARNING - ⚠ 股东户数接口没返回数据——'股东户数激增'信号当日跳过｜原始：data_provider.stock_zh_a_gdhs_detail_em 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,719 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261002 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,720 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261001 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,722 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260930 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,723 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260929 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,724 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260928 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,726 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260925 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,728 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260924 失败: RuntimeError: Review test external IO blocked
+2026-10-02 20:15:54,729 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20260923 失败: RuntimeError: Review test external IO blocked
+.R14_RESULT {"case": "Y2_la_ledger_only", "output": "\n  一键分析所有持仓（1只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n\n\n============================================================\n  [1/1] 600519 (600519)  [账本持仓·投影缺失——成本/比例未知]\n============================================================\n\n实时行情模式\n正在获取 [600519] 的实时数据...\n\n✓ 数据获取成功!\n  股票: 测试股 (600519)\n  当前价: 10.0\n  涨跌幅: 1.0%\n  技术指标: MA5=9.8\n\n📂 无持仓记录（将从FLAT状态开始分析）\n┌──────────────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ─────────────────────────────────────────────────────────────────────────────────────────────┐\n│ 今天不是买点：适合观望，等信号出现再动手。                                                                                                                                                           │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                                     │\n│ 账本有仓 100 股，但持仓投影缺失——待对账（退出方向保留）。                                                                                                                                            │\n│ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                                                   │\n│ 小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）                                                                                                       │\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n"}
+2026-10-02 20:15:54,770 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-02 20:15:54,770 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:d4b0c8d7c1524f6f）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+.R15_RESULT {"case": "Z1_partial_zero_projection", "state": "NONE", "weight": 0.0, "reason": "记录与账本均无持仓"}
+2026-10-02 20:15:55,665 - src.data.portfolio - WARNING - ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+2026-10-02 20:15:55,666 - src.data.portfolio - WARNING - ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+FR15_RESULT {"case": "Z2_projection_list_failure", "count": 0, "incomplete": false, "output": "\n  当前无持仓记录\n"}
+FR15_RESULT {"case": "Z3_chat_mixed_collection", "output": "=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-02)"}
+2026-10-02 20:15:57,263 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-02 20:15:57,264 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-02 20:15:58,650 - src.core.ai_modifier - WARNING - ⚠ AI情绪调节本次缺席——纯技术面决策，核心结论不受影响｜原始：AI Modifier分析异常: Connection error.
+2026-10-02 20:15:58,651 - src.scanner.market_cache - WARNING - ⚠ 行情源刚失败过，正在歇60秒防封禁——成交额/宽度数据暂缺，不影响买卖点｜原始：MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取
+FR15_RESULT {"case": "Z3_ledger_holding_output", "says_flat": true, "says_ledger_held": true}
+FR15_RESULT {"case": "compat_no_ledger", "empty": "NONE", "legacy": "HELD", "weight": 0.1}
+.R15_RESULT {"case": "O1_capture_report", "future": false, "quote": "2026-10-03T09:00:00", "effective": true, "stored": true, "denominator": 1, "reasons": []}
+.R15_RESULT {"case": "O1_capture_report", "future": true, "quote": "2026-10-03T23:00:00", "effective": false, "stored": false, "denominator": 0, "reasons": ["quote_cutoff_future_mid"]}
+.
+================================== FAILURES ===================================
+__________ test_partial_ledger_zero_quantity_projection_is_not_flat ___________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_c9uy_0x7/pytest/test_partial_ledger_zero_quant0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021113CA1BD0>
+
+    def test_partial_ledger_zero_quantity_projection_is_not_flat(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=0.0)
+        pm._data["positions"][o0.CODE]["quantity_fact"] = {
+            "quantity": 0, "as_of": "2026-09-19", "avg_cost": 0.0}
+        o0.account_module.DEFAULT_LEDGER_PATH.write_text('{"truncated_event"\n', encoding="utf-8")
+        before = o0.account_module.DEFAULT_LEDGER_PATH.read_bytes()
+        facts = pm.request_account_facts()
+        assert facts._ledger_partial
+        ctx = facts.context_for(o0.CODE)
+        emit("Z1_partial_zero_projection", state=ctx.position_state,
+             weight=ctx.confirmed_weight, reason=ctx.weight_reason)
+        assert o0.account_module.DEFAULT_LEDGER_PATH.read_bytes() == before
+>       assert ctx.position_state == "UNKNOWN" and ctx.confirmed_weight is None
+E       AssertionError: assert ('NONE' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + NONE)
+
+plan\fusion\iteration9\acceptance_probes.py:32: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.account_snapshot:account_snapshot.py:201 ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+WARNING  src.data.account_snapshot:account_snapshot.py:278 ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:d4b0c8d7c1524f6f）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+________________ test_projection_list_failure_sets_incomplete _________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_c9uy_0x7/pytest/test_projection_list_failure_s0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021113CCDA50>
+
+    def test_projection_list_failure_sets_incomplete(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        # Valid YAML with an invalid record shape: the file-level syntax guard does
+        # not mark it corrupted, while the real PositionRecord decoder fails.
+        Path(o0.portfolio_module.DEFAULT_PORTFOLIO_PATH).write_text(
+            "positions:\n  '600519': 42\n", encoding="utf-8")
+        pm = o0.PortfolioManager()
+        assert not pm._corrupted
+        facts = pm.request_account_facts()
+        entries, incomplete = facts.holding_entries()
+        output = o0._repl("la")
+        emit("Z2_projection_list_failure", count=len(entries), incomplete=incomplete, output=output)
+>       assert incomplete is True and "当前无持仓记录" not in output
+E       assert (False is True)
+
+plan\fusion\iteration9\acceptance_probes.py:47: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.portfolio:portfolio.py:530 ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+WARNING  src.data.portfolio:portfolio.py:530 ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+____________ test_chat_mixed_holdings_not_truncated_to_projection _____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_c9uy_0x7/pytest/test_chat_mixed_holdings_not_t0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021113CA0BD0>
+
+    def test_chat_mixed_holdings_not_truncated_to_projection(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position("000001", stock_name="projection only", entry_price=5, ratio=.1)
+        o0._seed_ledger_only(quantity=100)
+        monkeypatch.setattr(chat, "_portfolio_manager", pm)
+        output = chat.get_portfolio()
+        emit("Z3_chat_mixed_collection", output=output)
+>       assert "000001" in output and o0.CODE in output
+E       AssertionError: assert ('000001' in '=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-02)' and '600519' in '=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-02)')
+E        +  where '600519' = o0.CODE
+
+plan\fusion\iteration9\acceptance_probes.py:58: AssertionError
+_______________ test_ledger_holding_output_does_not_claim_flat ________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_c9uy_0x7/pytest/test_ledger_holding_output_doe0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000021113AE2FD0>
+
+    def test_ledger_holding_output_does_not_claim_flat(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        o0._seed_ledger_only(quantity=100)
+        monkeypatch.setattr(o0.akshare_module, "get_stock_data", o0._stub_market)
+        output = o0._repl("la")
+        emit("Z3_ledger_holding_output", says_flat="将从FLAT状态开始分析" in output,
+             says_ledger_held="账本有仓 100 股" in output)
+>       assert "将从FLAT状态开始分析" not in output
+E       AssertionError: assert '将从FLAT状态开始分析' not in '\n  一键分析所有持...─────────┘\n'
+E         
+E         '将从FLAT状态开始分析' is contained here:
+E           
+E           
+E           📂 无持仓记录（将从FLAT状态开始分析）
+E           ┌──────────────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ─────────────────────────────────────────────────────────────────────────────────────────────┐
+E           │ 今天不是买点：适合观望，等信号出现再动手。                                                                                                                                                           │...
+E         
+E         ...Full output truncated (5 lines hidden), use '-vv' to show
+
+plan\fusion\iteration9\acceptance_probes.py:68: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.news_client:news_client.py:203 ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+WARNING  src.data.news_client:news_client.py:203 ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+WARNING  src.core.ai_modifier:ai_modifier.py:348 ⚠ AI情绪调节本次缺席——纯技术面决策，核心结论不受影响｜原始：AI Modifier分析异常: Connection error.
+WARNING  src.scanner.market_cache:market_cache.py:336 ⚠ 行情源刚失败过，正在歇60秒防封禁——成交额/宽度数据暂缺，不影响买卖点｜原始：MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_partial_ledger_zero_quantity_projection_is_not_flat
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_projection_list_failure_sets_incomplete
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_chat_mixed_holdings_not_truncated_to_projection
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_ledger_holding_output_does_not_claim_flat
+4 failed, 9 passed in 13.28s
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True

@@ -6,7 +6,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。v0.8.27 O0–O2 已交付（R14 Y1–Y4 缺口闭合）：异常账户不误判空仓、la/CLI批量清单含账本独有持仓、影子时点资格与估值门一致（shadow_v10候选）、LONG行8未知权重冻结（表v4）；待架构师独立验收。M2生产未放行、K1未冻结、capture_only不变。详见[当前状态](plan/fusion/STATUS.md)，测试历史不等于整体功能或效果验收。
+**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。v0.8.28 P0/P1已交付（R15 Z1/Z2/Z3补齐）：异常账户保护贯穿全部投影分支、清单读取失败如实传播、chat查仓与l/la启动提示按共享清单与ctx三态显示；shadow_v11候选、表v4保持；待架构师独立验收。M2生产未放行（DESIGN_READY）；K1未冻结、capture_only不变。正常RATIO_ONLY兼容保留；[当前状态](plan/fusion/STATUS.md)区分实现、审批和效果。
 
 > 📖 历史版本记录见 [v0.8.3里程碑归档](docs/archive/v0.8.3_里程碑.md)；当前长期进度以根目录MILESTONES.md为准。
 > 📖 **案例验证报告请参阅 [C4 案例验证](docs/archive/v0.8.3_C4_案例验证报告.md)（已归档）**
@@ -394,6 +394,16 @@ volume_ratio:
 ---
 
 ## 版本历史
+
+### v0.8.28 (P0/P1——账户完整性收口：异常贯穿状态与清单 + 查仓与启动提示同源) - 2026-10-02
+
+plan/fusion iteration9 P0/P1（修 R15 Z1–Z3；账本 plan/fusion/iteration9/EXECUTION_RECORD.md；M2 仅 DESIGN_READY 不实施）。
+
+- 🆕 **异常保护贯穿投影分支（P0/Z1）**：账本 PARTIAL（隔离事件）时旧零数量投影不再可证明空仓——与 pos 缺席分支同口径转 UNKNOWN/None/待对账（旧实现 NONE/0「记录与账本均无持仓」）；不反推股数
+- 🆕 **清单读取失败如实传播（P0/Z2）**：holding_entries 投影枚举异常（合法 YAML 但记录解码失败）→ incomplete=True——不再「日志说待对账、返回值声称完整」；可独立列出的账本持仓保留，la 不得输出「当前无持仓」
+- 🆕 **查仓与启动提示同源（P1/Z3）**：chat get_portfolio 所有路径读同一共享清单（投影细节保留、账本独有条目标注元数据缺口、清单不完整显式提示）；l/la 启动提示按 ctx 三态——账本有仓不再同屏宣称「将从FLAT状态开始分析」（改示「账本有仓 N股」），pos 存在但 ctx 未对账时追加缺口原因行
+- 🔧 固定验收矩阵 9 行参数化落正式回归（账本/记录状态 × 投影或独立事实交叉，数量状态与权重分别断言）；shadow 协议升 **shadow_v11 候选**（账户输入语义变化；v10 及更早独立桶保留不追认）、表 v4 保持
+- 测试 1521→见 [FULL_TEST_RESULTS](plan/fusion/iteration9/FULL_TEST_RESULTS.txt)（P0 矩阵 13 例 + P1 9 例新增；目标回归 35 文件 484 passed = R15 基准 462 + 22）
 
 ### v0.8.27 (O0–O2——异常账户判定 + 批量持仓集合 + 时点资格一致 + LONG未知权重冻结) - 2026-10-02
 

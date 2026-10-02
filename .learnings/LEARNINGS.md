@@ -2417,3 +2417,43 @@ sys.addaudithook 挂上的钩子无法移除。O批目标回归 runner 复用了
 ### Resolution
 - **Resolved**: 2026-10-02
 - **Notes**: runner 改 print+shell 重定向，结果落 TARGETED_TEST_RESULTS_O.txt。
+
+---
+
+## [LRN-20261002-ARCH12] 异常维度需交叉，日志不能代替返回状态
+
+**Logged**: 2026-10-02
+**Priority**: high
+**Status**: pending
+**Area**: architecture
+
+R15：O批33文件462绿、旧六反例全绿；PARTIAL+旧零投影组合仍判NONE。holding_entries捕获真实记录解码失败，logger已说待对账，但返回incomplete=False，la继续说无持仓。chat仅在投影空时补账本，混合清单仍漏；l/la启动提示与末端ctx矛盾。
+
+执行改进：P0固定正常/异常/组合矩阵，断言返回标志及公开消费结果；P1以混合来源集合和同次完整输出测试，不能只assert末端摘要。ARCH11中入口集合/分支覆盖教训仍pending，不以该批红例转绿提前resolved。[R15](../plan/fusion/iteration9/R15_ACCEPTANCE.md)与[P任务](../plan/fusion/iteration9/DELIVERY_PLAN.md)给出具体关闭条件。本记录不是产品修复。
+
+**Pattern-Key**: design.exception_state_must_reach_consumers
+---
+
+## [LRN-20261002-OBT3] 依赖类级缓存"未命中初态"的测试须显式清空缓存
+
+**Logged**: 2026-10-02
+**Priority**: high
+**Status**: resolved
+**Area**: testing
+
+NewsClient._stock_news_cache 是类级 dict（进程级新闻缓存，TTL 1小时）。test_news_disk_cache_roundtrip（ISS-091，v0.8.9.2）patch 了磁盘路径与 ak.stock_news_em，但依赖内存缓存未命中的初态——全量跑中其他测试（chat/web 真实链）在网络窗口（代理开启）下真实抓取 600519 新闻并写入类级缓存，本测试读到缓存里的 10 条真实新闻（断言预期 1 条 fake），单跑绿、全量红。与 [[LRN-20261002-OBT1]]（模块级单例）同族：**类级可变状态跨测试残留**。
+
+### Suggested Action
+测试断言"首次抓取/未命中"路径前，显式 monkeypatch.setattr(类, "_cache", {}) 清空初态——依赖"还没人写过"的隐式初态是顺序依赖；带外源调用的测试即使 patch 了主源，也要防类级缓存把其他测试的真实数据带进来。
+
+### Metadata
+- Source: error
+- Related Files: src/data/news_client.py, tests/core/test_iss091_robustness.py
+- Tags: testing, class-level-cache, order-dependence, network-window
+- Pattern-Key: testing.class_cache_initial_state_needs_explicit_isolation
+- Recurrence-Count: 1
+- First-Seen: 2026-10-02
+
+### Resolution
+- **Resolved**: 2026-10-02
+- **Notes**: 测试显式清空缓存后全量 1543 passed/2 skipped/1 deselected。

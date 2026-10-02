@@ -1,6 +1,6 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-> **当前入口（2026-10-02）：[长期里程碑](../../MILESTONES.md) → [当前状态](STATUS.md) → [恢复入口](RESUME.md) → [R14独立审批](iteration8/R14_ACCEPTANCE.md) → [第八轮O0–O2任务](iteration8/DELIVERY_PLAN.md)。N批分项接收、M2原型通过；K1未冻结、M2生产未放行、capture_only不变。**
+> **当前入口（2026-10-02）：[长期里程碑](../../MILESTONES.md) → [状态](STATUS.md) → [恢复](RESUME.md) → [R15审批](iteration9/R15_ACCEPTANCE.md) → [第九轮P0/P1与M2设计](iteration9/DELIVERY_PLAN.md)。O1/O2接收、O0部分接收；K1未冻结，M2生产未放行。**
 
 日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付 → F0–F9 已全部实施 VERIFIED**（v0.8.20，1121 tests；实施状态与证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)；**致架构师汇报与下一轮设计议题见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)**）。
 
