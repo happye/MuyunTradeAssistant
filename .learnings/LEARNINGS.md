@@ -2352,3 +2352,68 @@ N0 给批量入口接请求级账户事实：start.py 三个批量分支（多�
 ### Resolution
 - **Resolved**: 2026-10-02
 - **Notes**: 两分支补局部 import；替身签名补 account_facts 形参；guard P1 三条（含 scanner/TUI/Web 同类点）全部修复后全量 1482 passed。
+
+---
+
+## [LRN-20261002-ARCH11] 通过旧反例后仍须核对分支与集合覆盖
+
+**Logged**: 2026-10-02
+**Priority**: high
+**Status**: pending
+**Area**: architecture
+
+R14：R13的17反例已全绿，但异常账本的零投影/无幸存lot分支仍判空；la先按投影枚举再读ctx，账本独有股根本不进循环；MID新增保护未到LONG；估值时间门严格化未到shadow。实现同一机制不能只验证“循环中的正常对象”。必须核对入口集合、空/错/部分状态、所有周期及所有时间消费者，按同一输入矩阵跑成对断言。行动任务O0–O2，未改产品，本记录不是修复。
+
+**See Also**: LRN-20261001-ARCH10；[R14](../plan/fusion/iteration8/R14_ACCEPTANCE.md)。
+**Pattern-Key**: design.context_must_cover_enumeration_and_exception_branches
+---
+
+## [LRN-20261002-OBT1] 模块级单例的消费测试必须显式注入隔离实例
+
+**Logged**: 2026-10-02
+**Priority**: high
+**Status**: resolved
+**Area**: testing
+
+chat tools 的 ``_portfolio_manager`` 是模块级可变单例（``_portfolio_manager or PortfolioManager()`` 惰性构造）。O批新测试 ``test_y2_chat_get_portfolio_reports_ledger_only`` 依赖「单例尚未被设置」的默认态走隔离路径——单文件绿；全量跑时前面的 chat 测试已把带真实/脏数据的 pm 写进单例，本测试继承它，``get_portfolio()`` 输出完全无关的持仓列表，``'600519' in out`` 断言红（全量 1 failed，exit 2）。
+
+### Suggested Action
+消费模块级单例（``_xxx or build()`` 形态）的新测试，一律 ``monkeypatch.setattr(module, '_xxx', 隔离实例, raising=False)`` 显式注入，不依赖默认态；全量 runner 是唯一能暴露此类顺序依赖的地方——新测试入册后必须全量跑一次再交付。
+
+### Metadata
+- Source: error
+- Related Files: src/chat/tools.py, tests/core/test_o0_exceptional_account.py
+- Tags: testing, module-singleton, order-dependence, explicit-injection
+- Pattern-Key: testing.module_singleton_consumer_tests_need_explicit_injection
+- Recurrence-Count: 1
+- First-Seen: 2026-10-02
+
+### Resolution
+- **Resolved**: 2026-10-02
+- **Notes**: 测试显式注入隔离 PortfolioManager 后全量 1519 passed/2 skipped/1 deselected。
+
+---
+
+## [LRN-20261002-OBT2] 审计钩子 runner 的结果落盘必须走 stdout 重定向
+
+**Logged**: 2026-10-02
+**Priority**: low
+**Status**: resolved
+**Area**: tooling
+
+sys.addaudithook 挂上的钩子无法移除。O批目标回归 runner 复用了架构师守卫（writable 只放行临时根）——pytest 跑完后 runner 自己写仓库内结果文件时被自己的审计钩子拦下（RuntimeError: write outside temporary root），exit 1。iteration8 架构师 review_test_runner 无此问题因为它只 print、由 shell 重定向。
+
+### Suggested Action
+带审计钩子的测试 runner：结果一律 print 由调用方 ``> 文件`` 落盘；或钩子回调里白名单放行结果文件路径（后者复杂度高不推荐）。
+
+### Metadata
+- Source: error
+- Related Files: plan/fusion/iteration8/impl_targeted_test_runner.py
+- Tags: tooling, audit-hook, test-runner, self-block
+- Pattern-Key: tooling.audit_hook_runner_results_via_stdout_redirect
+- Recurrence-Count: 1
+- First-Seen: 2026-10-02
+
+### Resolution
+- **Resolved**: 2026-10-02
+- **Notes**: runner 改 print+shell 重定向，结果落 TARGETED_TEST_RESULTS_O.txt。

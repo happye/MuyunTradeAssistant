@@ -1,0 +1,24 @@
+R13_RESULT {"case": "X1_strategy_context", "projection": true, "state": "HELD", "quantity": 100, "context_weight": null, "strategy_weight": null, "lifecycle": "OPEN"}
+.R13_RESULT {"case": "X1_strategy_context", "projection": false, "state": "HELD", "quantity": 100, "context_weight": null, "strategy_weight": null, "lifecycle": "OPEN"}
+.R13_RESULT {"case": "X1_chat_no_projection", "has_position": true, "strategy_weight": null, "terminal": "EXIT", "account_version": "va735b7013b39f6af"}
+2026-10-02 11:50:51,152 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture read error
+.R13_RESULT {"case": "X1_ledger_read_failure", "state": "UNKNOWN", "weight": null, "reason": "账户账本读取失败——未对账（不当作空仓）"}
+.R13_RESULT {"case": "X2_hold_target", "packet_target": null, "arm": {"action": "HOLD", "target": null, "target_state": "UNKNOWN", "blockers": [], "execution": "NOT_NEEDED"}, "effective": true}
+.R13_RESULT {"case": "X2_execution", "packet_execution": "ELIGIBLE", "legacy": "ELIGIBLE", "fusion": "ELIGIBLE"}
+.R13_RESULT {"case": "X2_version_gate", "version": "UNSUPPORTED_FUTURE_VERSION", "effective": false, "drops": ["unsupported_policy_version_mid"]}
+.R13_RESULT {"case": "X2_horizon_unknown", "action": "REVIEW"}
+.R13_RESULT {"case": "X2_horizon_add", "action": "HOLD"}
+.R13_RESULT {"case": "X3_bad_date", "stamp": "2026-02-30", "weight": null, "reason": "行情或NAV时点不可解析/缺失"}
+.R13_RESULT {"case": "X3_bad_date", "stamp": "2026-09-30T99:99:99", "weight": null, "reason": "行情或NAV时点不可解析/缺失"}
+.R13_RESULT {"case": "X3_bad_date", "stamp": "2026-09-30garbage", "weight": null, "reason": "行情或NAV时点不可解析/缺失"}
+.R13_RESULT {"case": "X3_future_time", "now": "2026-10-02 11:50:51.321773+08:00", "quote": "2026-10-02 23:59:59+08:00", "weight": null, "reason": "行情时点在未来"}
+2026-10-02 11:50:51,326 - src.data.akshare_client - WARNING - ⚠ 只拿到价格、没拿到历史K线，本次无法做技术面分析——重跑即可｜原始：历史K线获取失败 600519，降级返回实时数据（无技术指标）
+.R13_RESULT {"case": "W2_positive", "source_day": "2026-09-30", "effective_at": "2026-09-30", "fetched_at": "2026-10-02T11:50:51+08:00", "weight": null}
+.R13_RESULT {"case": "X2_old_bucket", "bucket": {"records": 1, "mid_effective": 1, "long_effective": 1, "diagnostic": 0}, "current_mid": 0}
+.R13_RESULT {"case": "M2_readonly_positive", "repeated_reads": 3, "hashes_equal": true}
+2026-10-02 11:50:51,419 - src.data.horizon_plans - WARNING - ⚠ 计划文件读不出来（可能损坏）——影子对照按无计划处理，分析结论不受影响；恢复计划功能需手工检查 ~/.muyun/horizon_plans.json｜原始：horizon_plans.json 读取失败（损坏保护生效，本次按空处理且不会覆盖原文件）: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)
+.R13_RESULT {"case": "M2_corrupt_store", "corrupted": true, "view": {"security_id": "600519", "as_of": "2026-10-02T11:50:51+08:00", "store_status": "corrupted", "horizons": {}, "next_steps": ["研究计划库损坏（读取失败）——请人工核对修复后重试；查询不建立新记录"]}}
+.
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True

@@ -480,3 +480,12 @@ NameError: name '_assert_files_in_tmp' is not defined
 R13准备时functions JavaScript字符串引号构造失败；目标runner误写不存在的test_decision_policy（实际test_horizon_policy）；探针误用MarketState.SHOCK及在tools模块patch局部导入formatter函数。最终已逐项核对生产定义改为TRANSITION/formatter模块，381目标绿，17合同探针均进入真实行为断言，无ImportError/AttributeError混入产品缺陷计数。文档工具一次delete+add同路径patch被拒，改成受检内容更新，未丢文件。
 
 防复发：组装目标集前按rg结果核对存在性；替身前定位真实定义/导入绑定；先判断失败位于构造还是行为断言。真实账户/知识库保护检查均未变。产品剩余问题见R13，不由工具修正冒充关闭。
+
+---
+
+## [ERR-20261002-R14-PROBE] 探针模型导入及必填字段（已纠正）
+
+**Status**: resolved
+**Priority**: low
+
+R14新增LONG探针初版误从decision_contract导入HorizonPlan、继而遗漏plan_id/intent。已按decision_policy定义纠正；最终日志5个失败均为业务断言，构造错误不计产品缺陷。新探针先核对真实类定义/必填字段，不能仅靠子Agent给出的概念输入直接构造。

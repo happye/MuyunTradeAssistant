@@ -1,0 +1,47 @@
+........................................................................ [ 15%]
+........................................................................ [ 31%]
+........................................................................ [ 46%]
+........................................................................ [ 62%]
+........................................................................ [ 77%]
+........................................................................ [ 93%]
+..............................                                           [100%]
+462 passed in 185.43s (0:03:05)
+pytest returncode=0
+PROTECTED_PORTFOLIO_AND_KNOWLEDGE_HASHES_UNCHANGED=True
+PROTECTED_FILE_COUNT=7
+KNOWLEDGE_FILE_SET_UNCHANGED=True
+COLLECTED_FILES=33
+COLLECTION:
+  \tests\core\test_j0_facts_assessment.py
+  \tests\core\test_j1_mapping_boundary.py
+  \tests\core\test_j2_account_service.py
+  \tests\core\test_j3_research_application.py
+  \tests\core\test_j4_mode_observation.py
+  \tests\core\test_claim_extraction.py
+  \tests\core\test_claim_verification_corpus.py
+  \tests\core\test_research_snapshot.py
+  \tests\core\test_research_service.py
+  \tests\core\test_account_snapshot.py
+  \tests\core\test_k0a_account_integrity.py
+  \tests\core\test_k0a_projection_intent.py
+  \tests\core\test_k0a_vertical_e2e.py
+  \tests\core\test_k0b_facts_propositions.py
+  \tests\core\test_k0c_plan_observation.py
+  \tests\core\test_k1_shadow_v6.py
+  \tests\core\test_k2a_research_loop.py
+  \tests\core\test_l0_shadow_contract.py
+  \tests\core\test_l1_account_reading.py
+  \tests\core\test_l2_public_checkpoint.py
+  \tests\core\test_l3_evidence_pack.py
+  \tests\core\test_m0_account_terminal.py
+  \tests\core\test_analysis_service.py
+  \tests\core\test_horizon_policy.py
+  \tests\core\test_batch_quotes.py
+  \tests\core\test_iss089_realtime_quote.py
+  \tests\core\test_n0_ctx_source_of_truth.py
+  \tests\core\test_n1_canonical_arms.py
+  \tests\core\test_o0_exceptional_account.py
+  \tests\data_sources\test_m1_quote_time.py
+  \tests\data_sources\test_n2_time_gate.py
+  \tests\data_sources\test_o1_time_gate_matrix.py
+  \tests\core\test_o2_long_unknown_weight.py

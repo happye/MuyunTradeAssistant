@@ -1,0 +1,172 @@
+{
+  "review": "R14",
+  "head": "2b988420e7be7fa959d6d5cb9d25724a4ce51457",
+  "r13_replay_passed": 17,
+  "new_contract_failed": 5,
+  "new_compatibility_passed": 1,
+  "prototype_assertions_passed": 25,
+  "replay_observations": [
+    {
+      "case": "X1_strategy_context",
+      "projection": true,
+      "state": "HELD",
+      "quantity": 100,
+      "context_weight": null,
+      "strategy_weight": null,
+      "lifecycle": "OPEN"
+    },
+    {
+      "case": "X1_strategy_context",
+      "projection": false,
+      "state": "HELD",
+      "quantity": 100,
+      "context_weight": null,
+      "strategy_weight": null,
+      "lifecycle": "OPEN"
+    },
+    {
+      "case": "X1_chat_no_projection",
+      "has_position": true,
+      "strategy_weight": null,
+      "terminal": "EXIT",
+      "account_version": "va735b7013b39f6af"
+    },
+    {
+      "case": "X1_ledger_read_failure",
+      "state": "UNKNOWN",
+      "weight": null,
+      "reason": "账户账本读取失败——未对账（不当作空仓）"
+    },
+    {
+      "case": "X2_hold_target",
+      "packet_target": null,
+      "arm": {
+        "action": "HOLD",
+        "target": null,
+        "target_state": "UNKNOWN",
+        "blockers": [],
+        "execution": "NOT_NEEDED"
+      },
+      "effective": true
+    },
+    {
+      "case": "X2_execution",
+      "packet_execution": "ELIGIBLE",
+      "legacy": "ELIGIBLE",
+      "fusion": "ELIGIBLE"
+    },
+    {
+      "case": "X2_version_gate",
+      "version": "UNSUPPORTED_FUTURE_VERSION",
+      "effective": false,
+      "drops": [
+        "unsupported_policy_version_mid"
+      ]
+    },
+    {
+      "case": "X2_horizon_unknown",
+      "action": "REVIEW"
+    },
+    {
+      "case": "X2_horizon_add",
+      "action": "HOLD"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-02-30",
+      "weight": null,
+      "reason": "行情或NAV时点不可解析/缺失"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-09-30T99:99:99",
+      "weight": null,
+      "reason": "行情或NAV时点不可解析/缺失"
+    },
+    {
+      "case": "X3_bad_date",
+      "stamp": "2026-09-30garbage",
+      "weight": null,
+      "reason": "行情或NAV时点不可解析/缺失"
+    },
+    {
+      "case": "X3_future_time",
+      "now": "2026-10-02 11:50:51.321773+08:00",
+      "quote": "2026-10-02 23:59:59+08:00",
+      "weight": null,
+      "reason": "行情时点在未来"
+    },
+    {
+      "case": "W2_positive",
+      "source_day": "2026-09-30",
+      "effective_at": "2026-09-30",
+      "fetched_at": "2026-10-02T11:50:51+08:00",
+      "weight": null
+    },
+    {
+      "case": "X2_old_bucket",
+      "bucket": {
+        "records": 1,
+        "mid_effective": 1,
+        "long_effective": 1,
+        "diagnostic": 0
+      },
+      "current_mid": 0
+    },
+    {
+      "case": "M2_readonly_positive",
+      "repeated_reads": 3,
+      "hashes_equal": true
+    },
+    {
+      "case": "M2_corrupt_store",
+      "corrupted": true,
+      "view": {
+        "security_id": "600519",
+        "as_of": "2026-10-02T11:50:51+08:00",
+        "store_status": "corrupted",
+        "horizons": {},
+        "next_steps": [
+          "研究计划库损坏（读取失败）——请人工核对修复后重试；查询不建立新记录"
+        ]
+      }
+    }
+  ],
+  "incremental_observations": [
+    {
+      "case": "Y1_read_failure_zero_projection",
+      "state": "NONE",
+      "weight": 0.0,
+      "reason": "账本读取失败；投影记录亦无持仓"
+    },
+    {
+      "case": "Y1_partial_no_remaining_lot",
+      "state": "NONE",
+      "weight": 0.0,
+      "reason": "无持仓记录",
+      "isolated": 1
+    },
+    {
+      "case": "Y2_la_ledger_only",
+      "output": "\n  当前无持仓记录\n"
+    },
+    {
+      "case": "Y3_naive_future_quote",
+      "quote": "2026-10-02T23:59:59",
+      "as_of": "2026-10-02 12:00:00+08:00",
+      "effective": true,
+      "reasons": []
+    },
+    {
+      "case": "Y4_long_unknown_weight",
+      "action": "ADD",
+      "target": null,
+      "execution": "ELIGIBLE"
+    },
+    {
+      "case": "compat_ratio_only_missing_ledger",
+      "state": "HELD",
+      "weight": 0.1
+    }
+  ]
+}

@@ -1,0 +1,236 @@
+2026-10-02 11:54:56,956 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture read failure
+R14_RESULT {"case": "Y1_read_failure_zero_projection", "state": "NONE", "weight": 0.0, "reason": "账本读取失败；投影记录亦无持仓"}
+2026-10-02 11:54:58,529 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-02 11:54:58,529 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+2026-10-02 11:54:58,533 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-02 11:54:58,533 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+FR14_RESULT {"case": "Y1_partial_no_remaining_lot", "state": "NONE", "weight": 0.0, "reason": "无持仓记录", "isolated": 1}
+FR14_RESULT {"case": "Y2_la_ledger_only", "output": "\n  当前无持仓记录\n"}
+FR14_RESULT {"case": "Y3_naive_future_quote", "quote": "2026-10-02T23:59:59", "as_of": "2026-10-02 12:00:00+08:00", "effective": true, "reasons": []}
+FR14_RESULT {"case": "Y4_long_unknown_weight", "action": "ADD", "target": null, "execution": "ELIGIBLE"}
+FR14_RESULT {"case": "compat_ratio_only_missing_ledger", "state": "HELD", "weight": 0.1}
+2026-10-02 11:54:58,981 - src.data.horizon_plans - WARNING - ⚠ 计划文件读不出来（可能损坏）——影子对照按无计划处理，分析结论不受影响；恢复计划功能需手工检查 ~/.muyun/horizon_plans.json｜原始：horizon_plans.json 读取失败（损坏保护生效，本次按空处理且不会覆盖原文件）: Expecting property name enclosed in double quotes: line 1 column 3 (char 2)
+.{
+  "scope": "isolated prototype for M2 pre-work, not production wiring; production K2b wiring requires N0-N2 joint re-verification",
+  "protocol_hint": "daily view consumes accepted state read-only; explicit research/--capture generates new research",
+  "passed": 25,
+  "cases": [
+    {
+      "case": "normal_accepted_plan_visible",
+      "pass": true
+    },
+    {
+      "case": "normal_no_candidate",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_0",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_1",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "daily_view_keeps_accepted_2",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "missing_store_status_ok",
+      "pass": true
+    },
+    {
+      "case": "missing_shows_next_step",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "candidate_visible_without_replacing_primary",
+      "pass": true
+    },
+    {
+      "case": "candidate_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "repeated_view_no_new_candidate",
+      "pass": true
+    },
+    {
+      "case": "candidate_revision_stable",
+      "pass": true
+    },
+    {
+      "case": "mismatched_assessment_shows_review_not_valid",
+      "pass": true
+    },
+    {
+      "case": "mismatch_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "zero_write_after_view",
+      "pass": true
+    },
+    {
+      "case": "old_method_plan_flags_version_note",
+      "pass": true
+    },
+    {
+      "case": "old_method_next_step_listed",
+      "pass": true
+    },
+    {
+      "case": "restart_read_consistent",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_status_distinct",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_no_research_suggestion",
+      "pass": true
+    },
+    {
+      "case": "corrupt_store_no_horizon_detail",
+      "pass": true
+    }
+  ]
+}
+R14_M2_PROTOTYPE_ASSERTIONS 25
+.
+================================== FAILURES ===================================
+_____________ test_read_failure_zero_projection_cannot_prove_flat _____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests__dtmi6qg/pytest/test_read_failure_zero_project0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018F95AD6CD0>
+
+    def test_read_failure_zero_projection_cannot_prove_flat(tmp_path, monkeypatch):
+        pm, _ = replay.seed(tmp_path, monkeypatch)
+        pm._data["positions"][replay.m0.CODE]["quantity_fact"] = {
+            "quantity": 0, "as_of": "2026-09-19", "avg_cost": 0.0}
+        with patch.object(replay.accounts.AccountService, "snapshot", side_effect=OSError("fixture read failure")):
+            ctx = pm.request_account_facts().context_for(replay.m0.CODE)
+        emit("Y1_read_failure_zero_projection", state=ctx.position_state,
+             weight=ctx.confirmed_weight, reason=ctx.weight_reason)
+>       assert ctx.position_state == "UNKNOWN" and ctx.confirmed_weight is None
+E       AssertionError: assert ('NONE' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + NONE)
+
+plan\fusion\iteration8\acceptance_probes.py:25: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.portfolio:portfolio.py:388 ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture read failure
+____________________ test_partial_ledger_cannot_prove_flat ____________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests__dtmi6qg/pytest/test_partial_ledger_cannot_pro0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018F99361990>
+
+    def test_partial_ledger_cannot_prove_flat(tmp_path, monkeypatch):
+        pm, svc = replay.seed(tmp_path, monkeypatch, projection=False)
+        # A real truncated ledger whose opening event cannot be replayed.
+        replay.accounts.DEFAULT_LEDGER_PATH.write_text('{"truncated_opening_event"\n', encoding="utf-8")
+        snap = svc.snapshot()
+        assert snap.isolated_events and snap.data_completeness == "PARTIAL"
+        ctx = pm.request_account_facts().context_for(replay.m0.CODE)
+        emit("Y1_partial_no_remaining_lot", state=ctx.position_state,
+             weight=ctx.confirmed_weight, reason=ctx.weight_reason,
+             isolated=len(snap.isolated_events))
+>       assert ctx.position_state == "UNKNOWN" and ctx.confirmed_weight is None
+E       AssertionError: assert ('NONE' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + NONE)
+
+plan\fusion\iteration8\acceptance_probes.py:38: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.account_snapshot:account_snapshot.py:201 ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+WARNING  src.data.account_snapshot:account_snapshot.py:278 ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+WARNING  src.data.account_snapshot:account_snapshot.py:201 ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+WARNING  src.data.account_snapshot:account_snapshot.py:278 ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:4b762933e4b3d552）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+__________________ test_la_does_not_omit_ledger_only_holding __________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests__dtmi6qg/pytest/test_la_does_not_omit_ledger_o0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018F99506850>
+
+    def test_la_does_not_omit_ledger_only_holding(tmp_path, monkeypatch):
+        replay.seed(tmp_path, monkeypatch, projection=False)
+        output = replay.m0._repl("la")
+        emit("Y2_la_ledger_only", output=output)
+>       assert "当前无持仓记录" not in output
+E       AssertionError: assert '当前无持仓记录' not in '\n  当前无持仓记录\n'
+E         
+E         '当前无持仓记录' is contained here:
+E         Strings contain only whitespace, escaping them using repr()
+E           '\n  当前无持仓记录\n'
+
+plan\fusion\iteration8\acceptance_probes.py:45: AssertionError
+__________ test_naive_future_quote_not_effective_in_current_binding ___________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests__dtmi6qg/pytest/test_naive_future_quote_not_ef0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018F996314D0>
+
+    def test_naive_future_quote_not_effective_in_current_binding(tmp_path, monkeypatch):
+        _, rec = replay.capture(tmp_path, monkeypatch)
+        binding = dict(rec.mid_binding)
+        now = datetime(2026, 10, 2, 12, tzinfo=ZoneInfo("Asia/Shanghai"))
+        binding["quote_cutoff"] = "2026-10-02T23:59:59"
+        binding["evidence_cutoff"] = "2026-10-01"
+        effective, reasons = replay.shadow._binding_eligibility(binding, as_of=now)
+        emit("Y3_naive_future_quote", quote=binding["quote_cutoff"],
+             as_of=now, effective=effective, reasons=reasons)
+>       assert not effective and any("quote_cutoff_future" in r for r in reasons)
+E       assert (not True)
+
+plan\fusion\iteration8\acceptance_probes.py:58: AssertionError
+____________________ test_long_unknown_weight_does_not_add ____________________
+
+    def test_long_unknown_weight_does_not_add():
+        from src.core.decision_policy import HorizonPlan, HorizonFacts, evaluate_horizon
+        plan = HorizonPlan(plan_id="r14_long", intent="synthetic LONG contract",
+                           horizon="LONG", accepted_at="2026-10-01", policy_id="fusion_long_v1")
+        facts = HorizonFacts(research_status="COMPLETE", thesis_status="VALID",
+                             quality_valuation_ok=True, price_in_buy_zone=True,
+                             acute_risk=False, budget_available=True)
+        pkt = evaluate_horizon(plan, facts, security_id="600519",
+                               position_state="HELD", confirmed_ratio=None)
+        emit("Y4_long_unknown_weight", action=pkt.desired_action.value,
+             target=pkt.target_weight, execution=pkt.execution_status.value)
+>       assert pkt.desired_action.value == "HOLD" and pkt.target_weight is None
+E       AssertionError: assert ('ADD' == 'HOLD'
+E         
+E         - HOLD
+E         + ADD)
+
+plan\fusion\iteration8\acceptance_probes.py:72: AssertionError
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration8/acceptance_probes.py::test_read_failure_zero_projection_cannot_prove_flat
+FAILED plan/fusion/iteration8/acceptance_probes.py::test_partial_ledger_cannot_prove_flat
+FAILED plan/fusion/iteration8/acceptance_probes.py::test_la_does_not_omit_ledger_only_holding
+FAILED plan/fusion/iteration8/acceptance_probes.py::test_naive_future_quote_not_effective_in_current_binding
+FAILED plan/fusion/iteration8/acceptance_probes.py::test_long_unknown_weight_does_not_add
+5 failed, 2 passed in 4.97s
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True

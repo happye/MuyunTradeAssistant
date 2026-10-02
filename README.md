@@ -6,7 +6,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。当前v0.8.26基础上第七轮N0/N1/N2已实施（修 R13 退回项 X1–X3：账户 ctx 贯穿所有消费者、影子两臂各投影规范包+有效版本资格、时间资格严格解析；shadow_v9 候选/决策表 v3），M2 原型按 X4 补证据、生产未放行；K1 未冻结，待[独立复验](plan/fusion/iteration7/DELIVERY_PLAN.md)裁定，详见[当前状态](plan/fusion/STATUS.md)；测试历史不等于整体功能或效果验收。
+**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。v0.8.27 O0–O2 已交付（R14 Y1–Y4 缺口闭合）：异常账户不误判空仓、la/CLI批量清单含账本独有持仓、影子时点资格与估值门一致（shadow_v10候选）、LONG行8未知权重冻结（表v4）；待架构师独立验收。M2生产未放行、K1未冻结、capture_only不变。详见[当前状态](plan/fusion/STATUS.md)，测试历史不等于整体功能或效果验收。
 
 > 📖 历史版本记录见 [v0.8.3里程碑归档](docs/archive/v0.8.3_里程碑.md)；当前长期进度以根目录MILESTONES.md为准。
 > 📖 **案例验证报告请参阅 [C4 案例验证](docs/archive/v0.8.3_C4_案例验证报告.md)（已归档）**
@@ -394,6 +394,16 @@ volume_ratio:
 ---
 
 ## 版本历史
+
+### v0.8.27 (O0–O2——异常账户判定 + 批量持仓集合 + 时点资格一致 + LONG未知权重冻结) - 2026-10-02
+
+plan/fusion iteration8 O0–O2（修 R14 遗留 Y1–Y4；账本 plan/fusion/iteration8/EXECUTION_RECORD.md）。
+
+- 🆕 **异常账户不再误判空仓（O0/Y1）**：账本读取失败+旧数量投影为 0 → UNKNOWN/权重None/数量None（旧零投影不足以证明空仓）；账本 PARTIAL 且无幸存 lot → UNKNOWN 待对账（无剩余持仓记录不足以证明空仓、不编造数量）；有效空账本明确 NONE、RATIO_ONLY 无账本 HELD、PARTIAL 幸存 lot 冻结权重等已接收正例不变
+- 🆕 **批量清单经同一请求快照形成（O0/Y2）**：`la`/CLI 持仓扫描清单=账本确定有仓 ∪ 兼容投影代码（归一去重、同批一次快照、下一请求新版本）——账本独有持仓不再在读快照前被"当前无持仓"吞掉，以临时显示条目进入同次分析（成本/比例不伪造、显示"账本持仓·投影缺失"）；读取异常时报告不完整/待对账；扫描排除集同类接线（chat 与两处 scanner 的"排除已持仓"同样含账本独有持仓）；chat 查仓在投影空+账本有仓时如实提示
+- 🆕 **时点资格口径收敛（O1/Y3）**：解析规则收敛至 `src/core/source_time.py` 纯函数——估值门与影子门同一判据；影子 naive 带时刻改按 Asia/Shanghai 实际时刻比较（旧实现只比日期、当天未来 naive 行情可过资格——病根封堵）；估值门比较基准 as_of 参数化（固定时钟可重复测试）；协议升 **shadow_v10 候选**（v9 及更早独立桶保留不追认）
+- 🆕 **LONG 行8 未知权重冻结（O2/Y4）**：HELD+权重未知即使 budget=True 也 HOLD（预算已知不掩盖权重缺口，与 v3 行6 同口径）；已知权重 ADD 保留、硬退出/减仓方向不回退；决策表 **v4**（受影响行8；position_state=None 旧推导路径零变化）。诚实边界：当前 shadow 捕获不产生 LONG 质量/买区/预算 True 组合，非实盘事故
+- 测试基线 1482→见 [FULL_TEST_RESULTS](plan/fusion/iteration8/FULL_TEST_RESULTS.txt)（O0 12 例 + O1 矩阵 10 例 + O2 14 例新增；既有协议字面断言随 shadow_v10/表v4 登记）
 
 ### v0.8.26 (N0/N1/N2——同源消费补齐 + 观察合同版本资格 + 时间严格解析) - 2026-10-02
 
