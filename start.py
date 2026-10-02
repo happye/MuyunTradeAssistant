@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.26"  # v0.8.26=N0/N1/N2（ctx同源贯穿修X1+两臂规范包与版本资格修X2+时间严格解析修X3，shadow_v9/表v3）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.27"  # v0.8.27=O0/O1/O2（异常账户不得判空仓Y1+批量清单含账本独有持仓Y2+影子时点资格与估值门一致Y3+LONG未知权重冻结Y4，shadow_v10候选/表v4）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -1211,7 +1211,10 @@ def run_benzong_scan(args: dict):
         try:
             from src.data.portfolio import PortfolioManager
             pm = PortfolioManager()
-            exclude_codes = {pos.stock_code for pos in pm.list_positions()}
+            # O0/Y2 同类接线：排除集经同一请求快照形成（账本确定有仓 ∪ 投影代码）
+            # ——账本独有持仓同样不进扫描推荐
+            _entries, _ = pm.request_account_facts().holding_entries()
+            exclude_codes = {e.stock_code for e in _entries}
         except Exception as e:
             # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
             logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
@@ -1702,31 +1705,41 @@ def run_cli(mode: str, args: dict):
     elif mode == "live_all":
         from src.data.portfolio import PortfolioManager
         pm = PortfolioManager()
-        positions = pm.list_positions()
-        if not positions:
-            print("\n  当前无持仓记录")
+        # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
+        # 归一去重）——账本独有持仓不再在读快照前被"当前无持仓"吞掉；
+        # 同批 1 次快照，下一命令新建实例重新读
+        _acct_facts = pm.request_account_facts()
+        _entries, _incomplete = _acct_facts.holding_entries()
+        if not _entries:
+            if _incomplete:
+                print("\n  [!] 持仓清单读取异常（账本/持仓库）——清单不完整，待对账（不当作空仓）")
+            else:
+                print("\n  当前无持仓记录")
             return
-        print(f"\n  一键分析所有持仓（{len(positions)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
+        print(f"\n  一键分析所有持仓（{len(_entries)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
+        if _incomplete:
+            print("  [!] ⚠ 账本/持仓库读取异常——持仓清单可能不完整，待对账（不当作空仓）\n")
         from src.cli import session_state as _ss_la
-        _la_codes = [pos.stock_code for pos in positions]
+        _la_codes = [e.stock_code for e in _entries]
         _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
         _ss_la.batch_task_start("la", _tk_la, _la_codes)
-        # N0/B2：la 批次共享同一账户事实（同版本；下一命令重新读）
-        _acct_facts = pm.request_account_facts()
-        for i, pos in enumerate(positions, 1):
+        for i, e in enumerate(_entries, 1):
+            _src_tag = "  [账本持仓·投影缺失——成本/比例未知]" if e.from_ledger else ""
             print(f"\n{'='*60}")
-            print(f"  [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code})")
+            print(f"  [{i}/{len(_entries)}] {e.stock_name or e.stock_code} ({e.stock_code}){_src_tag}")
             print(f"{'='*60}")
             try:
-                analyze_live(pos.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
+                analyze_live(e.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
                              compact=True, account_facts=_acct_facts)
-                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, True)
+                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, True)
             except SystemExit:
-                print(f"  [!] {pos.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
-                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, False, "数据获取失败")
-            except Exception as e:
-                print(f"  [!] 分析失败: {e}")
-                _ss_la.batch_task_mark("la", _tk_la, pos.stock_code, False, str(e)[:120])
+                print(f"  [!] {e.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
+                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, False, "数据获取失败")
+            except Exception as ex:
+                # handler 名不可与循环变量 e 撞名——as e 会把 e 重绑为异常对象，
+                # 下一行取 .stock_code 即 AttributeError 且从 handler 传播跳出整批
+                print(f"  [!] 分析失败: {ex}")
+                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, False, str(ex)[:120])
 
     elif mode == "live_scan_all":
         # v0.8.7.9: l all —— 对最近一次扫描结果（bz scan / scan market）批量深度分析

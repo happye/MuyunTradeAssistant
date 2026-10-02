@@ -50,7 +50,12 @@ POLICY_ID_LONG = "fusion_long_v1"
 #   行6：HELD+未知权重即使 budget=True 也 HOLD（预算已知不掩盖权重缺口）。
 #   其余行零变化；position_state=None 推导路径随 v3 同步迁移（confirmed=None →
 #   UNKNOWN → 行5 REVIEW，旧行为 REDUCE——迁移锚 test_no_position_state_migration_is_explicit）。
-DECISION_TABLE_VERSION = "v3"
+# v4（O2/Y4，2026-10-02，R14）：受影响行=行8——
+#   行8：LONG HELD+未知权重即使 budget=True 也 HOLD（预算已知不掩盖权重缺口，
+#   与 v3 行6 同口径收敛）。已知权重+budget=True 仍 ADD；硬退出（行1）先于行8、
+#   减仓/退出方向不回退。position_state=None 旧推导路径 held 蕴含 confirmed 非
+#   None——行8 not known 分支不可达，旧行为零变化。
+DECISION_TABLE_VERSION = "v4"
 
 
 class HorizonPlan(BaseModel):
@@ -293,6 +298,11 @@ def evaluate_horizon(plan: HorizonPlan, facts: HorizonFacts, security_id: str,
     if (plan.horizon is Horizon.LONG and valid and facts.quality_valuation_ok
             and facts.price_in_buy_zone and not facts.acute_risk):
         if held:
+            if not known:
+                # v4（O2/Y4）：HELD+未知权重——预算已知不掩盖权重缺口（与 v3 行6
+                # 同口径收敛），冻结精确新增；硬退出（行1）先于此、退出方向不回退
+                return act(DesiredAction.HOLD,
+                           "决策表行8: 条件成立但权重未知——HOLD（不假增仓；预算已知不弥补权重缺口）")
             if facts.budget_available is True:
                 return act(DesiredAction.ADD, "决策表行8: LONG 质量估值合格+进买价区间+无急性风险+剩余预算——ADD",
                            exec_status=ExecutionStatus.ELIGIBLE)

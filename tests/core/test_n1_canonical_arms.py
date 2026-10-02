@@ -1,6 +1,6 @@
 """N1 按规范包记录两臂 + 有效版本资格回归测试（plan/fusion iteration7，DELIVERY_PLAN N1；R13 X2 反例）
 
-锁死语义（R13 X2 转绿；shadow_v9 候选协议 + 决策表 v3）：
+锁死语义（R13 X2 转绿；shadow_v9 候选协议 + 决策表 v3；O1/O2 后为 shadow_v10 + v4）：
 1. 两臂各投影自己的 DecisionPacket——legacy 臂消费最终 legacy 包
    （action/target/blockers/execution_status 同枚举同语义），原始
    StrategyDecision 字段只留 legacy_trace；不再出现「规范包 target=None 而
@@ -293,9 +293,9 @@ def test_no_position_state_migration_is_explicit():
         "无三态推导 UNKNOWN 的技术减仓随 v3 迁移为 REVIEW（旧行为 REDUCE）"
 
 
-def test_decision_table_version_is_v3():
-    assert DECISION_TABLE_VERSION == "v3"
-    assert SHADOW_DERIVATION_VERSION == "shadow_v9"
+def test_decision_table_version_is_v4():
+    assert DECISION_TABLE_VERSION == "v4"
+    assert SHADOW_DERIVATION_VERSION == "shadow_v10"
 
 
 # ── 4. 旧桶独立计数 + v9 分桶 + 去重回归 ─────────────────────────────
@@ -336,10 +336,10 @@ def test_v9_records_and_old_protocols_bucketed(tmp_path, monkeypatch):
               "delta_reasons": ["agree"]}
     store.write_text(json.dumps(old_v7, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == "shadow_v9"
+    assert rec.derivation_version == "shadow_v10"
     assert rec.append_status == "saved", "跨协议不互判重复"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v9"
+    assert report["protocol_version"] == "shadow_v10"
     assert report["cur_mid_effective"] == 1
     assert report["legacy_records"] == 1
     assert report["older_versions"]["shadow_v7"]["records"] == 1

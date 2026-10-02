@@ -32,6 +32,7 @@ from typing import NamedTuple, Optional
 
 import yaml
 
+from src.core.source_time import parse_source_time as _source_time_parse
 from src.data.models import (
     StrategyState, TradeLifecycle, SignalType, TradePlan
 )
@@ -266,46 +267,22 @@ POSITION_UNKNOWN = "UNKNOWN"
 
 
 def _parse_source_time(raw):
-    """来源时点**严格解析**（N2/R13 X3）：返回 (交易所时区 aware datetime, 是否
-    时刻精度)；非法 → None（明确未知——不截取坏字符串救回日期）。
-
-    - 带偏移的 aware 时刻 → 归一 Asia/Shanghai（同一实际时刻不同偏移等价）
-    - naive 带时刻（新浪本地墙钟形态）→ 显式按 Asia/Shanghai 解释
-    - 纯日期（YYYY-MM-DD，日历合法）→ 当日 00:00 上海（日精度——按日期判未来，
-      不伪造盘中时点）
-    - 非法日历（2026-02-30）/非法时刻（99:99:99）/垃圾尾巴/空 → None"""
-    s = str(raw or "").strip()
-    if not s:
-        return None
-    try:
-        from zoneinfo import ZoneInfo
-        sh = ZoneInfo("Asia/Shanghai")
-    except Exception:
-        return None
-    if len(s) == 10 and s[4] == "-" and s[7] == "-":
-        try:
-            d = datetime.strptime(s, "%Y-%m-%d").date()
-        except ValueError:
-            return None  # 非法日历（如 2026-02-30）
-        return datetime(d.year, d.month, d.day, tzinfo=sh), False
-    try:
-        dt = datetime.fromisoformat(s.replace("Z", "+00:00"))
-    except ValueError:
-        return None
-    try:
-        dt = (dt.replace(tzinfo=sh) if dt.tzinfo is None else dt.astimezone(sh))
-    except Exception:
-        return None
-    return dt, True
+    """来源时点**严格解析**（O1/Y3 起实现收敛至 src/core/source_time.py——
+    估值门与影子门共用同一口径；本别名保持既有引用稳定）。"""
+    return _source_time_parse(raw)
 
 
-def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Optional[float], str]:
+def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of,
+                      *, as_of: Optional[datetime] = None) -> tuple[Optional[float], str]:
     """数量×价格/NAV 的合格估值门（L1 资格语义的共享核心——to_strategy_state 与
     AccountContext 装配共用同一判据，消费者不再各自判读）。
 
     N2 口径（R13 X3）：真实解析区分合法日精度与时刻精度；**先按实际时刻比较
     未来、再取交易所日**（当天未来时刻拒绝）；缺失/非法/未来拒绝（不靠墙钟
     补齐）；finite 检查防 NaN/Inf 混入资格；降级旧日收盘与当天 NAV 不拼当前权重。
+
+    O1/Y3：比较基准 as_of 可注入（固定时钟可重复测试；捕获 as_of 的等价偏移
+    表示同判）；缺省当前上海墙钟——旧调用方零变化。
 
     Returns:
         (weight, reason)：weight=None 时 reason 为人话资格缺口（不拿过期比例
@@ -319,11 +296,16 @@ def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Opt
     n = _parse_source_time(nav_as_of)
     if p is None or n is None:
         return None, "行情或NAV时点不可解析/缺失"
+    # O1/Y3：比较基准 as_of 参数化（可重复测试、固定时钟避免午夜偶发）——
+    # 缺省仍取当前上海墙钟（旧调用方零变化）；等价偏移输入归一上海
     try:
         from zoneinfo import ZoneInfo
-        now_sh = datetime.now(ZoneInfo("Asia/Shanghai"))
+        sh = ZoneInfo("Asia/Shanghai")
+        now_sh = (as_of if as_of is not None else datetime.now(sh))
+        now_sh = (now_sh.replace(tzinfo=sh) if now_sh.tzinfo is None
+                  else now_sh.astimezone(sh))
     except Exception:
-        now_sh = datetime.now().astimezone()
+        now_sh = as_of if as_of is not None else datetime.now().astimezone()
     for label, (dt, has_time) in (("行情", p), ("NAV", n)):
         # 时刻精度先比实际时刻（当天未来时刻拒绝）；日精度按交易所日期判未来
         if (dt > now_sh) if has_time else (dt.date() > now_sh.date()):
@@ -334,6 +316,37 @@ def _qualified_weight(quantity, price, price_as_of, nav, nav_as_of) -> tuple[Opt
     if derived > 1.0:
         return None, f"数量×价格/NAV={derived:.3f}>1（杠杆/数据异常）"
     return derived, "合格估值锁定"
+
+
+@dataclass
+class HoldingEntry:
+    """批量清单条目（O0/Y2）：投影记录或账本独有持仓的显示条目。
+
+    账本独有（from_ledger=True）只带代码——成本/比例/建仓日期等投影元数据
+    一律 None（不持久化、不伪造）；字段名与 PositionRecord 对齐，调用方
+    （live_all/analyze_portfolio）无需分支。**不加 frozen**：analyze_portfolio
+    循环内的既有内存观察量更新（pos.high_since_entry 三者取大）依赖可变性，
+    与 PositionRecord 同语义。"""
+
+    stock_code: str
+    stock_name: str = ""
+    entry_price: Optional[float] = None
+    high_since_entry: Optional[float] = None
+    trade_plan: object = None
+    current_ratio: Optional[float] = None
+    from_ledger: bool = False
+
+
+def _normalize_stock_code(raw) -> Optional[str]:
+    """代码归一键（Y2 集合去重用）：6 位以上数字取末 6 位（sh600519/600519.SZ
+    → 600519）；其余原样——与 _ledger_quantity 的候选匹配同语义。"""
+    s = str(raw or "").strip()
+    if not s:
+        return None
+    digits = "".join(ch for ch in s if ch.isdigit())
+    if len(digits) >= 6:
+        return digits[-6:]
+    return s
 
 
 @dataclass(frozen=True)
@@ -438,8 +451,10 @@ class RequestAccountFacts:
                 if q > 0:
                     return _ctx(POSITION_UNKNOWN, quantity=q,
                                 reason="账本读取失败且存在数量投影——未对账")
-                return _ctx(POSITION_NONE, quantity=0, weight=0.0,
-                            reason="账本读取失败；投影记录亦无持仓")
+                # Y1（O0/R14）：读取失败时旧零投影不足以证明空仓——异常源不得
+                # 当空仓证据；未对账、不反推数量
+                return _ctx(POSITION_UNKNOWN,
+                            reason="账本读取失败；旧数量投影为 0 不足以证明空仓——待对账")
             # RATIO_ONLY 落到下方既有分支（投影比例语义不依赖账本）
 
         ledger_q = self._ledger_quantity(stock_code)
@@ -449,6 +464,12 @@ class RequestAccountFacts:
                 if w is None:
                     reason += "（账本数量事实；比例视图待重估）"
                 return _ctx(POSITION_HELD, quantity=ledger_q, weight=w, reason=reason)
+            if self._ledger_partial:
+                # Y1（O0/R14）：账本存在隔离事件/PARTIAL 且无幸存 lot——无剩余
+                # 持仓记录不足以证明空仓（可能丢失持仓事件）；待对账、不编造数量
+                return _ctx(POSITION_UNKNOWN,
+                            reason="账本存在隔离事件（部分不可读）——"
+                                   "无剩余持仓记录不足以证明空仓，待对账")
             return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="无持仓记录")
 
         proj_q = pos.quantity_held if pos.quantity_fact is not None else None
@@ -476,6 +497,48 @@ class RequestAccountFacts:
             return _ctx(POSITION_HELD, weight=pos.current_ratio,
                         reason="RATIO_ONLY 比例直通")
         return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="比例 0（无数量事实）")
+
+    def holding_entries(self) -> tuple[list, bool]:
+        """批量持仓清单（O0/Y2）：请求先经同一快照形成持仓代码集合——账本
+        确定有仓（数量>0）∪ 兼容投影代码，归一化去重；投影顺序优先、账本
+        独有追加其后（稳定输出）。构造时快照已读——本方法不再读账本（同批
+        一次快照，下一请求新建实例刷新）。
+
+        Returns:
+            (entries, incomplete)：
+            - entries: HoldingEntry 列表（stock_code 可直传 context_for/
+              analyze_live）；账本独有条目仅显示字段，成本/比例/建仓日期
+              不伪造（None）
+            - incomplete: True=读取失败/持仓库损坏/账本 PARTIAL（隔离事件=
+              可能丢失持仓事件），清单可能不全——调用方不得输出"当前无
+              持仓"，须报告不完整/待对账"""
+        entries: dict[str, HoldingEntry] = {}
+        try:
+            for pos in self._pm.list_positions():
+                key = _normalize_stock_code(pos.stock_code) or str(pos.stock_code)
+                if key not in entries:
+                    entries[key] = HoldingEntry(
+                        stock_code=pos.stock_code,
+                        stock_name=pos.stock_name or "",
+                        entry_price=pos.entry_price,
+                        high_since_entry=pos.high_since_entry,
+                        trade_plan=pos.trade_plan,
+                        current_ratio=pos.current_ratio,
+                        from_ledger=False)
+        except Exception as e:
+            # 投影清单读不出（损坏保护后空数据等）——不吞账本侧，下方照列
+            logger.warning(f"投影持仓清单读取失败（清单可能不全——待对账）: {e}")
+        # 账本侧：确定有仓（数量>0）而投影无记录 → 临时显示条目（不伪造元数据）
+        for sec, q in self._quantities.items():
+            if int(q or 0) > 0:
+                key = _normalize_stock_code(sec) or str(sec)
+                if key and key not in entries:
+                    entries[key] = HoldingEntry(stock_code=str(sec), from_ledger=True)
+        # incomplete 含 PARTIAL（guard O批 P1）：隔离事件=可能丢失持仓事件，
+        # 清单同样可能不全——调用方不得输出"当前无持仓"
+        incomplete = (self._read_failed or self._ledger_partial
+                      or bool(getattr(self._pm, "_corrupted", False)))
+        return list(entries.values()), incomplete
 
 
 class PortfolioManager:

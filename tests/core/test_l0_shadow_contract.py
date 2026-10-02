@@ -335,10 +335,10 @@ def test_v6_old_records_diagnostic_only(tmp_path):
     }
     store.write_text(json.dumps(old_v6, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store, account_version="v_l0_next")
-    assert rec.derivation_version == "shadow_v9"
+    assert rec.derivation_version == "shadow_v10"
     assert rec.append_status == "saved", "新旧协议记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v9"
+    assert report["protocol_version"] == "shadow_v10"
     assert report["legacy_records"] == 1, "旧协议记录只诊断（单列计数）"
     assert report["cur_mid_effective"] == 1, "当期分母只数当期协议"
     assert report["older_versions"]["shadow_v6"]["mid_effective"] == 1, "v6 计数按记录原样（仅供过渡观察）"

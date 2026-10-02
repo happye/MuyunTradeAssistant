@@ -459,8 +459,10 @@ def scan_market(rule_name: str = "healthy_pullback", query: Optional[str] = None
         exclude_codes = set()
         pm = _portfolio_manager or PortfolioManager()
         try:
-            positions = pm.list_positions()
-            exclude_codes = {pos.stock_code for pos in positions}
+            # O0/Y2 同类接线：排除集经同一请求快照形成（账本确定有仓 ∪ 投影代码）
+            # ——账本独有持仓同样不进扫描候选
+            _entries, _ = pm.request_account_facts().holding_entries()
+            exclude_codes = {e.stock_code for e in _entries}
         except Exception as e:
             # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
             logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
@@ -519,6 +521,15 @@ def get_portfolio() -> str:
         positions = pm.list_positions()
 
         if not positions:
+            # O0/Y2 同类接线：投影空不代表账本空——账本独有持仓/读取异常如实提示，
+            # 不再谎报"当前无持仓记录"（分析入口已按账本事实同源处理）
+            entries, incomplete = pm.request_account_facts().holding_entries()
+            if entries:
+                ledger_only = [e.stock_code for e in entries if e.from_ledger]
+                return (f"投影持仓为空，但事件账本存在持仓: {'、'.join(ledger_only)} "
+                        f"——成本/比例未知待对账（分析入口按账本事实处理）")
+            if incomplete:
+                return "持仓记录读取异常——账户未对账（不当作空仓，请检查账本/持仓文件）"
             return "当前无持仓记录"
 
         from src.chat.formatter import format_portfolio

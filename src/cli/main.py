@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.26[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.27[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -406,14 +406,22 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     from src.data.akshare_client import get_stock_data, AKShareClient, _baostock_logout
 
     pm = PortfolioManager()
-    positions = pm.list_positions()
+    # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
+    # 归一去重）——与 la 同口径；账本独有持仓不再在读快照前被"当前无持仓"吞掉
+    acct_facts = pm.request_account_facts()
+    positions, _incomplete = acct_facts.holding_entries()
 
     if not positions:
-        console.print("\n[yellow]当前无持仓记录，请先使用 --pos-add 添加持仓[/yellow]")
+        if _incomplete:
+            console.print("\n[yellow]持仓清单读取异常（账本/持仓库）——清单不完整，待对账（不当作空仓）[/yellow]")
+        else:
+            console.print("\n[yellow]当前无持仓记录，请先使用 --pos-add 添加持仓[/yellow]")
         return
 
     console.print(f"\n[bold cyan]🔍 持仓扫描模式[/bold cyan]")
     console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...")
+    if _incomplete:
+        console.print("[yellow]  ⚠ 账本/持仓库读取异常——持仓清单可能不完整，待对账（不当作空仓）[/yellow]")
 
     # 数据时效性提示
     from datetime import datetime
@@ -440,9 +448,6 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
     event_config = config.get("event", None)
     entry_exit_config = config.get("entry_exit", None)
     orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
-    # M0：请求级账户事实一次装配（B2）——同批次所有股票共享同一账户版本，
-    # 下一命令重新读；不再逐股重复判读 pos.current_ratio（W1 根因收口）
-    acct_facts = pm.request_account_facts()
 
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
@@ -509,7 +514,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
 
         if not stock_data:
             console.print(f"  [red]✗ 数据获取失败，跳过[/red]")
-            results.append((pos, None, None, None))
+            results.append((pos, None, None, None, None))
             continue
 
         # 分析
@@ -578,8 +583,11 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 logger.warning(f"影子差异捕获失败(不影响分析主流程): {e}")
             # F1（plan/fusion ADR-F03）：观察量+建议持久化（la 此前 high_since_entry
             # 只更新内存不落盘；现随观察量落盘；建议入 pending，`pos confirm` 确认）
+            # O0/Y2：账本独有持仓无投影记录可写——跳过观察量调用（必然 False，
+            # 不打误导性"写入失败"告警）；建议照常入账（record_proposal 自身
+            # 对无投影股安全返回 None）
             try:
-                if not pm.record_analysis_observation(
+                if not pos.from_ledger and not pm.record_analysis_observation(
                         pos.stock_code, stock_data.stock_name or pos.stock_code,
                         strategy_decision, stock_data):
                     logger.warning(f"观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
@@ -722,7 +730,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         if not stock_data:
             summary_table.add_row(
                 pos.stock_code, pos.stock_name or "-",
-                "-", "-", "-", f"{pos.current_ratio:.0%}",
+                "-", "-", "-",
+                (f"{pos.current_ratio:.0%}" if pos.current_ratio is not None else "-"),
                 "-", "数据失败", "-", "-"
             )
             continue
@@ -760,7 +769,8 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             summary_table.add_row(
                 pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
-                f"{pos.current_ratio:.0%}",
+                # O0/Y2：账本独有持仓无投影比例——显示 "-"（不伪造 0%）
+                (f"{pos.current_ratio:.0%}" if pos.current_ratio is not None else "-"),
                 f"[{sig_color}]{decision_result.decision.value}[/{sig_color}]",
                 pos_action_cn,
                 strategy_decision.action_semantic or "-",
@@ -771,7 +781,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             summary_table.add_row(
                 pos.stock_code, display_name,
                 f"{stock_data.price:.2f}", chg_str, pnl_str,
-                f"{pos.current_ratio:.0%}",
+                (f"{pos.current_ratio:.0%}" if pos.current_ratio is not None else "-"),
                 "-", "无指标", "-", "-"
             )
 
@@ -2856,8 +2866,10 @@ def scan_market(
     if scanner_cfg.get("auto_exclude_holdings", True):
         try:
             pm = PortfolioManager()
-            positions = pm.list_positions()
-            exclude_codes = {pos.stock_code for pos in positions}
+            # O0/Y2 同类接线：排除集经同一请求快照形成（账本确定有仓 ∪ 投影代码）
+            # ——账本独有持仓同样不进扫描推荐
+            _entries, _ = pm.request_account_facts().holding_entries()
+            exclude_codes = {e.stock_code for e in _entries}
         except Exception as e:
             # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
             logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
@@ -5238,7 +5250,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.26 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.27 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",

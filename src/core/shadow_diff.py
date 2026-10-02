@@ -46,6 +46,14 @@ v4（J0b 评估唯一真值，2026-09-27）：
 - 旧计划（无 assessment_id）→ UNESTABLISHED 降级：facts+refs 简化判断退役，
   不再可能被非空引用救成 VALID（N2 根因封堵）；计划文字保留、资料不销毁
 
+v10（O1/Y3 时点资格一致，2026-10-02；R14 Y3 修复——候选协议，旧 v9 不追认）：
+- **naive 带时刻按 Asia/Shanghai 实际时刻比较**：旧实现 naive 只比日期（同日
+  不判未来），当天未来 naive 行情可过资格门——修正为与估值门同一判据
+  （解析规则收敛至 src/core/source_time.py：aware 归一上海、naive 显式上海、
+  纯日期按上海日期、非法/垃圾不获资格）
+- 资格语义变更升 shadow_v10 候选；v9 及更早独立桶保留不追认、不重算为当期
+  有效样本
+
 v9（N1 两臂规范包与版本资格，2026-10-01；R13 X2 修复——修正候选协议，旧 v8 不追认）：
 - **两臂各投影自己的规范包**：legacy 臂消费最终 legacy DecisionPacket
   （action/target/blockers/execution_status 同枚举同语义），原始
@@ -91,6 +99,9 @@ from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from src.core.source_time import parse_source_time as _source_time_parse
+from src.core.source_time import source_time_in_future as _source_time_in_future
+
 logger = logging.getLogger(__name__)
 
 # L0：v7 完整观察合同——统一资格函数（行情/证据时点、策略/规则/方法版本、两臂
@@ -102,7 +113,11 @@ logger = logging.getLogger(__name__)
 # （cur_*/older_versions）。旧 v7/v6 及更早只诊断不追认。
 # v9（N1/X2）：两臂各投影自己的规范包 + 有效版本资格门（当期已验证组合之外
 # 一律 diagnostic）。旧 v8 及更早保持原件和诊断分桶，不追认。
-SHADOW_DERIVATION_VERSION = "shadow_v9"
+# v10（O1/Y3）：时点资格语义修正——naive 带时刻按 Asia/Shanghai 实际时刻比较
+# （旧实现只比日期，当天未来 naive 行情可过资格），解析规则与估值门收敛为
+# src/core/source_time.py 同一纯函数。资格语义变更升候选协议；v9 及更早保持
+# 原件独立诊断分桶，不追认为当期有效样本。
+SHADOW_DERIVATION_VERSION = "shadow_v10"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -303,28 +318,19 @@ def _target_state(target, action: str) -> str:
     return "NOT_APPLICABLE" if action in _NO_POSITION_TARGET_ACTIONS else "UNKNOWN"
 
 
-def _parse_cutoff(raw) -> Optional[datetime]:
-    """时点解析：带时区 ISO → aware datetime；纯日期（YYYY-MM-DD）→ 当日（日精度，
-    按交易所日期语义比较）；其余/不可解析 → None（资格函数按缺口处理）。"""
-    if not raw:
-        return None
-    try:
-        dt = datetime.fromisoformat(str(raw))
-    except (TypeError, ValueError):
-        return None
-    return dt
+def _parse_cutoff(raw):
+    """时点可解析性检查（O1/Y3 起实现收敛至 src/core/source_time.py——影子门
+    与估值门共用同一解析口径；本包装保持既有引用稳定）。"""
+    return _source_time_parse(raw)
 
 
 def _cutoff_in_future(raw, as_of: datetime) -> bool:
     """时点是否晚于捕获时点（未来时点不可比较——合同降级项）。
-    纯日期按日期比较（日精度不假造时刻）；带时区按时刻比较；naive 带时刻串
-    按日期比较（同日不误判未来——保守方向：宁漏判不冤判）。"""
-    dt = _parse_cutoff(raw)
-    if dt is None:
-        return False
-    if dt.tzinfo is None:
-        return dt.date() > as_of.date()
-    return dt > as_of
+
+    O1/Y3（R14）：naive 带时刻串改按 Asia/Shanghai **实际时刻**比较——旧实现
+    只比日期，当天未来 naive 行情可过资格（病根封堵）。aware/纯日期语义不变。
+    实现收敛至 source_time.source_time_in_future（与估值门同一口径）。"""
+    return _source_time_in_future(raw, as_of)
 
 
 def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[bool, list[str]]:
