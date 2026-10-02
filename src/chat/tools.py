@@ -516,24 +516,34 @@ def get_portfolio() -> str:
     """获取持仓列表"""
     try:
         from src.data.portfolio import PortfolioManager
+        from src.chat.formatter import format_portfolio
 
         pm = _portfolio_manager or PortfolioManager()
-        positions = pm.list_positions()
+        # P1/Z3：所有路径读同一共享清单（holding_entries）——投影独有/账本独有/
+        # 重叠混合不漏不重；投影细节保留，账本独有条目标注元数据缺口；
+        # 清单不完整显式提示（不谎报空仓）
+        entries, incomplete = pm.request_account_facts().holding_entries()
+        ledger_only = [e for e in entries if e.from_ledger]
+        try:
+            positions = pm.list_positions()
+        except Exception:
+            # Z2 同源：投影解码失败时投影明细不可用（entries 侧已空、incomplete=True）
+            positions = []
 
-        if not positions:
-            # O0/Y2 同类接线：投影空不代表账本空——账本独有持仓/读取异常如实提示，
-            # 不再谎报"当前无持仓记录"（分析入口已按账本事实同源处理）
-            entries, incomplete = pm.request_account_facts().holding_entries()
-            if entries:
-                ledger_only = [e.stock_code for e in entries if e.from_ledger]
-                return (f"投影持仓为空，但事件账本存在持仓: {'、'.join(ledger_only)} "
-                        f"——成本/比例未知待对账（分析入口按账本事实处理）")
+        parts = []
+        if positions:
+            parts.append(format_portfolio(positions))
+        if ledger_only:
+            seg = ["--- 事件账本独有持仓（投影记录缺失——成本/比例未知待对账） ---"]
+            seg += [f"  {e.stock_code}" for e in ledger_only]
+            parts.append("\n".join(seg))
+        if not parts:
             if incomplete:
                 return "持仓记录读取异常——账户未对账（不当作空仓，请检查账本/持仓文件）"
             return "当前无持仓记录"
-
-        from src.chat.formatter import format_portfolio
-        return format_portfolio(positions)
+        if incomplete:
+            parts.append("⚠ 持仓清单可能不完整（账本/投影读取异常）——待对账")
+        return "\n\n".join(parts)
 
     except Exception as e:
         logger.error(f"get_portfolio失败: {e}")

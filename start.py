@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.27"  # v0.8.27=O0/O1/O2（异常账户不得判空仓Y1+批量清单含账本独有持仓Y2+影子时点资格与估值门一致Y3+LONG未知权重冻结Y4，shadow_v10候选/表v4）；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.28"  # v0.8.28=P0/P1（PARTIAL贯穿投影分支Z1+投影枚举失败传播incomplete Z2+查仓与l/la启动提示按共享清单与ctx三态Z3，shadow_v11候选/表v4保持）；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

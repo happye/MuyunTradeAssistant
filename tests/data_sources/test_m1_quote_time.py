@@ -307,7 +307,7 @@ def test_shadow_v8_records_fetched_at_diagnostic(tmp_path, monkeypatch):
     plans, asm_store = _seed_accepted_mid(tmp_path)
     rec = _capture(tmp_path, plans, asm_store,
                    quote_fetched_at="2026-10-01T10:00:00+08:00")
-    assert rec.derivation_version == "shadow_v10"
+    assert rec.derivation_version == "shadow_v11"
     mb = rec.mid_binding
     assert mb["quote_cutoff"] == BS_DAY
     assert mb["quote_fetched_at"] == "2026-10-01T10:00:00+08:00"
@@ -366,10 +366,10 @@ def test_shadow_v8_report_buckets_old_protocols(tmp_path, monkeypatch):
               "delta_reasons": ["agree"]}
     store.write_text(json.dumps(old_v7, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == "shadow_v10"
+    assert rec.derivation_version == "shadow_v11"
     assert rec.append_status == "saved", "新旧协议记录并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v10"
+    assert report["protocol_version"] == "shadow_v11"
     assert report["legacy_records"] == 1
     assert report["cur_mid_effective"] == 1, "当期分母只数 shadow_v8"
     v7_bucket = report["older_versions"].get("shadow_v7")

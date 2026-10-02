@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.27[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.28[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -944,6 +944,18 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
                 console.print(f"  开仓价: {pos.entry_price}  浮盈: [{pnl_color}]{pnl_pct:+.2f}%[/{pnl_color}]")
             if pos.strategy_state and pos.strategy_state.get("cooldown_remaining", 0) > 0:
                 console.print(f"  冷却期: 剩余{pos.strategy_state['cooldown_remaining']}天")
+            if acct_ctx.position_state == "UNKNOWN" and acct_ctx.weight_reason:
+                # P1/Z3：ctx 未对账时投影明细不能冒充核对通过——追加缺口原因
+                console.print(f"  [yellow]⚠ {acct_ctx.weight_reason}[/yellow]")
+        elif acct_ctx.position_state == "HELD":
+            # P1/Z3：启动提示按 ctx 三态——pos 仅提供元数据，不再决定有无仓
+            # （账本独有持仓同屏不得先说 FLAT 再说账本有仓；间距与 N0 摘要面板一致）
+            console.print(f"\n[bold green]📂 账本持仓[/bold green]")
+            console.print(f"  账本有仓 {acct_ctx.quantity} 股（事件账本事实——投影记录缺失，"
+                          f"成本/比例未知待对账）")
+        elif acct_ctx.position_state == "UNKNOWN":
+            console.print(f"\n[yellow]📂 持仓状态未对账[/yellow]")
+            console.print(f"  {acct_ctx.weight_reason or '账户账本读取异常——不当作空仓'}")
         else:
             console.print(f"\n[dim]📂 无持仓记录（将从FLAT状态开始分析）[/dim]")
 
@@ -5250,7 +5262,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.27 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.28 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",

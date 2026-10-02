@@ -89,6 +89,9 @@ def test_news_disk_cache_roundtrip(monkeypatch, tmp_path):
 
     import akshare as ak
     monkeypatch.setattr(ak, "stock_news_em", fake_news_em)
+    # 隔离类级内存缓存：全量跑中其他测试（chat/web 真实链）可能已真实抓取并
+    # 缓存 600519——本测试依赖"缓存未命中"初态，须显式清空（第九轮全量实证）
+    monkeypatch.setattr(nc.NewsClient, "_stock_news_cache", {})
     with _quiet():
         first = nc.NewsClient.get_stock_news("600519")
         assert len(first) == 1 and fetches == ["600519"]

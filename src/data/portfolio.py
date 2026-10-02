@@ -490,12 +490,28 @@ class RequestAccountFacts:
             if proj_q > 0:
                 w, reason = self._weight_for(proj_q, price, price_as_of)
                 return _ctx(POSITION_HELD, quantity=proj_q, weight=w, reason=reason)
+            if self._ledger_partial:
+                # Z1（R15）：PARTIAL 保护贯穿投影分支——隔离事件可能丢失持仓
+                # 事件，旧零投影不足以证明空仓（与 pos 缺席分支同口径）；
+                # 待对账、不反推数量
+                return _ctx(POSITION_UNKNOWN,
+                            reason="账本存在隔离事件（部分不可读）——"
+                                   "旧零数量投影不足以证明空仓，待对账")
             return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="记录与账本均无持仓")
 
         # RATIO_ONLY：比例判持仓（既有语义零变化）
         if (pos.current_ratio or 0) > 0:
             return _ctx(POSITION_HELD, weight=pos.current_ratio,
                         reason="RATIO_ONLY 比例直通")
+        if self._ledger_partial:
+            # P0（R15 guard）：PARTIAL 保护贯穿 RATIO_ONLY 零比例分支——
+            # 隔离事件可能藏着新买入（如"全部卖出+冷却"记录恰好是 ratio=0 且
+            # quantity_fact 已弹出的形态），旧比例 0 不足以证明空仓；
+            # 与数量投影分支同口径。纯 RATIO_ONLY 无账本用户不受影响
+            #（无账本时 _ledger_partial=False，正常兼容保持 NONE）。
+            return _ctx(POSITION_UNKNOWN,
+                        reason="账本存在隔离事件（部分不可读）——"
+                               "旧比例 0 不足以证明空仓，待对账")
         return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="比例 0（无数量事实）")
 
     def holding_entries(self) -> tuple[list, bool]:
@@ -513,6 +529,7 @@ class RequestAccountFacts:
               可能丢失持仓事件），清单可能不全——调用方不得输出"当前无
               持仓"，须报告不完整/待对账"""
         entries: dict[str, HoldingEntry] = {}
+        projection_failed = False
         try:
             for pos in self._pm.list_positions():
                 key = _normalize_stock_code(pos.stock_code) or str(pos.stock_code)
@@ -526,7 +543,10 @@ class RequestAccountFacts:
                         current_ratio=pos.current_ratio,
                         from_ledger=False)
         except Exception as e:
-            # 投影清单读不出（损坏保护后空数据等）——不吞账本侧，下方照列
+            # Z2（R15）：投影枚举失败必须传播 incomplete——合法 YAML 但记录解码
+            # 失败时 _corrupted=False，只打日志会让返回值声称完整（日志说待对账、
+            # 调用方却输出"当前无持仓"）。可独立列出的账本持仓下方照列不吞。
+            projection_failed = True
             logger.warning(f"投影持仓清单读取失败（清单可能不全——待对账）: {e}")
         # 账本侧：确定有仓（数量>0）而投影无记录 → 临时显示条目（不伪造元数据）
         for sec, q in self._quantities.items():
@@ -534,9 +554,9 @@ class RequestAccountFacts:
                 key = _normalize_stock_code(sec) or str(sec)
                 if key and key not in entries:
                     entries[key] = HoldingEntry(stock_code=str(sec), from_ledger=True)
-        # incomplete 含 PARTIAL（guard O批 P1）：隔离事件=可能丢失持仓事件，
-        # 清单同样可能不全——调用方不得输出"当前无持仓"
-        incomplete = (self._read_failed or self._ledger_partial
+        # incomplete 含 PARTIAL（guard O批 P1）与投影枚举失败（Z2）：隔离事件=
+        # 可能丢失持仓事件——调用方不得输出"当前无持仓"
+        incomplete = (self._read_failed or self._ledger_partial or projection_failed
                       or bool(getattr(self._pm, "_corrupted", False)))
         return list(entries.values()), incomplete
 

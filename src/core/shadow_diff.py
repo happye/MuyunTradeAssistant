@@ -46,6 +46,11 @@ v4（J0b 评估唯一真值，2026-09-27）：
 - 旧计划（无 assessment_id）→ UNESTABLISHED 降级：facts+refs 简化判断退役，
   不再可能被非空引用救成 VALID（N2 根因封堵）；计划文字保留、资料不销毁
 
+v11（P0/Z1 账户输入语义，2026-10-02；R15——候选协议，旧 v10 不追认）：
+- **账户输入维度变化**：账本 PARTIAL（隔离事件）时旧零数量投影不再可证明空仓
+  （账户事实 context_for 的 PARTIAL 保护贯穿投影分支，NONE→UNKNOWN）——衍生
+  观察的账户维度随之变化，升候选协议；v10 及更早保留原件独立诊断分桶
+
 v10（O1/Y3 时点资格一致，2026-10-02；R14 Y3 修复——候选协议，旧 v9 不追认）：
 - **naive 带时刻按 Asia/Shanghai 实际时刻比较**：旧实现 naive 只比日期（同日
   不判未来），当天未来 naive 行情可过资格门——修正为与估值门同一判据
@@ -117,7 +122,11 @@ logger = logging.getLogger(__name__)
 # （旧实现只比日期，当天未来 naive 行情可过资格），解析规则与估值门收敛为
 # src/core/source_time.py 同一纯函数。资格语义变更升候选协议；v9 及更早保持
 # 原件独立诊断分桶，不追认为当期有效样本。
-SHADOW_DERIVATION_VERSION = "shadow_v10"
+# v11（P0/Z1）：账户输入语义变化——账本 PARTIAL（隔离事件）时旧零数量投影不再
+# 可证明空仓（context_for PARTIAL 保护贯穿投影分支，NONE→UNKNOWN）；衍生观察
+# 的账户维度随之变化，升候选协议；v10 及更早保留独立诊断分桶，不追认为当期
+# 有效样本（任务卡第九轮指示：按实际差异登记，非映射规则变化不凑版本）。
+SHADOW_DERIVATION_VERSION = "shadow_v11"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
