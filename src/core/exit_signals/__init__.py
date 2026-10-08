@@ -8,6 +8,8 @@
 设计原则（绕开 AI 天花板）：全部是**客观硬规则**，不依赖 AI 实时判断"该不该卖"。
 触发即作为 P1 信号（仅次于致命止损），PlanGuard 不可压制--即使气宗持有期内
 出现大顶信号也强制离场。
+v0.8.28.1 例外：板块层渗透率 30+ 标注降级为研究提醒（标注是无「不适用」出口的
+AI 猜测，曾致无渗透率语义行业新开仓当天被反复强制清仓），见 sector.py。
 """
 
 from src.core.exit_signals.macro import check_macro_top_signal, assess_liquidity_state, assess_market_breadth

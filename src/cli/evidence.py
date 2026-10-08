@@ -56,12 +56,16 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
                                 else None),
             "position_ratio": decision_result.position_ratio,
             "sell_path": getattr(strategy_decision, "sell_path", None) if strategy_decision else None,
+            # v0.8.28.1（架构师裁决 E）：top_signal 专门触发字段——此前该 reason 只进
+            # INFO 日志，事后无法定位是哪条子信号触发的强制清仓（渗透率30+误触发排查）
+            "top_signal": (getattr(strategy_decision, "top_signal", None)
+                           if strategy_decision else None),
             "signals": [
                 {"skill": s.skill_alias, "signal": (s.signal.value if hasattr(s.signal, "value") else str(s.signal)),
                  "conf": round(float(s.confidence), 2)}
                 for s in (decision_result.signals or [])[:8]
             ],
-            "warnings": list(decision_result.warnings or [])[:6],
+            "warnings": list(decision_result.warnings or [])[:8],
         }
         if packet is not None:
             # F2 终态字段：追加式，不改旧字段语义（ADR-F09 缺字段=未记录）
@@ -106,6 +110,7 @@ def _write_card(rec: dict, decision_result) -> None:
         f"> 时间：{rec['ts']} ｜ 来源：{rec['source']}",
         f"> 决策：**{rec['decision']}** ｜ 评分：{rec['score']:.3f} ｜ 价格：{rec['price']}",
         f"> 仓位动作：{rec.get('position_action') or '-'} ｜ 卖出路径：{rec.get('sell_path') or '-'}",
+        *( [f"> 触发原因（top_signal）：{rec['top_signal']}"] if rec.get("top_signal") else [] ),
         "",
         "## 技能信号",
         "",

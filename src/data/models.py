@@ -137,9 +137,13 @@ class TradePlan(BaseModel):
     # 报告2.1 笨总教学八板块层信号所需建仓标注（AI 填，用户可改）
     # flagbearer: 板块旗手代码（"最大最核心的股是板块脸面"），持有期检查旗手滞涨
     flagbearer_code: Optional[str] = Field(default=None, description="板块旗手代码(教学八)，持有期检查旗手滞涨=板块见顶预警")
-    # penetration_stage: 渗透率阶段（教学八"30%魔咒"），>30%=增速放缓见顶
-    penetration_stage: Optional[Literal["0-1", "1-10", "10-30", "30+"]] = Field(
-        default=None, description="行业渗透率阶段(教学八)；30+=增速放缓见顶，触发板块层信号"
+    # penetration_stage: 渗透率阶段（教学八"30%魔咒"）。v0.8.28.1：'30+' 降级为研究提醒
+    # （不再触发强制清仓）；「不适用/证据不足」= AI 标注层对无渗透率语义行业的合法回答
+    # （架构师裁决 A），原样保留可追溯——消费方仅 exit_signals/sector.py 的提醒与
+    # 历史 '30+' 兼容判断
+    penetration_stage: Optional[Literal["0-1", "1-10", "10-30", "30+", "不适用", "证据不足"]] = Field(
+        default=None, description="行业渗透率阶段(教学八)；30+=增速放缓（已降级为研究提醒，"
+                                  "不触发强制清仓）；不适用/证据不足=无渗透率语义行业的合法标注"
     )
     # 报告3.1 笨总教学十超配策略（事件驱动临时加倍+止盈降本，非添油战术）
     # 只出手一次 + 1-2月时间窗口 + 涨幅3-10倍标的禁入

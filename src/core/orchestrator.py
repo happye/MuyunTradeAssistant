@@ -429,6 +429,19 @@ class Orchestrator:
                 decision_result.reason.append(f"[TopSignal] 高位止盈: {top_signal}")
                 logger.info(f"[TopSignal] 大顶信号强制离场: {top_signal}")
 
+        # v0.8.28.1（架构师裁决 2026-10-08）：渗透率 30+ 标注降级为研究提醒——
+        # 不触发清仓，与强制退出原因分开展示（提醒进 warnings/风险提示）。
+        # 详见 docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md。
+        if has_position and not top_signal:
+            try:
+                from src.core.exit_signals.sector import penetration_research_reminder
+                _reminder = penetration_research_reminder(trade_plan)
+                if _reminder:
+                    decision_result.warnings.append(_reminder)
+                    decision_result.reason.append(f"[行业研究提醒] {_reminder}")
+            except Exception as e:
+                logger.debug(f"渗透率研究提醒生成失败: {e}")
+
         # 报告④ 高位利好=出货风险（笨总"主升浪时最怕利好，出货良机"）
         # 高位(从60日低点翻倍) + AI利好 -> advisory 警告（非强制清仓，提示用户兑现勿贪婪）
         if has_position and not top_signal and ai_result and ai_result.sentiment in ("看涨", "bullish"):

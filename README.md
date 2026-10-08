@@ -395,6 +395,25 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.28.1 (板块层渗透率30+误触发强制清仓修复: 降级研究提醒) - 2026-10-08/09
+
+- 🐛 **用户实证**：新开仓（000001/000498，笨总 B/准B，jianzong）当天盘后 la 连续三次被
+  top_signal CLOSE_ALL——与"技术面全在止损上方"矛盾。
+- **根因（排查链 100% 还原）**：pos add 时 `_annotate_sector_meta` 的 prompt 强制
+  penetration_stage 四选一（无「不适用」出口）→ 银行/基建被 AI 标 '30+'；消费层
+  `check_sector_top_signal` 对 '30+' 纯字符串匹配即 P1 强制 CLOSE_ALL（PlanGuard
+  不可压、与评分无关）→ 每次分析必触发。
+- **修复（架构师裁决 A+B+E，docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md）**：
+  ① 板块层 '30+' 降级为研究提醒（`penetration_research_reminder` → warnings/风险提示，
+  与强制退出原因分开展示；旗手滞涨有数据核实保持强制）；② 标注 prompt 加
+  「不适用/证据不足」出口，禁止把「行业成熟」换算成 30+；③ 旧标签立即受新规则约束
+  （不做数据迁移、不做建仓冷静期、不做行业例外）；④ 证据记录/卡片补 `top_signal`
+  专门触发字段（此前 reason 只进 INFO 日志），warnings 截断 6→8。
+- **实证**：000001 强制信号=None+提醒正常；000498 渗透率不再触发但旗手滞涨（600170
+  20日-1.8% vs 标的+23.9%，数据核实的独立信号）浮出为可见原因。回测路径不受影响。
+- 测试 +8 / 修正 2（test_sector_penetration_demote.py + test_video_report_tier2 两处
+  「30+ 必触发」旧断言按裁决纠正）。
+
 ### v0.8.28 (P0/P1——账户完整性收口：异常贯穿状态与清单 + 查仓与启动提示同源) - 2026-10-02
 
 plan/fusion iteration9 P0/P1（修 R15 Z1–Z3；账本 plan/fusion/iteration9/EXECUTION_RECORD.md；M2 仅 DESIGN_READY 不实施）。

@@ -49,7 +49,7 @@ class AutoScoredResult:
     market_turnover: Optional[float] = None          # 全市场成交额(万亿)，供流动性状态展示
     # 报告2.1 笨总教学八板块层信号建仓标注（一次轻量 AI 标注）
     flagbearer_code: Optional[str] = None              # 板块旗手代码（持有期检查旗手滞涨）
-    penetration_stage: Optional[str] = None            # 渗透率阶段 0-1/1-10/10-30/30+（30+触发板块见顶）
+    penetration_stage: Optional[str] = None            # 渗透率阶段 0-1/1-10/10-30/30+/不适用/证据不足（30+ 已降级为研究提醒，不触发清仓）
 
 
 def _build_ai_client(config: Optional[dict] = None):
@@ -93,7 +93,7 @@ def _build_ai_client(config: Optional[dict] = None):
 def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
     """报告2.1: 一次轻量 AI 标注板块旗手+渗透率阶段(笨总教学八, 建仓时一次定)。
 
-    用于板块层高位止盈信号(旗手滞涨/渗透率30%魔咒)。建仓时标注, 持有期检查。
+    用于板块层高位止盈信号(旗手滞涨保持强制; 渗透率30+已降级为研究提醒, v0.8.28.1)。建仓时标注, 持有期检查。
     AI 失败返回 (None, None), 不阻塞评分主流程。
     """
     if not ai_client or not ai_model:
@@ -103,13 +103,22 @@ def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
     if not industry_name and not name:
         return None, None
     try:
+        # v0.8.28.1（架构师裁决 2026-10-08）：prompt 加「不适用/证据不足」出口——
+        # 渗透率只适用于有明确渗透对象的新兴产品，银行/基建等成熟行业此前被迫
+        # 四选一（AI 挑了语义最近的 30+），导致板块层 P1 对无渗透率语义行业
+        # 永久触发强制清仓（docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md）。
         prompt = (
             f"判断股票 {name or code} (行业: {industry_name or '未知'}) 的板块属性:\n"
             "1. flagbearer_code: 该行业最核心的旗手股票代码(6位数字, 不带前缀), "
             "即板块脸面代表大资金态度的龙头. 不确定填 null.\n"
-            "2. penetration_stage: 渗透率阶段, 从 [0-1, 1-10, 10-30, 30+] 选一. "
+            "2. penetration_stage: 该行业核心产品的渗透率阶段, 从 [0-1, 1-10, 10-30, 30+] 选一. "
             "0-1=技术突破初期, 1-10=产业化起步, 10-30=快速增长, 30+=成熟增速放缓.\n"
-            '只输出 JSON: {"flagbearer_code":"600519" 或 null, "penetration_stage":"1-10"}'
+            "3. 渗透率只适用于有明确渗透对象的新兴产品或服务(如电动车/某新材料的渗透率). "
+            "银行/基建/公用事业等无渗透率语义的行业, 或无法核实具体统计口径时, "
+            "penetration_stage 必须填 \"不适用\" 或 \"证据不足\"; "
+            "不能把「行业成熟/传统行业」直接当成 \"30+\".\n"
+            '只输出 JSON: {"flagbearer_code":"600519" 或 null, '
+            '"penetration_stage":"1-10" 或 "不适用"/"证据不足"}'
         )
         extra = thinking_disabled_body(ai_model)
         # v0.8.9.5（彻查批 P3）：kimi-k2.x 不支持 temperature，走统一判定清单
@@ -132,7 +141,8 @@ def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
         ps = d.get("penetration_stage")
         if fb and not (isinstance(fb, str) and fb.isdigit() and len(fb) == 6):
             fb = None
-        if ps not in ("0-1", "1-10", "10-30", "30+"):
+        # v0.8.28.1：「不适用/证据不足」是合法回答，原样保留可追溯；其余非法值仍拒
+        if ps not in ("0-1", "1-10", "10-30", "30+", "不适用", "证据不足"):
             ps = None
         return fb, ps
     except Exception as e:

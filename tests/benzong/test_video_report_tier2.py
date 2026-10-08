@@ -33,12 +33,18 @@ def _mk_sd(**kw):
     return StockData(**base)
 
 
-def test_penetration_30_plus_triggers():
-    """2.1 渗透率30%魔咒触发"""
+def test_penetration_30_plus_no_longer_force_exit():
+    """2.1 渗透率30+已降级为研究提醒（v0.8.28.1 架构师裁决）——不再单独触发强制清仓。
+
+    原断言「30+ 应触发」是误触发事故的根因之一（银行/基建被 AI 标 30+ → 新开仓
+    当天即被反复 CLOSE_ALL），见 docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md。
+    """
+    from src.core.exit_signals.sector import penetration_research_reminder
     p = _mk_plan(penetration_stage="30+")
-    assert check_sector_top_signal(trade_plan=p) is not None, "30+ 应触发"
-    assert "30%魔咒" in check_sector_top_signal(trade_plan=p)
-    print("✓ 渗透率30+触发板块见顶信号")
+    assert check_sector_top_signal(trade_plan=p) is None, "30+ 已降级，不得再触发强制清仓"
+    reminder = penetration_research_reminder(p)
+    assert reminder is not None and "缺少可核实依据" in reminder
+    print("✓ 渗透率30+已降级为研究提醒（不再强制清仓）")
 
 
 def test_penetration_below_30_no_trigger():
@@ -115,17 +121,19 @@ def test_triple_up_no_trigger_above_ma5():
 
 
 def test_top_signals_integration_sector(monkeypatch):
-    """2.3 集成：trade_plan 透传触发板块层"""
-    # M1 网络审计修复：live=True 的宏观信号会真拉全市场成交额（THS 分页 404 次
-    # 连接）——mock 成交额为固定中性值，隔离出"渗透率信号"这一被测对象
+    """2.3 集成：trade_plan 透传到板块层——30+ 降级后不再产生强制信号（v0.8.28.1）。
+
+    原断言「渗透率 30+ 触发」即误触发事故根因本身（银行/基建被标 30+ → 新开仓
+    当天反复 CLOSE_ALL），已按架构师裁决改为验证降级。提醒路径由
+    penetration_research_reminder 单测覆盖（test_sector_penetration_demote.py）。
+    """
     from src.core.benzong import data_provider
     monkeypatch.setattr(data_provider, "get_market_turnover", lambda *a, **k: 1.0)
     p = _mk_plan(penetration_stage="30+")
     sd = _mk_sd(price=10)
-    # live 门控：渗透率信号需网络数据源，默认(回测/测试)路径跳过（ISS-052 纪律）
     sig = check_top_signals(sd, "x", trade_plan=p, live=True)
-    assert sig is not None and "渗透率" in sig
-    print("✓ check_top_signals 集成板块层（渗透率优先于个股）")
+    assert sig is None, "30+ 标签不得再单独触发强制清仓信号"
+    print("✓ check_top_signals 集成：渗透率30+不再触发（降级为研究提醒）")
 
 
 def test_top_signals_integration_triple():

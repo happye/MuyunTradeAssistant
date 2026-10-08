@@ -4,7 +4,7 @@
 各层内部信号是"或"关系（笨总原话："不是and，而是或"），一条触发即准备撤退。
 
 实现现状（诚实声明）：
-- 渗透率30%魔咒：✅ 已实现（建仓时 AI 标注 penetration_stage 写入 TradePlan，持有期检查 30+）
+- 渗透率30%魔咒：⚠ 已降级（v0.8.28.1，架构师裁决）——'30+' 标注不再触发强制清仓，改为 penetration_research_reminder 研究提醒（原标注无数据核实、无「不适用」出口，银行/基建被误标 30+ 曾致新开仓当天反复 CLOSE_ALL）
 - 旗手滞涨：✅ 已实现（建仓时 AI 标注 flagbearer_code，持有期 baostock 拉旗手近20日涨幅对比）
 - 新赛道虹吸：❌ TODO（需全板块资金流对比基础设施，复杂度高，留后续）
 
@@ -27,6 +27,14 @@ FLAGBEARER_MIN_STOCK_GAIN = 10.0
 def check_sector_top_signal(trade_plan=None, stock_data=None, code: str = "") -> Optional[str]:
     """检查板块层大顶信号（报告2.1，笨总教学八）。
 
+    v0.8.28.1（架构师裁决 2026-10-08，决策简报 docs/2026-10-08_决策简报_渗透率30+_
+    误触发强制清仓.md）：penetration_stage=="30+" 不再作为强制清仓信号——该标注是
+    建仓时 AI 对四选一枚举的猜测（无数据核实、prompt 原无「不适用」出口，银行/基建
+    等无渗透率语义行业也会被标 30+），曾导致新开仓当天即被反复 CLOSE_ALL。
+    降级为研究提醒（penetration_research_reminder，由 orchestrator 追加到
+    warnings/决策理由，与强制退出原因分开展示）。旧标签立即受新规则约束，原值保留
+    可追溯。旗手滞涨有 20 日涨幅数据核实，保持强制信号不变。
+
     Args:
         trade_plan: TradePlan（取 flagbearer_code / penetration_stage）。None 跳过板块层
         stock_data: StockData（标的近20日涨幅，旗手滞涨对比用）
@@ -38,9 +46,7 @@ def check_sector_top_signal(trade_plan=None, stock_data=None, code: str = "") ->
     if trade_plan is None:
         return None
 
-    # 信号1：渗透率30%魔咒（教学八，纯逻辑无网络）--"1%->20%最快，>30%增速放缓见顶"
-    if trade_plan.penetration_stage == "30+":
-        return "板块:渗透率突破30%魔咒(增速放缓，成长->价值切换见顶)"
+    # 信号1（v0.8.28.1 降级）：渗透率30%魔咒 → 不再强制清仓，见 penetration_research_reminder()
 
     # 信号2：旗手滞涨（教学八）--"最大最核心的股是板块脸面，带头大哥涨不动=板块顶"
     if trade_plan.flagbearer_code:
@@ -49,6 +55,18 @@ def check_sector_top_signal(trade_plan=None, stock_data=None, code: str = "") ->
             return sig
 
     # 信号3：新赛道虹吸 -- TODO（需全板块资金流对比基础设施，留后续）
+    return None
+
+
+def penetration_research_reminder(trade_plan=None) -> Optional[str]:
+    """渗透率 30+ 标注的研究提醒（v0.8.28.1 降级后的展示形态，架构师裁决）。
+
+    只提示需要复核，不参与任何强制退出；与强制退出原因分开展示
+    （提醒进 warnings/风险提示，退出原因进 原因/strategy_reasons）。
+    """
+    if trade_plan is not None and getattr(trade_plan, "penetration_stage", None) == "30+":
+        return ("行业研究提醒：原计划的「渗透率 30%+」缺少可核实依据，"
+                "本次不据此触发清仓，请复核该行业增长情况。")
     return None
 
 
