@@ -670,3 +670,28 @@ class ExpectationOverdraw(BaseModel):
     momentum_20d: Optional[float] = Field(default=None, description="沪深300近20日涨跌幅(%)")
     interpretation: str = Field(default="", description="解读文本")
     data_status: str = Field(default="ok", description="数据状态: ok/partial/failed")
+
+
+class SignalFinding(BaseModel):
+    """信号发现条目——ISS-117 S0 权限合同最小实现（架构师裁决 2026-10-09）。
+
+    「检测到一个值得注意的现象」与「获得改变交易的资格」分离：
+    - action_scope 决定资格：exit=获准强制退出；reduce=获准限仓/减仓建议；
+      research=仅研究提醒；none=仅记录不展示。
+    - verified=False 的发现（AI 标签/标题线索/经验指标）不得映射到 exit/reduce，
+      由消费方（orchestrator/plan_guard）保证。
+    - data_quality 缺证据只能降资格，不能放宽触发条件；缺字段默认最严（UNKNOWN）。
+    旧式字符串信号在消费侧仅作展示兼容，不再承担执行授权。
+    """
+    signal_id: str = Field(..., description="稳定信号ID，如 exit.stock.triple_up / research.stock.reduction_title")
+    source: str = Field(default="", description="来源/证据引用（API、字段、feed 名）")
+    securities: list[str] = Field(default_factory=list, description="适用证券（空=适用范围未核定）")
+    as_of: Optional[str] = Field(default=None, description="证据有效时点(ISO日期)；None=未知")
+    data_quality: Literal["OK", "STALE", "MISSING", "UNKNOWN"] = Field(
+        default="UNKNOWN", description="数据资格：OK/STALE/MISSING/UNKNOWN")
+    action_scope: Literal["none", "research", "reduce", "exit"] = Field(
+        default="research", description="获准动作范围：exit=强制退出；reduce=限仓建议；research=仅提醒；none=仅记录")
+    verified: bool = Field(default=False, description="是否经原件/多源/独立数据核验")
+    strategy_binding: str = Field(default="", description="策略/裁决版本绑定（如 jiaoxue8/ruling-2026-10-09）")
+    detail: str = Field(default="", description="人话描述（将进报告/摘要）")
+    reason: str = Field(default="", description="资格判定说明：核了什么、缺什么")

@@ -12,7 +12,9 @@ urgency 在致命止损(规则4)后、高位止盈(规则P1)前--暴雷比技术
 
 import logging
 from datetime import date
-from typing import Optional
+from typing import Optional, Tuple
+
+from src.data.models import SignalFinding
 
 logger = logging.getLogger(__name__)
 
@@ -26,33 +28,59 @@ _CACHE: dict[tuple[str, str, str], Optional[str]] = {}
 
 
 def check_fundamental_alert(code: str, *, entry_date: Optional[str] = None) -> Optional[str]:
-    """建仓后基本面恶化硬退出（ISS-053）。硬规则非AI，自然日缓存。
+    """建仓后基本面恶化判定（ISS-053）——v0.8.29 拆分权限（ISS-117 S0）。
 
-    Args:
-        code: 股票代码（6 位）
-        entry_date: 建仓日期 YYYY-MM-DD。业绩预告只认建仓后发布的新预告
-            （建仓前发布的已定价，触发是假退出）；为 None 时跳过预告检查
-            （无法过滤建仓前后，避假退出），仅 ST 仍查（当前状态无需 entry_date）
+    兼容入口：返回 hard 部分（仅 ST）的触发描述或 None。预告类别已按 ISS-117 A12
+    降级为 research（ SignalFinding），走 check_fundamental_findings。
+    """
+    hard, _ = check_fundamental_findings(code, entry_date=entry_date)
+    return hard
+
+
+def check_fundamental_findings(code: str, *, entry_date: Optional[str] = None) -> Tuple[Optional[str], list]:
+    """基本面恶化判定，按权限拆分（ISS-117 S0，架构师裁决）。
 
     Returns:
-        触发描述（如 "基本面恶化:被ST(ST星源)"）或 None。ST 优先于预告（更致命）。
+        (hard, findings)：
+        - hard: ST 触发描述或 None——当前状态排除政策，保持强制退出资格
+        - findings: 预告类别等 research 发现（A12 降级：预亏/预减类别本身不等于暴雷，
+          不单独构成清仓依据；时序不明/日期资格不足时如实标注）
     """
     today = date.today().strftime("%Y-%m-%d")
     cache_key = (code, today, entry_date or "")
     if cache_key in _CACHE:
         return _CACHE[cache_key]
 
-    result = _check_fundamental_alert_uncached(code, entry_date=entry_date)
-    _CACHE[cache_key] = result
-    return result
+    hard, findings = _check_fundamental_findings_uncached(code, entry_date=entry_date)
+    _CACHE[cache_key] = (hard, findings)
+    return hard, findings
 
 
-def _check_fundamental_alert_uncached(code: str, *, entry_date: Optional[str] = None) -> Optional[str]:
-    """实际判定（无缓存）。ST 优先于业绩预告（更致命）。"""
+def _check_fundamental_findings_uncached(code: str, *, entry_date: Optional[str] = None):
+    """实际判定（无缓存）。ST 保持 hard；预告类别降级 research。"""
     st = _check_st(code)
     if st:
-        return st
-    return _check_loss_forecast(code, entry_date=entry_date)
+        return st, []
+    fc = _check_loss_forecast(code, entry_date=entry_date)
+    if not fc:
+        return None, []
+    ftype = fc.get("type")
+    if ftype not in LOSS_FORECAST_TYPES:
+        return None, []
+    abstract = (fc.get("abstract") or "")[:30]
+    ambiguous = bool(fc.get("_pub_order_ambiguous"))
+    finding = SignalFinding(
+        signal_id="research.fundamental.loss_forecast",
+        source="baostock 业绩预告（profitForcastType，pub_date 已过资格门）",
+        securities=[code],
+        as_of=fc.get("pub_date"), data_quality="UNKNOWN" if ambiguous else "OK",
+        action_scope="research", verified=False,
+        strategy_binding="iss117-s0/ruling-2026-10-09",
+        detail=f"基本面研究提醒:业绩预告{ftype}({abstract})",
+        reason=("预告类别本身不等于暴雷（ISS-117 A12：预减≠亏损，无幅度/原因/预期偏差），"
+                "降级为研究提醒不强制清仓"
+                + ("；公告日与建仓同日，时序不明（日精度无法证明晚于建仓）" if ambiguous else "")))
+    return None, [finding]
 
 
 def _check_st(code: str) -> Optional[str]:
@@ -67,10 +95,12 @@ def _check_st(code: str) -> Optional[str]:
     return None
 
 
-def _check_loss_forecast(code: str, *, entry_date: Optional[str] = None) -> Optional[str]:
-    """业绩预告预亏/预减判定：profitForcastType in 利空集 且 pub_date >= entry_date。
+def _check_loss_forecast(code: str, *, entry_date: Optional[str] = None) -> Optional[dict]:
+    """取最新合格利空预告 dict（供 findings 构造，ISS-117 A12 降级后不再拼字符串）。
 
+    日期资格门（缺失/非法/未来/建仓前）在 get_latest_forecast 内完成；
     entry_date 为 None 时跳过（无法区分建仓前后，避假退出）。
+    非利空类别（略增/续盈/扭亏等）返回 None。
     """
     if entry_date is None:
         return None
@@ -79,10 +109,9 @@ def _check_loss_forecast(code: str, *, entry_date: Optional[str] = None) -> Opti
         fc = AKShareClient.get_latest_forecast(code, since_date=entry_date)
         if not fc:
             return None
-        ftype = fc.get("type")
-        if ftype in LOSS_FORECAST_TYPES:
-            abstract = (fc.get("abstract") or "")[:30]
-            return f"基本面恶化:业绩预告{ftype}({abstract})"
+        if fc.get("type") in LOSS_FORECAST_TYPES:
+            return fc
+        return None
     except Exception as e:
         logger.warning(f"[FundamentalAlert] 业绩预告检查异常 {code}: {e}")
     return None

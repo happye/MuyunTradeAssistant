@@ -678,6 +678,7 @@ class YAMLBasedSkill(Skill):
 
         conditions_met = 0
         total_conditions = 0
+        unknown_conditions = []
 
         for cond_name, cond_value in condition.items():
             # 跳过非条件字段（condition块内的元数据字段）
@@ -705,9 +706,10 @@ class YAMLBasedSkill(Skill):
             evaluator = self.CONDITION_REGISTRY.get(cond_name)
             if evaluator is None:
                 # v0.8.7.6 审计修复 B02：未知条件升为 warning（原 debug 静默）。
-                # 注意 continue 在 total_conditions += 1 之前——未知条件不计入分母，
-                # 若不修复会让 majority 规则"降档触发"（3选2变1即过）
-                logger.warning(f"未知条件: {cond_name}，跳过（该条件不计入 majority 分母，规则可能降档触发；请检查技能 YAML 拼写或注册表）")
+                # ISS-117 D4/A04（S0）：未知条件令规则 fail-closed——此前 continue 使
+                # 未知条件消失于分母，require=all 的规则会带着缺口照常触发
+                logger.warning(f"未知条件: {cond_name}，规则 fail-closed（不触发；请检查技能 YAML 拼写或注册表）")
+                unknown_conditions.append(cond_name)
                 continue
 
             total_conditions += 1
@@ -730,6 +732,7 @@ class YAMLBasedSkill(Skill):
             except Exception as e:
                 logger.debug(f"条件 {cond_name} 评估异常: {e}")
 
+        # ISS-117 D4/A04：未知条件 → 规则整体不可执行（fail-closed），不缩分母照常投票
         # 信号和权重
         result["signal"] = condition.get("signal", "HOLD")
         result["weight"] = condition.get("weight", 1.0)
@@ -745,5 +748,12 @@ class YAMLBasedSkill(Skill):
             # 原 //2 使 2 条件规则满足1条即触发、3 条件规则也只需1条（等同 any），
             # 全库 100+ 条 majority 规则的"多条件确认"形同虚设
             result["met"] = total_conditions > 0 and conditions_met >= total_conditions // 2 + 1
+
+        # ISS-117 D4/A04（S0）：未知条件 → 规则整体不可执行（fail-closed）。
+        # 覆盖必须发生在 met 计算之后——否则被 require 分支重新覆盖回 True。
+        if unknown_conditions:
+            result["unknown_conditions"] = unknown_conditions
+            result["met"] = False
+            result["reasons"] = []
 
         return result

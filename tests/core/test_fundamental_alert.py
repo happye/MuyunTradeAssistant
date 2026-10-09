@@ -22,7 +22,7 @@ from unittest.mock import patch
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from src.core.exit_signals.fundamental import (
-    check_fundamental_alert, clear_cache, LOSS_FORECAST_TYPES,
+    check_fundamental_alert, check_fundamental_findings, clear_cache, LOSS_FORECAST_TYPES,
 )
 from src.data import akshare_client
 from src.data.akshare_client import AKShareClient
@@ -105,9 +105,11 @@ def test_loss_forecast_post_entry_triggers():
          patch.object(AKShareClient, "get_latest_forecast",
                       return_value={"type": "预亏", "abstract": "预计亏损1亿元",
                                     "pub_date": "2025-01-21", "stat_date": "2024-12-31"}):
-        r = check_fundamental_alert("300001", entry_date="2024-06-01")
-    assert r and "预亏" in r, f"建仓后预亏应触发, 实际 {r}"
-    print(f"✓ 预亏+pub_date>=entry -> 触发: {r}")
+        hard, findings = check_fundamental_findings("300001", entry_date="2024-06-01")
+    # ISS-117 A12：预告类别降级 research（不进硬退出），仍产生研究发现
+    assert not hard, "预告类别不得再进硬退出通道"
+    assert findings and "预亏" in findings[0].detail and findings[0].action_scope == "research"
+    print(f"✓ 预亏+pub_date>=entry -> research 发现: {findings[0].detail}")
 
 
 def test_loss_forecast_pre_entry_no_trigger():
@@ -140,9 +142,9 @@ def test_first_loss_triggers():
          patch.object(AKShareClient, "get_latest_forecast",
                       return_value={"type": "首亏", "abstract": "首次亏损预告",
                                     "pub_date": "2025-04-01", "stat_date": "2025-03-31"}):
-        r = check_fundamental_alert("300004", entry_date="2025-01-01")
-    assert r and "首亏" in r, f"首亏应触发, 实际 {r}"
-    print(f"✓ 首亏 -> 触发: {r}")
+        hard, findings = check_fundamental_findings("300004", entry_date="2025-01-01")
+    assert not hard and findings and "首亏" in findings[0].detail
+    print(f"✓ 首亏 -> research 发现: {findings[0].detail}")
 
 
 def test_st_priority_over_forecast():

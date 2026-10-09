@@ -374,20 +374,20 @@ class AIModifier:
             adjusted = True
 
         # Layer 2: 仓位调节
-        # high risk → 仓位上限打折
+        # ISS-117 D1（S0）：AI 自报风险标签无硬权限——限仓幅度按自报置信度有界缩放
+        # （confidence=0 → 不限制；confidence=1 → 全额折扣），不再无条件打折
         if result.risk_level == "high":
-            result.position_cap = self.risk_position_cap
+            result.position_cap = 1.0 - (1.0 - self.risk_position_cap) * min(result.confidence, 1.0)
             adjusted = True
         elif result.risk_level == "medium":
-            result.position_cap = 1.0 - (1.0 - self.risk_position_cap) * 0.5  # 中间值
+            result.position_cap = 1.0 - (1.0 - self.risk_position_cap) * 0.5 * min(result.confidence, 1.0)
             adjusted = True
 
         # Layer 3: 状态干预
-        # black_swan → 强制PANIC
+        # ISS-117 D1（S0）：AI black_swan 标签不再 force PANIC（未核实标签只有研究提醒
+        # 资格）——压分幅度按自报置信度有界缩放，confidence=0 时无任何调节
         if result.event_type == "black_swan":
-            result.force_state = MarketState.PANIC.value
-            result.position_cap = 0.3  # 极端情况：仓位上限30%
-            result.score_adjustment = -0.5  # 强力压制买入
+            result.score_adjustment = -0.5 * min(result.confidence, 1.0)
             adjusted = True
 
         # 叙事转变 → 加强调节力度
@@ -457,7 +457,10 @@ class AIModifier:
                 sentiment=sentiment,
                 confidence=confidence,
                 risk_level=risk_level,
-                narrative_shift=bool(data.get("narrative_shift", False)),
+                # ISS-117 D1（S0）：叙事布尔量严格解析——bool("false") 曾被当 True
+            narrative_shift=(data.get("narrative_shift", False) is True
+                             or (isinstance(data.get("narrative_shift"), str)
+                                 and data.get("narrative_shift").lower() == "true")),
                 event_type=event_type,
                 summary=str(data.get("summary", "")),
                 key_events=data.get("key_events", []),

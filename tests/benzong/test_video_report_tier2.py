@@ -41,7 +41,7 @@ def test_penetration_30_plus_no_longer_force_exit():
     """
     from src.core.exit_signals.sector import penetration_research_reminder
     p = _mk_plan(penetration_stage="30+")
-    assert check_sector_top_signal(trade_plan=p) is None, "30+ 已降级，不得再触发强制清仓"
+    assert check_sector_top_signal(trade_plan=p) == [], "30+ 已降级，不得再触发强制清仓"
     reminder = penetration_research_reminder(p)
     assert reminder is not None and "缺少可核实依据" in reminder
     print("✓ 渗透率30+已降级为研究提醒（不再强制清仓）")
@@ -51,13 +51,13 @@ def test_penetration_below_30_no_trigger():
     """2.1 渗透率<30%不触发"""
     for stage in ("0-1", "1-10", "10-30", None):
         p = _mk_plan(penetration_stage=stage)
-        assert check_sector_top_signal(trade_plan=p) is None, f"{stage} 不应触发"
+        assert check_sector_top_signal(trade_plan=p) == [], f"{stage} 不应触发"
     print("✓ 渗透率0-1/1-10/10-30/None 不触发")
 
 
 def test_no_trade_plan_skip():
     """2.1 无 trade_plan 板块层跳过"""
-    assert check_sector_top_signal(trade_plan=None) is None
+    assert check_sector_top_signal(trade_plan=None) == []
     print("✓ 无 plan 板块层跳过")
 
 
@@ -71,7 +71,8 @@ def test_flagbearer_lag_triggers(monkeypatch_fetch=None):
     sec._fetch_20d_change_pct = lambda c: 5.0
     try:
         sig = _check_flagbearer_lag("600519", sd, "x")
-        assert sig is not None and "旗手" in sig, f"应触发滞涨，got {sig}"
+        # v0.8.29：返回 research SignalFinding（A12 降级——不再强制清仓）
+        assert sig is not None and sig.signal_id == "research.sector.flagbearer_lag"             and sig.action_scope == "research" and "旗手" in sig.detail, f"应触发滞涨，got {sig}"
     finally:
         sec._fetch_20d_change_pct = orig
     print("✓ 旗手滞涨触发（旗手5% vs 标的50%）")
@@ -102,7 +103,8 @@ def test_triple_up_triggers():
     """2.2 三倍定律触发（4倍+破MA5）"""
     sd = _mk_sd(price=40, ma5=42, low_60d=10)  # 4倍 + price<MA5
     assert _check_triple_up_rule(sd) is not None
-    assert "三倍定律" in _check_triple_up_rule(sd)
+    f = _check_triple_up_rule(sd)
+    assert f is not None and "三倍定律" in f.detail
     print("✓ 三倍定律触发（4倍涨+破5日线）")
 
 
@@ -132,16 +134,17 @@ def test_top_signals_integration_sector(monkeypatch):
     p = _mk_plan(penetration_stage="30+")
     sd = _mk_sd(price=10)
     sig = check_top_signals(sd, "x", trade_plan=p, live=True)
-    assert sig is None, "30+ 标签不得再单独触发强制清仓信号"
+    assert sig == [], "30+ 标签不得再单独触发强制清仓信号"
     print("✓ check_top_signals 集成：渗透率30+不再触发（降级为研究提醒）")
 
 
 def test_top_signals_integration_triple():
     """2.3 集成：无 plan 时个股三倍定律触发"""
     sd = _mk_sd(price=40, ma5=42, low_60d=10)
-    sig = check_top_signals(sd, "x", trade_plan=None)
-    assert sig is not None and "三倍定律" in sig
-    print("✓ check_top_signals 无 plan 时个股三倍定律触发")
+    fs = check_top_signals(sd, "x", trade_plan=None)
+    # v0.8.29：list[SignalFinding] 契约——三倍定律是唯一保持 exit 资格的个股信号
+    assert fs and fs[0].signal_id == "exit.stock.triple_up" and fs[0].action_scope == "exit"
+    print("✓ check_top_signals 无 plan 时个股三倍定律触发（exit 资格）")
 
 
 def main():

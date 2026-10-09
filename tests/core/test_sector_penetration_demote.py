@@ -44,7 +44,7 @@ def _mk_sd(**kw):
 def test_penetration_30_plus_no_longer_force_exit():
     """裁决核心：新旧计划的 30+ 标签均不能单独触发清仓信号。"""
     p = _mk_plan(penetration_stage="30+", flagbearer_code=None)
-    assert check_sector_top_signal(trade_plan=p, stock_data=None, code="000001") is None, \
+    assert check_sector_top_signal(trade_plan=p, stock_data=None, code="000001") == [], \
         "30+ 已降级为研究提醒，不得再作为强制清仓信号返回"
 
 
@@ -64,15 +64,15 @@ def test_flagbearer_lag_still_triggers(monkeypatch):
     p = _mk_plan(penetration_stage="30+", flagbearer_code="600170")
     sd = _mk_sd(change_20d=20.0)   # 标的 20 日涨 20%（>10% 门槛）
     monkeypatch.setattr(sector, "_fetch_20d_change_pct", lambda code: 2.0)  # 旗手仅涨 2%
-    sig = check_sector_top_signal(trade_plan=p, stock_data=sd, code="000498")
-    assert sig is not None and "旗手" in sig and "600170" in sig
+    fs = check_sector_top_signal(trade_plan=p, stock_data=sd, code="000498")
+    assert fs and fs[0].signal_id == "research.sector.flagbearer_lag"         and fs[0].action_scope == "research" and "600170" in fs[0].detail
 
 
 def test_below_30_still_no_trigger():
     """其余档位行为不变。"""
     for stage in ("0-1", "1-10", "10-30", None):
         p = _mk_plan(penetration_stage=stage, flagbearer_code=None)
-        assert check_sector_top_signal(trade_plan=p, stock_data=None, code="x") is None
+        assert check_sector_top_signal(trade_plan=p, stock_data=None, code="x") == []
 
 
 # ── 标注层：prompt 提供「不适用/证据不足」出口 ─────────────

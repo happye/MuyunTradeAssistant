@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # v0.8.8.7：ISS-083 景气度接线——industry_prosperity SYSTEM_PROMPT 增客观证据
 #           优先规则 + user_prompt 注入【客观行业数据】块 + 兜底变严（三源全空
 #           才 50），旧景气度缓存全部失效重算
-CACHE_VERSION = "v0.8.8.7"
+CACHE_VERSION = "v0.8.29"  # ISS-117：risk_deduction invalidate 语义变更 + baostock 备用源 qfq 口径（评分输入变化，旧缓存作废）
 
 
 # 缓存根目录（用户级，跨项目共享）

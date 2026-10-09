@@ -2,7 +2,7 @@
 
 深度审查发现：fundamental_alert forecast 路径用当前 baostock 数据 + 无上界过滤，
 回测里未来预亏预告会在第一根持仓 bar 即触发退出（前瞻偏差）。修法：回测整体禁用
-fundamental_alert（is_backtest=True 守卫），live 不变。本测直接验 Orchestrator._compute_fundamental_alert。
+fundamental_alert（is_backtest=True 守卫），live 不变。本测直接验 Orchestrator._compute_fundamental_findings。
 
 跑法: PYTHONUTF8=1 PYTHONPATH=. uv run python tests/test_fundamental_alert_backtest_guard.py
 """
@@ -32,40 +32,40 @@ def _plan():
 
 def test_backtest_skips_fundamental_alert():
     """is_backtest=True + 持仓 -> 不调 check_fundamental_alert，返回 None（回测不前瞻）。"""
-    with patch("src.core.exit_signals.fundamental.check_fundamental_alert") as m:
-        m.return_value = "基本面恶化:被ST(ST星源)"
-        r = Orchestrator._compute_fundamental_alert(_sd(), True, True, _plan())
-    assert r is None, "回测应跳过 fundamental_alert"
-    assert not m.called, "回测不应调 check_fundamental_alert"
+    with patch("src.core.exit_signals.fundamental.check_fundamental_findings") as m:
+        m.return_value = ("基本面恶化:被ST(ST星源)", [])
+        r = Orchestrator._compute_fundamental_findings(_sd(), True, True, _plan())
+    assert r == (None, []), "回测应跳过 fundamental_alert"
+    assert not m.called, "回测不应调 check_fundamental_findings"
     print("✓ is_backtest=True 跳过 fundamental_alert（不调 check，回测不前瞻）")
 
 
 def test_live_runs_fundamental_alert():
     """is_backtest=False + 持仓 -> 调 check_fundamental_alert，返回其结果（live 仍生效）。"""
-    with patch("src.core.exit_signals.fundamental.check_fundamental_alert") as m:
-        m.return_value = "基本面恶化:被ST(ST星源)"
-        r = Orchestrator._compute_fundamental_alert(_sd(), True, False, _plan())
-    assert r == "基本面恶化:被ST(ST星源)"
-    assert m.called, "live 应调 check_fundamental_alert"
+    with patch("src.core.exit_signals.fundamental.check_fundamental_findings") as m:
+        m.return_value = ("基本面恶化:被ST(ST星源)", [])
+        r = Orchestrator._compute_fundamental_findings(_sd(), True, False, _plan())
+    assert r == ("基本面恶化:被ST(ST星源)", [])
+    assert m.called, "live 应调 check_fundamental_findings"
     print("✓ is_backtest=False 启用 fundamental_alert（live 不变）")
 
 
 def test_no_position_skips():
     """has_position=False -> None（无论 is_backtest）。"""
     with patch("src.core.exit_signals.fundamental.check_fundamental_alert") as m:
-        r1 = Orchestrator._compute_fundamental_alert(_sd(), False, False, _plan())
-        r2 = Orchestrator._compute_fundamental_alert(_sd(), False, True, _plan())
-    assert r1 is None and r2 is None
+        r1 = Orchestrator._compute_fundamental_findings(_sd(), False, False, _plan())
+        r2 = Orchestrator._compute_fundamental_findings(_sd(), False, True, _plan())
+    assert r1 == (None, []) and r2 == (None, [])
     assert not m.called, "无持仓不应调 check"
     print("✓ has_position=False 跳过")
 
 
 def test_exception_fail_open():
     """check_fundamental_alert 抛异常 -> 返回 None（fail-open，不假退出/不崩）。"""
-    with patch("src.core.exit_signals.fundamental.check_fundamental_alert",
+    with patch("src.core.exit_signals.fundamental.check_fundamental_findings",
                side_effect=RuntimeError("net down")):
-        r = Orchestrator._compute_fundamental_alert(_sd(), True, False, _plan())
-    assert r is None
+        r = Orchestrator._compute_fundamental_findings(_sd(), True, False, _plan())
+    assert r == (None, [])
     print("✓ 异常 fail-open 返回 None")
 
 

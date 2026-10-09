@@ -33,18 +33,21 @@ def _sd(volume_series=None):
 
 
 def test_no_series_falls_back_legacy():
-    """回测路径（无volume_series）：单日缩量+大涨照常触发"""
+    """E3（ISS-117 S1）：无 volume_series → 不再放宽为单日触发；
+    如实标 UNKNOWN 研究线索（旧"legacy 单日判定保留"即缺数据降门缺陷，已按裁决移除）"""
     r = _check_shrink_acceleration(_sd(None))
-    assert r and "缩量加速" in r, f"legacy 兜底应触发, got {r}"
-    print("✓ 无序列(回测路径) legacy 单日判定保留")
+    assert r is not None and r.data_quality == "UNKNOWN" and r.action_scope == "research"
+    assert "连续性证据缺失" in r.detail
+    print("✓ 无序列 → UNKNOWN 研究线索（不再放宽为单日触发）")
 
 
 def test_two_day_shrink_triggers():
     """连续两日缩量：今日0.625、昨日也<0.7 -> 触发"""
     # vs=[d-4,d-3,d-2,d-1,d0]；昨日 d-1=400k，其前3日均量=(900k+850k+800k)/3=850k -> 0.47<0.7
     r = _check_shrink_acceleration(_sd([900_000, 850_000, 800_000, 400_000, 500_000]))
-    assert r and "缩量加速" in r, f"连续缩量应触发, got {r}"
-    print("✓ 连续两日缩量触发")
+    # ISS-117 A12：缩量加速整体降级 research（不再 CLOSE_ALL）
+    assert r is not None and r.action_scope == "research" and "连续2日缩量" in r.detail
+    print("✓ 连续两日缩量 → research 发现")
 
 
 def test_prev_day_not_shrunk_blocks():
@@ -56,9 +59,9 @@ def test_prev_day_not_shrunk_blocks():
 
 
 def test_short_series_falls_back():
-    """序列长度不足5：跳过确认走 legacy"""
+    """E3：序列长度不足5 → UNKNOWN 研究线索（不放宽为单日触发）"""
     r = _check_shrink_acceleration(_sd([500_000, 500_000, 500_000]))
-    assert r and "缩量加速" in r, f"短序列应走legacy触发, got {r}"
+    assert r is not None and r.data_quality == "UNKNOWN" and "连续性证据缺失" in r.detail, f"短序列应为 UNKNOWN 研究线索, got {r}"
     print("✓ 短序列 legacy 兜底")
 
 

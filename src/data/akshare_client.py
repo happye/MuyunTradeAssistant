@@ -857,7 +857,7 @@ class AKShareClient:
         # 转换日期格式：AKShare用YYYYMMDD，Baostock用YYYY-MM-DD
         bs_start = cls._format_date_for_baostock(start_date)
         bs_end = cls._format_date_for_baostock(end_date)
-        df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end)
+        df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end, adjust=adjust)
 
         if df is not None and not df.empty:
             logger.info(f"Baostock历史K线成功 {stock_code}，获取 {len(df)} 行")
@@ -916,7 +916,7 @@ class AKShareClient:
             # 转换日期格式：AKShare用YYYYMMDD，Baostock用YYYY-MM-DD
             bs_start = cls._format_date_for_baostock(start_date)
             bs_end = cls._format_date_for_baostock(end_date)
-            df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end)
+            df = cls._fetch_baostock_kline(stock_code, period, bs_start, bs_end, adjust=adjust)
 
         return df
 
@@ -999,13 +999,27 @@ class AKShareClient:
                 return None
             if not parsed:
                 return None
-            # 按 pub_date 倒序取最新；since_date 给定时跳过建仓前发布（已定价，避假退出）
+            # 按 pub_date 倒序取最新；since_date 给定时跳过建仓前发布（已定价，避假退出）。
+            # ISS-117 A05（S1）：公开日期缺失/非法/未来的预告不具备「建仓后新增利空」
+            # 资格——一律跳过，不再因 pub='' 绕过建仓前后过滤；同日公开与建仓时序不明
+            # 由消费方标注（日精度无法证明晚于建仓）。
+            today_str = datetime.now().strftime("%Y-%m-%d")
             for fc in sorted(parsed, key=lambda d: d.get("pub_date") or "", reverse=True):
-                pub = fc.get("pub_date")
-                if since_date and pub and pub < since_date:
-                    continue
+                pub = str(fc.get("pub_date") or "")
+                if len(pub) < 10:
+                    continue  # 缺失/非法格式 → 无资格
+                try:
+                    datetime.strptime(pub[:10], "%Y-%m-%d")
+                except ValueError:
+                    continue  # 非法日期 → 无资格
+                if pub[:10] > today_str:
+                    continue  # 未来日期 → 无资格（数据异常）
+                if since_date and pub[:10] < since_date:
+                    continue  # 建仓前发布（已定价）
+                if since_date and pub[:10] == since_date:
+                    fc["_pub_order_ambiguous"] = True  # 同日：时序不明，消费方降资格
                 return fc
-            return None  # 全部预告在建仓前发布
+            return None  # 全部预告无资格或在建仓前发布
         except Exception as e:
             logger.warning(f"get_latest_forecast 异常 {code}: {e}")
             if 'socket' in str(e).lower() or '10038' in str(e):
@@ -1115,13 +1129,18 @@ class AKShareClient:
             quote["effective_at"] = effective_at
         return quote
 
+    # ISS-117 A03/E4（S1）：baostock adjustflag 映射——备用源此前恒为不复权，
+    # 与主源 qfq 口径不一致（除权跳空被误读为价格行为）
+    _BAOSTOCK_ADJUST_FLAG = {"qfq": "2", "hfq": "1"}
+
     @classmethod
     def _fetch_baostock_kline(
         cls,
         stock_code: str,
         period: str = "daily",
         start_date: Optional[str] = None,
-        end_date: Optional[str] = None
+        end_date: Optional[str] = None,
+        adjust: Optional[str] = None
     ) -> Optional[pd.DataFrame]:
         """使用Baostock获取历史K线（备用数据源）
 
@@ -1130,6 +1149,8 @@ class AKShareClient:
             period: K线周期
             start_date: 开始日期
             end_date: 结束日期
+            adjust: 复权口径 qfq/hfq/None（None=不复权）。ISS-117 A03 起透传，
+                修复备用源丢失 adjust 与主源口径不一致的问题
 
         Returns:
             DataFrame: 标准化格式的K线数据
@@ -1159,7 +1180,8 @@ class AKShareClient:
                 fields,
                 start_date=start_date,
                 end_date=end_date,
-                frequency=freq
+                frequency=freq,
+                adjustflag=cls._BAOSTOCK_ADJUST_FLAG.get(adjust, "3")
             )
 
             if rs.error_code != '0':

@@ -23,24 +23,25 @@ __all__ = [
 
 
 def check_top_signals(stock_data, code, *, announcements=None,
-                      market_turnover_trillion=None, trade_plan=None, live: bool = False):
-    """汇总宏观+板块+个股高位止盈信号，返回首个触发的信号描述（无则 None）。
+                      market_turnover_trillion=None, trade_plan=None, live: bool = False) -> list:
+    """汇总宏观+板块+个股高位止盈发现，返回 list[SignalFinding]（ISS-117 S0 权限收口）。
 
-    检查顺序：宏观(全市场) -> 板块(赛道) -> 个股(操作层)。笨总原话各层内部"或"关系。
+    检查顺序：宏观(全市场) -> 板块(赛道) -> 个股(操作层)。消费方按 action_scope 分流：
+    exit=强制退出（仅三倍定律等既有纪律）；research=研究提醒（进 warnings，不清仓）。
 
     Args:
         stock_data: StockData（个股缩量加速/近20日涨幅判定用）
         code: 股票代码
-        announcements: 近期公告列表 [{title,...}]，live 路径可传；回测历史公告获取受限，传 None 跳过
+        announcements: 近期公告/新闻列表 [{title,...}]，live 路径可传；回测传 None 跳过
         market_turnover_trillion: 全市场成交额(万亿)，live 传 None 时 macro 层自行拉取；
                     回测(live=False)传 None 则跳过宏观层（不实时拉取，防未来信息+网络拖慢）
-        trade_plan: TradePlan（板块层取 flagbearer_code / penetration_stage，报告2.1）；
-                    None 时板块层跳过（向后兼容）
+        trade_plan: TradePlan（板块层取 flagbearer_code / penetration_stage）；None 时板块层跳过
         live: True 时启用股东户数/融资余额信号（akshare 网络+日缓存）。回测传 False。
 
     Returns:
-        Optional[str]: 触发的信号描述，如 "个股:缩量加速(量比0.65,涨16.2%)"；无触发返回 None
+        list[SignalFinding]（可能为空；同层多条也可并存，不再首个非空短路）
     """
+    findings = []
     macro = None
     # 宏观层门控（与个股层 live 门控同款纪律）：live=False（回测）且未显式传入成交额时
     # 跳过，绝不在回测里实时拉取全市场成交额——拉取失败会拖垮回测速度，
@@ -48,17 +49,17 @@ def check_top_signals(stock_data, code, *, announcements=None,
     if live or market_turnover_trillion is not None:
         macro = check_macro_top_signal(market_turnover_trillion=market_turnover_trillion)
     if macro:
-        return macro
+        findings.append(macro)
 
     # v0.8.7.6 审计修复 B06：板块层补 live 门控——三层唯独这里漏了，sector.py 内部
     # 用 datetime.now() 拉 baostock 旗手K线（回测=未来信息+网络）。回测下 TradePlan
     # 的 flagbearer_code 本就无 point-in-time 数据源，直接跳过。
     if live:
-        sector = check_sector_top_signal(trade_plan=trade_plan, stock_data=stock_data, code=code)
-        if sector:
-            return sector
+        findings.extend(check_sector_top_signal(
+            trade_plan=trade_plan, stock_data=stock_data, code=code))
 
-    return check_stock_top_signal(
+    findings.extend(check_stock_top_signal(
         stock_data, code, announcements=announcements,
         live=live, mode=trade_plan.mode if trade_plan else None
-    )
+    ))
+    return findings

@@ -9,7 +9,10 @@ v0.8.6.8（笨总视频理念优化报告 1.1）：新增 assess_liquidity_state
 """
 
 import logging
+from datetime import datetime
 from typing import Optional
+
+from src.data.models import SignalFinding
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +28,7 @@ LIQUIDITY_TIGHT = 1.3
 LIQUIDITY_ABUNDANT = 1.5
 
 
-def check_macro_top_signal(market_turnover_trillion: Optional[float] = None) -> Optional[str]:
+def check_macro_top_signal(market_turnover_trillion: Optional[float] = None) -> Optional[SignalFinding]:
     """检查宏观层大顶信号。
 
     Args:
@@ -33,7 +36,8 @@ def check_macro_top_signal(market_turnover_trillion: Optional[float] = None) -> 
             （live 路径可用；回测无历史全市场成交额，应由调用方传 None 并接受跳过）
 
     Returns:
-        Optional[str]: 触发信号描述，无则 None
+        Optional[SignalFinding]：research 资格的系统性风险提醒（v0.8.29 降级后
+        宏观层不再存在 force-exit 路径）；无触发返回 None
 
     数据源现状（诚实声明）：
     - 成交额：data_provider.get_market_turnover()（新浪全市场快照），可用
@@ -50,7 +54,17 @@ def check_macro_top_signal(market_turnover_trillion: Optional[float] = None) -> 
             return None
 
     if turnover is not None and turnover > MARKET_TURNOVER_TOP_TRILLION:  # 严格大于，"破10万亿"语义是超过非等于
-        return f"宏观:成交额破10万亿({turnover:.1f}万亿)"
+        # ISS-117 A12（S0 降级）：单一绝对阈值未经市场规模归一化/策略实证，只作
+        # 系统性风险研究提醒，不对全部持仓强制清仓
+        return SignalFinding(
+            signal_id="research.macro.turnover_10t",
+            source="data_provider.get_market_turnover()",
+            securities=[], as_of=datetime.now().strftime("%Y-%m-%d"),
+            data_quality="UNKNOWN", action_scope="research", verified=False,
+            strategy_binding="iss117-s0/ruling-2026-10-09",
+            detail=f"宏观:成交额破10万亿({turnover:.1f}万亿)",
+            reason="单一绝对阈值（ISS-117 A12）：未经市场规模归一化与策略实证，"
+                   "降级为系统性风险研究提醒，不自动获得全持仓清仓权限")
 
     # TODO 储蓄搬家>30%：无数据源
     # TODO 官方发金牌：无数据源
@@ -66,6 +80,7 @@ def assess_liquidity_state(market_turnover_trillion: Optional[float] = None) -> 
 
     advisory 展示用，**不触发强制清仓**（force-exit 仍只归 check_macro_top_signal 的 10万亿极端顶）。
     笨总：流动性枯竭=选股难度激增/普跌概率大（防守）；充沛=可格局（进攻）。
+    （v0.8.28.1 注：10万亿极端顶也已降级 research——宏观层现无 force-exit 路径。）
 
     Args:
         market_turnover_trillion: 全市场成交额(万亿)。None 时自动拉取（live 可用）

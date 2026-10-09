@@ -14,7 +14,12 @@ from unittest.mock import patch
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
+from src.data.models import SignalFinding
 from src.core.exit_signals import check_top_signals
+
+
+def _finding(signal_id, detail):
+    return SignalFinding(signal_id=signal_id, detail=detail, action_scope='research', source='test')
 from src.data.models import StockData
 
 
@@ -29,7 +34,7 @@ def test_backtest_skips_macro_fetch():
     with patch("src.core.exit_signals.check_macro_top_signal") as m:
         r = check_top_signals(_sd(), "600519", live=False)
         assert m.call_count == 0, f"回测不应调宏观拉取，实际调了 {m.call_count} 次"
-        assert r is None
+        assert r == []  # v0.8.29：list[SignalFinding] 契约
 
 
 def test_live_still_fetches(monkeypatch):
@@ -60,11 +65,11 @@ def test_explicit_value_bypasses_gate():
 
 
 def test_macro_trigger_still_wins():
-    """live=True 且宏观触发时返回宏观信号（优先级顺序不变）"""
+    """live=True 且宏观触发时宏观发现进入结果列表首位（优先级顺序不变；v0.8.29 起为 research 资格）"""
     with patch("src.core.exit_signals.check_macro_top_signal") as m:
-        m.return_value = "宏观:测试信号"
+        m.return_value = _finding("research.macro.turnover_10t", "宏观:测试信号")
         r = check_top_signals(_sd(), "600519", live=True)
-        assert r == "宏观:测试信号"
+        assert r and r[0].detail == "宏观:测试信号"
 
 
 def main():

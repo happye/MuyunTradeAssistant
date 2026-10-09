@@ -150,25 +150,28 @@ def test_stock_shrink_acceleration():
     """缩量(量比<0.7) + 加速(涨幅>15%) → 触发"""
     sd = _sd(volume=500, avg_volume_5=1000, change_pct=18.0)
     r = check_stock_top_signal(sd, "X")
-    assert r is not None and "缩量加速" in r
+    # ISS-117 S0：list[SignalFinding] 契约——缩量加速为 research 资格
+    assert r and any(f.signal_id == "research.stock.shrink_accel" and f.action_scope == "research" for f in r)
 
 
 def test_stock_holder_reduction():
     anns = [{"title": "某公司控股股东拟减持不超过2%股份"}]
     r = check_stock_top_signal(_sd(volume=1, avg_volume_5=1, change_pct=0.0), "X", announcements=anns)
-    assert r is not None and "实控人减持" in r
+    # ISS-117 E1：标题只是待核验线索（research），不再是"实控人减持"硬信号
+    assert r and any("减持线索" in f.detail and f.action_scope == "research" for f in r)
 
 
 def test_stock_no_signal():
     sd = _sd(volume=1000, avg_volume_5=1000, change_pct=1.0)
-    assert check_stock_top_signal(sd, "X") is None
+    assert check_stock_top_signal(sd, "X") == []
 
 
 def test_check_top_signals_macro_priority():
     """宏观信号优先于个股信号返回"""
     sd = _sd(volume=500, avg_volume_5=1000, change_pct=18.0)
     r = check_top_signals(sd, "X", market_turnover_trillion=11.0)
-    assert r is not None and "宏观" in r
+    # v0.8.29：宏观发现 research 资格（A12 降级），仍在列表首位
+    assert r and "宏观" in r[0].detail
 
 
 # ========== 阶段2.4 PlanGuard P1 top_signal 不可压 ==========

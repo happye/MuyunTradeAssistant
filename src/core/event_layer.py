@@ -489,8 +489,22 @@ class EventLayer:
         # （返回 neutral 空操作，仅靠 summary 标记提示用户核实）。
         # "信号路径一票否决 + 展示层保留提示"折中：AI 真实性是单条文本猜测、无法交叉验证，
         # 硬丢弃会误杀真事件；剥离信号影响已足够忠实笨总"假消息不该驱动行动"。
-        _fe = getattr(event, "four_elements", None) or {}
-        if isinstance(_fe, dict) and _fe.get("authenticity", 100) < 30:
+        # ISS-117 D2/D3（S0）：影响等级 ≠ 可信程度。四要素缺失/无真实性评分 = 事实
+        # 资格 UNKNOWN——confidence=0，不产生仓位上限/状态硬覆盖，仅作提示。
+        _fe = getattr(event, "four_elements", None)
+        _auth = _fe.get("authenticity") if isinstance(_fe, dict) else None
+        if not isinstance(_auth, (int, float)):
+            return AIModifierResult(
+                sentiment=event.sentiment,
+                confidence=0.0,
+                risk_level="high" if event.impact_level >= 4 else "medium" if event.impact_level >= 3 else "low",
+                event_type=event.event_type,
+                summary=f"[事件未核实-仅提示] {event.summary or event.source}",
+                adjusted=False,
+                score_adjustment=0.0,
+                position_cap=1.0,
+            )
+        if _auth < 30:
             return AIModifierResult(
                 sentiment="neutral",
                 confidence=0.0,
@@ -502,32 +516,33 @@ class EventLayer:
                 position_cap=1.0,        # 1.0=不限制（空操作，不驱动任何仓位变化）
             )
 
-        # 基础映射
+        # 基础映射（D2：confidence 来自真实性评分，不再用 impact 冒充）
         result = AIModifierResult(
             sentiment=event.sentiment,
-            confidence=min(event.impact_level / 5.0, 1.0),  # impact→confidence
+            confidence=min(_auth / 100.0, 1.0),
             risk_level="high" if event.impact_level >= 4 else "medium" if event.impact_level >= 3 else "low",
             event_type=event.event_type,
             summary=f"[事件] {event.summary}" if event.summary else f"[事件] {event.source}",
             adjusted=True,
         )
 
-        # 信号调节
+        # 信号调节（影响等级决定幅度；真实性资格已过 30 门槛）
         if event.sentiment == "bearish" and event.impact_level >= 3:
             result.score_adjustment = -(event.impact_level / 5.0) * 0.3  # 最多-0.3
         elif event.sentiment == "bullish" and event.impact_level >= 3:
             result.score_adjustment = (event.impact_level / 5.0) * 0.15  # 最多+0.15
 
-        # 仓位调节
-        if event.impact_level >= 5:
-            result.position_cap = 0.3  # 黑天鹅级别
-        elif event.impact_level >= 4:
-            result.position_cap = 0.5
-        elif event.impact_level >= 3:
-            result.position_cap = 0.75
+        # 仓位调节（D2：限仓是空头风险政策——严重利好不再限仓）
+        if event.sentiment == "bearish":
+            if event.impact_level >= 5:
+                result.position_cap = 0.3  # 黑天鹅级别
+            elif event.impact_level >= 4:
+                result.position_cap = 0.5
+            elif event.impact_level >= 3:
+                result.position_cap = 0.75
 
-        # 状态干预
-        if event.event_type == "black_swan" and event.impact_level >= 5:
+        # 状态干预（D2：仅已核实 + 空向黑天鹅；利向/方向不明不强制恐慌）
+        if event.event_type == "black_swan" and event.impact_level >= 5 and event.sentiment == "bearish":
             result.force_state = MarketState.PANIC.value
 
         return result

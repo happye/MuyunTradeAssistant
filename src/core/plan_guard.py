@@ -63,8 +63,11 @@ def _check_invalidation_triggered(plan: TradePlan, data: StockData) -> tuple[boo
 
     for cond in plan.when_sell_invalidate:
         # 跌破 MA60 类
+        # ISS-117 A11：价格资格门同款——price 坏数据不假触发失效条件（返回资格不符，
+        # 不抹掉其他独立退出）；price=None 曾直接 TypeError 炸穿 evaluate
         if "MA60" in cond and "跌破" in cond:
-            if data.ma60 is not None and data.price < data.ma60:
+            _pf = _qualified_price(data)
+            if _pf is not None and data.ma60 is not None and _pf < data.ma60:
                 return True, cond
         # MA20 死叉 MA60
         if "MA20" in cond and ("死叉" in cond or "下穿" in cond):
@@ -76,11 +79,33 @@ def _check_invalidation_triggered(plan: TradePlan, data: StockData) -> tuple[boo
     return False, None
 
 
+def _qualified_price(data: StockData) -> Optional[float]:
+    """ISS-117 A11（S0/S1）价格资格门：返回有限正值的 float 价格，资格不符返回 None。
+
+    坏数据（0/负/NaN/Inf/缺失）不参与任何价格硬比较——既不假触发，也不炸管线。
+    """
+    price = getattr(data, "price", None)
+    try:
+        pf = float(price) if price is not None else None
+    except (TypeError, ValueError):
+        return None
+    if pf is None or pf <= 0 or pf != pf or pf == float("inf") or pf == float("-inf"):
+        return None
+    return pf
+
+
 def _check_stop_breach(plan: TradePlan, data: StockData) -> bool:
-    """检查价格是否穿透 current_stop（致命止损）"""
+    """检查价格是否穿透 current_stop（致命止损）。
+
+    ISS-117 A11（S0/S1）：价格资格门——price 必须为有限正值才参与穿价比较；
+    坏数据（0/负/NaN/Inf/缺失）不构成穿止损（也不抹掉其他独立退出）。
+    """
     if plan.current_stop is None or plan.current_stop <= 0:
         return False
-    return data.price <= plan.current_stop
+    pf = _qualified_price(data)
+    if pf is None:
+        return False
+    return pf <= plan.current_stop
 
 
 def _check_max_hold_expired(plan: TradePlan, today: Optional[str] = None) -> bool:

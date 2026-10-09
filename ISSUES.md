@@ -2226,3 +2226,30 @@ P3（已取消）:
 - **描述**: 证据记录 warnings 截断窗口由 6 扩到 8（v0.8.28.1）后，旧记录（截断于 6 条）与新记录（8 条）做 `diff` 时，旧记录里第 7/8 位**本就存在**的警告会出现在 new_warnings，被报成「新增警告」——展示层误导，不涉数据。
 - **自愈性**: 两条新宽度记录积累后边界自然消失。
 - **建议**: 后续 diff 展示侧对旧记录 index≥6 的警告加「或为旧版截断所致」注记。
+
+### ISS-117: 弱证据/经验规则越权主导交易建议（2026-10-09专项；S0/S1 已修复 2026-10-10，S2/S3 未实施）
+
+- **状态**: 打开；Codex架构审查完成，Claude Code待实施，不能用本文代替修复。
+- **受审版本**: ac5aa8e / v0.8.28.1；对应 G2/G3/G6/G7、T03/T06，数据/执行子项涉及G1/G5/T07。
+- **证据**: [专项审查 A01–A13](plan/fusion/signal_authority_review/REVIEW.md)，30项隔离检查23红/7绿（包含重复场景和旧策略重裁，非23独立bug）；既有6文件48绿；7保护哈希/集合不变。
+- **主要代码**: `src/core/exit_signals/stock.py:171/226` 标题否定与最旧股东记录；`src/core/ai_modifier.py:387` 零置信度黑天鹅覆盖；`src/core/skill_engine.py:710` 未知条件缩分母；`src/core/plan_guard.py:265` 未求值当未失效；`src/core/shadow_diff.py:247` 路径名升格硬退出。完整坐标/性质/边界见主审。
+- **影响**: 不可靠输入可导致退出、PANIC、错误评级/模式，或压住减仓、伪称无法成交；已用合成案例验证否定标题到最终EXIT。未声称真实账户成交或损失。渗透率单点修复不关闭本项。
+- **处置**: [S0–S3任务卡](plan/fusion/signal_authority_review/IMPLEMENTATION_TASKS.md)。资格与行动权限分开、数据缺失不得升权、辅助风险不单独清仓、已接受硬纪律正例保护、终态/观察/证据同源。旧缓存/计划/待办不可恢复旧越权，历史记录不改写。
+- **关闭门**: 全组处置及正式回归、公开入口输出、隔离全量与Codex独立复验完成；K1/M2另行裁定，不凭本次文档放行。
+
+
+---
+
+### ISS-117 实施进度（v0.8.29，2026-10-10）
+
+**已落地（S0+S1，本 commit）**：
+- 权限合同：`models.SignalFinding`（signal_id/来源/适用证券/as_of/data_quality/action_scope/verified/strategy_binding/detail/reason；缺字段默认最严）
+- S0 弱证据降权（A01/A04/A06/A07/A12）：exit_signals 全子信号返回 SignalFinding（check_top_signals 改 list）；减持标题否定/澄清语义如实标注待核验（E1）；AI black_swan 不再 force PANIC（cap/压分按自报置信度缩放，conf=0 无调节）；事件四要素缺失=UNKNOWN 不硬覆盖、限仓仅空头方向（D2）、事件消费先按资格筛选（D3）；风险红线跨字段子串兜底删除（A07/D6）；skill_engine 未知条件 fail-closed（A04/D4）
+- S1 数据修正（A02/A03/A05/A11 价格资格）：股东户数按日期列倒序取最新+去重（E2 iloc[0] 缺陷）；缩量连续性缺失=UNKNOWN 不放宽单日（E3）；旗手取数 qfq 同口径+≥21 收盘观测（E4）；预告公开日期资格门（缺失/非法/未来跳过、同日时序不明标注 A05）；baostock 备用源 adjust 透传（qfq）；plan_guard 坏价格不判穿止损（A11）；exit_signal 缓存 v2（旧字符串缓存不复活）
+- 验收：authority_probes 反例落正式回归（tests/core/test_signal_authority_iss117.py 33 项 + 6 文件契约纠正）；全量离线 1587 passed / 0 failed
+- 实测：000001/000498 强制清仓信号消失（exit 资格=无），研究提醒按裁决输出
+
+**未实施（后续卡片）**：
+- S2：A08 投票公式重设计（卡片前置「先固定公式与低覆盖矩阵」需架构师输入）；A09 自主可控关键词→模式/期限（架构师重裁项 D7）；A10 plan_guard 失效条件三态；A11 执行层措辞（UNKNOWN/条件建议）
+- S3：A13 shadow 桥接资格；signal_id 全消费者贯穿（decision_contract/shadow_diff/待办）；摘要三类内容分层展示
+- 关闭门：A01–A13 全部处置 + Codex 独立变形测试。完成前本条保持打开。

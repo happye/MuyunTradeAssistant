@@ -33,43 +33,58 @@ def _ann(title):
 
 
 def test_holder_reduction_hit_controlling_shareholder():
-    """控股股东 + 拟减持 -> 命中。"""
-    assert _check_holder_reduction(_ann("控股股东拟减持公司股份")) is not None
+    """控股股东 + 拟减持 -> research 线索（ISS-117 S0：标题只是待核验线索，不清仓）。"""
+    fs = _check_holder_reduction(_ann("控股股东拟减持公司股份"), code="600519")
+    assert fs and fs[0].signal_id == "research.stock.reduction_title"
+    assert fs[0].action_scope == "research" and fs[0].verified is False
+
+
+def test_holder_reduction_negative_semantics_still_research():
+    """ISS-117 A01/E1：否定/澄清语义标题同样只产生 research 待核验线索。"""
+    for title in ("控股股东终止减持计划暨未减持股份的公告",
+                  "控股股东承诺未来六个月不减持",
+                  "公司澄清控股股东减持传闻不实"):
+        fs = _check_holder_reduction(_ann(title), code="600519")
+        assert fs and fs[0].action_scope == "research", title
+        assert "待核验" in fs[0].reason, title
 
 
 def test_holder_reduction_hit_actual_controller():
-    """实际控制人 + 减持 -> 命中。"""
-    assert _check_holder_reduction(_ann("实际控制人减持计划")) is not None
+    """实际控制人 + 减持 -> research 线索。"""
+    fs = _check_holder_reduction(_ann("实际控制人减持计划"), code="600519")
+    assert fs and fs[0].action_scope == "research"
 
 
 def test_holder_reduction_hit_big_shareholder():
-    """大股东 + 减持 -> 命中。"""
-    assert _check_holder_reduction(_ann("大股东减持")) is not None
+    """大股东 + 减持 -> research 线索。"""
+    fs = _check_holder_reduction(_ann("大股东减持"), code="600519")
+    assert fs and fs[0].action_scope == "research"
 
 
 def test_holder_reduction_no_holder_keyword_not_fire():
-    """仅减持词、无主体词 -> 不误报（审视点：单关键词不触发）。"""
-    assert _check_holder_reduction(_ann("普通减持公告")) is None
+    """仅减持词、无主体词 -> 不产生线索（审视点：单关键词不触发）。"""
+    assert _check_holder_reduction(_ann("普通减持公告"), code="600519") == []
 
 
 def test_holder_reduction_no_reduce_keyword_not_fire():
-    """仅主体词、无减持词（如增持）-> 不误报。"""
-    assert _check_holder_reduction(_ann("控股股东增持")) is None
+    """仅主体词、无减持词（如增持）-> 不产生线索。"""
+    assert _check_holder_reduction(_ann("控股股东增持"), code="600519") == []
 
 
 def test_holder_reduction_empty_or_none():
-    """announcements=[]/None -> None（回测语义：跳过减持子信号）。"""
-    assert _check_holder_reduction([]) is None
+    """announcements=[]/None -> 空（回测语义：跳过减持子信号）。"""
+    assert _check_holder_reduction([], code="600519") == []
 
 
 def test_check_stock_top_signal_with_holder_reduction():
-    """check_stock_top_signal 透传减持子信号。"""
-    sig = check_stock_top_signal(None, "600519", announcements=_ann("控股股东拟减持"))
-    assert sig is not None and "实控人减持" in sig
+    """check_stock_top_signal 透传减持子信号（list[SignalFinding] 契约）。"""
+    fs = check_stock_top_signal(None, "600519", announcements=_ann("控股股东拟减持"))
+    assert fs and any(f.detail and "减持" in f.detail for f in fs)
+    assert all(f.action_scope == "research" for f in fs)
 
 
 def test_check_stock_top_signal_no_announcements():
-    """announcements=None -> 减持子信号跳过（无缩量加速时整体 None）。"""
+    """announcements=None -> 减持子信号跳过（无缩量加速时整体空）。"""
     # 给一个无缩量加速的 stock_data（volume 充足避免误触缩量加速）
     class _SD:
         volume = 1000.0
@@ -77,7 +92,7 @@ def test_check_stock_top_signal_no_announcements():
         avg_volume_20 = 1000.0
         change_pct = 1.0
     assert check_stock_top_signal(_SD(), "600519",
-                                  announcements=None) is None
+                                  announcements=None) == []
 
 
 # ========== 第2层：接线（calculate_indicators 填充 recent_announcements） ==========

@@ -395,6 +395,22 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.29 (ISS-117 信号权限收口 S0+S1) - 2026-10-10
+
+- 架构师专项审查（30 探针 23 反例）裁决「检测到现象 ≠ 获准改变动作」，落地 S0+S1：
+- **权限合同** `models.SignalFinding`：signal_id/来源/适用证券/as_of/data_quality/
+  action_scope/verified/strategy_binding/detail/reason，缺字段默认最严。
+- **S0 弱证据降权**：exit_signals 全子信号返回 SignalFinding（check_top_signals 改
+  list）；减持标题否定/澄清语义如实标注（E1）、股东户数按日期倒序取最新（E2）、
+  缩量连续性缺失=UNKNOWN 不放宽（E3）、宏观10万亿/旗手滞涨/预告类别降 research（A12）；
+  仅三倍定律保持 exit 资格。AI black_swan 不再 force PANIC（cap/压分按置信度缩放）；
+  事件四要素缺失=UNKNOWN 不硬覆盖、限仓仅空头方向；事件消费先按资格筛选；
+  风险红线跨字段子串兜底删除；skill_engine 未知条件 fail-closed；坏价格不判穿止损。
+- **S1 数据修正**：预告公开日期资格门（缺失/非法/未来跳过、同日时序不明标注）；
+  baostock 备用源 adjust 透传（qfq 同口径）；exit_signal 缓存 v2（旧字符串缓存不复活）。
+- S2（投票公式/模式重裁）与 S3（shadow/全消费者闭环）为后续卡片，ISS-117 保持打开。
+- 测试：test_signal_authority_iss117.py 33 项 + 6 文件契约纠正；全量 1587 passed。
+
 ### v0.8.28.1 (板块层渗透率30+误触发强制清仓修复: 降级研究提醒) - 2026-10-08/09
 
 - 🐛 **用户实证**：新开仓（000001/000498，笨总 B/准B，jianzong）当天盘后 la 连续三次被

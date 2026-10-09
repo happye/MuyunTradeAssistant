@@ -154,25 +154,28 @@ class Orchestrator:
             f"(adjustment={adjustment:+.3f})")
 
     @staticmethod
-    def _compute_fundamental_alert(data, has_position: bool, is_backtest: bool, trade_plan) -> Optional[str]:
-        """ISS-053 基本面恶化硬退出判定（被 ST / 业绩预告预亏预减）。
+    def _compute_fundamental_findings(data, has_position: bool, is_backtest: bool, trade_plan):
+        """ISS-053 基本面恶化判定——v0.8.29 按权限拆分（ISS-117 S0）。
 
+        Returns:
+            (hard, findings)：hard=ST 触发描述（保持强制退出资格，当前状态排除政策）；
+            findings=预告类别等 research SignalFinding 列表（A12 降级：预亏/预减类别
+            本身不等于暴雷，不单独清仓）。
         回测禁用（is_backtest=True）：baostock ST 状态/业绩预告均为**当前**数据，非 bar 时点的
-        point-in-time--回测里未来预亏预告会在第一根持仓bar即触发退出（前瞻偏差，审查修复）。
-        live（is_backtest=False）启用：持仓才查，最新预告/ST 状态正是 live 该用的。
-        fail-open：异常返回 None（不假退出）但记 WARNING。
+        point-in-time——回测里未来预亏预告会在第一根持仓bar即触发退出（前瞻偏差，审查修复）。
+        fail-open：异常返回 (None, [])（不假退出）但记 WARNING。
         """
         if not has_position or is_backtest:
-            return None
+            return None, []
         try:
-            from src.core.exit_signals.fundamental import check_fundamental_alert
-            return check_fundamental_alert(
+            from src.core.exit_signals.fundamental import check_fundamental_findings
+            return check_fundamental_findings(
                 data.stock_code,
                 entry_date=trade_plan.opened_at if trade_plan else None,
             )
         except Exception as e:
             logger.warning(f"[FundamentalAlert] 检查异常(安全网当日可能有洞): {e}")
-            return None
+            return None, []
 
     def analyze(
         self,
@@ -233,25 +236,43 @@ class Orchestrator:
                 and self.event_layer.enabled and self.event_layer.auto_scan):
             active_events = self.event_layer.check_events()
             if active_events:
-                # 取impact_level最高的事件
-                top_event = max(active_events, key=lambda e: e.impact_level)
-                if top_event.impact_level >= 3:
-                    event_ai_result = self.event_layer.to_ai_modifier_result(top_event)
-                    logger.info(
-                        f"Event Layer detected: {top_event.event_type} "
-                        f"impact={top_event.impact_level} sentiment={top_event.sentiment}"
-                    )
-                    # 记录事件到决策理由
-                    event_type_cn = {
-                        "policy": "政策", "war": "地缘冲突", "earnings": "财报",
-                        "macro": "宏观", "black_swan": "黑天鹅", "market_crash": "暴跌"
-                    }
-                    sentiment_cn = {"bullish": "利好", "bearish": "利空", "neutral": "中性"}
-                    decision_result.reason.append(
-                        f"⚡事件预警: [{event_type_cn.get(top_event.event_type, top_event.event_type)}] "
-                        f"{sentiment_cn.get(top_event.sentiment, top_event.sentiment)} "
-                        f"(等级{top_event.impact_level}), {top_event.summary}"
-                    )
+                # ISS-117 D3（S0）：先按证据资格筛选（四要素在且真实性≥30），再取最高影响；
+                # 未核实事件只作提示，不驱动决策——不让不合格的最高级挤掉真实的次级风险
+                def _event_qualified(e):
+                    fe = getattr(e, "four_elements", None)
+                    if not isinstance(fe, dict):
+                        return False
+                    auth = fe.get("authenticity")
+                    return isinstance(auth, (int, float)) and auth >= 30
+                _qualified = [e for e in active_events if _event_qualified(e)]
+                _unverified = [e for e in active_events if not _event_qualified(e)]
+                if _unverified:
+                    _uv = max(_unverified, key=lambda e: e.impact_level)
+                    _more = f"，另有 {len(_unverified) - 1} 条未核实事件从略" if len(_unverified) > 1 else ""
+                    decision_result.warnings.append(
+                        f"事件未核实仅提示: [{_uv.event_type}] {(_uv.summary or _uv.source or '')[:60]}"
+                        f"（等级{_uv.impact_level}，真实性未知/不足，不影响本次决策{_more}）")
+                active_events = _qualified
+                if active_events:
+                    # 取impact_level最高的事件
+                    top_event = max(active_events, key=lambda e: e.impact_level)
+                    if top_event.impact_level >= 3:
+                        event_ai_result = self.event_layer.to_ai_modifier_result(top_event)
+                        logger.info(
+                            f"Event Layer detected: {top_event.event_type} "
+                            f"impact={top_event.impact_level} sentiment={top_event.sentiment}"
+                        )
+                        # 记录事件到决策理由
+                        event_type_cn = {
+                            "policy": "政策", "war": "地缘冲突", "earnings": "财报",
+                            "macro": "宏观", "black_swan": "黑天鹅", "market_crash": "暴跌"
+                        }
+                        sentiment_cn = {"bullish": "利好", "bearish": "利空", "neutral": "中性"}
+                        decision_result.reason.append(
+                            f"⚡事件预警: [{event_type_cn.get(top_event.event_type, top_event.event_type)}] "
+                            f"{sentiment_cn.get(top_event.sentiment, top_event.sentiment)} "
+                            f"(等级{top_event.impact_level}), {top_event.summary}"
+                        )
 
         # Layer 3.5: AI调节层（v0.8.0新增）
         # B05 修复：同事件层，回测硬门控（AI 看到的新闻是"今天"的，注入历史 bar = 前瞻）
@@ -264,7 +285,10 @@ class Orchestrator:
                     decision_result, ai_result.score_adjustment, "AI Modifier")
 
                 # 应用仓位调节（传递给Strategy Layer通过decision_result）
-                if ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
+                # ISS-117 A06（S0）：cap 只限制新增风险（BUY 方向）——对 HOLD/SELL 不再
+                # min 现有仓位，否则零置信度 AI 风险标签会把「减到60%」放大成「清到30%」
+                if (ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
+                        and decision_result.decision == SignalType.BUY):
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, ai_result.position_cap
                     )
@@ -295,7 +319,8 @@ class Orchestrator:
                 # F2：方向感知——看空事件增量不削弱卖出强度
                 self._apply_sentiment_to_decision(
                     decision_result, event_ai_result.score_adjustment, "Event Layer")
-                if event_ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
+                if (event_ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
+                        and decision_result.decision == SignalType.BUY):
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, event_ai_result.position_cap
                     )
@@ -317,8 +342,9 @@ class Orchestrator:
                 self._apply_sentiment_to_decision(
                     decision_result, ai_result.score_adjustment, "Event Layer")
 
-                # 应用仓位调节
-                if ai_result.position_cap < 1.0 and decision_result.position_ratio is not None:
+                # 应用仓位调节（ISS-117 A06：cap 只限制新增风险 BUY 方向，不放大卖出）
+                if (ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
+                        and decision_result.decision == SignalType.BUY):
                     decision_result.position_ratio = min(
                         decision_result.position_ratio, ai_result.position_cap
                     )
@@ -389,8 +415,8 @@ class Orchestrator:
         # Layer 3.84: 基本面恶化硬退出（ISS-053）--仅持仓检查，独立 fundamental_alert 通道
         # 被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL。fail-open（异常跳过不假退出）但记 WARNING。
         # 回测禁用（is_backtest）：baostock ST/预告为当前数据非 point-in-time，回测里未来预告/当前ST会前瞻（审查修复）。
-        falert = self._compute_fundamental_alert(data, has_position, is_backtest, trade_plan)
-        if falert:
+        f_hard, f_research = self._compute_fundamental_findings(data, has_position, is_backtest, trade_plan)
+        if f_hard:
             decision_result.decision = SignalType.SELL
             decision_result.position_action = PositionAction.CLOSE_ALL
             decision_result.position_ratio = 0.0  # A06 修复：同步清零，防幽灵仓位
@@ -399,17 +425,25 @@ class Orchestrator:
             # 会把「被 ST / 业绩预亏」这种硬退出当成零置信度信号降级成 HOLD 甚至反手 ADD。
             if decision_result.score < FORCE_EXIT_SCORE:
                 decision_result.score = FORCE_EXIT_SCORE
-            decision_result.reason.append(f"[FundamentalAlert] 重大利空: {falert}")
-            logger.info(f"[FundamentalAlert] 强制离场: {falert}")
+            decision_result.reason.append(f"[FundamentalAlert] 重大利空: {f_hard}")
+            logger.info(f"[FundamentalAlert] 强制离场: {f_hard}")
+        # ISS-117 A12（S0 降级）：预告类别不等于暴雷——research 提醒进 warnings，不清仓
+        for _f in (f_research or []):
+            if _f.detail:
+                decision_result.warnings.append(
+                    _f.detail + (f"（{_f.reason}）" if _f.reason else ""))
 
         # Layer 3.85: 高位止盈3维度大顶信号检查（跳法A 阶段2 / v0.8.6.4）
         # 仅持仓时检查；触发即作为 P1 信号强制 SELL（PlanGuard 不可压制，仅次于致命止损）。
         # 全客观硬规则（成交额/换手/缩量/减持），不依赖 AI 实时判断。
+        # ISS-117 S0：check_top_signals 返回 list[SignalFinding]——按 action_scope 分流：
+        # exit（仅三倍定律等既有纪律）→ 强制清仓（P1 不变）；research → warnings（不清仓）。
         top_signal = None
         if has_position:
+            _findings = []
             try:
                 from src.core.exit_signals import check_top_signals
-                top_signal = check_top_signals(
+                _findings = check_top_signals(
                     data, data.stock_code,
                     announcements=getattr(data, "recent_announcements", None),
                     market_turnover_trillion=getattr(data, "market_turnover_trillion", None),
@@ -418,6 +452,12 @@ class Orchestrator:
                 )
             except Exception as e:
                 logger.debug(f"高位止盈信号检查失败: {e}")
+            _hard = [f for f in _findings if f.action_scope == "exit"]
+            _research = [f for f in _findings if f.action_scope == "research" and f.detail]
+            top_signal = _hard[0].detail if _hard else None
+            for _rf in _research:
+                decision_result.warnings.append(
+                    _rf.detail + (f"（{_rf.reason}）" if _rf.reason else ""))
             if top_signal:
                 decision_result.decision = SignalType.SELL
                 decision_result.position_action = PositionAction.CLOSE_ALL
@@ -490,8 +530,9 @@ class Orchestrator:
                 strategy_decision.sell_path = "top_signal"
 
         # ISS-053: fundamental_alert 标到策略决策，PlanGuard 规则4.5 按不可压处理
-        if falert:
-            strategy_decision.fundamental_alert = falert
+        # ISS-117 S0：仅 hard（ST）进入该通道——预告类别 research 不得取得 4.5 硬资格
+        if f_hard:
+            strategy_decision.fundamental_alert = f_hard
             if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
                 strategy_decision.sell_path = "fundamental_alert"
 
@@ -543,8 +584,10 @@ class Orchestrator:
                 }
 
         # AI仓位上限影响Strategy Layer的仓位建议
-        if ai_result and ai_result.position_cap < 1.0 \
-                and strategy_decision.position_ratio is not None:
+        # ISS-117 A06：cap 只限制新增风险（BUY 方向）——HOLD/SELL/REDUCE 不 min 现有仓位
+        if (ai_result and ai_result.position_cap < 1.0
+                and strategy_decision.position_ratio is not None
+                and strategy_decision.decision == SignalType.BUY):
             original_ratio = strategy_decision.position_ratio
             strategy_decision.position_ratio = min(
                 strategy_decision.position_ratio, ai_result.position_cap

@@ -95,12 +95,12 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "...", "invalid
     invalidate = False
     raw = ai_result.get("raw_ai_response", "")
     structured_invalidate = ai_result.get("invalidate")
+    warnings = []
+    # ISS-117 A07/D6（S0）：跨字段子串兜底已删除——raw 里同时出现 invalidate/true
+    # 不再判红线。结构化字段仅认布尔；非布尔值已被 _validate_score_dict 归一为 None
+    # （上游校验层负责），此处不会出现字符串"true"误判一票否决。
     if isinstance(structured_invalidate, bool):
         invalidate = structured_invalidate
-    elif "invalidate" in raw.lower() and "true" in raw.lower():
-        invalidate = True
-
-    warnings = []
     if invalidate or ai_result["score"] >= 80:
         warnings.append(f"⚠ 高风险标的（评分 {ai_result['score']}），建议放弃或人工复核")
 

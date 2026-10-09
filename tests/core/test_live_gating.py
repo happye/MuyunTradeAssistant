@@ -33,14 +33,25 @@ def test_cache_miss_sentinel():
         f.unlink()
     # 未命中
     assert _daily_cache_get("TESTCODE", "test_sig") is _MISS, "未命中应返回 _MISS"
-    # 缓存 None
+    # 缓存 None（无信号 = 合法缓存值）
     _daily_cache_set("TESTCODE", "test_sig", None)
     r = _daily_cache_get("TESTCODE", "test_sig")
     assert r is None, f"缓存 None 应回读 None（非 _MISS），got {r!r}"
-    # 缓存字符串
-    _daily_cache_set("TESTCODE", "test_sig2", "个股:测试信号")
-    assert _daily_cache_get("TESTCODE", "test_sig2") == "个股:测试信号"
-    print("✓ 日缓存 _MISS 哨兵 + None 序列化正确")
+    # v2 缓存 SignalFinding（ISS-117 S1）：dict 含 signal_id 才有效
+    from src.data.models import SignalFinding
+    f = SignalFinding(signal_id="research.stock.test", detail="测试")
+    _daily_cache_set("TESTCODE", "test_sig2", f)
+    r2 = _daily_cache_get("TESTCODE", "test_sig2")
+    assert isinstance(r2, dict) and r2.get("signal_id") == "research.stock.test"
+    # v0.8.29 S1：旧版纯字符串缓存不复活为信号（回读 _MISS）
+    import json as _json
+    old = _holder_cache_dir() / f"TESTCODE_{today}_legacy_v1.json"
+    old.write_text(_json.dumps("个股:旧版硬信号文本"), encoding="utf-8")
+    # 注：旧文件名无 _v2 后缀，v2 读取天然 MISS——写入同键 v2 字符串再验
+    old2 = _holder_cache_dir() / f"TESTCODE_{today}_legacy_v2.json"
+    old2.write_text(_json.dumps("个股:旧版硬信号文本"), encoding="utf-8")
+    assert _daily_cache_get("TESTCODE", "legacy") is _MISS, "旧版字符串缓存不得复活"
+    print("✓ 日缓存 _MISS 哨兵 + None/SignalFinding 序列化 + 旧字符串缓存不复活")
 
 def main():
     tests = [test_live_false_skips_akshare, test_cache_miss_sentinel]
