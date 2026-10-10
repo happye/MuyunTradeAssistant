@@ -98,3 +98,26 @@ CACHE_VERSION v0.8.29.1（Q3 语义）。
 **未实施（如实）**：S2a（投票公式 V1，DESIGN_READY）/S2b-1（mode 政策）/S2b-2（失效
 三态）/S2b-3（执行事实分离）/S3——按架构师顺序待本批过门后实施；同源叠加/复权行级
 夹具/重复票去重可达性等 REVIEW §3 未闭合项随对应卡片带回。
+
+---
+
+## Q 尾项实施报告（v0.8.29.2，2026-10-10，对应 Q_ACCEPTANCE Q-R1/R2/R5/R7）
+
+| ID | 落地 | 回归 |
+|---|---|---|
+| Q-R1 | `authorize_hard_findings` 加复核：exit 发现须在**当前 StockData 上重跑三倍定律纯函数**且成立才授权（研究缓存冒用 signal_id/绑定/verified 全部失效）；绑定精确相等（禁子串）；holder/margin 缓存按各自 signal_id 校验（错 ID 不复活）；来源非空检查 | test_q1_gate_*（6 项重写：授权正例/错股/复算未确认/绑定/缓存冒名） |
+| Q-R2 | `_ai_classify_event`/`_ai_classify_portfolio_news` 双入口：scope 缺省/非法=unknown（不默认全市场）；affected_codes 按 prompt 要求输出并规范化 6 位保存；`_event_applies_to_stock` 对 unknown/不匹配不适用（软调节也不吃）；持仓股新闻按请求上下文确定本股（来源可追溯） | test_q2_*（4 项） |
+| Q-R5 | 时点参照=本次分析数据时点：回测=当前 bar 日期（BacktestEngine 经 today= 传入，backtest_validator 重放路径补 today）、live=行情快照；证据 `source_time_in_future(证据, 参照)` 晚于参照即拒；坏字符串经 parse_source_time 严格解析不截断洗白；7天政策按裁决移除（陈旧行情由行情源资格降级） | test_q1_gate_rejects/backtest_waives 重写（3 项） |
+| Q-R7 | sector：行级日期 strptime 严格解析（2026-00-01 等非法日历剔除）+未来剔+同日收盘冲突放弃+跨度≥20自然日核验（防御性）；holder：显式「户数+本次/上次」列映射（防户均市值列误选）、无统计日期列 fail-closed、缺公开时点 data_quality=UNKNOWN 不伪装合格；2 个假绿测试修为真实签名兼容+断言拉取与遍历发生 | test_q7_*（3 项） |
+
+**监督**：code-quality-guard 两轮。第一轮 P0×2（隔离层 logger 未定义致 Q6 整体失效；
+DataFeeder 缺 quote_as_of 致回测硬纪律被资格门静默降权）+ P1×3（gate research 重复告警
++reason 覆写/CACHE_VERSION 未 bump/新告警未三处同步）+ P2×9（same_day 假绿夹具、事件
+force_state 死代码、holder 缓存早退等）——全数修复。第二轮 R1（warnings 双计）R2（隔离
+文案与 pattern 失配）R3（事件独立路径 force_state 死代码残留）R4a（三层隔离异常路径无
+pytest 锁定）——全数修复（R4a 固化为 3 项 pytest）。**复核结论：可提交。**
+
+**验证**：全量离线 **1616 passed / 2 skipped / 0 failed**（本轮 +25 测试）；q_fixture_audit
+假绿审计转绿。**未实施**：S2a（生产投票公式，DESIGN_READY 待放行）/S2b/S3——ISS-117
+保持打开，S2a 固定矩阵正式测试可提前准备。**已知局限**：research 发现经 warnings 展示
+有 [:8] 截断（ISS-095 登记）；独立核验器缺位前事件/研究信号一律无硬权限（裁决要求）。
