@@ -395,6 +395,15 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.29.3 (ISS-117 Q-R2尾项+Q-R5 analysis_date严格解析) - 2026-10-11
+
+- **Q-R2 尾项**：scan_portfolio_events 不再无条件重写 affected_codes=[请求股]——
+  scope=unknown 时留空（不借请求上下文获得证券适用性）。
+- **Q-R5 analysis_date 严格解析**：非法非空值不截断不回退当天。
+- **Q-R5 live 交易日新鲜度**：行情快照日期 ≥ 独立市场交易日历最近交易日
+  （复用 fear_index 缓存交易日历，周末/节假日正例保留；陈旧行情降 research）。
+- 全量离线 1622 passed / 0 failed。S2a/S2b 待本批过门实施。
+
 ### v0.8.29.2 (ISS-117 Q尾项: Q-R1/R2/R5/R7) - 2026-10-10
 
 - **Q-R1**：资格门复算确认——exit 发现须在当前 StockData 上重跑三倍定律纯函数且成立

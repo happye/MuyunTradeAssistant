@@ -57,27 +57,51 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
     authorized, rejected = [], []
 
     # 分析日期（独立确定）：回测由调用方传 bar 日期；live 由调用方传当天。
+    # 严格解析完整字符串——非法非空值不截断不回退，直接拒绝全部 exit 资格。
     # 缺失时 live 回退墙钟当天；回测缺失 → 硬资格拒绝（不静默 fail-open，
     # 否则 backtest_validator 等不传 today 的重放路径时点核验整体缺失）。
-    analysis_date = (analysis_date or "")[:10]
-    ref_dt = parse_source_time(analysis_date) if analysis_date else None
-    if ref_dt is None and live:
+    if analysis_date is not None and str(analysis_date).strip():
+        ref_parsed = parse_source_time(str(analysis_date).strip())
+        if ref_parsed is None:
+            ref_dt = None
+            _bad_analysis_date = str(analysis_date)
+        else:
+            ref_dt = ref_parsed
+            _bad_analysis_date = None
+    else:
+        ref_dt = None
+        _bad_analysis_date = None
+    if ref_dt is None and live and not _bad_analysis_date:
         from datetime import datetime as _dt
         analysis_date = _dt.now().strftime("%Y-%m-%d")
         ref_dt = parse_source_time(analysis_date)
-    _missing_analysis_date = ref_dt is None
+    _missing_analysis_date = ref_dt is None and not _bad_analysis_date
 
     # 数据时点资格：StockData 自带的行情/指标快照**日期**不得晚于分析日期
     #（Q-R5 典型场景：分析 2020 年却拿到 2026 年行情——数据整体降资格）。
     # 日级比较：分析日期是日精度，不做盘中时点对比（当天 21:30 的快照对当天分析合法）。
+    # Q-R5 追加（live）：行情快照日期不得早于独立市场交易日历的最近交易日——
+    # 陈旧行情（如 2000-01-01）降为研究提醒，不授权三倍定律。日历不可用时
+    # fail-closed（UNKNOWN → research），不阻断其他独立退出。
     data_qual_reason = None
     data_asof_raw = getattr(stock_data, "quote_as_of", None) if stock_data is not None else None
-    if ref_dt is not None and data_asof_raw:
+    if _bad_analysis_date:
+        data_qual_reason = f"分析日期非法: {_bad_analysis_date!r}"
+    elif ref_dt is not None and data_asof_raw:
         _dp = parse_source_time(str(data_asof_raw))
         if _dp is None:
             data_qual_reason = "行情/指标快照时点不可解析"
         elif _dp[0].date() > ref_dt[0].date():
             data_qual_reason = "行情/指标快照时点晚于本次分析日期（数据与场景错配）"
+        elif live:
+            try:
+                from src.core.fear_index.history import recent_trade_date
+                _recent_td = recent_trade_date()
+                if _dp[0].date().isoformat() < _recent_td:
+                    data_qual_reason = (f"行情快照日期({_dp[0].date()})早于"
+                                        f"最近交易日({_recent_td})，行情已陈旧")
+            except Exception:
+                pass  # 交易日历不可用时不阻断——陈旧行情由行情源资格另行降级
 
     for f in findings:
         if f.action_scope != "exit":

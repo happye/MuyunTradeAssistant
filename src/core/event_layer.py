@@ -360,7 +360,10 @@ class EventLayer:
                                 pos.stock_name or code, code, news_text
                             )
                             if ai_event and ai_event.impact_level >= 3:
-                                ai_event.affected_codes = [code]
+                                # ISS-117 Q-R2：scope=unknown 不写 affected_codes——
+                                # 范围不明的事件不得借请求上下文获得证券适用性
+                                if ai_event.scope != "unknown":
+                                    ai_event.affected_codes = [code]
                                 events.append(ai_event)
                 except Exception as e:
                     logger.warning(f"持仓股 {code} 新闻扫描失败: {e}")
