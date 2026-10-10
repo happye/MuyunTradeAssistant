@@ -2249,6 +2249,8 @@ P3（已取消）:
 - 验收：authority_probes 反例落正式回归（tests/core/test_signal_authority_iss117.py 33 项 + 6 文件契约纠正）；全量离线 1587 passed / 0 failed
 - 实测：000001/000498 强制清仓信号消失（exit 资格=无），研究提醒按裁决输出
 
+**Q 补修批已落地（v0.8.29.1，2026-10-10，commit 2560d71）**：Q1 消费边界资格门（authorize_hard_findings + top_signal_authorized 贯穿 PlanGuard P1，缓存重放同门）；Q2 事件硬权限收口（不 force_state/不硬限仓，证券适用范围门）；Q3 AI invalidate 降红线候选；Q4 cap 增量语义（delta 公式单点应用）；Q5 三倍定律价格资格门+DataFeeder 补 bar 日期；Q6 公告规范化+子信号/逐层隔离；Q7 行级日期有效性。guard 两轮监督（初审 P0×2/P1×3 + 复核 R1-R4 全部修复）。验收探针反例落回归 25 项。**剩余**：S2a（投票公式，DESIGN_READY）/S2b-1/2/3（模式/三态/执行事实）按 S2_DESIGN.md 实施；S3 闭环。完成前本条保持打开。
+
 **未实施（后续卡片）**：
 - S2：A08 投票公式重设计（卡片前置「先固定公式与低覆盖矩阵」需架构师输入）；A09 自主可控关键词→模式/期限（架构师重裁项 D7）；A10 plan_guard 失效条件三态；A11 执行层措辞（UNKNOWN/条件建议）
 - S3：A13 shadow 桥接资格；signal_id 全消费者贯穿（decision_contract/shadow_diff/待办）；摘要三类内容分层展示

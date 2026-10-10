@@ -70,3 +70,31 @@
 - `diff` 对 warnings 截断边界的旧记录误报（ISS-095 已登记，两条新宽度记录积累后自愈）。
 - authority_probes.py 已标 SUPERSEDED（旧契约），S2/S3 验收探针需另起。
 - 旗手滞涨降 research 后的「旗手关系核实」（000498 案例的真实触发源）属 S2/S3 研究课题，本轮只解除其越权。
+
+
+---
+
+## Q 补修批实施报告（v0.8.29.1，2026-10-10，对应 S01_ACCEPTANCE Q1–Q7）
+
+| ID | 落地 | 回归 |
+|---|---|---|
+| Q1 | `authorize_hard_findings`（signal_id 白名单/绑定/证券/时点新鲜度 live 7 天/质量；失败降 research 保留诊断；缓存重放同门）+ `StrategyDecision.top_signal_authorized` 贯穿 PlanGuard P1（未授权仅诊断） | test_iss117_q_batch::test_q1_*（7 项） |
+| Q2 | event_layer 移除 force_state/硬限仓（保留软调节+真实性置信度）；orchestrator 事件消费按 `_event_auth_qualified`+`_event_applies_to_stock` 双门（空证券≠全市场；stock/sector 须 affected_codes 含当前股）；未核实事件仅提示（多条附计数） | ::test_q2_*（4 项） |
+| Q3 | risk_deduction：AI invalidate=True（任意置信度）→ 红线候选警告，不写硬 invalidate/不强制 F；规则版硬排除与 ST 政策不撤销 | ::test_q3_*（1 项） |
+| Q4 | `_soft_cap_target`：delta=max(0,min(t,k)-c)，目标=c+delta；delta=0 一律转 HOLD/HOLD_POSITION（HOLD+ADD 归一）；REDUCE 方向不参与；当前权重未知不伪造增量；4 处 min 收口策略层后单点应用（事件 cap 取更严者合并） | ::test_q4_*（4 项） |
+| Q5 | 三倍定律 price/ma5/low_60d 有限正值；as_of 来自 quote_as_of（缺失=UNKNOWN）；live 过期降 research（回测按 bar 资格豁免）+ DataFeeder 回测补 quote_as_of=bar 日期 | ::test_q5_*（2 项） |
+| Q6 | 公告旧格式字符串→dict 规范化；exit_signals 逐层+逐子信号隔离（异常→diag 条目，不吞独立保护如三倍定律） | ::test_q6_*（2 项） |
+| Q7 | 旗手行级日期有效性（剔未来+同日去重+≥21 不同交易日）；股东统计未来日期无资格+剔除后走缓存 | ::test_q7_*（3 项） |
+
+**监督**：code-quality-guard 两轮。初审 P0×2（__init__ 隔离层 logger 未定义致 Q6 整体失效；
+DataFeeder 缺 quote_as_of 致回测三倍定律被资格门静默降权）+ P1×3（cap 方向门漏 2 应用点/
+plan_guard MA60 同类价格门/CACHE_VERSION）——全部修复。复核 R1（warnings 双计）R2（告警
+pattern 文案）R3（死代码）R4a（隔离测试固化）——全部修复。**复核结论：可提交。**
+
+**验证**：全量离线 **1616 passed / 2 skipped / 0 failed**；S01 探针反例 25 项落回归
+（test_iss117_q_batch.py）+ 三层隔离端到端 3 项。版本 v0.8.29.1 五处同步；
+CACHE_VERSION v0.8.29.1（Q3 语义）。
+
+**未实施（如实）**：S2a（投票公式 V1，DESIGN_READY）/S2b-1（mode 政策）/S2b-2（失效
+三态）/S2b-3（执行事实分离）/S3——按架构师顺序待本批过门后实施；同源叠加/复权行级
+夹具/重复票去重可达性等 REVIEW §3 未闭合项随对应卡片带回。
