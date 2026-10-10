@@ -150,9 +150,11 @@ def test_invalidate_redline():
     ai.chat.completions.create.side_effect = fake_create
     r = auto_score("TEST005", "测试", ai_client=ai, rag_service=None,
                    data_summary=_make_full_data_summary(), today="2026-06-20", force_refresh=True)
-    assert r.invalidate is True, "应触发一票否决"
-    assert any("一票否决" in w for w in r.warnings), "警告应含一票否决"
-    print(f"✓ 一票否决: invalidate={r.invalidate}, 警告含红线提示")
+    # ISS-117 Q3（S01 验收裁决）：AI 结构化 invalidate 只是红线候选——未经原件核验
+    # 不写硬 invalidate/不强制 F；保留候选警告待人工复核（规则版硬排除不撤销）
+    assert r.invalidate is not True, "Q3：AI 标注不得再写硬 invalidate"
+    assert any("红线候选" in w for w in r.warnings), f"警告应含红线候选提示, got {r.warnings}"
+    print(f"✓ 红线候选待核验: invalidate={r.invalidate}, 警告含候选提示")
     cache.clear("TEST005")
 
 
