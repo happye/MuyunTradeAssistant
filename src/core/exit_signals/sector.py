@@ -141,20 +141,39 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
             while rs.next():
                 rows.append(rs.get_row_data())
         _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
-        # Q7：行级日期有效性——剔除未来日期；同日重复压成一条；按日期升序对齐
-        clean = []
+        # Q7/Q-R7：行级日期严格解析——非法日历（2026-00-01）strptime 剔除；
+        # 未来日期剔除；同日收盘冲突（数据可疑）放弃；同日相同收盘合并；按日期升序。
+        clean: dict = {}
         today_str = datetime.now().strftime("%Y-%m-%d")
         for r in rows:
             d = (r[0] or "")[:10]
-            if len(d) != 10 or d > today_str:
-                continue  # 缺日期/未来日期无资格
-            clean.append((d, r[1]))
-        clean = sorted({d: (d, c) for d, c in clean}.values(), key=lambda x: x[0])
-        rows = clean
+            try:
+                datetime.strptime(d, "%Y-%m-%d")
+            except ValueError:
+                logger.debug(f"旗手{code}行日期非法({d})，剔除")
+                continue
+            if d > today_str:
+                logger.debug(f"旗手{code}行日期在未来({d})，剔除")
+                continue
+            try:
+                c = float(r[1])
+            except (TypeError, ValueError):
+                continue
+            if d in clean and clean[d][1] != c:
+                logger.debug(f"旗手{code}同日收盘冲突({d}: {clean[d][1]} vs {c})，数据可疑放弃")
+                return None
+            clean[d] = (d, c)
+        rows = sorted(clean.values(), key=lambda x: x[0])
         if len(rows) < 21:
             # E4（S1）：不足 21 个**不同交易日**的收盘观测不能冒充"20日涨幅"
             #（Q7：21 行同一天 ≠ 20 日窗口）
             logger.debug(f"旗手{code}有效收盘观测不足21条({len(rows)})，无法评估20日滞涨")
+            return None
+        # Q-R7：窗口跨度核验（防御性）——当前去重逻辑下 21 个不同日期数学上必跨
+        # ≥20 自然日，此分支正常不可达；保留以防上游日期处理被改动后静默放行
+        if (datetime.strptime(rows[-1][0], "%Y-%m-%d")
+                - datetime.strptime(rows[0][0], "%Y-%m-%d")).days < 20:
+            logger.debug(f"旗手{code}观测窗口跨度不足({rows[0][0]}~{rows[-1][0]})，放弃")
             return None
         # 窗口口径：截取最后21行（20个交易日间隔）对齐标的 change_20d 口径；
         # 40自然日窗口保留作停牌缓冲。

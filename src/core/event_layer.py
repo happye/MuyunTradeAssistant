@@ -51,7 +51,8 @@ EVENT_CLASSIFY_PROMPT = """你是一个专业的A股市场事件分析师。根�
   "event_type": "policy/war/earnings/macro/black_swan/none",
   "sentiment": "bullish/bearish/neutral",
   "impact_level": 1-5,
-  "scope": "market/sector/stock",
+  "scope": "market/sector/stock/unknown",
+  "affected_codes": ["受影响的6位股票代码列表；scope=market 或无法确定具体股票时留空数组"],
   "duration": "short/medium/long",
   "summary": "一句话摘要",
   "four_elements": {
@@ -749,6 +750,17 @@ class EventLayer:
             if data.get("sentiment") not in self._VALID_SENTIMENTS:
                 data["sentiment"] = "neutral"
 
+            # ISS-117 Q-R2（两个解析入口同款约束）：scope 缺省/非法 = unknown
+            # （不得默认全市场）；affected_codes 只保留规范化 6 位代码。
+            # 检测墙钟不是来源公开时点——事件仅获软调节资格（Q2 收口），提示用户核实。
+            _scope_raw = str(data.get("scope") or "").strip().lower()
+            scope = _scope_raw if _scope_raw in ("market", "sector", "stock") else "unknown"
+            affected_codes = []
+            for _c in (data.get("affected_codes") or []):
+                _c = str(_c).strip().split(".")[0]
+                if _c.isdigit() and len(_c) == 6 and _c not in affected_codes:
+                    affected_codes.append(_c)
+
             if not data.get("is_significant", False):
                 return None
 
@@ -771,7 +783,8 @@ class EventLayer:
                 event_type=data.get("event_type", "macro"),
                 sentiment=data.get("sentiment", "neutral"),
                 impact_level=int(data.get("impact_level", 2)),
-                scope=data.get("scope", "market"),
+                scope=scope,
+                affected_codes=affected_codes,
                 duration=data.get("duration", "short"),
                 summary=data.get("summary", ""),
                 timestamp=datetime.now().isoformat(),
@@ -863,8 +876,9 @@ class EventLayer:
                 if data.get("summary"):
                     data["summary"] = f"🚫真实性存疑(可能伪信号) {data['summary']}"
 
-            # ISS-117 Q-R2：scope 缺省/非法 = unknown（持仓股新闻按请求上下文
-            # 确定 affected_codes=[本股]，来源可追溯；范围不明则不适用软调节）
+            # ISS-117 Q-R2：scope 缺省/非法 = unknown。范围不明 → 不写 affected_codes
+            #（_event_applies_to_stock 对 unknown/空 codes 判不适用）——「范围不明则
+            # 不适用软调节」如实兑现，不得借请求上下文自我认定全市场。
             _scope_raw = str(data.get("scope") or "").strip().lower()
             scope = _scope_raw if _scope_raw in ("market", "sector", "stock") else "unknown"
 
@@ -876,7 +890,7 @@ class EventLayer:
                 duration=data.get("duration", "short"),
                 summary=data.get("summary", ""),
                 source=f"{stock_name}新闻",
-                affected_codes=[stock_code],
+                affected_codes=[stock_code] if scope != "unknown" else [],
                 timestamp=datetime.now().isoformat(),
                 detection_method="ai",
                 four_elements=four_elements,

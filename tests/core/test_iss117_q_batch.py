@@ -39,10 +39,12 @@ def _hard_finding(**kw):
 # ── Q1：消费边界资格门 ──────────────────────────────────
 
 def test_q1_gate_authorized_positive():
-    """合法硬信号正例：白名单 signal_id + 绑定 + 证券 + 时点 + OK 质量 + 复算成立 → 通过。"""
+    """合法硬信号正例：白名单+绑定+证券+时点+质量+复算成立+独立分析日期 → 通过。"""
     sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
-    ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True, stock_data=sd)
+    today = datetime.now().strftime("%Y-%m-%d")
+    ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True,
+                                      stock_data=sd, analysis_date=today)
     assert len(ok) == 1 and not rej, f"rej={[r.reason for r in rej]}"
 
 
@@ -54,46 +56,57 @@ def test_q1_gate_rejects_wrong_security():
 
 
 def test_q1_gate_rejects_stale_and_future_as_of():
-    """Q-R5：live 证据时点不得晚于本次分析数据时点（旧 7 天政策已按裁决移除；
-    陈旧行情由行情源资格门降级）。此处用未来时点反例 + 复算正例。"""
+    """Q-R5：证据时点不得晚于独立分析日期（旧 7 天政策已按裁决移除）。"""
     future = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
     sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
-    ok1, rej1 = authorize_hard_findings([_hard_finding(as_of=future)], "600519", live=True, stock_data=sd)
+    today = datetime.now().strftime("%Y-%m-%d")
+    ok1, rej1 = authorize_hard_findings([_hard_finding(as_of=future)], "600519", live=True,
+                                        stock_data=sd, analysis_date=today)
     assert not ok1 and "晚于" in rej1[0].reason
-    # 复算确认成立 + as_of=参照日 → 通过（原 7 天陈旧拒收已移除）
-    ok2, rej2 = authorize_hard_findings([_hard_finding()], "600519", live=True, stock_data=sd)
+    # 复算确认成立 + as_of=分析日当天 → 通过
+    ok2, rej2 = authorize_hard_findings([_hard_finding()], "600519", live=True,
+                                        stock_data=sd, analysis_date=today)
     assert len(ok2) == 1 and not rej2
 
 
 def test_q1_gate_backtest_waives_staleness():
-    """Q-R5：回测按当前 bar 资格——证据不晚于 bar 日期即可（旧数据不算未来）。"""
+    """Q-R5：回测按独立 bar 日期核验——2020 分析配 2026 行情/证据 → 拒绝（不得自我背书）。"""
     bar_date = "2020-01-10"
-    sd = SimpleNamespace(quote_as_of=bar_date, price=40.0, ma5=42.0, low_60d=10.0)
-    evidence_2020 = "2020-01-08"
-    ok, rej = authorize_hard_findings([_hard_finding(as_of=evidence_2020)], "600519",
-                                      live=False, stock_data=sd)
+    # 场景1：数据本身是 2020 bar、证据也是 2020 → 通过（合法历史 bar）
+    sd_ok = SimpleNamespace(quote_as_of="2020-01-10", price=40.0, ma5=42.0, low_60d=10.0)
+    ok, rej = authorize_hard_findings([_hard_finding(as_of="2020-01-08")], "600519",
+                                      live=False, stock_data=sd_ok, analysis_date=bar_date)
     assert len(ok) == 1 and not rej
-    # 证据晚于当前 bar（2026 行情混入 2020 回测）→ 拒绝
+    # 场景2（Q-R5 原探针）：数据/证据是 2026 年行情混入 2020 分析 → 数据时点错配拒绝
+    sd_bad = SimpleNamespace(quote_as_of="2026-10-09", price=40.0, ma5=42.0, low_60d=10.0)
     ok2, rej2 = authorize_hard_findings([_hard_finding(as_of="2026-10-09")], "600519",
-                                        live=False, stock_data=sd)
-    assert not ok2 and "晚于" in rej2[0].reason
+                                        live=False, stock_data=sd_bad, analysis_date=bar_date)
+    assert not ok2 and ("晚于" in rej2[0].reason or "错配" in rej2[0].reason)
 
 
 def test_q1_gate_rejects_unknown_binding_and_quality():
+    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                         price=40.0, ma5=42.0, low_60d=10.0)
+    today = datetime.now().strftime("%Y-%m-%d")
     ok, rej = authorize_hard_findings(
-        [_hard_finding(strategy_binding=" forged", data_quality="UNKNOWN")], "600519", live=True)
+        [_hard_finding(strategy_binding=" forged", data_quality="UNKNOWN")],
+        "600519", live=True, stock_data=sd, analysis_date=today)
     assert not ok and len(rej) == 1
     assert "策略绑定" in rej[0].reason or "数据资格" in rej[0].reason
 
 
 def test_q1_gate_rejects_forged_cache_finding():
-    """缓存自授：verified=True + 漂亮的 detail 也不能越过白名单/证券/时点门。"""
+    """缓存自授：verified=True + 白名单外的 signal_id + 当前数据无三倍依据 → 拒绝。"""
     forged = _hard_finding(signal_id="exit.stock.reduction_title",   # 非白名单
                            securities=["600519"],
                            verified=True,
                            detail="个股:实控人减持(标题线索)")
-    ok, rej = authorize_hard_findings([forged], "600519", live=True)
+    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                         price=10.0, ma5=11.0, low_60d=9.0)   # 无三倍依据
+    today = datetime.now().strftime("%Y-%m-%d")
+    ok, rej = authorize_hard_findings([forged], "600519", live=True,
+                                      stock_data=sd, analysis_date=today)
     assert not ok and "不在允许硬退出清单" in rej[0].reason
 
 
@@ -307,12 +320,14 @@ def test_q6_subsignal_failure_isolated_keeps_triple():
 # ── Q7：行级日期有效性 ──────────────────────────────────
 
 def test_q7_flagbearer_same_day_rows_not_20d(monkeypatch):
-    """21 行同一天的旗手数据 ≠ 20 日窗口（Q7）。"""
+    """21 行同一天的旗手数据 ≠ 20 日窗口（Q7）。断言供应商查询与行遍历确实发生。"""
     import baostock as real_bs
     import src.core.exit_signals.sector as sector
 
     d = datetime.now().strftime("%Y-%m-%d")
     rows = [[d, "10.0"]] * 25   # 同一天重复 25 行
+    _calls = []
+    _iterated = {"n": 0}
 
     class _FakeRS:
         error_code = "0"
@@ -326,6 +341,7 @@ def test_q7_flagbearer_same_day_rows_not_20d(monkeypatch):
             if self._i >= len(self._rows):
                 return False
             self._i += 1
+            _iterated["n"] += 1
             return True
 
         def get_row_data(self):
@@ -333,9 +349,16 @@ def test_q7_flagbearer_same_day_rows_not_20d(monkeypatch):
 
     import src.data.akshare_client as ak_mod
     monkeypatch.setattr(ak_mod, "_ensure_baostock_login", lambda: True)
-    monkeypatch.setattr(real_bs, "query_history_k_data_plus", lambda **k: _FakeRS())
+
+    def _fake_query(*args, **kwargs):
+        _calls.append((args, kwargs))
+        return _FakeRS()
+    monkeypatch.setattr(real_bs, "query_history_k_data_plus", _fake_query)
     monkeypatch.setattr(ak_mod, "_call_with_timeout", lambda fn, timeout=20: fn())
     assert sector._fetch_20d_change_pct("600170") is None, "同日重复行不构成 20 日窗口"
+    # 假绿防护（架构师审计）：供应商查询与行遍历必须真实发生
+    assert _calls and any("600170" in str(a) for a, _ in _calls), "供应商查询未发生"
+    assert _iterated["n"] >= 21, "行遍历未发生"
 
 
 def test_q7_flagbearer_future_date_rows_dropped(monkeypatch):
@@ -434,3 +457,64 @@ def test_r4a_stock_layer_error_produces_diag(monkeypatch):
                               trade_plan=None, live=False)
     assert any(f.signal_id == "diag.stock.error" for f in fs)
     assert all(f.action_scope != "exit" for f in fs)
+
+
+# ── guard 第二轮补充：mode 适用性/来源缺失/快照错配/HOLD+ADD 归一 ──
+
+def test_q1_gate_qizong_rejects_triple():
+    """气宗持有计划不适用三倍定律——资格门拒绝（缓存/转述不能借不适用的规则清仓）。"""
+    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                         price=40.0, ma5=42.0, low_60d=10.0)
+    today = datetime.now().strftime("%Y-%m-%d")
+    ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True,
+                                      stock_data=sd, analysis_date=today, mode="qizong")
+    assert not ok and "气宗" in rej[0].reason
+    # 对照：非气宗同数据授权
+    ok2, _ = authorize_hard_findings([_hard_finding()], "600519", live=True,
+                                     stock_data=sd, analysis_date=today, mode="jianzong")
+    assert len(ok2) == 1
+
+
+def test_q1_gate_source_empty_rejected():
+    ok, rej = authorize_hard_findings([_hard_finding(source="")], "600519", live=True,
+                                      stock_data=SimpleNamespace(
+                                          quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                                          price=40.0, ma5=42.0, low_60d=10.0),
+                                      analysis_date=datetime.now().strftime("%Y-%m-%d"))
+    assert not ok and "来源未知" in rej[0].reason
+
+
+def test_q1_gate_backtest_missing_analysis_date_rejected():
+    """回测未传 bar 日期 → 硬资格拒绝（不静默 fail-open）。"""
+    sd = SimpleNamespace(quote_as_of="2020-01-10", price=40.0, ma5=42.0, low_60d=10.0)
+    ok, rej = authorize_hard_findings([_hard_finding(as_of="2020-01-08")], "600519",
+                                      live=False, stock_data=sd, analysis_date=None)
+    assert not ok and "分析日期缺失" in rej[0].reason
+
+
+def test_q2_scope_unknown_event_no_codes_no_soft():
+    """scope=unknown 的持仓事件不写 affected_codes → 不适用软调节。"""
+    from src.core.event_layer import EventLayer
+    el = EventLayer({"enabled": False})
+    ev = MarketEvent(event_type="earnings", impact_level=5, sentiment="bearish",
+                     detection_method="ai", scope="unknown", affected_codes=[],
+                     four_elements={"who": "x", "what": "y", "when": "z",
+                                    "how": "w", "authenticity": 100})
+    r = el.to_ai_modifier_result(ev)
+    assert r.position_cap == 1.0 and r.force_state is None
+
+
+def test_q4_cap_ge_target_skipped():
+    """cap ≥ target → 不构成约束（浮点噪声不重写目标）。"""
+    from src.core.orchestrator import _soft_cap_target
+    t, demote, skipped = _soft_cap_target(0.3, 0.6, 0.6)
+    assert t == pytest.approx(0.6) and skipped is True and demote is False
+
+
+def test_q4_demote_normalizes_position_action():
+    """delta=0 → HOLD/HOLD_POSITION 归一（源码锁：HOLD+ADD 组合同样归一）。"""
+    src = open("src/core/orchestrator.py", encoding="utf-8").read()
+    assert src.count("strategy_decision.position_action = PositionAction.HOLD_POSITION") >= 1
+    demote_block = src.split("if _demote:")[1].split("elif not _skipped")[0]
+    assert "if strategy_decision.decision == SignalType.BUY:" not in demote_block, \
+        "demote 归一不得再按 BUY 条件分支（HOLD+ADD 组合漏网）"

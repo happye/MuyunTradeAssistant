@@ -36,11 +36,12 @@ def _holder_cache_dir() -> Path:
     return d
 
 
-def _daily_cache_get(code: str, signal: str):
+def _daily_cache_get(code: str, signal: str, expected_signal_id: str):
     """读日缓存 v2（key=code_date_signal_v2）。命中返回缓存 dict，未命中返回 _MISS。
 
-    v2 记录必须是含 signal_id 的 SignalFinding dict——旧版纯字符串缓存不复活
-    （ISS-117 S1：不让旧缓存恢复旧权限语义）。
+    v2 记录必须是含 signal_id 的 SignalFinding dict，且 signal_id 必须与该缓存键
+    预期的信号身份一致——研究缓存不能冒用其他信号（尤其硬信号）的身份
+    （ISS-117 Q-R1）。旧版纯字符串缓存不复活。
     """
     today = datetime.now().strftime("%Y-%m-%d")
     f = _holder_cache_dir() / f"{code}_{today}_{signal}_v2.json"
@@ -49,8 +50,9 @@ def _daily_cache_get(code: str, signal: str):
             v = json.loads(f.read_text(encoding="utf-8"))
             if v is None:
                 return None   # 缓存的「无信号」值（与 _MISS 区分）
-            if isinstance(v, dict) and v.get("signal_id"):
+            if (isinstance(v, dict) and v.get("signal_id") == expected_signal_id):
                 return v
+            return _MISS   # 身份不符 = 数据不合格，按未命中处理
         except Exception:
             return _MISS
     return _MISS
@@ -290,7 +292,7 @@ def _check_holder_count_surge(code: str) -> Optional[SignalFinding]:
     最旧一期。现按明确日期列倒序 + 去重取最新一期；无效日期行剔除。
     数据本身仍是研究线索（人数变化≠主力派发已证实），不获强制清仓资格。
     """
-    cached = _daily_cache_get(code, "holder_count")
+    cached = _daily_cache_get(code, "holder_count", "research.stock.holder_count_surge")
     if cached is not _MISS:
         try:
             return SignalFinding(**cached) if cached else None
@@ -307,10 +309,17 @@ def _check_holder_count_surge(code: str) -> Optional[SignalFinding]:
 
         df = _safe_call("stock_zh_a_gdhs_detail_em", _fetch, timeout=15)
         if df is not None and len(df) >= 1:
-            cur_col = next((c for c in df.columns if "本次" in c), None)
-            prev_col = next((c for c in df.columns if "上次" in c), None)
+            # Q-R7：显式字段映射——户数列必须同时含「户数」与「本次/上次」，
+            # 防「户均市值-本次」等列排在前面被误当人数列；无日期列 fail-closed
+            cur_col = next((c for c in df.columns
+                            if "户数" in c and "本次" in c), None)
+            prev_col = next((c for c in df.columns
+                             if "户数" in c and "上次" in c), None)
             date_col = next((c for c in df.columns
                              if ("日期" in c or "截止" in c or "时间" in c)), None)
+            if date_col is None:
+                logger.debug(f"股东户数数据缺统计日期列，fail-closed 放弃({code})")
+                return None
             if cur_col and prev_col:
                 work = df.copy()
                 as_of = None
@@ -334,13 +343,14 @@ def _check_holder_count_surge(code: str) -> Optional[SignalFinding]:
                         finding = SignalFinding(
                             signal_id="research.stock.holder_count_surge",
                             source="akshare stock_zh_a_gdhs_detail_em（按统计截止日倒序取最新一期）",
-                            securities=[code], as_of=as_of, data_quality="OK" if as_of else "UNKNOWN",
+                            securities=[code], as_of=as_of,
+                            data_quality="UNKNOWN",
                             action_scope="research", verified=False,
                             strategy_binding=_RESEARCH_BINDING,
                             detail=(f"个股:股东户数激增({latest_prev:.0f}->{latest_cur:.0f},"
                                     f"+{surge:.0f}%{('，截至' + as_of) if as_of else ''})"),
-                            reason="两期户数变化是研究线索（ISS-117 A12：户数增加≠主力派发已证实），"
-                                   "不单独构成清仓依据")
+                            reason="两期户数变化是研究线索（ISS-117 A12：户数增加≠主力派发已证实）；"
+                                   "仅有统计截止日、无独立公开时点，数据资格 UNKNOWN，不单独构成清仓依据")
     except Exception as e:
         logger.debug(f"股东户数判定异常({code}): {e}")
     _daily_cache_set(code, "holder_count", finding)
@@ -353,7 +363,7 @@ def _check_margin_surge(code: str) -> Optional[SignalFinding]:
     窗口语据（S1 如实披露）：按自然日取样、两观测间隔≥4个自然日近似"近5日"——
     实际交易日跨度随节假日浮动，findings 里如实带出两端日期。
     """
-    cached = _daily_cache_get(code, "margin")
+    cached = _daily_cache_get(code, "margin", "research.stock.margin_surge")
     if cached is not _MISS:
         try:
             return SignalFinding(**cached) if cached else None

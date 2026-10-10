@@ -215,6 +215,7 @@ def build_replay_consistency_check(
             # 数据/置 top_signal live=False），否则属 AGENTS 点名的"回测调用点漏传"同类雷。
             # 当前被 has_position=False + 构造无 ai/event_config 掩盖，加参数消雷。
             is_backtest=True,
+            today=date,  # ISS-117 Q1：回测重放须带 bar 日期——资格门按独立分析日期核验时点
         )
         replay_decision = _serialize_replay_decision(decision_result)
         replay_strategy = _serialize_replay_strategy(strategy_decision)

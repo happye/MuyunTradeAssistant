@@ -34,26 +34,51 @@ _HARD_BINDING_EXACT = "jiaoxue6-8/mode-rule（既有周期策略纪律）"
 
 
 def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
-                            stock_data=None):
+                            stock_data=None, analysis_date=None, mode=None):
     """Q1/Q-R1 消费边界资格门：exit 资格的发现须通过本门才能驱动清仓。
 
     核对（全部通过才授权）：
     1. signal_id 在白名单（当前仅三倍定律）；
     2. 策略绑定与注册版本**精确相等**（禁止子串冒充）；
     3. 适用证券包含当前标的；
-    4. 数据质量 OK；
-    5. 来源时点可严格解析且不晚于本次分析的数据时点（Q-R5：复用
-       source_time.parse_source_time/source_time_in_future，坏字符串不截断洗白；
-       回测参照当前 bar 日期，live 参照行情/指标快照时点）；
-    6. **复算纯函数确认**：用当前 StockData 重跑三倍定律判定——缓存/转述的发现
+    4. 数据质量 OK、verified=True、来源非空；
+    5. **计划适用性**：气宗(mode=qizong)按既有纪律跳过三倍定律——当前计划不适用
+       该规则时，硬资格不成立（缓存/转述不能借不适用的规则清仓）；
+    6. **独立分析日期**：证据时点与数据时点都不得晚于本次分析的确定日期
+       （回测=bar 日期、live=当天，均由调用方独立传入，不从待核验数据自身取——
+       防"2026 年行情配 2020 年分析"自我背书）；
+    7. **复算纯函数确认**：用当前 StockData 重跑三倍定律判定——缓存/转述的发现
        在当前数据上不成立即拒绝（研究缓存不能冒用硬信号身份）。
 
     失败降为 research 并保留诊断 reason；缓存重放走同一门。verified 布尔与
     来源文字本身不是核验凭据。合法三倍正例不受影响（纯函数复算即确认）。
     """
-    from datetime import datetime
     from src.core.source_time import parse_source_time, source_time_in_future
     authorized, rejected = [], []
+
+    # 分析日期（独立确定）：回测由调用方传 bar 日期；live 由调用方传当天。
+    # 缺失时 live 回退墙钟当天；回测缺失 → 硬资格拒绝（不静默 fail-open，
+    # 否则 backtest_validator 等不传 today 的重放路径时点核验整体缺失）。
+    analysis_date = (analysis_date or "")[:10]
+    ref_dt = parse_source_time(analysis_date) if analysis_date else None
+    if ref_dt is None and live:
+        from datetime import datetime as _dt
+        analysis_date = _dt.now().strftime("%Y-%m-%d")
+        ref_dt = parse_source_time(analysis_date)
+    _missing_analysis_date = ref_dt is None
+
+    # 数据时点资格：StockData 自带的行情/指标快照**日期**不得晚于分析日期
+    #（Q-R5 典型场景：分析 2020 年却拿到 2026 年行情——数据整体降资格）。
+    # 日级比较：分析日期是日精度，不做盘中时点对比（当天 21:30 的快照对当天分析合法）。
+    data_qual_reason = None
+    data_asof_raw = getattr(stock_data, "quote_as_of", None) if stock_data is not None else None
+    if ref_dt is not None and data_asof_raw:
+        _dp = parse_source_time(str(data_asof_raw))
+        if _dp is None:
+            data_qual_reason = "行情/指标快照时点不可解析"
+        elif _dp[0].date() > ref_dt[0].date():
+            data_qual_reason = "行情/指标快照时点晚于本次分析日期（数据与场景错配）"
+
     for f in findings:
         if f.action_scope != "exit":
             # research/none 条目从未申请硬权限——原样透传（reason 保留原语义，
@@ -61,6 +86,8 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
             rejected.append(f)
             continue
         reasons = []
+        if data_qual_reason:
+            reasons.append(data_qual_reason)
         if f.signal_id not in _HARD_SIGNAL_IDS:
             reasons.append(f"signal_id {f.signal_id!r} 不在允许硬退出清单")
         if (f.strategy_binding or "") != _HARD_BINDING_EXACT:
@@ -71,26 +98,36 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
             reasons.append(f"数据资格 {f.data_quality}")
         if f.verified is not True:
             reasons.append("未经事实核验")
+        if not (f.source or "").strip():
+            reasons.append("来源未知")
 
-        # Q-R5：时点资格——参照点 = 本次分析的数据时点（quote_as_of），
-        # 证据不得晚于参照点（回测防未来、live 防乱序）；解析失败即拒。
-        ref = None
-        ref_raw = getattr(stock_data, "quote_as_of", None) if stock_data is not None else None
-        if ref_raw:
-            ref = parse_source_time(ref_raw)
-        if ref is None:
-            reasons.append("本次分析数据时点不可解析/缺失（无参照点，不授权硬退出）")
-        elif not f.as_of:
-            reasons.append("证据时点缺失")
-        elif source_time_in_future(f.as_of, ref[0]):
-            reasons.append("证据时点晚于本次分析数据时点（回测防未来/live 防乱序）")
+        # 时点资格（Q-R5）：证据时点须严格可解析且不得晚于独立分析日期。
+        # 坏字符串（如 "not-a-date"）经 parse_source_time 返回 None → 拒绝，
+        # 不经 source_time_in_future 的 False 语义漏过。
+        if ref_dt is not None:
+            if not f.as_of:
+                reasons.append("证据时点缺失")
+            else:
+                _ev = parse_source_time(f.as_of)
+                if _ev is None:
+                    reasons.append(f"证据时点不可解析: {f.as_of!r}")
+                elif source_time_in_future(f.as_of, ref_dt[0]):
+                    reasons.append("证据时点晚于本次分析日期")
 
-        # Q-R1：复算纯函数——当前数据上三倍定律确实成立才授权（研究缓存不能冒用）
+        # 时点参照缺失（回测未传 bar 日期）→ exit 一律拒绝并显式诊断（不默许）
+        if _missing_analysis_date:
+            reasons.append("分析日期缺失（回测无时点参照，不授权硬退出）")
+
+        # 计划适用性 + 复算（Q-R1 补充）：气宗跳过三倍定律——不适用时硬资格不成立，
+        # 缓存/转述不能借不适用的规则清仓
         if not reasons and stock_data is not None:
-            from src.core.exit_signals.stock import _check_triple_up_rule
-            recomputed = _check_triple_up_rule(stock_data, stock_code)
-            if recomputed is None:
-                reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
+            if mode == "qizong":
+                reasons.append("当前持有计划为气宗：三倍定律纪律不适用该计划")
+            else:
+                from src.core.exit_signals.stock import _check_triple_up_rule
+                recomputed = _check_triple_up_rule(stock_data, stock_code)
+                if recomputed is None:
+                    reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
 
         if reasons:
             downgraded = f.model_dump()
