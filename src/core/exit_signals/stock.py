@@ -260,10 +260,13 @@ def _check_triple_up_rule(stock_data, code: str = "") -> Optional[SignalFinding]
         if any(v is None or not isinstance(v, (int, float)) or not (v > 0) or v != v
                or v in (float("inf"), float("-inf")) for v in vals):
             return None
-        # Q5：as_of 必须来自来源数据（quote_as_of，M1）；缺失 → data_quality=UNKNOWN
-        # → 消费边界资格门将拒绝其硬权限（陈旧行情不得获硬退出）
+        # Q5/Q-R5：as_of 必须来自来源数据且**严格解析**——坏时间字符串
+        # （"2026-10-09garbage" 等）不得截断洗白成合法日期；解析失败 → UNKNOWN，
+        # 消费边界资格门将拒绝其硬权限（陈旧/坏时点不得获硬退出）
+        from src.core.source_time import parse_source_time
         raw_as_of = getattr(stock_data, "quote_as_of", None)
-        as_of = str(raw_as_of)[:10] if raw_as_of else None
+        _parsed_asof = parse_source_time(raw_as_of) if raw_as_of else None
+        as_of = _parsed_asof[0].date().isoformat() if _parsed_asof else None
         multiple = price / low_60d
         if multiple >= TRIPLE_UP_MULTIPLE and price < ma5:
             return SignalFinding(

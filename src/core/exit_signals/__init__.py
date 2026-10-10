@@ -28,23 +28,31 @@ __all__ = [
 ]
 
 
-# Q1：允许硬退出的 signal_id 白名单 + 策略绑定前缀（既有周期策略纪律）
+# Q1/Q-R1：允许硬退出的 signal_id 白名单 + 策略绑定（精确版本注册映射，禁止子串）
 _HARD_SIGNAL_IDS = {"exit.stock.triple_up"}
-_HARD_BINDING_PREFIX = "jiaoxue6-8"
-# Q5：live 硬信号的来源时点新鲜度上限（bar 数据每个交易日刷新；7 天=一个完整交易周。
-# 时点必须来自来源数据 quote_as_of，不允许用抓取墙钟补造。阈值属政策项，架构师可重裁。）
-_HARD_MAX_AGE_DAYS = 7
+_HARD_BINDING_EXACT = "jiaoxue6-8/mode-rule（既有周期策略纪律）"
 
 
-def authorize_hard_findings(findings, stock_code: str, *, live: bool = False):
-    """Q1 消费边界资格门：exit 资格的发现须通过本门才能驱动清仓。
+def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
+                            stock_data=None):
+    """Q1/Q-R1 消费边界资格门：exit 资格的发现须通过本门才能驱动清仓。
 
-    核对：signal_id 白名单、策略绑定、实际证券、数据质量、证据时点（live 校验新鲜度，
-    回测按当前 bar 资格豁免时点项）。失败降为 research 并保留诊断 reason——
-    不硬退出、不静默丢弃。缓存重放的发现走同一门（缓存字段不能自授权；
-    verified=true 本身也不是核验凭据）。
+    核对（全部通过才授权）：
+    1. signal_id 在白名单（当前仅三倍定律）；
+    2. 策略绑定与注册版本**精确相等**（禁止子串冒充）；
+    3. 适用证券包含当前标的；
+    4. 数据质量 OK；
+    5. 来源时点可严格解析且不晚于本次分析的数据时点（Q-R5：复用
+       source_time.parse_source_time/source_time_in_future，坏字符串不截断洗白；
+       回测参照当前 bar 日期，live 参照行情/指标快照时点）；
+    6. **复算纯函数确认**：用当前 StockData 重跑三倍定律判定——缓存/转述的发现
+       在当前数据上不成立即拒绝（研究缓存不能冒用硬信号身份）。
+
+    失败降为 research 并保留诊断 reason；缓存重放走同一门。verified 布尔与
+    来源文字本身不是核验凭据。合法三倍正例不受影响（纯函数复算即确认）。
     """
-    from datetime import datetime, date as _date
+    from datetime import datetime
+    from src.core.source_time import parse_source_time, source_time_in_future
     authorized, rejected = [], []
     for f in findings:
         if f.action_scope != "exit":
@@ -55,23 +63,35 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False):
         reasons = []
         if f.signal_id not in _HARD_SIGNAL_IDS:
             reasons.append(f"signal_id {f.signal_id!r} 不在允许硬退出清单")
-        if _HARD_BINDING_PREFIX not in (f.strategy_binding or ""):
+        if (f.strategy_binding or "") != _HARD_BINDING_EXACT:
             reasons.append(f"策略绑定不符: {f.strategy_binding!r}")
         if stock_code not in (f.securities or []):
             reasons.append("适用证券不含当前标的")
         if f.data_quality != "OK":
             reasons.append(f"数据资格 {f.data_quality}")
-        if f.as_of:
-            try:
-                d = datetime.strptime(f.as_of[:10], "%Y-%m-%d").date()
-                if d > _date.today():
-                    reasons.append("证据时点在未来")
-                elif live and (_date.today() - d).days > _HARD_MAX_AGE_DAYS:
-                    reasons.append(f"证据时点过期（{f.as_of[:10]}，超 {_HARD_MAX_AGE_DAYS} 天）")
-            except ValueError:
-                reasons.append("证据时点格式非法")
-        elif live:
-            reasons.append("证据时点未知（live 硬信号须携带来源时点）")
+        if f.verified is not True:
+            reasons.append("未经事实核验")
+
+        # Q-R5：时点资格——参照点 = 本次分析的数据时点（quote_as_of），
+        # 证据不得晚于参照点（回测防未来、live 防乱序）；解析失败即拒。
+        ref = None
+        ref_raw = getattr(stock_data, "quote_as_of", None) if stock_data is not None else None
+        if ref_raw:
+            ref = parse_source_time(ref_raw)
+        if ref is None:
+            reasons.append("本次分析数据时点不可解析/缺失（无参照点，不授权硬退出）")
+        elif not f.as_of:
+            reasons.append("证据时点缺失")
+        elif source_time_in_future(f.as_of, ref[0]):
+            reasons.append("证据时点晚于本次分析数据时点（回测防未来/live 防乱序）")
+
+        # Q-R1：复算纯函数——当前数据上三倍定律确实成立才授权（研究缓存不能冒用）
+        if not reasons and stock_data is not None:
+            from src.core.exit_signals.stock import _check_triple_up_rule
+            recomputed = _check_triple_up_rule(stock_data, stock_code)
+            if recomputed is None:
+                reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
+
         if reasons:
             downgraded = f.model_dump()
             downgraded.update({

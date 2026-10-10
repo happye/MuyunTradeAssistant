@@ -863,11 +863,16 @@ class EventLayer:
                 if data.get("summary"):
                     data["summary"] = f"🚫真实性存疑(可能伪信号) {data['summary']}"
 
+            # ISS-117 Q-R2：scope 缺省/非法 = unknown（持仓股新闻按请求上下文
+            # 确定 affected_codes=[本股]，来源可追溯；范围不明则不适用软调节）
+            _scope_raw = str(data.get("scope") or "").strip().lower()
+            scope = _scope_raw if _scope_raw in ("market", "sector", "stock") else "unknown"
+
             return MarketEvent(
                 event_type=data.get("event_type", "earnings"),
                 sentiment=data.get("sentiment", "neutral"),
                 impact_level=int(data.get("impact_level", 2)),
-                scope=data.get("scope", "stock"),
+                scope=scope,
                 duration=data.get("duration", "short"),
                 summary=data.get("summary", ""),
                 source=f"{stock_name}新闻",

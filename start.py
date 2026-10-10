@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.29.1"  # v0.8.29.1=ISS-117 Q1-Q7 补修批(消费边界资格门+事件硬权限收口+cap增量语义+子信号隔离+数据资格门)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.28.1=渗透率30+降级研究提醒(板块层误触发强制清仓修复,架构师裁决A+B+E)+标注不适用出口+证据卡top_signal字段；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.29.2"  # v0.8.29.2=ISS-117 Q尾项(Q-R1复算确认/Q-R2事件范围解析/Q-R5时点参照bar/Q-R7日期严格解析+列映射)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.1=ISS-117 Q1-Q7 补修批(消费边界资格门+事件硬权限收口+cap增量语义+子信号隔离+数据资格门)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.28.1=渗透率30+降级研究提醒(板块层误触发强制清仓修复,架构师裁决A+B+E)+标注不适用出口+证据卡top_signal字段；与 cli/main.py --version、AGENTS.md 统一
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）

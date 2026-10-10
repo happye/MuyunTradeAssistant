@@ -474,7 +474,7 @@ class Orchestrator:
             # 证券/时点/质量核验；不足者降为 research 提醒并保留诊断（缓存重放同门）
             from src.core.exit_signals import authorize_hard_findings
             _hard, _rejected = authorize_hard_findings(
-                _findings, data.stock_code, live=not is_backtest)
+                _findings, data.stock_code, live=not is_backtest, stock_data=data)
             top_signal = _hard[0].detail if _hard else None
             # Q1/R1：_rejected 是全部非硬展示条目的超集（research/none 原样透传 +
             # exit 降级副本）——只遍历它，避免 research 条目双入 warnings

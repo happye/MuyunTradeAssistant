@@ -39,9 +39,11 @@ def _hard_finding(**kw):
 # ── Q1：消费边界资格门 ──────────────────────────────────
 
 def test_q1_gate_authorized_positive():
-    """合法硬信号正例：白名单 signal_id + 绑定 + 证券 + 新鲜时点 + OK 质量 → 通过。"""
-    ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True)
-    assert len(ok) == 1 and not rej
+    """合法硬信号正例：白名单 signal_id + 绑定 + 证券 + 时点 + OK 质量 + 复算成立 → 通过。"""
+    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                         price=40.0, ma5=42.0, low_60d=10.0)
+    ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True, stock_data=sd)
+    assert len(ok) == 1 and not rej, f"rej={[r.reason for r in rej]}"
 
 
 def test_q1_gate_rejects_wrong_security():
@@ -52,19 +54,30 @@ def test_q1_gate_rejects_wrong_security():
 
 
 def test_q1_gate_rejects_stale_and_future_as_of():
-    yesterday = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    ok1, rej1 = authorize_hard_findings([_hard_finding(as_of=yesterday)], "600519", live=True)
-    assert not ok1 and "过期" in rej1[0].reason
+    """Q-R5：live 证据时点不得晚于本次分析数据时点（旧 7 天政策已按裁决移除；
+    陈旧行情由行情源资格门降级）。此处用未来时点反例 + 复算正例。"""
     future = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
-    ok2, rej2 = authorize_hard_findings([_hard_finding(as_of=future)], "600519", live=True)
-    assert not ok2 and "未来" in rej2[0].reason
+    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+                         price=40.0, ma5=42.0, low_60d=10.0)
+    ok1, rej1 = authorize_hard_findings([_hard_finding(as_of=future)], "600519", live=True, stock_data=sd)
+    assert not ok1 and "晚于" in rej1[0].reason
+    # 复算确认成立 + as_of=参照日 → 通过（原 7 天陈旧拒收已移除）
+    ok2, rej2 = authorize_hard_findings([_hard_finding()], "600519", live=True, stock_data=sd)
+    assert len(ok2) == 1 and not rej2
 
 
 def test_q1_gate_backtest_waives_staleness():
-    """Q5：历史回测按当前 bar 资格——live=False 时陈旧 as_of 不作过期拒收。"""
-    old = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    ok, rej = authorize_hard_findings([_hard_finding(as_of=old)], "600519", live=False)
+    """Q-R5：回测按当前 bar 资格——证据不晚于 bar 日期即可（旧数据不算未来）。"""
+    bar_date = "2020-01-10"
+    sd = SimpleNamespace(quote_as_of=bar_date, price=40.0, ma5=42.0, low_60d=10.0)
+    evidence_2020 = "2020-01-08"
+    ok, rej = authorize_hard_findings([_hard_finding(as_of=evidence_2020)], "600519",
+                                      live=False, stock_data=sd)
     assert len(ok) == 1 and not rej
+    # 证据晚于当前 bar（2026 行情混入 2020 回测）→ 拒绝
+    ok2, rej2 = authorize_hard_findings([_hard_finding(as_of="2026-10-09")], "600519",
+                                        live=False, stock_data=sd)
+    assert not ok2 and "晚于" in rej2[0].reason
 
 
 def test_q1_gate_rejects_unknown_binding_and_quality():
@@ -334,6 +347,7 @@ def test_q7_flagbearer_future_date_rows_dropped(monkeypatch):
     rows = [[future, "10.0"]] * 25
     import src.data.akshare_client as ak_mod
     monkeypatch.setattr(ak_mod, "_ensure_baostock_login", lambda: True)
+    _calls = []
 
     class _FakeRS:
         error_code = "0"
@@ -352,9 +366,13 @@ def test_q7_flagbearer_future_date_rows_dropped(monkeypatch):
         def get_row_data(self):
             return self._rows[self._i - 1]
 
-    monkeypatch.setattr(real_bs, "query_history_k_data_plus", lambda **k: _FakeRS())
+    def _fake_query(*args, **kwargs):
+        _calls.append((args, kwargs))
+        return _FakeRS()
+    monkeypatch.setattr(real_bs, "query_history_k_data_plus", _fake_query)
     monkeypatch.setattr(ak_mod, "_call_with_timeout", lambda fn, timeout=20: fn())
     assert sector._fetch_20d_change_pct("600170") is None
+    assert _calls, "供应商查询未发生"
 
 
 def test_q7_holder_future_stat_date_disqualified(monkeypatch, tmp_path):
