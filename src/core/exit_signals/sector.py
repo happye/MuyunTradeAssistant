@@ -141,12 +141,23 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
             while rs.next():
                 rows.append(rs.get_row_data())
         _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
+        # Q7：行级日期有效性——剔除未来日期；同日重复压成一条；按日期升序对齐
+        clean = []
+        today_str = datetime.now().strftime("%Y-%m-%d")
+        for r in rows:
+            d = (r[0] or "")[:10]
+            if len(d) != 10 or d > today_str:
+                continue  # 缺日期/未来日期无资格
+            clean.append((d, r[1]))
+        clean = sorted({d: (d, c) for d, c in clean}.values(), key=lambda x: x[0])
+        rows = clean
         if len(rows) < 21:
-            # E4（S1）：不足 21 个收盘观测不能冒充"20日涨幅"——如实披露缺口（fail-open）
-            logger.debug(f"旗手{code}收盘观测不足21条({len(rows)})，无法评估20日滞涨")
+            # E4（S1）：不足 21 个**不同交易日**的收盘观测不能冒充"20日涨幅"
+            #（Q7：21 行同一天 ≠ 20 日窗口）
+            logger.debug(f"旗手{code}有效收盘观测不足21条({len(rows)})，无法评估20日滞涨")
             return None
         # 窗口口径：截取最后21行（20个交易日间隔）对齐标的 change_20d 口径；
-        # 40自然日窗口保留作停牌缓冲。最新一行须为近期（40天窗口内即视为可评估）。
+        # 40自然日窗口保留作停牌缓冲。
         rows = rows[-21:]
         try:
             first = float(rows[0][1])

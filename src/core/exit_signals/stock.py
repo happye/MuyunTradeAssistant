@@ -123,23 +123,46 @@ def check_stock_top_signal(stock_data, code: str, *,
         list[SignalFinding]，可能为空
     """
     findings = []
-    f = _check_shrink_acceleration(stock_data, code=code)
+
+    def _safe(fn, *a, **k):
+        """Q6：子信号隔离——单个子信号异常只损失该子信号（显式诊断条目），
+        不吞掉已合格/后续独立保护（如三倍定律 exit 资格）。"""
+        try:
+            return fn(*a, **k)
+        except Exception as e:
+            logger.warning(f"子信号 {getattr(fn, '__name__', fn)} 异常（已隔离）: {e}")
+            return SignalFinding(
+                signal_id=f"diag.stock.{getattr(fn, '__name__', 'subsignal')}",
+                source="子信号隔离诊断", data_quality="UNKNOWN", action_scope="none",
+                detail=f"个股子信号检查失败（已隔离）: {type(e).__name__}: {e}",
+                reason="Q6 逐子信号隔离：失败不吞掉其他独立保护")
+
+    f = _safe(_check_shrink_acceleration, stock_data, code=code)
     if f:
         findings.append(f)
 
     if announcements:
-        findings.extend(_check_holder_reduction(announcements, code=code))
+        # Q6：规范化旧格式输入——字符串标题（旧缓存/手工构造）包装为 dict，防 .get 崩
+        norm = []
+        for a in announcements:
+            if isinstance(a, str):
+                norm.append({"title": a, "date": "", "content": "", "source": "legacy-str"})
+            elif isinstance(a, dict):
+                norm.append(a)
+        if norm:
+            _res = _safe(_check_holder_reduction, norm, code=code)
+            findings.extend(_res if isinstance(_res, list) else ([_res] if _res else []))
 
     if mode != "qizong":
-        f = _check_triple_up_rule(stock_data, code=code)
+        f = _safe(_check_triple_up_rule, stock_data, code=code)
         if f:
             findings.append(f)
 
     if live and code:
-        f = _check_holder_count_surge(code)
+        f = _safe(_check_holder_count_surge, code)
         if f:
             findings.append(f)
-        f = _check_margin_surge(code)
+        f = _safe(_check_margin_surge, code)
         if f:
             findings.append(f)
 
@@ -231,14 +254,23 @@ def _check_triple_up_rule(stock_data, code: str = "") -> Optional[SignalFinding]
         price = getattr(stock_data, "price", None)
         ma5 = getattr(stock_data, "ma5", None)
         low_60d = getattr(stock_data, "low_60d", None)
-        if not price or not ma5 or not low_60d or low_60d <= 0:
+        # Q5：价格/均线/低点必须有限正值；NaN/Inf/零负任一不符即无资格（不假触发，
+        # 也不抹掉其他独立退出）
+        vals = [price, ma5, low_60d]
+        if any(v is None or not isinstance(v, (int, float)) or not (v > 0) or v != v
+               or v in (float("inf"), float("-inf")) for v in vals):
             return None
+        # Q5：as_of 必须来自来源数据（quote_as_of，M1）；缺失 → data_quality=UNKNOWN
+        # → 消费边界资格门将拒绝其硬权限（陈旧行情不得获硬退出）
+        raw_as_of = getattr(stock_data, "quote_as_of", None)
+        as_of = str(raw_as_of)[:10] if raw_as_of else None
         multiple = price / low_60d
         if multiple >= TRIPLE_UP_MULTIPLE and price < ma5:
             return SignalFinding(
                 signal_id="exit.stock.triple_up",
                 source="StockData.price/ma5/low_60d（bar 衍生，point-in-time）",
-                securities=[code] if code else [], data_quality="OK",
+                securities=[code] if code else [], as_of=as_of,
+                data_quality="OK" if as_of else "UNKNOWN",
                 action_scope="exit", verified=True,
                 strategy_binding=_HARD_BINDING,
                 detail=f"个股:三倍定律+破5日线(近60日涨{multiple:.1f}倍,price<MA5)",
@@ -282,8 +314,12 @@ def _check_holder_count_surge(code: str) -> Optional[SignalFinding]:
                 if date_col:
                     work["_d"] = pd.to_datetime(work[date_col], errors="coerce")
                     work = work.dropna(subset=["_d"])
+                    # Q7：未来统计日（数据异常）无资格——不得标 OK
+                    work = work[work["_d"] <= pd.Timestamp.now()]
                     if work.empty:
-                        return None
+                        finding = None
+                        _daily_cache_set(code, "holder_count", None)
+                        return finding
                     work = work.sort_values("_d", ascending=False)
                     work = work.drop_duplicates(subset=["_d"], keep="first")
                     as_of = str(work.iloc[0]["_d"].date())

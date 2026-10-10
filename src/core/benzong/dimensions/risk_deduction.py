@@ -99,8 +99,12 @@ JSON 输出：{{"score": 数字, "confidence": 0-1, "reasoning": "...", "invalid
     # ISS-117 A07/D6（S0）：跨字段子串兜底已删除——raw 里同时出现 invalidate/true
     # 不再判红线。结构化字段仅认布尔；非布尔值已被 _validate_score_dict 归一为 None
     # （上游校验层负责），此处不会出现字符串"true"误判一票否决。
-    if isinstance(structured_invalidate, bool):
-        invalidate = structured_invalidate
+    # ISS-117 Q3（S01 验收）：AI 结构化 invalidate=True 也只是「红线候选」——AI 自报
+    # 内容未经原件核验，不授予红线权限（不写硬 invalidate/不强制 F）。规则版既定
+    # 硬排除与明确 ST 政策不撤销。
+    if structured_invalidate is True:
+        warnings.append("⚠ AI 风险红线候选（未经核验）：不作为一票否决，请人工复核原始理由")
+    invalidate = False
     if invalidate or ai_result["score"] >= 80:
         warnings.append(f"⚠ 高风险标的（评分 {ai_result['score']}），建议放弃或人工复核")
 

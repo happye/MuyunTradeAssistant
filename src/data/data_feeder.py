@@ -549,6 +549,10 @@ class DataFeeder:
             index_high_250d=index_high_250d,
             weekly=weekly_snapshot,
             monthly=monthly_snapshot,
+            # ISS-117 Q5/P0-2：bar 日期即 point-in-time as_of——消费边界资格门
+            # （authorize_hard_findings）据此核验三倍定律等 bar 衍生硬信号的新鲜度。
+            # 不填则 data_quality=UNKNOWN，回测中既有硬纪律会被资格门静默降权。
+            quote_as_of=date,
         )
 
     def _get_index_at_date(self, date: str) -> tuple:

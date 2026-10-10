@@ -184,11 +184,12 @@ def _qizong_plan():
     )
 
 
-def _sell_decision(top_signal=None, sell_path=None):
+def _sell_decision(top_signal=None, sell_path=None, top_signal_authorized=False):
     state = StrategyState(current_position_ratio=0.2, lifecycle=TradeLifecycle.HOLD)
     return StrategyDecision(
         decision=SignalType.SELL, position_action=PositionAction.CLOSE_ALL,
         sell_path=sell_path, top_signal=top_signal, position_ratio=0.0,
+        top_signal_authorized=top_signal_authorized,
         lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.EXIT,
         new_state=state,
     )
@@ -197,7 +198,9 @@ def _sell_decision(top_signal=None, sell_path=None):
 def test_planguard_top_signal_not_suppressed_in_qizong():
     """气宗持有期内大顶信号也强制 SELL，不被压制"""
     sd = _sd(price=100.0)  # price > stop(80), 不触发致命止损
-    out = PlanGuard().evaluate(_sell_decision(top_signal="宏观:成交额破10万亿"),
+    # v0.8.29.1 Q1：P1 仅对通过消费边界资格门的 top_signal 生效——补授权标志
+    out = PlanGuard().evaluate(_sell_decision(top_signal="宏观:成交额破10万亿",
+                                              top_signal_authorized=True),
                                _qizong_plan(), sd, today="2026-06-10")
     assert out.decision == SignalType.SELL
     assert out.sell_path == "top_signal"

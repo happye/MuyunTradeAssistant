@@ -401,6 +401,9 @@ class StrategyDecision(BaseModel):
     position_ratio: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例（None=权重未知——减仓意图保留但不伪造精确目标，L1）")
     # 跳法A 阶段2: 高位止盈3维度大顶信号（宏观/板块/个股），非空=强制离场，PlanGuard 不可压制
     top_signal: Optional[str] = Field(default=None, description="高位止盈大顶信号描述（如'宏观:成交额破10万亿'），触发即强制 SELL")
+    # ISS-117 Q1：top_signal 已通过消费边界资格门（signal_id 白名单/策略绑定/证券/时点/质量）。
+    # 未授权的 top_signal 字符串（旧格式/缓存自授/手工构造）不得触发 PlanGuard P1 强制清仓。
+    top_signal_authorized: bool = Field(default=False, description="top_signal 已通过消费边界资格门")
     # ISS-053: 基本面恶化硬退出（被ST/业绩预亏），独立通道（非 top_signal），PlanGuard 规则4.5 不可压制
     fundamental_alert: Optional[str] = Field(default=None, description="基本面恶化硬退出信号(被ST/业绩预亏)，触发即强制SELL+CLOSE_ALL")
 

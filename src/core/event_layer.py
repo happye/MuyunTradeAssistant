@@ -532,19 +532,9 @@ class EventLayer:
         elif event.sentiment == "bullish" and event.impact_level >= 3:
             result.score_adjustment = (event.impact_level / 5.0) * 0.15  # 最多+0.15
 
-        # 仓位调节（D2：限仓是空头风险政策——严重利好不再限仓）
-        if event.sentiment == "bearish":
-            if event.impact_level >= 5:
-                result.position_cap = 0.3  # 黑天鹅级别
-            elif event.impact_level >= 4:
-                result.position_cap = 0.5
-            elif event.impact_level >= 3:
-                result.position_cap = 0.75
-
-        # 状态干预（D2：仅已核实 + 空向黑天鹅；利向/方向不明不强制恐慌）
-        if event.event_type == "black_swan" and event.impact_level >= 5 and event.sentiment == "bearish":
-            result.force_state = MarketState.PANIC.value
-
+        # ISS-117 Q2（S01 验收裁决）：AI 自评真实性不等于原件核验——事件在本批
+        # 一律不获得 force_state 与硬限仓（position_cap），只保留有界软调节 + 提示。
+        # 后续若开放事件硬权限，须绑定明确已批准政策与证据 resolver，不得仅提高阈值。
         return result
 
     # ===== 内部方法 =====

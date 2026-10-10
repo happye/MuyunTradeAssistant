@@ -395,6 +395,20 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.29.1 (ISS-117 Q1-Q7 补修批) - 2026-10-10
+
+- S01 独立验收 16 反例（归 7 组）落地：Q1 消费边界资格门（exit 发现须过 signal_id
+  白名单/绑定/证券/时点新鲜度/质量，不足降 research 保留诊断；缓存重放同门；PlanGuard
+  P1 只认已授权 top_signal）；Q2 事件硬权限收口（不 force_state/不硬限仓，证券适用
+  范围门：空证券≠全市场）；Q3 AI invalidate 降红线候选（不写硬 invalidate/不强制 F）；
+  Q4 cap 增量语义（delta=max(0,min(t,k)-c)，delta=0 转 HOLD，REDUCE 不参与，4 处
+  min 收口单点）；Q5 三倍定律价格资格门（有限正值+as_of 来自 quote_as_of）；Q6 公告
+  旧格式规范化+子信号/逐层隔离（异常→显式诊断条目）；Q7 旗手/户数行级日期有效性。
+- DataFeeder 回测 StockData 补 quote_as_of=bar 日期（资格门在回测按 bar 资格放行
+  既有硬纪律）；CACHE_VERSION v0.8.29.1（Q3 语义）；新告警「异常（已隔离）」三处同步。
+- 测试：test_iss117_q_batch.py 25 项（Q 反例+硬权限正例）+ 既有 6 文件适配。
+- S2a/S2b（投票公式固定矩阵 DESIGN_READY）待本批过门后实施。
+
 ### v0.8.29 (ISS-117 信号权限收口 S0+S1) - 2026-10-10
 
 - 架构师专项审查（30 探针 23 反例）裁决「检测到现象 ≠ 获准改变动作」，落地 S0+S1：

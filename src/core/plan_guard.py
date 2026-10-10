@@ -230,7 +230,9 @@ class PlanGuard:
 
         # 规则 P1：高位止盈3维度大顶信号（跳法A 阶段2）——仅次于致命止损，不可压制。
         # 即使气宗持有期内，宏观/个股大顶信号触发也强制离场（绕开"该不该卖"的 AI 判断）。
-        if adjusted.top_signal:
+        # ISS-117 Q1：仅「通过消费边界资格门」的 top_signal 获得本规则——旧字符串/缓存
+        # 自授/未授权实例只作诊断展示，不再触发 CLOSE_ALL。
+        if adjusted.top_signal and adjusted.top_signal_authorized:
             if adjusted.decision != SignalType.SELL:
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL

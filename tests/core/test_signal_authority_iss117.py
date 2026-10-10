@@ -171,7 +171,8 @@ def test_a06_event_missing_four_elements_no_hard_override():
     assert r.confidence == 0.0 and r.force_state is None and r.position_cap == 1.0
 
 
-def test_a06_event_verified_bearish_keeps_cap():
+def test_a06_event_verified_bearish_no_cap():
+    """S01 验收 Q2：本批无独立核验器——已核实事件同样不硬限仓（软调节保留）。"""
     from src.core.event_layer import EventLayer
     el = EventLayer({"enabled": False})
     ev = MarketEvent(event_type="macro", impact_level=5, sentiment="bearish",
@@ -180,7 +181,8 @@ def test_a06_event_verified_bearish_keeps_cap():
                                     "how": "公开市场操作", "authenticity": 90})
     r = el.to_ai_modifier_result(ev)
     assert r.confidence == pytest.approx(0.9)   # 可信度来自真实性，非 impact
-    assert r.position_cap == 0.3                # 已核实空头风险政策保留
+    assert r.position_cap == 1.0                # Q2：事件不硬限仓
+    assert r.score_adjustment < 0               # 空向软调节保留
 
 
 def test_a06_event_verified_bullish_no_cap():

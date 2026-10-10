@@ -93,11 +93,21 @@ def test_fundamental_alert_exit_writes_cooldown():
 
 
 def test_top_signal_exit_writes_cooldown():
+    """v0.8.29.1 Q1：仅「通过消费边界资格门」的 top_signal 触发 P1 强制清仓。"""
     out = PlanGuard().evaluate(
-        _dec_with({"top_signal": "宏观:成交额破1.5万亿"}),
+        _dec_with({"top_signal": "宏观:成交额破1.5万亿", "top_signal_authorized": True}),
         _plan(), _data(), today="2024-02-01")
     assert out.sell_path == "top_signal"
     _assert_cooldown(out)
+
+
+def test_top_signal_unauthorized_no_p1():
+    """ISS-117 Q1：未通过资格门的 top_signal 字符串（旧格式/缓存自授）不触发 P1。"""
+    out = PlanGuard().evaluate(
+        _dec_with({"top_signal": "宏观:成交额破1.5万亿"}),
+        _plan(), _data(), today="2024-02-01")
+    assert out.sell_path != "top_signal"
+    assert not any("高位止盈" in r for r in (out.strategy_reasons or [])),         "未授权 top_signal 不得触发 P1 规则"
 
 
 def test_time_stop_exit_writes_cooldown():

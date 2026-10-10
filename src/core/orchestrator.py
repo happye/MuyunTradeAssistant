@@ -51,6 +51,53 @@ logger = logging.getLogger(__name__)
 FORCE_EXIT_SCORE = 0.85
 
 
+def _soft_cap_target(current_ratio, target_ratio, cap):
+    """ISS-117 Q4：软 cap 按「实际新增仓位」应用。
+
+    Returns:
+        (new_target, demote_to_hold, skipped)：
+        - REDUCE 方向（target<=current）或当前权重未知或 cap 无效 → 原目标不动（skipped）
+        - ADD/OPEN 方向：delta = max(0, min(target, cap) - current)；delta=0 → demote
+        - new_target = current + delta（不放大卖出，只限制新增）
+    """
+    if cap is None or cap >= 1.0:
+        return target_ratio, False, True
+    if current_ratio is None or target_ratio is None:
+        return target_ratio, False, True   # 未知当前权重：不伪造增量
+    if cap >= target_ratio:
+        return target_ratio, False, True   # cap 未构成约束（含浮点噪声边界）
+    if target_ratio <= current_ratio:
+        return target_ratio, False, True   # 减仓方向：cap 不参与
+    delta = max(0.0, min(target_ratio, cap) - current_ratio)
+    if delta <= 0:
+        return current_ratio, True, False  # 加不动 → HOLD
+    return current_ratio + delta, False, False
+
+
+def _event_auth_qualified(event) -> bool:
+    """ISS-117 Q2：事件证据资格——四要素在且真实性≥30（AI 自报真实性仍只是最低门槛，
+    独立核验器缺位前事件不获得任何硬权限）。"""
+    fe = getattr(event, "four_elements", None)
+    if not isinstance(fe, dict):
+        return False
+    auth = fe.get("authenticity")
+    return isinstance(auth, (int, float)) and auth >= 30
+
+
+def _event_applies_to_stock(event, stock_code: str) -> bool:
+    """ISS-117 Q2：事件证券适用范围——空证券/空行业 ≠ 全市场。
+
+    scope=market 显式声明全市场 → 适用；sector/stock 范围要求 affected_codes 明确
+    包含当前标的（行业→个股映射无可靠来源，无法核实的 sector 事件不适用当前股，
+    仅作提示不驱动决策）。
+    """
+    code = (stock_code or "").split(".")[0]
+    if getattr(event, "scope", "market") == "market":
+        return True
+    codes = getattr(event, "affected_codes", None) or []
+    return code in codes
+
+
 class Orchestrator:
     """编排器 - 协调七层分析流程（v0.8.0 含事件层+AI调节层）"""
 
@@ -239,11 +286,12 @@ class Orchestrator:
                 # ISS-117 D3（S0）：先按证据资格筛选（四要素在且真实性≥30），再取最高影响；
                 # 未核实事件只作提示，不驱动决策——不让不合格的最高级挤掉真实的次级风险
                 def _event_qualified(e):
-                    fe = getattr(e, "four_elements", None)
-                    if not isinstance(fe, dict):
+                    # Q2：资格（四要素真实性≥30）+ 证券适用范围双重门
+                    if not _event_auth_qualified(e):
                         return False
-                    auth = fe.get("authenticity")
-                    return isinstance(auth, (int, float)) and auth >= 30
+                    if not _event_applies_to_stock(e, data.stock_code):
+                        return False
+                    return True
                 _qualified = [e for e in active_events if _event_qualified(e)]
                 _unverified = [e for e in active_events if not _event_qualified(e)]
                 if _unverified:
@@ -285,14 +333,8 @@ class Orchestrator:
                     decision_result, ai_result.score_adjustment, "AI Modifier")
 
                 # 应用仓位调节（传递给Strategy Layer通过decision_result）
-                # ISS-117 A06（S0）：cap 只限制新增风险（BUY 方向）——对 HOLD/SELL 不再
-                # min 现有仓位，否则零置信度 AI 风险标签会把「减到60%」放大成「清到30%」
-                if (ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
-                        and decision_result.decision == SignalType.BUY):
-                    decision_result.position_ratio = min(
-                        decision_result.position_ratio, ai_result.position_cap
-                    )
-                    logger.info(f"AI Modifier capped position: max {ai_result.position_cap:.0%}")
+                # ISS-117 Q4：cap 延后到策略层后按「实际新增仓位」单点应用——
+                # 此处不再 min 现有仓位（HOLD+ADD/BUY+ADD/REDUCE 各方向语义见 :585）
 
                 # 应用状态干预
                 if ai_result.force_state:
@@ -319,21 +361,10 @@ class Orchestrator:
                 # F2：方向感知——看空事件增量不削弱卖出强度
                 self._apply_sentiment_to_decision(
                     decision_result, event_ai_result.score_adjustment, "Event Layer")
-                if (event_ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
-                        and decision_result.decision == SignalType.BUY):
-                    decision_result.position_ratio = min(
-                        decision_result.position_ratio, event_ai_result.position_cap
-                    )
-                    logger.info(f"Event Layer capped position: max {event_ai_result.position_cap:.0%}")
-                if event_ai_result.force_state:
-                    from src.data.models import MarketState
-                    decision_result.state = MarketState[event_ai_result.force_state.upper()]
-                    logger.warning(f"Event Layer forced state: {decision_result.state.value}")
-                # 同步合并后的 ai_result 字段（下游展示/日志用）
+                # Q4：事件 cap 同样延后到策略层后单点应用（与 AI cap 取 min 作软上限）；
+                # Q2：事件不再产生 force_state/硬限仓（本批无独立核验器，无应用块）
                 ai_result.score_adjustment += event_ai_result.score_adjustment
                 ai_result.position_cap = min(ai_result.position_cap, event_ai_result.position_cap)
-                if event_ai_result.force_state:
-                    ai_result.force_state = event_ai_result.force_state
             else:
                 # 事件层独立调节
                 ai_result = event_ai_result
@@ -342,21 +373,8 @@ class Orchestrator:
                 self._apply_sentiment_to_decision(
                     decision_result, ai_result.score_adjustment, "Event Layer")
 
-                # 应用仓位调节（ISS-117 A06：cap 只限制新增风险 BUY 方向，不放大卖出）
-                if (ai_result.position_cap < 1.0 and decision_result.position_ratio is not None
-                        and decision_result.decision == SignalType.BUY):
-                    decision_result.position_ratio = min(
-                        decision_result.position_ratio, ai_result.position_cap
-                    )
-                    logger.info(f"Event Layer capped position: max {ai_result.position_cap:.0%}")
-
-                # 应用状态干预
-                if ai_result.force_state:
-                    force_state = ai_result.force_state
-                    from src.data.models import MarketState
-                    state = MarketState[force_state.upper()]
-                    decision_result.state = state
-                    logger.warning(f"Event Layer forced state: {state.value}")
+                # Q4：事件独立路径的 cap 同样延后到策略层后单点应用
+                # Q2：事件不再产生 force_state/硬限仓（本批无独立核验器，无应用块）
 
         # Layer 3.75: 买卖点精确触发（Entry/Exit Calculator, v0.8.3 Phase C）
         entry_exit_result = None
@@ -452,12 +470,18 @@ class Orchestrator:
                 )
             except Exception as e:
                 logger.debug(f"高位止盈信号检查失败: {e}")
-            _hard = [f for f in _findings if f.action_scope == "exit"]
-            _research = [f for f in _findings if f.action_scope == "research" and f.detail]
+            # Q1：消费边界资格门——exit 资格还须通过 signal_id 白名单/策略绑定/
+            # 证券/时点/质量核验；不足者降为 research 提醒并保留诊断（缓存重放同门）
+            from src.core.exit_signals import authorize_hard_findings
+            _hard, _rejected = authorize_hard_findings(
+                _findings, data.stock_code, live=not is_backtest)
             top_signal = _hard[0].detail if _hard else None
-            for _rf in _research:
-                decision_result.warnings.append(
-                    _rf.detail + (f"（{_rf.reason}）" if _rf.reason else ""))
+            # Q1/R1：_rejected 是全部非硬展示条目的超集（research/none 原样透传 +
+            # exit 降级副本）——只遍历它，避免 research 条目双入 warnings
+            for _rf in _rejected:
+                if _rf.detail:
+                    decision_result.warnings.append(
+                        _rf.detail + (f"（{_rf.reason}）" if _rf.reason else ""))
             if top_signal:
                 decision_result.decision = SignalType.SELL
                 decision_result.position_action = PositionAction.CLOSE_ALL
@@ -526,6 +550,8 @@ class Orchestrator:
         # 跳法A 阶段2: 把大顶信号标到策略决策上，让 PlanGuard 按 P1 不可压处理
         if top_signal:
             strategy_decision.top_signal = top_signal
+            # Q1：仅通过消费边界资格门的 top_signal 才允许 PlanGuard P1 强制清仓
+            strategy_decision.top_signal_authorized = True
             if strategy_decision.decision == SignalType.SELL and not strategy_decision.sell_path:
                 strategy_decision.sell_path = "top_signal"
 
@@ -583,19 +609,32 @@ class Orchestrator:
                     "warning": f"技术面卖点已触发，但AI情绪{ai_sentiment}。卖点规则优先，AI仅作风险提示。"
                 }
 
-        # AI仓位上限影响Strategy Layer的仓位建议
-        # ISS-117 A06：cap 只限制新增风险（BUY 方向）——HOLD/SELL/REDUCE 不 min 现有仓位
-        if (ai_result and ai_result.position_cap < 1.0
-                and strategy_decision.position_ratio is not None
-                and strategy_decision.decision == SignalType.BUY):
-            original_ratio = strategy_decision.position_ratio
-            strategy_decision.position_ratio = min(
-                strategy_decision.position_ratio, ai_result.position_cap
-            )
-            if strategy_decision.position_ratio != original_ratio:
+        # AI仓位上限影响Strategy Layer的仓位建议——ISS-117 Q4：按「实际新增仓位」应用。
+        # 软 cap 只限制新增：delta = max(0, min(target, cap) - current)；目标 = current + delta；
+        # delta=0（加不动）→ 动作转 HOLD；REDUCE 方向（target<current）cap 不参与（不放大卖出）；
+        # 当前权重未知 → 不伪造增量，保留策略目标并提示。
+        if ai_result and ai_result.position_cap < 1.0:
+            _cap = ai_result.position_cap
+            if event_ai_result is not None and event_ai_result.position_cap < 1.0:
+                _cap = min(_cap, event_ai_result.position_cap)   # 软上限取更严者
+            _new_tgt, _demote, _skipped = _soft_cap_target(
+                current_position_ratio, strategy_decision.position_ratio, _cap)
+            if _skipped and current_position_ratio is None:
+                decision_result.warnings.append(
+                    "当前权重未知：AI/事件软上限未应用（不伪造增量），目标仓位保留待人工核对")
+            elif _demote:
+                strategy_decision.position_ratio = _new_tgt
+                # Q4：delta=0 一律转 HOLD（HOLD+ADD 组合的 position_action 同步归一）
+                strategy_decision.decision = SignalType.HOLD
+                strategy_decision.position_action = PositionAction.HOLD_POSITION
+                decision_result.warnings.append(
+                    f"软上限生效：新增仓位不足（cap {_cap:.0%}），建仓/加仓动作转为 HOLD")
+            elif not _skipped and _new_tgt != strategy_decision.position_ratio:
                 logger.info(
-                    f"AI Modifier adjusted strategy position: {original_ratio:.0%} → {strategy_decision.position_ratio:.0%}"
-                )
+                    f"软上限按新增仓位应用: 目标 {strategy_decision.position_ratio:.0%} → {_new_tgt:.0%}"
+                    f"（当前 {current_position_ratio:.0%}，cap {_cap:.0%}）")
+                strategy_decision.position_ratio = _new_tgt
+            # REDUCE 方向（_tgt <= _cur）：cap 不参与，原目标保留（不放大卖出）
 
         logger.info(f"Strategy decision: {strategy_decision.decision} "
                      f"(lifecycle: {strategy_decision.lifecycle_before.value}→{strategy_decision.lifecycle_after.value})")
