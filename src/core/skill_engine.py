@@ -1,5 +1,7 @@
 """技能引擎 - 加载和执行YAML定义的技能规则"""
 
+import hashlib
+import math
 import yaml
 import logging
 from pathlib import Path
@@ -37,14 +39,20 @@ class SkillEngine:
         self.skills_dir = Path(skills_dir)
         self.skills: dict[str, Skill] = {}
         self.skill_types = skill_types or {}  # {skill_name: "base"/"regulator"/"action"}
+        # ISS-117 S2a：load_skills 的目标名单（None=全部）——固定分母 E 的依据，
+        # 不以本次成功 load 字典或返回 signals 反推配置全集
+        self._requested_names: Optional[list[str]] = None
+        self._discovered_names: list[str] = []  # 目录中存在的技能名（含加载失败者）
 
     def load_skills(self, skill_names: Optional[list[str]] = None):
         """加载指定技能或全部技能"""
+        self._requested_names = list(skill_names) if skill_names is not None else None
         if not self.skills_dir.exists():
             logger.warning(f"Skills dir not found: {self.skills_dir}")
             return
 
         yaml_files = list(self.skills_dir.glob("*.yaml"))
+        self._discovered_names = [f.stem for f in yaml_files]
         for yaml_file in yaml_files:
             skill_name = yaml_file.stem
             if skill_names and skill_name not in skill_names:
@@ -74,6 +82,9 @@ class SkillEngine:
         for name, skill in self.skills.items():
             try:
                 signal = skill.execute(data)
+                # S2a 槽身份：规则版本由技能执行侧自填（内容指纹）
+                if signal.rule_version is None:
+                    signal.rule_version = getattr(skill, "rule_version", None)
                 signals.append(signal)
             except Exception as e:
                 logger.error(f"Skill {name} execution failed: {e}")
@@ -82,6 +93,55 @@ class SkillEngine:
     def get_skill(self, name: str) -> Optional[Skill]:
         """获取指定技能"""
         return self.skills.get(name)
+
+    def _resolve_type(self, name: str) -> str:
+        """技能类型判定（与 _load_skill 同一口径：显式配置 > YAML type > base）。"""
+        explicit = self.skill_types.get(name)
+        if explicit is not None:  # falsy 显式值（如空串）也按配置采纳，与 _load_skill 同口径
+            return explicit
+        skill = self.skills.get(name)
+        if isinstance(skill, YAMLBasedSkill):
+            return skill.skill_type
+        try:  # 未成功加载的槽：读 YAML type 字段（失败按 base，与 _load_skill 一致）
+            import yaml as _yaml
+            with open(self.skills_dir / f"{name}.yaml", "r", encoding="utf-8") as f:
+                return (_yaml.safe_load(f) or {}).get("type", "base")
+        except Exception:
+            return "base"
+
+    def base_roster(self, weights: dict) -> tuple[dict[str, float], dict[str, str]]:
+        """S2a 固定分母：启用 base 技能集合 E 及其正有限权重 + 规则版本表。
+
+        E 的口径（S2_DESIGN 冻结公式 §1）：
+        - load_skills 显式名单 → 该名单中 type=base 的技能（含加载失败/缺失槽）；
+          名单为 None（加载全部）→ skills 目录全部 yaml stem 中 type=base 者
+          （文件存在即启用，执行失败仍占 W）。
+        - action/regulator 不进 E；配置明确停用的（不在名单/目录）不进 E。
+        - 权重来自 DecisionEngine.weights，须正有限——坏权重显式 ValueError
+          （禁止新增风险，不静默换权重）。
+        - rule_versions = 技能 YAML 内容 sha1 前 12 位（成功加载者取加载时算好的
+          指纹；未成功加载的槽版本记 "unavailable"——该槽占 W 但必然无票，覆盖亏空如实）。
+
+        Returns:
+            (E, rule_versions)；E 为空时由调用方按 UNKNOWN 降级（不静默换全集）。
+        """
+        # 与 load_skills 同一 falsy 语义（guard P1）：[] 与 None 同为「全部」——
+        # scan 路径默认 enabled_skills=[] 时 load 侧加载全集、roster 侧若当空集
+        # 会让普通投票静默死亡（同配置两入口行为分叉）
+        names = self._requested_names or self._discovered_names
+        roster: dict[str, float] = {}
+        rule_versions: dict[str, str] = {}
+        for name in names or []:
+            if self._resolve_type(name) != "base":
+                continue
+            w = weights.get(name, 1.0)
+            if not isinstance(w, (int, float)) or isinstance(w, bool)                     or not math.isfinite(w) or w <= 0:
+                raise ValueError(f"技能权重非法（须正有限）: {name}={w!r}")
+            roster[name] = float(w)
+            skill = self.skills.get(name)
+            rv = getattr(skill, "rule_version", None)
+            rule_versions[name] = rv or "unavailable"
+        return roster, rule_versions
 
 
 class YAMLBasedSkill(Skill):
@@ -99,6 +159,12 @@ class YAMLBasedSkill(Skill):
         super().__init__(name, name, yaml_path)  # alias = name
         self.config = config
         self.skill_type = skill_type  # base / regulator / action
+        # ISS-117 S2a 槽身份：规则版本 = 技能 YAML 内容指纹（加载时算一次；
+        # 测试/临时构造无 yaml_path 时记 adhoc，不阻断构造）
+        try:
+            self.rule_version = hashlib.sha1(yaml_path.read_bytes()).hexdigest()[:12]
+        except (AttributeError, OSError):
+            self.rule_version = "adhoc"
 
     def execute(self, data: StockData) -> SkillSignal:
         """执行YAML定义的技能规则"""

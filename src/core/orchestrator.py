@@ -275,8 +275,19 @@ class Orchestrator:
             logger.info(f"  - {sig.skill_alias}: {sig.signal} (conf: {sig.confidence})")
 
         # Layer 3: 信号聚合（Decision Layer）
+        # ISS-117 S2a：固定分母 E 从技能注册表**预先**确定（不以本次返回信号反推）；
+        # 坏权重/不可用注册表显式降级为 unknown-roster（普通票不产方向，止损等
+        # 独立纪律不受影响），不让整个分析失败
+        try:
+            expected_base, rule_versions = self.skill_engine.base_roster(
+                self.decision_engine.weights)
+        except ValueError as e:
+            logger.warning(f"S2a 技能注册表不可用，普通投票降级: {e}")
+            expected_base, rule_versions = {}, {}
         decision_result = self.decision_engine.make_decision(
-            data, signals, state, current_position_ratio=current_position_ratio
+            data, signals, state, current_position_ratio=current_position_ratio,
+            expected_base=expected_base, rule_versions=rule_versions,
+            evaluation_as_of=getattr(data, "quote_as_of", None),
         )
         logger.info(f"Decision aggregate: {decision_result.decision} (score: {decision_result.score})")
 

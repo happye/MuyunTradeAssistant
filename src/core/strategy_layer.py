@@ -31,6 +31,7 @@ from src.data.models import (
     infer_action_semantic,
     DecisionResult, StockData
 )
+from src.core.decision_engine import DecisionEngine
 
 logger = logging.getLogger(__name__)
 
@@ -248,7 +249,6 @@ class StrategyLayer:
 
         # 当前决策（Decision Layer输出）
         raw_decision = decision_result.decision
-        raw_score = decision_result.score
         market_state = decision_result.state
 
         # ===== 极端情况自动感知（v0.7.2） =====
@@ -284,7 +284,7 @@ class StrategyLayer:
         confirmation_required = False
         skip_confirm = (is_extreme and self.EXTREME_PANIC_SKIP_CONFIRM
                         and adjusted_decision == SignalType.SELL)
-        if not skip_confirm and self._needs_confirmation(adjusted_decision, new_state, raw_score):
+        if not skip_confirm and self._needs_confirmation(adjusted_decision, new_state, self._gate_score(decision_result)):
             adjusted_decision = self._apply_confirmation(adjusted_decision, new_state)
             confirmation_required = True
 
@@ -582,6 +582,18 @@ class StrategyLayer:
 
         return self._is_opposite_direction(decision, state.last_decision)
 
+    def _gate_score(self, decision_result: DecisionResult) -> float:
+        """普通票动作门分值（ISS-117 S2a）。
+
+        动作信号覆盖（止损/止盈一票否决）→ 触发票置信度（明确来源，不反灌
+        普通投票 A）；否则 → 普通投票动作强度 A[decision]——不含 AI/事件
+        调节（AI 加分不得绕过基础新增资格）。降级（无注册表）→ 0。
+        """
+        if decision_result.action_override_confidence is not None:
+            return float(decision_result.action_override_confidence)
+        A = decision_result.action_strength or {}
+        return float(A.get(decision_result.decision.value, 0.0))
+
     def _apply_reverse_cost(
         self,
         decision: SignalType,
@@ -594,7 +606,9 @@ class StrategyLayer:
         如果信号置信度不足以覆盖成本 → 降级
         """
         cost = self.REVERSE_COST_BASE_PCT + state.reverse_count * self.REVERSE_COST_PER_REVERSE
-        score = decision_result.score
+        # ISS-117 S2a：门分值 = 动作覆盖时用触发票置信度（明确来源，v0.8.7.8 D03
+        # 的兜底通道），否则用普通投票动作强度 A——不含 AI/事件调节（不得绕过基础资格）
+        score = self._gate_score(decision_result)
 
         if score < cost:
             # 置信度不足以支付反转成本 → 降级
@@ -626,22 +640,13 @@ class StrategyLayer:
         cap = self.POSITION_CAPS.get(state, 0.30)
         current_position_ratio = strategy_state.current_position_ratio
 
-        # 获取决策引擎的加权分数
-        weighted_scores = {}
-        for trace in decision_result.trace:
-            if trace.step == "市场状态影响" and "final_scores" in trace.data:
-                weighted_scores = trace.data["final_scores"]
-                break
-        if not weighted_scores:
-            # v0.8.7.5 审计修复 A38：靠中文 step 名抓 trace，决策引擎改名即 buy/sell_score
-            # 双双归零且无告警——至少要留一条告警让问题可被发现
-            logger.warning(
-                "策略层未从决策 trace 命中 '市场状态影响' 步骤，buy/sell_score 将按 0 处理"
-                "（决策引擎 step 命名可能已变更，仓位管理会退化）"
-            )
-
-        buy_score = weighted_scores.get("BUY", 0.0)
-        sell_score = weighted_scores.get("SELL", 0.0)
+        # ISS-117 S2a：读具名字段 action_strength（普通投票动作强度 A），
+        # 不再靠中文 trace step 名找分数（v0.8.7.5 A38 的脆弱抓法退役）。
+        # A=None（聚合降级：无注册表）→ 0 处理，普通票不驱动仓位；
+        # 止损/止盈/PlanGuard 等独立纪律不在此路径，不受降级影响。
+        A = decision_result.action_strength or {}
+        buy_score = float(A.get("BUY", 0.0))
+        sell_score = float(A.get("SELL", 0.0))
 
         # 判断止损/止盈是否触发
         action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
@@ -735,8 +740,11 @@ class StrategyLayer:
                 return PositionAction.OPEN, target
 
         elif final_signal == SignalType.HOLD:
-            if buy_score > sell_score * 1.5:
-                # 同上：HOLD+强 BUY 偏向时也按双条件判定
+            # ISS-117 S2a：HOLD 不得靠相对优势（buy>sell*1.5）绕门变新增——
+            # 新增须先过同状态既有 BUY 判据（DecisionEngine.buy_gate 唯一实现）；
+            # 实际仓位不增加时保持 HOLD（下方 L1 语义保留）
+            if DecisionEngine.buy_gate(buy_score, sell_score, state):
+                # 过门：HOLD+强 BUY 偏向时按双条件判定
                 target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
@@ -1139,8 +1147,12 @@ class StrategyLayer:
             logger.info(f"极端行情检测: 单日涨幅 {data.change_pct:.1f}%")
             return True
 
-        # 4. 强烈止损信号
-        if decision_result.decision == SignalType.SELL and decision_result.score >= 0.80:
+        # 4. 强烈止损信号（S2a：门分值口径与 _gate_score 一致——止损一票否决
+        # 场景 A[SELL]=0 但 override 置信度在明确通道，强止损跳过确认当日退出；
+        # 若只读 A，首日确认门会把止损 SELL 降 HOLD 延迟一天——冻结合同
+        # 「独立硬退出不被普通投票覆盖率取消」的直接违反，guard P1 实证）
+        if (decision_result.decision == SignalType.SELL
+                and self._gate_score(decision_result) >= 0.80):
             # 检查是否有高置信度止损
             action_signals = [s for s in decision_result.signals if s.skill_type == "action"]
             has_strong_stop = self._get_sell_action_confidence(action_signals, "stop_loss") >= self.STOP_LOSS_EXIT_THRESHOLD

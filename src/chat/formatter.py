@@ -49,6 +49,15 @@ def format_analysis_result(
     lines.append(f"当前价: {stock_data.price}  涨跌幅: {stock_data.change_pct}%")
     lines.append(f"市场状态: {decision_result.state.value}")
     lines.append(f"综合决策: {decision_result.decision.value}  评分: {decision_result.score:.2f}")
+    # ISS-117 S2a：信号口径如实措辞（动作强度/有效响应覆盖），不称胜率/事实真实性
+    _A = getattr(decision_result, "action_strength", None)
+    if _A:
+        _d = decision_result.decision.value
+        _cov = getattr(decision_result, "coverage_ratio", None)
+        _cov_txt = f"{_cov:.0%}" if isinstance(_cov, (int, float)) else "—"
+        lines.append(f"信号口径: 本次方向动作强度 {_A.get(_d, 0):.2f}（0~1）"
+                     f"｜给出意见的信号覆盖率 {_cov_txt}"
+                     "（覆盖率低≠全票通过，是多数信号未给意见）")
 
     # 仓位动作
     pos_action_map = {

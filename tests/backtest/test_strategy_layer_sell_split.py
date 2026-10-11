@@ -62,6 +62,9 @@ def _make_decision_result(
         state=MarketState.TRANSITION,
         decision=decision,
         score=max(buy_score, sell_score),
+        # ISS-117 S2a：分数消费改读具名字段 action_strength（旧 trace 构造仅留档）
+        action_strength={"BUY": buy_score, "SELL": sell_score, "HOLD": 0.0,
+                         "WATCH": 0.0},
         signals=signals or [],
         trace=[
             DecisionTrace(

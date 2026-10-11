@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.29.6[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.29.7[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -1924,6 +1924,18 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     else:
         lines.append(("dim", "笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）"))
 
+    # ISS-117 S2a：信号口径一行（动作强度/覆盖率）——如实措辞，不称胜率/真实性
+    try:
+        _A = getattr(result, "action_strength", None)
+        if _A:
+            _d = result.decision.value
+            _cov = getattr(result, "coverage_ratio", None)
+            _cov_txt = f"{_cov:.0%}" if isinstance(_cov, (int, float)) else "—"
+            lines.append(("dim", f"信号口径：本次方向的动作强度 {_A.get(_d, 0):.2f}"
+                                 f"（0~1，越高越强）；给出意见的信号覆盖率 {_cov_txt}"
+                                 "——覆盖率低说明多数信号没给意见，别当成全票通过。"))
+    except Exception:
+        pass  # 纯展示行，任何异常不影响摘要
     body = []
     for color, text in lines:
         body.append(f"[{color}]{text}[/{color}]" if color else text)
@@ -2866,7 +2878,7 @@ def scan_market(
     scanner_cfg = config.get("scanner", {})
     ai_config = config.get("ai", None)
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
-    enabled_skills = config.get("skills", {}).get("enabled", [])
+    enabled_skills = config.get("skills", {}).get("enabled", None)
     signal_weights = config.get("decision", {}).get("signal_weights", {})
     skill_types = config.get("skills", {}).get("types", {})
 
@@ -5262,7 +5274,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.29.6 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.29.7 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
     )
     parser.add_argument(
         "--verbose",

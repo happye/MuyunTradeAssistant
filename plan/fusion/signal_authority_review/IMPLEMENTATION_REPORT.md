@@ -238,3 +238,34 @@ P1 可提交。**
 CACHE_VERSION 未动。
 
 **监督**：code-quality-guard 一轮（对照 QR5 指示 1-4+三红反例语义+文档裁决落实）。确认项：_verify_calendar_days 边界（缺/多同时存在 fail-closed、单日区间、430 天性能）、_load_json_strict 异常分流（OSError 原样上抛由门兜转 UNKNOWN，端到端 fail-closed）、strict/宽容路径分流正确且 legacy 行为不变、门下界与场次前移交互 fail-closed、三反例与架构师探针语义逐一对齐且非假红、文档三处裁决表述落实。抓 P2×3（报告占位符——提交前已填；AGENTS/README 版本段未随批 bump——已新开 v0.8.29.6 段；cov 边界非补零字典序比较可扩大授权面——已归一化回写 2 行）。全数修复后合入。
+
+---
+
+## S2a 实施报告（v0.8.29.7，2026-10-11，S2A_IMPLEMENTATION_TASK + S2A_IMPL_DESIGN.md）
+
+设计稿先行落盘（S2A_IMPL_DESIGN.md：接口/公式/调用链/矩阵映射/缓存清单），同批实现。
+
+### 要求→入口→落地→正式用例
+
+| 冻结要求 | 入口 | 落地 | 正式用例（tests/core/test_s2a_aggregation.py，30 项全走产品聚合→真实 Strategy→packet） |
+|---|---|---|---|
+| §1 固定分母 E | skill_engine.load_skills/base_roster；orchestrator 接线 | load_skills 记录目标名单（None=目录全部）+目录发现集；base_roster 返回 (E, rule_versions)：显式名单∩type(base)（与 _load_skill 同口径）、**文件存在即启用（失败/缺失槽占 W）**、权重正有限校验（坏值 ValueError→orchestrator 捕获降级 v1-unknown-roster）、rule_version=YAML sha1 指纹 | frozen_matrix[one_of_four_to_.2]（4 槽 1 票 →A=.2 非 1）、failed_slot_still_occupies、missing/empty_roster 降级 |
+| §2 一槽一票 | decision_engine._aggregate_votes | 槽=(skill_name, security, evaluation_as_of, rule_version)；同槽同票合一、冲突/坏值整槽 UNKNOWN 保留 W；错股错时点（票自带身份与上下文不一致）→UNKNOWN；不在 E 不参与；c=0 计覆盖贡献 0 | frozen_matrix[same_slot_duplicate_merged/same_slot_conflict_unknown/unregistered_slot_ignored]、removing_other_votes_does_not_strengthen、permutation_invariant |
+| 坏 confidence 不 clamp | models.SkillSignal | confidence 构造期校验（NaN/Inf/越界 ValidationError），引擎另含 isfinite 防线 | invalid_confidence_rejected_at_model（4 参数化） |
+| §3-§5 A/P/C | decision_engine | U_d=Σw·c；C=Σ合格槽w/W；m_i=1+c(m_legacy−1)（c≤0/坏跳过——不贡献不稀释）；M_d 几何平均；A_d=clip(M·U/W)（不按方向和归一化）；P_d=M·U/Σ(M·U)（分母0全0，仅展示） | frozen_matrix 全 14 行数值断言、zero_confidence_regulator_no_effect、confident_regulator_scales_not_creates（.01×1.5=.015）、regulator_cannot_create_direction |
+| 方向门槛沿用 | _determine_final_signal | 结构/阈值/分支优先级不动（输入换 A 绝对值）；BUY 判据抽 buy_gate 静态方法（唯一实现） | frozen_matrix[RISK_ON/TRANSITION 两列逐行] |
+| §6 门收口 | strategy_layer | 仓位/强卖读 action_strength（trace 中文 step 抓法退役）；HOLD→ADD 先过 buy_gate（实际不增仓转 HOLD）；反转成本/确认门读 _gate_score（action 覆盖→override_confidence 明确通道，否则 A——**AI/事件加分不绕基础资格**）；强止损极端检测读 A | packet_one_weak_vote_no_new_position（旧版 ADD 场景→HOLD）、packet_ai_bonus_cannot_bypass_gate（score 被抬、A 不变、仓位不动）、c0_valid_stop_still_exits |
+| action 覆盖强度明确来源 | DecisionResult.action_override_confidence | 覆盖触发票置信度单独记录，不反灌普通投票 A（D03 兜底改走此通道） | c0_valid_stop（override 0.9 过确认门→EXIT/CLOSE_ALL 保持） |
+| §4 降级协议 | make_decision(expected_base=None/空) | legacy-no-roster / v1-unknown-roster：A/P/C=None、决策=门槛函数对全 0 输出（不按成功票缩分母）、action 覆盖照常、拒因落字段 | missing_roster_degrades、empty_roster_degrades |
+| §5 字段/证据/展示 | models + evidence + cli | DecisionResult 新增 5 具名字段；trace final_scores=A+protocol 标记；evidence 落 protocol/A/C 三字段（旧记录按 pre-s2a 读取不补假 A）；人话摘要加「信号口径」行（动作强度+覆盖率，不称胜率） | trace_final_scores_is_a_with_protocol；evidence/CLI 为展示层（人工验收项见下） |
+| 缓存清单 | 见设计稿 §6 | decision score 无磁盘缓存；语义分桶靠 aggregation_protocol 随证据落盘；旧影子/旧 diff 不追认 | trace 协议断言 |
+
+### 已知边界（如实）
+
+- 跨槽同源去重按 S2_DESIGN §7 留 S3 证据 ID 矩阵，本批只做同槽去重——不冒称完成所有相关性。
+- 影子（shadow_diff）本批仅协议隔离（新字段不流入旧影子格式），S3 桥接未实施。
+- AI 调节作用于 score（调节后综合分）的既有行为保留；strategy 资格/仓位门已全部改读 A，
+  AI/事件不再能影响普通票资格。
+- CLI 人话摘要「信号口径」行与 chat formatter 的措辞同步为展示层，plan_guard/entry_exit
+  不消费普通投票 A（无改动）。
+- 全量：**1719 passed / 2 skipped / 0 failed**（上轮 1687 + S2a 净增 32——含 guard P2 双版本对照/evidence 一致性两测试；guard P1-1 修复后的 override 语义收口：base 与 action 同向不构成覆盖，门分值走投票 A，override 通道仅方向翻转时携带触发票置信度；全量偶发的 d04 断言随语义收口修正，复跑 0 失败；原始日志 S2A_CLAUDE_FULLTEST_RESULTS.txt）。回归适配 12 项如实分类：10 项测试构造按新合同适配（sell_split×5/l1×1/g_block 全量偶发×2 复跑绿/d04×2 合同替代——veto 强度从 score 反灌改为 action_override_confidence 明确通道，由 strategy _gate_score 消费，原 D03 病根不复发）；test_conditions（YAMLBasedSkill 无 path 构造）为产品健壮性修复（rule_version 容错 adhoc）。- guard：一轮（对照冻结公式/实施单/设计稿+全库 score 消费 grep+探针实证）。确认项：冻结矩阵算术逐行对上、A/P/C 公式与原型一致、槽逻辑边界、降级协议、buy_gate 等价性、门收口 grep 无残留、CACHE_VERSION 红线、版本四处同步。抓 **P1×2**（①is_extreme 强止损条件只读 A[SELL]——止损覆盖场景 A=0，首日确认门把止损 SELL 降 HOLD 延迟一天，违反「独立硬退出不被覆盖率取消」——已改 _gate_score 口径（override 优先）+设计稿同步+c0 测试改真覆盖 strategy 止损路径（无 PlanGuard 救回场景）；②scan 路径 enabled_skills=[] 默认——load 侧 falsy 加载全集、roster 侧当空集，同配置两入口行为分叉且静默降级——base_roster falsy 语义与 load_skills 对齐+main.py:2881 默认 None）。**P2×7** 全部顺手收口（make_decision 入口坏注册表校验防 ZeroDivision；override_conf 覆盖两条压制路径如实记录；action_strength 存原值单源化；降级注释措辞；chat formatter 信号口径行；双版本对照+evidence 一致性两测试补齐；_resolve_type falsy 显式值口径）。全数修复后合入。

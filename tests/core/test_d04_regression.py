@@ -162,9 +162,13 @@ def test_action_override_sell_carries_action_confidence():
     r = de.make_decision(_stock(), sigs, current_position_ratio=0.20)
 
     assert r.decision == SignalType.SELL, "止损一票否决应生效"
-    assert r.score >= 0.85 - 1e-9, (
-        f"止损触发的 SELL 应携带止损置信度(0.85)，实际 score={r.score}"
-    )
+    # ISS-117 S2a 合同替代：veto 强度不再反灌 score（score=普通投票动作强度 A），
+    # 改走 action_override_confidence 明确通道——策略层 _gate_score 读它，
+    # 反转成本/确认门同样不会把止损否决吞成 HOLD（原 D03 病根不复发）。
+    assert r.action_override_confidence == pytest.approx(0.85), (
+        f"止损触发的 SELL 应在明确通道携带止损置信度(0.85)，"
+        f"实际 override={r.action_override_confidence}")
+    assert r.aggregation_degraded_reason != ""  # 直调旧路径显式降级（无 E）
 
 
 def test_action_override_sell_score_is_max_of_bucket_and_confidence():
@@ -174,9 +178,17 @@ def test_action_override_sell_score_is_max_of_bucket_and_confidence():
         _mk("ma_trend", "均线趋势", SignalType.SELL, 0.95, "base"),
         _mk("stop_loss", "止损管理", SignalType.SELL, 0.85, "action"),
     ]
-    r = de.make_decision(_stock(), sigs, current_position_ratio=0.20)
+    # S2a：base 票参与投票（提供独立 E），score=A_SELL=0.95（base 桶强度即动作
+    # 强度，高于 veto 0.85——两者分通道，互不拉低）
+    r = de.make_decision(_stock(), sigs, current_position_ratio=0.20,
+                         expected_base={"ma_trend": 1.0},
+                         rule_versions={"ma_trend": "rv0"},
+                         evaluation_as_of="2026-10-09")
     assert r.decision == SignalType.SELL
-    assert r.score >= 0.95 - 1e-9, f"应取 base 桶与动作置信度的较大者，实际 {r.score}"
+    assert r.score == pytest.approx(0.95), f"score 应为 base 投票动作强度，实际 {r.score}"
+    # base 与 action 同向（都是 SELL）不构成方向覆盖——override 通道不触发，
+    # 强度由投票 A 表达（0.95 > 0.85，action 不会拉低 base 票强度）
+    assert r.action_override_confidence is None
 
 
 def test_stop_loss_veto_not_downgraded_by_reverse_cost():

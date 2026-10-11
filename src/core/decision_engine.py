@@ -1,6 +1,7 @@
 """决策引擎 - 聚合技能信号，生成最终决策"""
 
 import logging
+import math
 from typing import Optional
 
 from src.data.models import (
@@ -140,27 +141,40 @@ class DecisionEngine:
         # 且传空 dict（falsy）会静默回落默认权重而非"空权重"。
         self.weights = dict(weights) if weights is not None else dict(self.DEFAULT_WEIGHTS)
 
+    # S2a 聚合协议版本（DecisionResult.aggregation_protocol）
+    PROTOCOL_V1 = "s2a-v1"
+    PROTOCOL_NO_ROSTER = "legacy-no-roster"
+    PROTOCOL_UNKNOWN_ROSTER = "v1-unknown-roster"
+
     def make_decision(
         self,
         data: StockData,
         signals: list[SkillSignal],
         state: Optional[MarketState] = None,
         current_position_ratio: float = 0.0,
+        expected_base: Optional[dict[str, float]] = None,
+        rule_versions: Optional[dict[str, str]] = None,
+        evaluation_as_of: Optional[str] = None,
     ) -> DecisionResult:
         """信号聚合（v0.7.2: 不再是最终决策，而是信号聚合结果）
 
-        v0.7.2 角色调整：
-        - 保留：市场状态判定、基础投票、调节器修正、SELL分层门槛、动作信号覆盖
-        - 移除：仓位管理（由Strategy Layer负责）
-        - position_action/position_ratio字段仍填充，但作为参考，Strategy Layer会重新计算
+        ISS-117 S2a（v0.8.29.7）：分开**意见占比 P** 与**动作强度 A**——
+        一张 1% 把握的买入票不再被按方向和归一化放大成 100%；普通投票的动作
+        门/仓位/确认/强卖只消费 A；P 仅展示；C（有效响应覆盖率）独立记录。
+        固定分母 E 由调用方从技能注册表预先传入（expected_base），缺失/失败的
+        启用槽仍占 W——不以本次成功返回的信号反推配置全集。
 
-        ISS-001: 分层决策 + 信号去重
-        ISS-007: 决策追溯
+        Args:
+            expected_base: 启用 base 技能权重表 E（S2_DESIGN 冻结公式 §1）。
+                None 或空 = 调用方无法提供注册表 → 显式降级（普通投票不产方向，
+                action 覆盖照常），绝不按成功票缩分母。
+            rule_versions: 各槽规则版本（skill_engine 内容指纹）。
+            evaluation_as_of: 本次评估时点（独立传入，如 data.quote_as_of）。
+
+        ISS-001: 分层决策 + 信号去重；ISS-007: 决策追溯
         """
-
         trace: list[DecisionTrace] = []
 
-        # 确定市场状态
         if state is None:
             state = StateMachine.determine_state(data)
 
@@ -170,7 +184,6 @@ class DecisionEngine:
             data={"state": state.value, "index_trend": data.index_trend}
         ))
 
-        # 按技能类型分组
         base_signals = [s for s in signals if s.skill_type == "base"]
         regulator_signals = [s for s in signals if s.skill_type == "regulator"]
         action_signals = [s for s in signals if s.skill_type == "action"]
@@ -185,78 +198,106 @@ class DecisionEngine:
             }
         ))
 
-        # 第一步：基础信号投票（只看base技能的独立信号）
-        weighted_scores = {SignalType.BUY: 0.0, SignalType.SELL: 0.0, SignalType.HOLD: 0.0, SignalType.WATCH: 0.0}
-        total_weight = 0.0
-        vote_details = []
+        # ── S2a：固定分母 + 一槽一票 + A/P/C（冻结公式 §1-§5） ──
+        # 坏注册表（权重非正有限或总和为 0）与空注册表同等对待：显式降级，
+        # 不受控 ZeroDivision（guard P2）
+        if expected_base:
+            _bad_roster = any(
+                not isinstance(w, (int, float)) or isinstance(w, bool)
+                or not math.isfinite(w) or w <= 0
+                for w in expected_base.values())
+            if _bad_roster or sum(expected_base.values()) <= 0:
+                expected_base = None
+        degraded = not expected_base  # None 或空注册表都视为不可用（显式降级）
+        if degraded:
+            protocol = (self.PROTOCOL_NO_ROSTER if expected_base is None
+                        else self.PROTOCOL_UNKNOWN_ROSTER)
+            degraded_reason = ("普通投票不可用：无技能注册表 E（旧直调路径或空注册表）——"
+                               "不按成功票缩分母，普通票不产方向；止损/止盈等独立纪律不受影响")
+            action_strength = None
+            opinion_share = None
+            coverage_ratio = None
+            weighted_scores = {st: 0.0 for st in SignalType}  # 全零输入：门槛按状态给 HOLD/WATCH（与冻结矩阵「全缺失」一致）
+            trace.append(DecisionTrace(
+                step="普通投票降级",
+                description=degraded_reason,
+                data={"protocol": protocol, "expected_base": None},
+            ))
+        else:
+            protocol = self.PROTOCOL_V1
+            degraded_reason = ""
+            weighted_scores, coverage_ratio, slot_notes = self._aggregate_votes(
+                base_signals, expected_base, rule_versions, evaluation_as_of, data)
+            trace.append(DecisionTrace(
+                step="基础信号投票（s2a-v1）",
+                description=f"固定分母 W={sum(expected_base.values()):.2f}，覆盖率 C={coverage_ratio:.2f}",
+                data={
+                    "raw_U": {k.value: round(v, 4) for k, v in weighted_scores.items()},
+                    "coverage": round(coverage_ratio, 4),
+                    "slots": slot_notes,
+                    "expected_base": {k: round(v, 3) for k, v in expected_base.items()},
+                }
+            ))
 
-        for sig in base_signals:
-            weight = self.weights.get(sig.skill_name, 1.0)
-            contribution = sig.confidence * weight
-            weighted_scores[sig.signal] += contribution
-            total_weight += weight
-            vote_details.append(f"{sig.skill_alias}: {sig.signal.value} ×{weight} ×{sig.confidence:.0%} = {contribution:.3f}")
-
-        # 归一化
-        raw_scores = {k: round(v, 4) for k, v in weighted_scores.items()}
-        if total_weight > 0:
-            for sig_type in weighted_scores:
-                weighted_scores[sig_type] /= total_weight
-
-        trace.append(DecisionTrace(
-            step="基础信号投票",
-            description=f"总权重={total_weight:.1f}",
-            data={
-                "raw_scores": {k.value: v for k, v in raw_scores.items()},
-                "normalized_scores": {k.value: round(v, 4) for k, v in weighted_scores.items()},
-                "vote_details": vote_details,
-            }
-        ))
-
-        # 第二步：上下文调节器修正权重（不产出独立信号，修改base信号的得分）
+        # 第二步：上下文调节器（S2a：幅度按调节器自身置信度缩放；零/坏置信度不参与）
         regulator_modifiers = self._apply_regulators(data, regulator_signals, weighted_scores)
         regulator_details = [f"{k.value}: ×{v:.3f}" for k, v in regulator_modifiers.items()]
 
-        # 应用调节器修正
         for sig_type, modifier in regulator_modifiers.items():
             weighted_scores[sig_type] *= modifier
 
-        # 重新归一化
-        total = sum(weighted_scores.values())
-        if total > 0:
-            for sig_type in weighted_scores:
-                weighted_scores[sig_type] /= total
+        if not degraded:
+            # A = clip(M·U/W)；P = M·U / Σ(M·U)（仅展示）。不按方向和归一化。
+            W = sum(expected_base.values())
+            action_strength = {st: max(0.0, min(1.0, weighted_scores[st] / W))
+                               for st in SignalType}
+            total_mu = sum(weighted_scores.values())
+            opinion_share = ({st: (weighted_scores[st] / total_mu if total_mu > 0 else 0.0)
+                             for st in SignalType} if total_mu > 0
+                             else {st: 0.0 for st in SignalType})
+        else:
+            action_strength = None
+            opinion_share = None
 
         trace.append(DecisionTrace(
             step="调节器修正",
-            description="regulator修改base得分",
+            description="regulator修改base得分（S2a：幅度×调节器自身置信度）",
             data={
                 "modifiers": regulator_details,
-                "adjusted_scores": {k.value: round(v, 4) for k, v in weighted_scores.items()},
+                "adjusted_U": {k.value: round(v, 4) for k, v in weighted_scores.items()},
             }
         ))
 
-        # 第三步：确定最终决策（考虑市场状态）
-        pre_action_signal = self._determine_final_signal(weighted_scores, state)
+        # 第三步：确定最终决策（门槛沿用既有绝对值；输入=动作强度 A）
+        pre_action_signal = self._determine_final_signal(
+            action_strength if action_strength is not None else weighted_scores, state)
 
         trace.append(DecisionTrace(
             step="市场状态影响",
             description=f"状态={state.value}, 决策前信号={pre_action_signal.value}",
             data={
                 "state": state.value,
-                "final_scores": {k.value: round(v, 4) for k, v in weighted_scores.items()},
+                # S2a：final_scores 兼容值 = 动作强度 A（协议版本随行）
+                "final_scores": ({k.value: round(v, 4) for k, v in action_strength.items()}
+                                 if action_strength is not None
+                                 else {k.value: 0.0 for k in SignalType}),
+                "final_scores_protocol": self.PROTOCOL_V1 if action_strength is not None else "unavailable",
                 "signal_before_action": pre_action_signal.value,
             }
         ))
 
-        # 第四步：动作信号覆盖（止损/止盈优先级）
-        # v0.6.0: 传入仓位比例，止损需要知道是否有仓位
-        final_signal, action_reason = self._apply_action_signals(
+        # 第四步：动作信号覆盖（止损/止盈优先级）——独立纪律，不受覆盖率影响
+        final_signal, action_reason, override_conf = self._apply_action_signals(
             action_signals, pre_action_signal, data,
             current_position_ratio=current_position_ratio,
         )
-
+        # override_conf = 触发本次覆盖判定的信号置信度（_apply_action_signals 返回；
+        # 空仓止损压制 BUY→WATCH / 止盈压制 BUY→HOLD 也如实记录——明确来源，
+        # 不按最终方向过滤（guard P2）。仅方向真正翻转时保留：base 与 action 同向
+        # 不构成覆盖，门分值走投票 A（否则 action 置信度会拉低更强的 base 票）。
         overridden = final_signal != pre_action_signal
+        if not overridden:
+            override_conf = None
         trace.append(DecisionTrace(
             step="动作信号覆盖",
             description=f"止损/止盈优先级检查{'→ 覆盖!' if overridden else '→ 未覆盖'}",
@@ -265,41 +306,25 @@ class DecisionEngine:
                 "signal_after": final_signal.value,
                 "overridden": overridden,
                 "action_reason": action_reason,
+                "override_confidence": override_conf,
             }
         ))
 
-        # 计算综合评分
-        # v0.8.7.8 审计修复 D04（第四轮审查 ISS-072）：
-        # 原写法把 WATCH 决策的 score 取成 HOLD 桶（通常恒为 0），
-        # 导致"观望"上报成 0 分，下游无法区分"弱信号"与"无数据"。
-        score = weighted_scores.get(final_signal, 0.0)
+        # 综合评分 = 动作强度 A[final]（S2a：action 覆盖的兜底强度改走
+        # action_override_confidence 明确通道，不再反灌普通投票分数——D03 的
+        # 下游门已改为读该通道）
+        score = (action_strength or weighted_scores).get(final_signal, 0.0)
 
-        # v0.8.7.8 审计修复 D03（第四轮审查 ISS-072，🔴）：
-        # final_signal 可能是动作信号（止损/止盈）一票否决的产物，它**不经过 base 投票**，
-        # 因此 weighted_scores[SELL] 恒为 0.0。下游策略层有两道闸门挂在 score 上：
-        #   - _apply_reverse_cost: score < 0.003 → SELL 降级为 HOLD
-        #   - _needs_confirmation: score < 弱信号阈值 → 需确认 → SELL 降级为 HOLD
-        # 结果是止损"一票否决"形同虚设；更糟的是降级后 HOLD 分支会走
-        # `buy_score > sell_score * 1.5` 反手给出 ADD —— 在止损触发当日加仓。
-        # 修法：用触发本次覆盖的动作信号置信度给 score 兜底（取较大者，不覆盖 base 票高分）。
-        if final_signal == SignalType.SELL:
-            veto_conf = max(
-                (s.confidence for s in action_signals if s.signal == SignalType.SELL),
-                default=0.0,
-            )
-            score = max(score, veto_conf)
-
-        # 生成决策理由
         reasons = self._generate_reasons(data, base_signals, regulator_signals, action_signals, final_signal)
         if action_reason:
             reasons.insert(0, action_reason)
 
-        # 生成风险提示
         warnings = self._generate_warnings(data, signals, state)
 
-        # 第五步：计算仓位管理（ISS-014 根本解决）
         position_action, position_ratio = self._calculate_position(
-            final_signal, state, weighted_scores, action_signals,
+            final_signal, state,
+            action_strength if action_strength is not None else weighted_scores,
+            action_signals,
             current_position_ratio=current_position_ratio,
         )
 
@@ -314,7 +339,80 @@ class DecisionEngine:
             trace=trace,
             position_action=position_action,
             position_ratio=position_ratio,
+            # 存原值不舍入（guard P2）：引擎门槛与 strategy 门同源，展示层负责格式化
+            action_strength=({st.value: v for st, v in action_strength.items()}
+                             if action_strength is not None else None),
+            opinion_share=({st.value: v for st, v in opinion_share.items()}
+                           if opinion_share is not None else None),
+            coverage_ratio=(round(coverage_ratio, 4) if coverage_ratio is not None else None),
+            aggregation_protocol=protocol,
+            aggregation_degraded_reason=degraded_reason,
+            action_override_confidence=override_conf,
         )
+
+    # ── S2a: 一槽一票聚合（冻结公式 §1-§3、§7 同槽去重） ──
+
+    def _aggregate_votes(
+        self,
+        base_signals: list[SkillSignal],
+        expected_base: dict[str, float],
+        rule_versions: Optional[dict[str, str]],
+        evaluation_as_of: Optional[str],
+        data: StockData,
+    ) -> tuple[dict[SignalType, float], float, list[str]]:
+        """按固定分母聚合格票，返回 (U_d, C, 槽诊断)。
+
+        槽 = (skill_id, security, evaluation_as_of, rule_version)。同一次调用内
+        同技能的多张票必然同槽（security/as_of/rule_version 由引擎统一绑定）：
+        完全相同票合一；冲突/任一 confidence 非有限越界/错股错时点 → 整槽
+        UNKNOWN，保留 W 不投票。不在 E 的槽不参与。c=0 的合格响应计覆盖、贡献 0。
+        """
+        W = float(sum(expected_base.values()))
+        grouped: dict[str, list[tuple[SignalType, float, SkillSignal]]] = {}
+        notes: list[str] = []
+        for sig in base_signals:
+            if sig.skill_name not in expected_base:
+                notes.append(f"{sig.skill_name}: 未注册（不参与投票与分母）")
+                continue
+            sec = sig.security or getattr(data, "stock_code", None)
+            as_of = sig.evaluation_as_of or evaluation_as_of
+            rv = sig.rule_version or (rule_versions or {}).get(sig.skill_name)
+            slot_key = (sig.skill_name, sec, as_of, rv)
+            # 错股/错时点（票自带身份且与本次上下文不一致）→ 槽 UNKNOWN
+            if sig.security and sig.security != getattr(data, "stock_code", None):
+                notes.append(f"{sig.skill_name}: 错股({sig.security})→槽 UNKNOWN")
+                grouped.setdefault(str(slot_key), []).append((None, sig.confidence, sig))
+                continue
+            if sig.evaluation_as_of and evaluation_as_of                     and sig.evaluation_as_of != evaluation_as_of:
+                notes.append(f"{sig.skill_name}: 错时点({sig.evaluation_as_of})→槽 UNKNOWN")
+                grouped.setdefault(str(slot_key), []).append((None, sig.confidence, sig))
+                continue
+            grouped.setdefault(str(slot_key), []).append((sig.signal, sig.confidence, sig))
+
+        U = {st: 0.0 for st in SignalType}
+        covered_w = 0.0
+        for key, rows in grouped.items():
+            slot_name = rows[0][2].skill_name
+            w = float(expected_base[slot_name])
+            # 槽资格：任一票方向未知/置信度非有限/越界，或同槽 rows 不完全一致 → 弃权
+            eligible = True
+            directions = set()
+            for d, c, _sig in rows:
+                if d is None or not isinstance(c, (int, float)) or isinstance(c, bool)                         or not math.isfinite(c) or not (0.0 <= c <= 1.0):
+                    eligible = False
+                directions.add(d)
+            if len(rows) > 1 and len({(d, round(float(c), 10)) for d, c, _ in rows}) > 1:
+                eligible = False  # 同槽不同票（方向或置信度不一致）→ 冲突
+            if not eligible or (len(rows) > 1 and len(directions) != 1):
+                notes.append(f"{slot_name}: 槽 UNKNOWN（冲突/非法值）→弃权，W 保留")
+                continue
+            direction, confidence, _sig = rows[0]
+            covered_w += w  # 合格已响应槽计覆盖（c=0 也计）
+            U[direction] += w * confidence
+            if confidence == 0:
+                notes.append(f"{slot_name}: 置信度0（计覆盖、贡献0）")
+        coverage = covered_w / W if W > 0 else 0.0
+        return U, coverage, notes
 
     def _apply_regulators(
         self,
@@ -340,19 +438,28 @@ class DecisionEngine:
 
         for sig in regulator_signals:
             weight = self.weights.get(sig.skill_name, 1.0)
-            # 权重越高，调节力度越大
+            # 权重越高，调节力度越大（既有幅度与上限沿用，不另选强度）
             impact = 0.5 + (weight - 1.0) * 0.2  # 基础0.5，权重1.5时impact=0.6
             impact = min(impact, 0.8)  # 最大0.8
 
+            # S2a（冻结公式 §4）：m_i = 1 + c_i*(m_legacy - 1)——调节幅度按调节器
+            # 自身置信度缩放；零/非有限置信度的调节器既不贡献也不稀释已有调节
+            #（加入零票不能稀释），直接跳过。不能凭 regulator 创造 U_d=0 的方向证据
+            #（几何平均只乘不改方向基准，U=0 时乘积仍 0）。
+            c = sig.confidence
+            if not isinstance(c, (int, float)) or isinstance(c, bool) \
+                    or not math.isfinite(c) or c <= 0:
+                continue
+
             if sig.signal == SignalType.SELL:
-                modifiers[SignalType.BUY].append(1.0 - impact)    # 降低BUY
-                modifiers[SignalType.SELL].append(1.0 + impact)   # 提高SELL
+                modifiers[SignalType.BUY].append(1.0 - c * impact)    # 降低BUY
+                modifiers[SignalType.SELL].append(1.0 + c * impact)   # 提高SELL
             elif sig.signal == SignalType.BUY:
-                modifiers[SignalType.BUY].append(1.0 + impact)    # 提高BUY
-                modifiers[SignalType.SELL].append(1.0 - impact)   # 降低SELL
+                modifiers[SignalType.BUY].append(1.0 + c * impact)    # 提高BUY
+                modifiers[SignalType.SELL].append(1.0 - c * impact)   # 降低SELL
             elif sig.signal == SignalType.WATCH:
-                modifiers[SignalType.BUY].append(1.0 - impact * 0.5)  # 轻微降低BUY
-                modifiers[SignalType.SELL].append(1.0 - impact * 0.5) # 轻微降低SELL
+                modifiers[SignalType.BUY].append(1.0 - c * impact * 0.5)  # 轻微降低BUY
+                modifiers[SignalType.SELL].append(1.0 - c * impact * 0.5) # 轻微降低SELL
             # HOLD 不调整
 
         # 计算最终修正系数（取几何平均）
@@ -376,14 +483,17 @@ class DecisionEngine:
         current_decision: SignalType,
         data: StockData,
         current_position_ratio: float = 0.0,
-    ) -> tuple[SignalType, Optional[str]]:
-        """应用动作信号（止损/止盈），返回(最终决策, 覆盖原因)
+    ) -> tuple[SignalType, Optional[str], Optional[float]]:
+        """应用动作信号（止损/止盈），返回(最终决策, 覆盖原因, 触发信票置信度)
 
         层级逻辑（ISS-016 方案A：止损仓位感知）：
         - 有仓位时：止损SELL confidence≥0.8 → 直接覆盖为SELL（一票否决）
         - 空仓时：止损SELL → 降级为风险提示，压制BUY为WATCH，不否决HOLD
         - 止盈SELL confidence≥0.75 → 压制BUY为HOLD，确认HOLD为SELL
         - 止损HOLD → 不覆盖
+
+        第三元 = 触发本次覆盖判定的信号置信度（S2a：明确来源通道，
+        strategy._gate_score 优先消费；未触发覆盖时 None）。
         """
         stop_loss_signals = [s for s in action_signals if s.skill_name == "stop_loss"]
         take_profit_signals = [s for s in action_signals if s.skill_name == "take_profit"]
@@ -396,23 +506,31 @@ class DecisionEngine:
                 # L1（V3）：None=有仓（数量事实）但权重未知——按持仓处理（保护性卖出不吞）
                 if current_position_ratio is None or current_position_ratio > 0:
                     # 有仓位：止损一票否决，卖出保护本金
-                    return SignalType.SELL, f"⚠️ 止损信号覆盖：{', '.join(sig.reason[:2])}"
+                    return (SignalType.SELL,
+                            f"⚠️ 止损信号覆盖：{', '.join(sig.reason[:2])}",
+                            sig.confidence)
                 else:
                     # 空仓：止损只是风险提示，压制BUY为WATCH（观望而非卖出）
                     if current_decision == SignalType.BUY:
-                        return SignalType.WATCH, f"⚠️ 止损风险提示（空仓观望）：{', '.join(sig.reason[:2])}"
+                        return (SignalType.WATCH,
+                                f"⚠️ 止损风险提示（空仓观望）：{', '.join(sig.reason[:2])}",
+                                sig.confidence)
                     # 空仓+HOLD/SELL/WATCH → 不变，止损不放大空仓的卖出信号
-                    return current_decision, None
+                    return current_decision, None, None
 
         # 止盈次之
         for sig in take_profit_signals:
             if sig.signal == SignalType.SELL and sig.confidence >= 0.75:
                 if current_decision == SignalType.BUY:
-                    return SignalType.HOLD, f"止盈信号压制买入：{', '.join(sig.reason[:2])}"
+                    return (SignalType.HOLD,
+                            f"止盈信号压制买入：{', '.join(sig.reason[:2])}",
+                            sig.confidence)
                 elif current_decision == SignalType.HOLD:
-                    return SignalType.SELL, f"止盈信号确认卖出：{', '.join(sig.reason[:2])}"
+                    return (SignalType.SELL,
+                            f"止盈信号确认卖出：{', '.join(sig.reason[:2])}",
+                            sig.confidence)
 
-        return current_decision, None
+        return current_decision, None, None
 
     # ===== SELL分层门槛（ISS-016 方案C） =====
     # 依赖方案D（年线牛熊判断）的稳定市场状态
@@ -427,6 +545,20 @@ class DecisionEngine:
     # SELL信号必须明显强于BUY才触发（避免弱看空+regulator放大→SELL）
     STRONG_SELL_RATIO = 1.2  # sell_score > buy_score * 1.2
 
+    @staticmethod
+    def buy_gate(a_buy: float, a_sell: float, state: MarketState) -> bool:
+        """同市场状态的既有 BUY 判据（S2a 冻结：新增 OPEN/ADD 的唯一资格门）。
+
+        从 _determine_final_signal 的 BUY 分支抽出为唯一实现——HOLD 不得靠
+        相对票分优势（BUY>1.5*SELL）绕过此门获得 OPEN/ADD；阈值沿用：
+        强 .4、弱 .25（RISK_ON 弱买需 >SELL），PANIC 无 BUY 门。
+        """
+        if state == MarketState.RISK_ON:
+            return a_buy >= 0.4 or (a_buy >= 0.25 and a_buy > a_sell)
+        if state in (MarketState.TRANSITION, MarketState.RISK_OFF):
+            return a_buy >= 0.4 and a_buy > a_sell * 1.5
+        return False  # PANIC：无 BUY 门（现状只产 SELL/WATCH）
+
     def _determine_final_signal(
         self,
         weighted_scores: dict[SignalType, float],
@@ -438,15 +570,14 @@ class DecisionEngine:
         - SELL必须达到市场状态对应的门槛（熊市0.25/震荡0.30/牛市0.35/恐慌0.20）
         - SELL必须明显强于BUY（>1.2倍），否则降为WATCH
         - 止损/止盈的action信号覆盖在第四步，不受此处门槛影响
+        S2a（v0.8.29.7）：输入语义 = 动作强度 A（绝对值，不按方向和归一化）；
+        阈值与分支优先级沿用。BUY 判据统一走 buy_gate（与 Strategy 的
+        OPEN/ADD 资格门同一实现）。
         """
 
         buy_score = weighted_scores[SignalType.BUY]
         sell_score = weighted_scores[SignalType.SELL]
         hold_score = weighted_scores[SignalType.HOLD]
-
-        # 阈值
-        strong_threshold = 0.4
-        weak_threshold = 0.25
 
         # SELL分层门槛（方案C核心）
         sell_threshold = self.SELL_THRESHOLDS.get(state, 0.30)
@@ -458,13 +589,12 @@ class DecisionEngine:
                 return SignalType.SELL
             return SignalType.WATCH
 
-        elif state == MarketState.RISK_ON:
-            # 牛市：BUY偏向灵敏，SELL偏向保守
-            if buy_score >= strong_threshold:
-                return SignalType.BUY
-            elif buy_score >= weak_threshold and buy_score > sell_score:
-                return SignalType.BUY
-            elif sell_score >= sell_threshold and sell_score > buy_score * self.STRONG_SELL_RATIO:
+        if self.buy_gate(buy_score, sell_score, state):
+            return SignalType.BUY
+
+        if state == MarketState.RISK_ON:
+            # 牛市：SELL偏向保守
+            if sell_score >= sell_threshold and sell_score > buy_score * self.STRONG_SELL_RATIO:
                 # 牛市SELL：需要更高门槛(0.35) + 明显强于BUY(1.2倍)
                 return SignalType.SELL
             elif sell_score >= sell_threshold and sell_score > buy_score:
@@ -475,23 +605,18 @@ class DecisionEngine:
 
         elif state == MarketState.TRANSITION:
             # 过渡状态：多空分歧，买卖都需要强信号
-            if buy_score >= strong_threshold and buy_score > sell_score * 1.5:
-                return SignalType.BUY
-            elif sell_score >= sell_threshold and sell_score > buy_score * 1.5:
+            if sell_score >= sell_threshold and sell_score > buy_score * 1.5:
                 # 震荡市SELL：门槛0.30，需1.5倍优势（原逻辑保留）
                 return SignalType.SELL
             else:
                 return SignalType.WATCH
 
         else:  # RISK_OFF
-            # 熊市：SELL偏向灵敏（门槛0.25），BUY需要更强信号
+            # 熊市：SELL偏向灵敏（门槛0.25），只需sell>buy（灵敏卖出）
+            #（BUY 判据已在上方 buy_gate 统一处理；两条件数学互斥，顺序无关）
             if sell_score >= sell_threshold and sell_score > buy_score:
-                # 熊市SELL：低门槛(0.25)，只需sell>buy（灵敏卖出）
                 return SignalType.SELL
-            elif buy_score >= strong_threshold and buy_score > sell_score * 1.5:
-                return SignalType.BUY
-            else:
-                return SignalType.WATCH
+            return SignalType.WATCH
 
     def _generate_reasons(
         self,
@@ -739,9 +864,10 @@ class DecisionEngine:
                 return PositionAction.OPEN, target
 
         elif final_signal == SignalType.HOLD:
-            # HOLD：维持当前仓位（加仓信号，趋势确认）
-            if buy_score > sell_score * 1.5:
-                # 偏多：建议加仓
+            # HOLD：维持当前仓位。S2a：相对优势（buy>sell*1.5）不再足以 ADD——
+            # 新增须先过同状态既有 BUY 判据（buy_gate），实际仓位不增加时保持 HOLD
+            if self.buy_gate(buy_score, sell_score, state):
+                # 偏多且过门：建议加仓
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO + self.ADD_RATIO, cap)

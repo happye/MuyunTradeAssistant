@@ -197,8 +197,11 @@ def _decision(signal: SignalType, trace) -> DecisionResult:
     from src.data.models import PositionAction
     action = PositionAction.ADD if signal is SignalType.BUY else (
         PositionAction.REDUCE if signal is SignalType.SELL else PositionAction.HOLD_POSITION)
+    # ISS-117 S2a：分数消费改读具名字段 action_strength（旧 trace 构造不再被读）
     return DecisionResult(stock=_stock(), state=MarketState.RISK_ON, decision=signal,
                           score=0.9, signals=[], trace=trace,
+                          action_strength={"BUY": 0.9, "SELL": 0.1, "HOLD": 0.0,
+                                           "WATCH": 0.0},
                           position_action=action, position_ratio=0.3)
 
 

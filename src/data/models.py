@@ -478,6 +478,12 @@ class SkillSignal(BaseModel):
     metadata: dict = Field(default_factory=dict, description="额外数据")
     skill_type: str = Field(default="base", description="技能类型: base/regulator/action")
     position_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="建议仓位比例(0-1)，None表示不指定")
+    # ISS-117 S2a 槽身份（(skill_id, security, evaluation_as_of, rule_version)）：
+    # rule_version 由技能执行侧自填（YAML 内容指纹）；security/evaluation_as_of
+    # 由决策引擎统一从本次分析上下文绑定，技能侧不填（填了且与上下文不一致→槽 UNKNOWN）
+    rule_version: Optional[str] = Field(default=None, description="规则版本（技能定义内容指纹，S2a 槽身份）")
+    security: Optional[str] = Field(default=None, description="适用证券（None=由决策引擎绑定本次分析标的）")
+    evaluation_as_of: Optional[str] = Field(default=None, description="评估时点（None=由决策引擎绑定本次分析时点）")
 
 
 class DecisionTrace(BaseModel):
@@ -503,6 +509,17 @@ class DecisionResult(BaseModel):
     # v0.8.3 Phase C: 买卖点覆盖标记
     overridden_by: Optional[str] = Field(default=None, description="被覆盖来源（entry_exit/ai_modifier/stop_loss等）")
     overridden_reason: str = Field(default="", description="覆盖原因")
+
+    # ISS-117 S2a（v0.8.29.7）：分开意见占比与动作强度——
+    # action_strength 是普通投票动作强度 A（消费/仓位/资格门的唯一普通票依据，
+    # 不含 AI/事件调节）；opinion_share=P 仅展示；coverage_ratio=C 有效响应覆盖。
+    # score 保留"调节后综合分"兼容语义（AI/event 调节叠加其上），资格门禁读 score。
+    action_strength: Optional[dict] = Field(default=None, description="普通投票动作强度 A_d（s2a-v1），None=降级无注册表")
+    opinion_share: Optional[dict] = Field(default=None, description="意见占比 P_d（仅展示，禁止用于授权）")
+    coverage_ratio: Optional[float] = Field(default=None, description="有效响应覆盖率 C（0-1）")
+    aggregation_protocol: str = Field(default="pre-s2a", description="聚合协议版本: s2a-v1/legacy-no-roster/v1-unknown-roster")
+    aggregation_degraded_reason: str = Field(default="", description="降级拒因（无注册表/坏权重等）")
+    action_override_confidence: Optional[float] = Field(default=None, description="动作信号覆盖触发票置信度（明确来源，不反灌普通投票 A）")
 
 
 # ===== 回测相关模型 =====

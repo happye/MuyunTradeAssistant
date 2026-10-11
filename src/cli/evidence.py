@@ -51,6 +51,11 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
             "decision": decision_result.decision.value if hasattr(
                 decision_result.decision, "value") else str(decision_result.decision),
             "score": round(float(decision_result.score), 3),
+            # ISS-117 S2a：聚合协议与 A/C 随证据落盘——旧记录按"旧协议"读取，
+            # 不把旧 score（归一化占比语义）读成新 A（动作强度）
+            "aggregation_protocol": getattr(decision_result, "aggregation_protocol", "pre-s2a"),
+            "action_strength": (getattr(decision_result, "action_strength", None) or None),
+            "coverage_ratio": getattr(decision_result, "coverage_ratio", None),
             "position_action": (strategy_decision.position_action.value
                                 if strategy_decision and hasattr(strategy_decision.position_action, "value")
                                 else None),
