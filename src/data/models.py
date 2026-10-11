@@ -605,7 +605,10 @@ class MarketEvent(BaseModel):
     event_type: str = Field(description="事件类型: policy/war/earnings/macro/black_swan/market_crash")
     sentiment: str = Field(default="neutral", description="情绪倾向: bullish/bearish/neutral")
     impact_level: int = Field(default=1, ge=1, le=5, description="影响等级 1-5 (5=黑天鹅)")
-    scope: str = Field(default="market", description="影响范围: market/sector/stock")
+    # ISS-117 Q-R2（QR2 收口）：旧/缺字段不再默认 market 全市场权限——
+    # 反序列化旧记录缺 scope 时归 unknown（范围未知不适用任何标的，仅提示）；
+    # 显式 market / 规则配置默认 market 的正例不受影响（构造点显式传值）。
+    scope: str = Field(default="unknown", description="影响范围: market/sector/stock/unknown")
     duration: str = Field(default="short", description="预期持续: short/medium/long")
     source: str = Field(default="", description="事件来源（新闻标题/规则名）")
     summary: str = Field(default="", description="事件摘要")

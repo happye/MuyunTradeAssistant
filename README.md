@@ -395,6 +395,22 @@ volume_ratio:
 
 ## 版本历史
 
+### v0.8.29.4 (ISS-117 QR3收口批：日历资格fail-closed+事件范围消费门) - 2026-10-11
+
+- **Q-R5 日历资格 fail-closed**：授权门只消费只读严格交易日历
+  （trading_days(allow_refresh=False)，绝不登录/刷新/按星期猜测）；日历缺失、
+  过期、损坏、格式错误、覆盖不足一律拒绝硬授权。旧实现两条 fail-open 路径
+  （recent_trade_date 星期推算兜底、异常被裸 except 吞掉）彻底移除；恐慌指数
+  展示降级行为不变。
+- **Q-R2 消费者+显式证券**：范围门先拒 unknown/非法 scope 再核证券；持仓解析
+  保留 AI 判定的事件主体证券（请求股不再强制替换）；旧数据缺 scope 默认
+  unknown（不再默认全市场）。
+- **Q-R1 复算三项核验**：模式适用性不依赖行情对象；缺行情对象/时点拒绝；
+  复算结果身份/证券/质量须与申请一致。
+- **Q-R7 sector 请求窗口**：行日期完整严格解析（垃圾尾巴不截断洗白）、行日期
+  须落请求窗口、端点可比性核验。
+- 正式回归 tests/core/test_iss117_qr3_closeout.py 32 项入库。
+
 ### v0.8.29.3 (ISS-117 Q-R2尾项+Q-R5 analysis_date严格解析) - 2026-10-11
 
 - **Q-R2 尾项**：scan_portfolio_events 不再无条件重写 affected_codes=[请求股]——

@@ -38,8 +38,31 @@ def _hard_finding(**kw):
 
 # ── Q1：消费边界资格门 ──────────────────────────────────
 
-def test_q1_gate_authorized_positive():
-    """合法硬信号正例：白名单+绑定+证券+时点+质量+复算成立+独立分析日期 → 通过。"""
+def _qualified_calendar(monkeypatch, tmp_path):
+    """QR3：live 授权正例需要合格交易日历——合成缓存+冻结时钟。
+
+    v0.8.29.4 起授权门只消费只读严格日历（trading_days(allow_refresh=False)），
+    无合格日历一律 fail-closed 拒绝；正例因此必须自带合格日历（旧实现靠
+    recent_trade_date 星期推算兜底碰巧通过，该兜底已被裁决不得作硬授权依据）。
+    """
+    from src.core.fear_index import history as fear_history
+    now = datetime.now()
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now if tz is None else now.replace(tzinfo=tz)
+    monkeypatch.setattr(fear_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(fear_history, "BASE_DIR", tmp_path / "calendar")
+    fear_history._atomic_write_json(fear_history.BASE_DIR / "trade_dates.json", {
+        "version": fear_history.FEAR_VERSION,
+        "built_at": now.isoformat(),
+        "dates": [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(12)],
+    })
+
+
+def test_q1_gate_authorized_positive(monkeypatch, tmp_path):
+    """合法硬信号正例：白名单+绑定+证券+时点+质量+复算成立+独立分析日期+合格日历 → 通过。"""
+    _qualified_calendar(monkeypatch, tmp_path)
     sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")
@@ -55,8 +78,9 @@ def test_q1_gate_rejects_wrong_security():
     assert "适用证券" in rej[0].reason and rej[0].action_scope == "research"
 
 
-def test_q1_gate_rejects_stale_and_future_as_of():
+def test_q1_gate_rejects_stale_and_future_as_of(monkeypatch, tmp_path):
     """Q-R5：证据时点不得晚于独立分析日期（旧 7 天政策已按裁决移除）。"""
+    _qualified_calendar(monkeypatch, tmp_path)
     future = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
     sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
@@ -461,8 +485,9 @@ def test_r4a_stock_layer_error_produces_diag(monkeypatch):
 
 # ── guard 第二轮补充：mode 适用性/来源缺失/快照错配/HOLD+ADD 归一 ──
 
-def test_q1_gate_qizong_rejects_triple():
+def test_q1_gate_qizong_rejects_triple(monkeypatch, tmp_path):
     """气宗持有计划不适用三倍定律——资格门拒绝（缓存/转述不能借不适用的规则清仓）。"""
+    _qualified_calendar(monkeypatch, tmp_path)
     sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")

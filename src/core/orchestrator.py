@@ -85,15 +85,20 @@ def _event_auth_qualified(event) -> bool:
 
 
 def _event_applies_to_stock(event, stock_code: str) -> bool:
-    """ISS-117 Q2：事件证券适用范围——空证券/空行业 ≠ 全市场。
+    """ISS-117 Q2/Q-R2：事件证券适用范围——空证券/空行业/范围未知 ≠ 全市场。
 
-    scope=market 显式声明全市场 → 适用；sector/stock 范围要求 affected_codes 明确
-    包含当前标的（行业→个股映射无可靠来源，无法核实的 sector 事件不适用当前股，
-    仅作提示不驱动决策）。
+    消费者先核 scope 合法（显式 market/sector/stock），再核证券：unknown/缺失/
+    非法 scope 一律不适用（范围未知不得借 affected_codes 或请求上下文驱动任何
+    决策调节，QR3 裁决）。scope=market 显式声明全市场 → 适用；sector/stock 范围
+    要求 affected_codes 明确包含当前标的（行业→个股映射无可靠来源，无法核实的
+    sector 事件不适用当前股，仅作提示不驱动决策）。
     """
-    code = (stock_code or "").split(".")[0]
-    if getattr(event, "scope", "market") == "market":
+    scope = getattr(event, "scope", None)
+    if scope not in ("market", "sector", "stock"):
+        return False
+    if scope == "market":
         return True
+    code = (stock_code or "").split(".")[0]
     codes = getattr(event, "affected_codes", None) or []
     return code in codes
 

@@ -121,3 +121,55 @@ pytest 锁定）——全数修复（R4a 固化为 3 项 pytest）。**复核结
 假绿审计转绿。**未实施**：S2a（生产投票公式，DESIGN_READY 待放行）/S2b/S3——ISS-117
 保持打开，S2a 固定矩阵正式测试可提前准备。**已知局限**：research 发现经 warnings 展示
 有 [:8] 截断（ISS-095 登记）；独立核验器缺位前事件/研究信号一律无硬权限（裁决要求）。
+
+---
+
+## v0.8.29.3 实况补记（QR3 裁决要求如实更正，2026-10-11）
+
+上节 v0.8.29.2 报告之后、本批之前的 d47c6b9（v0.8.29.3）实际交付范围：仅
+`exit_signals/__init__.py`（analysis_date 严格解析 + live 新鲜度初版）与
+`event_layer.py`（scan_portfolio_events 对 scope=unknown 不写 affected_codes），
+另有版本/banner/文档。**未新增任何正式测试**（此前报告中「已入测试」表述无对应
+证据，QR3 已指出，此处更正）；未改 orchestrator/models/sector/stock。live 新鲜度
+初版错误消费 `recent_trade_date()` 展示接口（冷缓存触发 baostock 登录、RuntimeError
+按星期推算兜底、缓存时间戳非法被裸 except 吞掉后重新放行陈旧行情）——QR3 判不合格。
+
+## QR3 收口批实施报告（v0.8.29.4，2026-10-11，对应 QR3_ACCEPTANCE.md 四条指示）
+
+| 指示 | 落地 | 回归 |
+|---|---|---|
+| ①Q-R5 日历资格异常 | `fear_index/history.py::trading_days` 新增 `allow_refresh=False` **只读资格模式**：只核验有效缓存（版本/built_at 7 天新鲜/日期格式逐条 strptime），缺失/过期/时间戳非法/损坏/格式错误一律抛 RuntimeError；不建目录、不 import baostock、不联网刷新、不提供星期猜测值。`exit_signals/__init__.py` live 分支改消费该查询：不可核实→`data_qual_reason`（拒绝硬授权）；可核实→覆盖检查（日历最后日期距分析日期 >12 天=覆盖不足）+ 陈旧判定。裸 `except: pass` 移除；recent_trade_date 原展示降级行为未动 | test_iss117_qr3_closeout.py：周末/节假日正例、陈旧行情拒绝+等价措辞、built_at 非法、日历获取失败、缓存缺失不触发登录、过期、格式错误、覆盖不足（8 项语义入库） |
+| ②Q-R2 消费者+显式证券 | `_event_applies_to_stock`：先拒 unknown/缺失/非法 scope，再核证券（unknown 附 codes 不适用）；`_ai_classify_portfolio_news`：保留 AI 解析的事件主体证券（规范化 6 位），请求股不再无条件写入 affected_codes（QR2 探针「明确别股被改成本股」关闭）；`scan_portfolio_events`：删除 scope!=unknown 时的 `affected_codes=[code]` 强制替换（两处「请求股冒充事件主体」全部移除）；`models.MarketEvent.scope` 默认 market→unknown（旧/缺字段收口；_create_event_from_rule 规则配置默认 market 保留）；CLI scope_cn 补 unknown 映射 | test_iss117_qr3_closeout.py：unknown+codes 消费者拒、非法 scope 拒、默认 unknown、别股不替换、unknown 扫描→真实编排器不转换、market/本股正例（8 项入库） |
+| ③Q-R1/Q-R7 按 QR2 清单 | 复算块三项独立核验：mode 适用性不依赖 stock_data 存在（气宗+缺数据也拒）；stock_data=None 拒绝（不再跳过复算放行）；复算结果须 data_quality=OK 且 signal_id/证券与申请一致（stock.py 对缺 quote_as_of 返回 UNKNOWN finding 的路径现在被门拒绝）。sector：行日期**完整**严格解析（[:10] 截断洗白关闭）；行日期须落请求窗口 [start,end]（供应商无视窗口参数的 2000 年旧行不冒充当前窗口）；端点可比性（最后观测距请求端点 >12 天拒绝，「21 个不同日期+恒真跨度」不再代替窗口资格） | test_iss117_qr3_closeout.py：缺 data/缺时点/气宗不依赖 stock_data/mode 正反例（5 项）；sector 垃圾尾巴/旧窗口/合法同窗/同日冲突/端点滞后（5 项入库） |
+| ④正式回归与对账 | 本表即逐项「要求→落地→回归」映射；探针语义全部落库 `tests/core/test_iss117_qr3_closeout.py`（32 项）；既有 test_iss117_q_batch.py 3 个 live 正例补合格日历 fixture（旧实现靠 recent_trade_date 星期推算兜底碰巧通过——QR3 指出的 fail-open 路径，新合同正例=合格数据+合格日历） | 全量离线 **1654 passed / 2 skipped / 0 failed**（上轮 1622 + 本批 +32，原始日志见交付）；架构师探针复核：qr3_calendar 8/8、qr2_boundary 6/6、qr_tail 3/3 全绿 |
+
+**版本**：v0.8.29.4（start.py/main.py banner/--version/AGENTS.md/README）。CACHE_VERSION
+未动（本批全部在信号权限层，不触及笨总评分输入）。
+
+**如实遗留（提请架构师裁决）**：
+1. `s01_acceptance_probes.py::test_q5_stale_quote_not_hard_exit`（helper 级，非 QR3
+   验收 31 项组合）：断言 `_check_triple_up_rule` 对 quote_as_of=2000-01-01 返回
+   None/非 exit。该纯函数无分析日期上下文，唯一实现途径是拿墙钟判陈旧（QR2 明令
+   「不拿当前墙钟否定历史」）或硬编码天数政策（QR2 明令禁止「任意 7 天政策」）；
+   且与 qr3 正例（历史 bar quote_as_of=2020-01-10 授权通过）直接冲突。d47c6b9 上
+   该探针同样红（stock.py 与 d47c6b9 无 diff），非本轮回归。
+2. `q_acceptance::test_r5_stale_quote_rejected_at_real_terminal` 的「过期」用词断言：
+   QR3 已裁定按行为接收（新提示用「陈旧」），产品未按用词返工。
+3. authority_probes.py 的 offline_orchestrator fixture 引用旧方法名
+   `_compute_fundamental_alert`（v0.8.29 已改名 _compute_fundamental_findings），
+   该文件 16 项为探针自身过时 fixture，不属于 QR3 目标回归组合，未改动架构师资产。
+
+**监督**：code-quality-guard 一轮（对照 QR3 四条指示 + 全库 grep 复核）。初审抓
+**P1×1**（交易日 15:00 前 live 分析把上一交易日收盘误判「行情已陈旧」——新门丢了
+recent_trade_date 的场次语义，合法硬退出在每日约 9 小时窗口内被误降；已修：门内
+补场次语义，交易日当日且墙钟 <15:00 时最近交易日取前一交易日，附盘前正例/盘后
+对照两测试）+ **P2×5**（双入口 affected_codes 规范化口径不一致——持仓入口补
+split(".")[0] 对齐；端点滞后测试原走 len<21 路径无区分性——改 21 连续自然日直达
+该分支；缓存缺失测试补「拒绝」断言；日历缓存时间戳在未来拒采信；sector 非零填充
+日期解析后规范化回写）——全数修复。复核确认：日历比较/gap/fail-closed 落点、
+fail-open 无残留、规则事件路径未误伤、MarketEvent.scope 兼容面（全仓 3 构造点均
+显式传值）、tmp_path 隔离完整（空 HOME 实跑 229 项全绿且不产生 .muyun）、
+CACHE_VERSION 无需 bump、告警三处同步不适用（无新 logger.warning）。**结论：修完
+P1 可提交。**
+
+**未实施**：S2a/S2b/S3——按 QR3「过门后再按冻结的 S2_DESIGN 执行」，本批不含。

@@ -360,10 +360,10 @@ class EventLayer:
                                 pos.stock_name or code, code, news_text
                             )
                             if ai_event and ai_event.impact_level >= 3:
-                                # ISS-117 Q-R2：scope=unknown 不写 affected_codes——
-                                # 范围不明的事件不得借请求上下文获得证券适用性
-                                if ai_event.scope != "unknown":
-                                    ai_event.affected_codes = [code]
+                                # ISS-117 Q-R2（QR3 收口）：保持解析返回的事件主体
+                                # 证券，不用请求股强制替换（含非 unknown scope）——
+                                # 「查询的股票」≠「事件的主体」；scope/证券资格由
+                                # 消费者 _event_applies_to_stock 统一核定
                                 events.append(ai_event)
                 except Exception as e:
                     logger.warning(f"持仓股 {code} 新闻扫描失败: {e}")
@@ -885,6 +885,19 @@ class EventLayer:
             _scope_raw = str(data.get("scope") or "").strip().lower()
             scope = _scope_raw if _scope_raw in ("market", "sector", "stock") else "unknown"
 
+            # ISS-117 Q-R2（QR3 收口）：保留 AI 解析的事件主体证券（规范化 6 位码），
+            # 禁止把请求股无条件写入 affected_codes——AI 明确解析出别股
+            # （scope=stock + affected_codes=[别股]）时不得被改成本股（QR2 探针场景）。
+            # AI 声明 stock/sector 却未给出代码 → 空 → 消费者判不适用（fail-closed）。
+            _affected = []
+            for _c in (data.get("affected_codes") or []):
+                # 与 _ai_classify_event 同款规范化：剥 ".SH" 等后缀再判 6 位
+                #（两入口口径不一致会让同一 AI 输出在宏入口保持适用、在持仓入口
+                # 静默失去适用，guard P2）
+                _s = str(_c).strip().split(".")[0]
+                if _s.isdigit() and len(_s) == 6 and _s not in _affected:
+                    _affected.append(_s)
+
             return MarketEvent(
                 event_type=data.get("event_type", "earnings"),
                 sentiment=data.get("sentiment", "neutral"),
@@ -893,7 +906,7 @@ class EventLayer:
                 duration=data.get("duration", "short"),
                 summary=data.get("summary", ""),
                 source=f"{stock_name}新闻",
-                affected_codes=[stock_code] if scope != "unknown" else [],
+                affected_codes=_affected,
                 timestamp=datetime.now().isoformat(),
                 detection_method="ai",
                 four_elements=four_elements,

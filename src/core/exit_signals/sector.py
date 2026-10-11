@@ -141,16 +141,24 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
             while rs.next():
                 rows.append(rs.get_row_data())
         _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
-        # Q7/Q-R7：行级日期严格解析——非法日历（2026-00-01）strptime 剔除；
-        # 未来日期剔除；同日收盘冲突（数据可疑）放弃；同日相同收盘合并；按日期升序。
+        # Q7/Q-R7（QR3 收口）：行级日期**完整严格解析**——不截断（[:10] 曾把
+        # "2026-10-09garbage" 洗成合法日期，QR2 探针实证）；非法日历/垃圾尾巴剔除；
+        # 未来日期剔除；**行日期必须落在本次请求窗口 [start, end] 内**（供应商无视
+        # 窗口参数返回的 2000 年旧行不冒充本次窗口）；同日收盘冲突（数据可疑）放弃；
+        # 同日相同收盘合并；按日期升序。
         clean: dict = {}
         today_str = datetime.now().strftime("%Y-%m-%d")
         for r in rows:
-            d = (r[0] or "")[:10]
+            d = str(r[0] or "").strip()
             try:
-                datetime.strptime(d, "%Y-%m-%d")
+                # 解析后立即规范化回写（"2026-1-5"→"2026-01-05"）：非零填充日期若
+                # 以原样作键/参与字典序比较会打乱升序与窗口切片（guard P2）
+                d = datetime.strptime(d, "%Y-%m-%d").strftime("%Y-%m-%d")
             except ValueError:
                 logger.debug(f"旗手{code}行日期非法({d})，剔除")
+                continue
+            if d < start or d > end:
+                logger.debug(f"旗手{code}行日期在请求窗口外({d}∉[{start},{end}])，剔除")
                 continue
             if d > today_str:
                 logger.debug(f"旗手{code}行日期在未来({d})，剔除")
@@ -174,6 +182,17 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
         if (datetime.strptime(rows[-1][0], "%Y-%m-%d")
                 - datetime.strptime(rows[0][0], "%Y-%m-%d")).days < 20:
             logger.debug(f"旗手{code}观测窗口跨度不足({rows[0][0]}~{rows[-1][0]})，放弃")
+            return None
+        # Q-R7（QR3 收口）：端点可比性资格——最后观测须接近请求端点 end（容忍停牌
+        # 缓冲 12 天≈春节+余量），否则该段窗口与标的「近20日」端点错位、不可比
+        #（「21个不同日期」与恒真跨度不能代替端点资格，QR2 裁决）。
+        try:
+            _endpoint_lag = (datetime.strptime(end, "%Y-%m-%d")
+                             - datetime.strptime(rows[-1][0], "%Y-%m-%d")).days
+        except ValueError:
+            return None
+        if _endpoint_lag > 12:
+            logger.debug(f"旗手{code}窗口端点滞后({rows[-1][0]} vs 请求端点{end})，与标的不可比")
             return None
         # 窗口口径：截取最后21行（20个交易日间隔）对齐标的 change_20d 口径；
         # 40自然日窗口保留作停牌缓冲。

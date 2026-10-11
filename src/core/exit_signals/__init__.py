@@ -94,14 +94,53 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
         elif _dp[0].date() > ref_dt[0].date():
             data_qual_reason = "行情/指标快照时点晚于本次分析日期（数据与场景错配）"
         elif live:
+            # Q-R5（QR3 补）：行情快照日期不得早于独立市场交易日历的最近交易日。
+            # 日历来源必须是**只读严格查询**（trading_days(allow_refresh=False)：
+            # 只核验有效缓存，绝不登录/联网刷新/按星期猜测——recent_trade_date 的
+            # 展示兜底不带资格状态，不得作硬授权依据；探针实证其冷缓存会触发
+            # baostock 登录、RuntimeError 兜底按星期猜测、缓存时间戳非法时被
+            # except 吞掉重新放行陈旧行情）。缺失/过期/损坏/覆盖不足/格式错误
+            # → 交易日不可核实 → 拒绝硬授权（fail-closed），禁止裸 except 放行。
+            _cal_days, _cal_diag = None, ""
             try:
-                from src.core.fear_index.history import recent_trade_date
-                _recent_td = recent_trade_date()
-                if _dp[0].date().isoformat() < _recent_td:
-                    data_qual_reason = (f"行情快照日期({_dp[0].date()})早于"
-                                        f"最近交易日({_recent_td})，行情已陈旧")
-            except Exception:
-                pass  # 交易日历不可用时不阻断——陈旧行情由行情源资格另行降级
+                from src.core.fear_index import history as fear_history_module
+                from src.core.fear_index.history import trading_days as _tdays
+                _cal_days = _tdays(allow_refresh=False)
+            except Exception as _cal_err:
+                _cal_diag = str(_cal_err) or type(_cal_err).__name__
+            if not _cal_days:
+                data_qual_reason = (f"交易日历不可核实（{_cal_diag}），"
+                                    f"行情时点资格未知，不授权硬退出")
+            else:
+                _ref_day = ref_dt[0].date().isoformat()
+                _prior = [d for d in _cal_days if d <= _ref_day]
+                _gap = None
+                try:  # 覆盖资格：日历最后日期距分析日期超过容忍窗 → 覆盖不足
+                    from datetime import date as _date
+                    _gap = (_date.fromisoformat(_ref_day)
+                            - _date.fromisoformat(max(_cal_days))).days
+                except ValueError:
+                    pass
+                if not _prior:
+                    data_qual_reason = "交易日历无法覆盖本次分析日期，行情时点资格未知"
+                elif _gap is None or _gap > 12:
+                    data_qual_reason = "交易日历覆盖不足，无法核实最近交易日"
+                else:
+                    _recent_td = max(_prior)
+                    # 场次语义（guard P1，与 recent_trade_date 展示口径一致）：
+                    # 交易日当天 15:00 前尚未收盘，当日行情尚不存在，最新可得行情是
+                    # 上一交易日收盘——此时「最近交易日」应取前一交易日，否则盘前/
+                    # 盘中分析会把昨收误判为陈旧（合法硬退出被误降）。analysis_date
+                    # 为日精度，场次以墙钟时刻判定（fear_history.datetime 可被测试
+                    # 冻结）；analysis_date 为历史日期时 _recent_td < 今天，不触发。
+                    # datetime.now 恒可用（含测试冻结时钟），无需异常兜底
+                    _now_dt = fear_history_module.datetime.now()
+                    if (_recent_td == _now_dt.strftime("%Y-%m-%d")
+                            and _now_dt.hour < 15 and len(_prior) >= 2):
+                        _recent_td = _prior[-2]
+                    if _dp[0].date().isoformat() < _recent_td:
+                        data_qual_reason = (f"行情快照日期({_dp[0].date()})早于"
+                                            f"最近交易日({_recent_td})，行情已陈旧")
 
     for f in findings:
         if f.action_scope != "exit":
@@ -142,16 +181,25 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
         if _missing_analysis_date:
             reasons.append("分析日期缺失（回测无时点参照，不授权硬退出）")
 
-        # 计划适用性 + 复算（Q-R1 补充）：气宗跳过三倍定律——不适用时硬资格不成立，
-        # 缓存/转述不能借不适用的规则清仓
-        if not reasons and stock_data is not None:
+        # 计划适用性 + 复算（Q-R1/QR2 收口）：三项独立核验，缺一不可——
+        # 1) 模式适用性不依赖行情对象存在（气宗直接拒绝）；
+        # 2) 当前行情对象缺失 → 复算无从进行 → 不授权（不以「复算非 None」放行）；
+        # 3) 复算结果须具有与申请发现相同的合格身份/证券/质量——复算返回 UNKNOWN
+        #    数据资格（如缺 quote_as_of，stock.py :278）或主体不符时同样拒绝。
+        if not reasons:
             if mode == "qizong":
                 reasons.append("当前持有计划为气宗：三倍定律纪律不适用该计划")
+            elif stock_data is None:
+                reasons.append("当前行情对象缺失，复算无法确认（不授权硬退出）")
             else:
                 from src.core.exit_signals.stock import _check_triple_up_rule
                 recomputed = _check_triple_up_rule(stock_data, stock_code)
                 if recomputed is None:
                     reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
+                elif (getattr(recomputed, "data_quality", None) != "OK"
+                      or getattr(recomputed, "signal_id", "") != f.signal_id
+                      or stock_code not in (getattr(recomputed, "securities", None) or [])):
+                    reasons.append("复算结果资格不足（数据质量/信号身份/证券与申请不符）")
 
         if reasons:
             downgraded = f.model_dump()

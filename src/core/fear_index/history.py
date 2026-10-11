@@ -91,14 +91,40 @@ def _valid_cache(payload: Optional[dict]) -> bool:
 
 # ── 交易日历 ──────────────────────────────────────────────
 
-def trading_days() -> list[str]:
+def trading_days(allow_refresh: bool = True) -> list[str]:
     """交易日列表（YYYY-MM-DD 升序，覆盖去年至今），baostock，缓存 7 天。
 
     失败抛 RuntimeError（调用方决定降级方式）。
+
+    allow_refresh=False（ISS-117 Q-R5，QR3 补）：**只读资格模式**——供硬授权门等
+    资格消费方使用。只消费有效缓存并全量核验（版本/时间戳新鲜度/日期格式），
+    缓存缺失/过期/时间戳非法/损坏/格式错误一律抛 RuntimeError——绝不建目录、
+    绝不登录 baostock、绝不联网刷新，也不提供按星期猜测的近似值（展示路径的
+    降级兜底不带资格状态，不得作硬授权依据）。展示路径保持原行为不变。
     """
-    _ensure_dirs()
     path = BASE_DIR / "trade_dates.json"
     payload = _load_json(path)
+    if not allow_refresh:
+        if not _valid_cache(payload):
+            raise RuntimeError("交易日历缓存无效（缺失/版本不符/损坏）")
+        try:
+            built = datetime.fromisoformat(str(payload.get("built_at")))
+        except (TypeError, ValueError) as e:
+            raise RuntimeError(f"交易日历缓存时间戳非法: {payload.get('built_at')!r}") from e
+        if (datetime.now() - built) >= timedelta(days=7):
+            raise RuntimeError("交易日历缓存已过期（>7天）")
+        if built > datetime.now() + timedelta(hours=1):
+            raise RuntimeError("交易日历缓存时间戳在未来（时钟回拨/被改动），不可采信")
+        raw = payload.get("dates")
+        if not isinstance(raw, list) or not raw:
+            raise RuntimeError("交易日历缓存日期列表为空")
+        out = []
+        for d in raw:
+            try:
+                out.append(datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d"))
+            except (TypeError, ValueError):
+                raise RuntimeError(f"交易日历含非法日期条目: {d!r}")
+        return sorted(out)
     if _valid_cache(payload):
         age = datetime.now() - datetime.fromisoformat(payload.get("built_at"))
         if age < timedelta(days=7) and payload.get("dates"):
