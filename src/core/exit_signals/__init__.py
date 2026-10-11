@@ -94,53 +94,69 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
         elif _dp[0].date() > ref_dt[0].date():
             data_qual_reason = "行情/指标快照时点晚于本次分析日期（数据与场景错配）"
         elif live:
-            # Q-R5（QR3 补）：行情快照日期不得早于独立市场交易日历的最近交易日。
-            # 日历来源必须是**只读严格查询**（trading_days(allow_refresh=False)：
-            # 只核验有效缓存，绝不登录/联网刷新/按星期猜测——recent_trade_date 的
-            # 展示兜底不带资格状态，不得作硬授权依据；探针实证其冷缓存会触发
-            # baostock 登录、RuntimeError 兜底按星期猜测、缓存时间戳非法时被
-            # except 吞掉重新放行陈旧行情）。缺失/过期/损坏/覆盖不足/格式错误
-            # → 交易日不可核实 → 拒绝硬授权（fail-closed），禁止裸 except 放行。
-            _cal_days, _cal_diag = None, ""
+            # Q-R5（QR4 覆盖合同）：行情快照日期不得早于「最近已完成交易日」，
+            # 且分析日必须落在**已确认覆盖**内。日历来源是只读严格查询
+            #（trading_days(allow_refresh=False)，绝不登录/刷新/按星期猜测）：
+            # 新 schema 带完整自然日覆盖记录（每个日期明确交易/非交易；生产端
+            # 核验供应商返回与查询区间完全一致才落缓存，消费端逐自然日复核）。
+            # 旧 schema（缺覆盖元数据）不得授权——「列表里没有这天」不能证明休市，
+            # 未来一行不能证明中间已覆盖（QR4 实证：max 未来行使 gap 为负即放行、
+            # 缓存只到周五周一仍授权）。12 天猜测覆盖与靠一个未来交易日作证明的
+            # 路径删除。覆盖待确认时三倍纪律降为提醒（提示可见），价格止损/ST/
+            # 期限等独立保护不受影响。
+            _cal, _cal_diag = None, ""
             try:
                 from src.core.fear_index import history as fear_history_module
                 from src.core.fear_index.history import trading_days as _tdays
-                _cal_days = _tdays(allow_refresh=False)
+                _cal = _tdays(allow_refresh=False)
             except Exception as _cal_err:
                 _cal_diag = str(_cal_err) or type(_cal_err).__name__
-            if not _cal_days:
-                data_qual_reason = (f"交易日历不可核实（{_cal_diag}），"
-                                    f"行情时点资格未知，不授权硬退出")
+            if not _cal:
+                data_qual_reason = (f"交易日历覆盖待确认（{_cal_diag}），"
+                                    f"三倍纪律暂为提醒，行情时点资格未知")
             else:
-                _ref_day = ref_dt[0].date().isoformat()
-                _prior = [d for d in _cal_days if d <= _ref_day]
-                _gap = None
-                try:  # 覆盖资格：日历最后日期距分析日期超过容忍窗 → 覆盖不足
-                    from datetime import date as _date
-                    _gap = (_date.fromisoformat(_ref_day)
-                            - _date.fromisoformat(max(_cal_days))).days
-                except ValueError:
-                    pass
-                if not _prior:
-                    data_qual_reason = "交易日历无法覆盖本次分析日期，行情时点资格未知"
-                elif _gap is None or _gap > 12:
-                    data_qual_reason = "交易日历覆盖不足，无法核实最近交易日"
+                from datetime import timedelta as _tdelta
+                _quote_day = _dp[0].date().isoformat()
+                _ref_day = ref_dt[0].date()
+                # 场次（与 recent_trade_date 展示口径一致）：交易日当日 15:00 前
+                # 尚未收盘，当日行情尚不存在——参照日前移一天再取「最近已完成
+                # 交易日」，盘前/盘中不再把昨收误判陈旧。analysis_date 为日精度，
+                # 场次以墙钟时刻判定（测试可冻结时钟）；分析历史日期（回放）不
+                # 前移。datetime.now 恒可用（含测试冻结时钟），无需异常兜底。
+                _now_dt = fear_history_module.datetime.now()
+                if (_ref_day.isoformat() == _now_dt.strftime("%Y-%m-%d")
+                        and _now_dt.hour < 15):
+                    _ref_day = _ref_day - _tdelta(days=1)
+                if not _cal.get("qualified"):
+                    # 旧 schema：不得授权（QR4）。保留已知交易日陈旧预检作为诊断
+                    #（陈旧行情提示可见），覆盖待确认为本因。
+                    _legacy = _cal.get("legacy_dates") or []
+                    _recent_known = max((d for d in _legacy if d <= _ref_day.isoformat()),
+                                        default=None)
+                    if _recent_known and _quote_day < _recent_known:
+                        data_qual_reason = (f"行情快照日期({_dp[0].date()})早于已知"
+                                            f"最近交易日({_recent_known})，行情已陈旧；"
+                                            f"且交易日历缺覆盖元数据，覆盖待确认，"
+                                            f"三倍纪律暂为提醒")
+                    else:
+                        data_qual_reason = ("交易日历缺覆盖元数据，覆盖待确认，"
+                                            "行情时点资格未知，三倍纪律暂为提醒")
+                elif not (_cal["start"] <= _ref_day.isoformat() <= _cal["end"]):
+                    data_qual_reason = ("交易日历覆盖待确认（分析日期不在已确认覆盖"
+                                        "边界内），三倍纪律暂为提醒，行情时点资格未知")
                 else:
-                    _recent_td = max(_prior)
-                    # 场次语义（guard P1，与 recent_trade_date 展示口径一致）：
-                    # 交易日当天 15:00 前尚未收盘，当日行情尚不存在，最新可得行情是
-                    # 上一交易日收盘——此时「最近交易日」应取前一交易日，否则盘前/
-                    # 盘中分析会把昨收误判为陈旧（合法硬退出被误降）。analysis_date
-                    # 为日精度，场次以墙钟时刻判定（fear_history.datetime 可被测试
-                    # 冻结）；analysis_date 为历史日期时 _recent_td < 今天，不触发。
-                    # datetime.now 恒可用（含测试冻结时钟），无需异常兜底
-                    _now_dt = fear_history_module.datetime.now()
-                    if (_recent_td == _now_dt.strftime("%Y-%m-%d")
-                            and _now_dt.hour < 15 and len(_prior) >= 2):
-                        _recent_td = _prior[-2]
-                    if _dp[0].date().isoformat() < _recent_td:
-                        data_qual_reason = (f"行情快照日期({_dp[0].date()})早于"
-                                            f"最近交易日({_recent_td})，行情已陈旧")
+                    # 覆盖记录已经 strict 读取逐自然日复核完整（含参照日当天）。
+                    _trading_prior = [d for d, f in _cal["days"].items()
+                                      if f == 1 and d <= _ref_day.isoformat()]
+                    if not _trading_prior:
+                        data_qual_reason = ("交易日历覆盖内无已完成交易日，"
+                                            "行情时点资格未知，三倍纪律暂为提醒")
+                    else:
+                        _recent_td = max(_trading_prior)
+                        if _quote_day < _recent_td:
+                            data_qual_reason = (f"行情快照日期({_dp[0].date()})早于"
+                                                f"最近已完成交易日({_recent_td})，"
+                                                f"行情已陈旧")
 
     for f in findings:
         if f.action_scope != "exit":
@@ -192,14 +208,27 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
             elif stock_data is None:
                 reasons.append("当前行情对象缺失，复算无法确认（不授权硬退出）")
             else:
-                from src.core.exit_signals.stock import _check_triple_up_rule
-                recomputed = _check_triple_up_rule(stock_data, stock_code)
-                if recomputed is None:
-                    reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
-                elif (getattr(recomputed, "data_quality", None) != "OK"
-                      or getattr(recomputed, "signal_id", "") != f.signal_id
-                      or stock_code not in (getattr(recomputed, "securities", None) or [])):
-                    reasons.append("复算结果资格不足（数据质量/信号身份/证券与申请不符）")
+                # Q-R1（QR4）：行情对象**主体证券**独立核对——复算的 securities 由
+                # 申请参数写入，「复算证券匹配」是自证；须先核 stock_data.stock_code
+                # 与本次请求证券一致（沿既有 split(".")[0] 规范化口径），缺失/非法/
+                # 不一致一律拒绝并保留诊断。不改行情 stock_code、也不只改复算返回
+                # securities 来「修复」。
+                _data_code = str(getattr(stock_data, "stock_code", "") or "").strip().split(".")[0]
+                _req_code = str(stock_code or "").strip().split(".")[0]
+                if not _data_code or not _req_code or _data_code != _req_code:
+                    reasons.append(f"当前行情主体({_data_code or '缺失'})与请求证券"
+                                   f"({_req_code or '缺失'})不一致，不授权硬退出")
+                else:
+                    from src.core.exit_signals.stock import _check_triple_up_rule
+                    # 复算传行情自身代码：复算结果的 securities 独立来自数据主体，
+                    # 不再由申请参数回填（消除自证链路）
+                    recomputed = _check_triple_up_rule(stock_data, _data_code)
+                    if recomputed is None:
+                        reasons.append("复算未确认：当前数据不满足三倍定律条件（缓存/转述不作为依据）")
+                    elif (getattr(recomputed, "data_quality", None) != "OK"
+                          or getattr(recomputed, "signal_id", "") != f.signal_id
+                          or _req_code not in (getattr(recomputed, "securities", None) or [])):
+                        reasons.append("复算结果资格不足（数据质量/信号身份/证券与申请不符）")
 
         if reasons:
             downgraded = f.model_dump()

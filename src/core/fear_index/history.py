@@ -91,16 +91,37 @@ def _valid_cache(payload: Optional[dict]) -> bool:
 
 # ── 交易日历 ──────────────────────────────────────────────
 
-def trading_days(allow_refresh: bool = True) -> list[str]:
-    """交易日列表（YYYY-MM-DD 升序，覆盖去年至今），baostock，缓存 7 天。
+def _natural_days(start: str, end: str) -> list[str]:
+    """[start, end] 全部自然日（含两端），ISO 升序。"""
+    cur = datetime.strptime(start, "%Y-%m-%d").date()
+    stop = datetime.strptime(end, "%Y-%m-%d").date()
+    out = []
+    while cur <= stop:
+        out.append(cur.isoformat())
+        cur += timedelta(days=1)
+    return out
 
-    失败抛 RuntimeError（调用方决定降级方式）。
 
-    allow_refresh=False（ISS-117 Q-R5，QR3 补）：**只读资格模式**——供硬授权门等
-    资格消费方使用。只消费有效缓存并全量核验（版本/时间戳新鲜度/日期格式），
-    缓存缺失/过期/时间戳非法/损坏/格式错误一律抛 RuntimeError——绝不建目录、
-    绝不登录 baostock、绝不联网刷新，也不提供按星期猜测的近似值（展示路径的
-    降级兜底不带资格状态，不得作硬授权依据）。展示路径保持原行为不变。
+def trading_days(allow_refresh: bool = True):
+    """交易日历（baostock，缓存 7 天）。
+
+    allow_refresh=True（默认，fear 展示等原路径）：返回交易日列表（YYYY-MM-DD
+    升序）。缓存重建时按 QR4 覆盖合同核验并写入完整自然日记录：供应商
+    query_trade_dates 返回区间内**每一天**（交易日/非交易日标志），生产端核验
+    查询正常结束、日期唯一、标志合法、返回集合与查询区间自然日全集完全一致——
+    供应商少返回一天、途中错误或异常条目一律抛 RuntimeError（不写缓存、不盖
+    覆盖合格章），绝不用星期推算补假记录。0/1 记录全部来自供应商。
+
+    allow_refresh=False（ISS-117 Q-R5，QR4 覆盖合同）：**只读资格模式**——供硬
+    授权门等资格消费方使用。返回 dict：
+      {"qualified": True, "start", "end", "days": {date: 0|1}}
+        —— 新 schema：消费端已复核 days 与声称覆盖边界完全一致（逐自然日核对，
+           不信任生产者自我声明），分析日覆盖判定由此进行；
+      {"qualified": False, "legacy_dates": [...]}
+        —— 旧 schema（仅 dates、缺覆盖元数据）：不得授权硬退出（UNKNOWN）；
+           legacy_dates 仅供降级诊断（已知交易日陈旧预检），fear 展示路径不受影响。
+    缓存缺失/过期/时间戳非法/损坏/格式错误/覆盖记录不完整一律抛 RuntimeError——
+    绝不建目录、绝不登录 baostock、绝不联网刷新，也不提供按星期猜测的近似值。
     """
     path = BASE_DIR / "trade_dates.json"
     payload = _load_json(path)
@@ -115,16 +136,52 @@ def trading_days(allow_refresh: bool = True) -> list[str]:
             raise RuntimeError("交易日历缓存已过期（>7天）")
         if built > datetime.now() + timedelta(hours=1):
             raise RuntimeError("交易日历缓存时间戳在未来（时钟回拨/被改动），不可采信")
-        raw = payload.get("dates")
-        if not isinstance(raw, list) or not raw:
-            raise RuntimeError("交易日历缓存日期列表为空")
-        out = []
-        for d in raw:
+        cov = payload.get("coverage")
+        if not isinstance(cov, dict) or cov.get("schema") != 1:
+            # 旧 schema（QR3 及更早缓存）：只有交易日列表，无「哪些自然日已确认
+            # 非交易日/查询是否完整」的证明——不能以「列表里没有这天」证明休市，
+            # 硬授权一律 UNKNOWN（QR4）；dates 降级为诊断用已知交易日列表。
+            legacy = []
+            for d in (payload.get("dates") or []):
+                try:
+                    legacy.append(datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d"))
+                except (TypeError, ValueError):
+                    continue  # 诊断用途：非法条目剔除（fail-closed 方向不变）
+            return {"qualified": False, "legacy_dates": legacy}
+        cov_start, cov_end = str(cov.get("start", "")), str(cov.get("end", ""))
+        try:
+            _s = datetime.strptime(cov_start, "%Y-%m-%d").date()
+            _e = datetime.strptime(cov_end, "%Y-%m-%d").date()
+        except (TypeError, ValueError):
+            raise RuntimeError("交易日历覆盖边界非法（无法解析 start/end）")
+        if _s > _e:
+            raise RuntimeError("交易日历覆盖边界非法（start 晚于 end）")
+        days_raw = cov.get("days")
+        if not isinstance(days_raw, dict) or not days_raw:
+            raise RuntimeError("交易日历覆盖记录缺失（days 非法）")
+        days = {}
+        for d, f in days_raw.items():
             try:
-                out.append(datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d"))
+                d_iso = datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d")
             except (TypeError, ValueError):
-                raise RuntimeError(f"交易日历含非法日期条目: {d!r}")
-        return sorted(out)
+                raise RuntimeError(f"交易日历覆盖记录含非法日期: {d!r}")
+            if isinstance(f, bool) or f not in (0, 1, "0", "1"):
+                raise RuntimeError(f"交易日历覆盖记录含非法交易标志: {d!r}={f!r}")
+            if d_iso in days:
+                # 归一化后重复键（如 "2026-10-08" 与 "2026-10-8"）：与生产端对称，
+                # 冲突标志不得后写者胜（guard P2）
+                raise RuntimeError(f"交易日历覆盖记录含重复日期: {d_iso}")
+            days[d_iso] = int(f)
+        # 消费端完整性复核（QR4 核心）：覆盖记录必须与声称边界逐自然日一致——
+        # 「未来一行」或稀疏行都不能证明中间已覆盖。
+        expected = _natural_days(cov_start, cov_end)
+        missing = [d for d in expected if d not in days]
+        if missing:
+            raise RuntimeError(
+                f"交易日历覆盖记录不完整（声称 {cov_start}~{cov_end} 但缺 {len(missing)} 天，"
+                f"如 {missing[:3]}）——未来交易日不能证明中间已覆盖")
+        return {"qualified": True, "start": cov_start, "end": cov_end, "days": days}
+
     if _valid_cache(payload):
         age = datetime.now() - datetime.fromisoformat(payload.get("built_at"))
         if age < timedelta(days=7) and payload.get("dates"):
@@ -138,23 +195,49 @@ def trading_days(allow_refresh: bool = True) -> list[str]:
     end = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
 
     def _q():
+        # QR4 覆盖合同：保留供应商返回的**每一天**（含非交易日标志），不再只挑
+        # 交易日——「区间内哪些日子已确认休市」必须留档，消费端才能复核覆盖。
         rs = bs.query_trade_dates(start_date=start, end_date=end)
-        out = []
+        rows = []
         while rs.error_code == "0" and rs.next():
             row = rs.get_row_data()
-            if row[1] == "1":
-                out.append(row[0])
-        return out
+            rows.append((row[0], row[1]))
+        return rows, rs.error_code
 
-    dates = _call_with_timeout(_q, timeout=_NET_TIMEOUT)
-    if not dates:
+    rows, err_code = _call_with_timeout(_q, timeout=_NET_TIMEOUT)
+    if err_code != "0":
+        raise RuntimeError(f"交易日历查询未正常结束（error_code={err_code!r}）——不盖覆盖合格章")
+    if not rows:
         raise RuntimeError("交易日历查询为空")
+    days = {}
+    for d, flag in rows:
+        try:
+            d_iso = datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            raise RuntimeError(f"交易日历供应商返回非法日期: {d!r}")
+        if d_iso in days:
+            raise RuntimeError(f"交易日历供应商返回重复日期: {d_iso}")
+        if str(flag) not in ("0", "1"):
+            raise RuntimeError(f"交易日历供应商返回非法交易标志: {d!r}={flag!r}")
+        days[d_iso] = int(flag)
+    # 生产端覆盖核验：返回集合必须与查询区间自然日全集完全一致（QR4——查询参数
+    # 是目标范围不是「已查全」证明，缺一天都不盖章）。
+    expected = _natural_days(start, end)
+    missing = [d for d in expected if d not in days]
+    if missing:
+        raise RuntimeError(
+            f"交易日历供应商返回不完整（查询 {start}~{end} 缺 {len(missing)} 天，"
+            f"如 {missing[:3]}）——不盖覆盖合格章")
+    trading = sorted(d for d, f in days.items() if f == 1)
+    if not trading:
+        raise RuntimeError("交易日历查询结果无任何交易日")
     _atomic_write_json(path, {
         "version": FEAR_VERSION,
         "built_at": datetime.now().isoformat(timespec="seconds"),
-        "dates": dates,
+        "dates": trading,  # 兼容字段（fear 展示等原有消费者）
+        "coverage": {"schema": 1, "start": start, "end": end, "days": days},
     })
-    return dates
+    return trading
 
 
 def recent_trade_date(now: Optional[datetime] = None) -> str:

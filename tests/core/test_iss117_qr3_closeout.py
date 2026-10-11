@@ -68,30 +68,42 @@ def _strategy(**kw):
 
 # ── 日历 fixture（qr3_calendar_probes 同款：冻结时钟 + 合成缓存） ──
 
-def _cached_calendar(monkeypatch, tmp_path, now, built_at=None, dates=None):
+def _cached_calendar(monkeypatch, tmp_path, now, built_at=None, days=None):
+    """v0.8.29.5 覆盖合同缓存：days = {date: 0|1} 完整自然日记录（每个日期
+    明确交易/非交易，来自供应商），dates 为兼容字段；缺 days 的旧 schema
+    缓存在新合同下硬授权一律 UNKNOWN。"""
     class FrozenDateTime(datetime):
         @classmethod
         def now(cls, tz=None):
             return now if tz is None else now.replace(tzinfo=tz)
     monkeypatch.setattr(fear_history, "datetime", FrozenDateTime)
     monkeypatch.setattr(fear_history, "BASE_DIR", tmp_path / "calendar")
+    if days is None:
+        # 默认合成市场日历（含节假日空档的明确记录）
+        days = {"2026-09-29": 1, "2026-09-30": 1, "2026-10-01": 0, "2026-10-02": 0,
+                "2026-10-03": 0, "2026-10-04": 0, "2026-10-05": 0, "2026-10-06": 0,
+                "2026-10-07": 0, "2026-10-08": 1, "2026-10-09": 1}
     fear_history._atomic_write_json(fear_history.BASE_DIR / "trade_dates.json", {
         "version": fear_history.FEAR_VERSION,
         "built_at": built_at if built_at is not None else now.isoformat(),
-        # 独立合成市场日历（含节假日空档）
-        "dates": dates or ["2026-09-29", "2026-09-30", "2026-10-08", "2026-10-09"],
+        "dates": sorted(d for d, f in days.items() if f == 1),
+        "coverage": {"schema": 1, "start": min(days), "end": max(days), "days": days},
     })
 
 
 # ── Q-R5：有效日历正例（周末/节假日授权保留） ──────────────
 
-@pytest.mark.parametrize("now,quote_day", [
-    (datetime(2026, 10, 10, 16), "2026-10-09"),   # 周六分析 → 最近交易日=周五
-    (datetime(2026, 10, 2, 16), "2026-09-30"),    # 模拟节假日 → 上一个交易日
+@pytest.mark.parametrize("now,quote_day,days", [
+    # 周六分析：覆盖含周六（明确非交易日），最近已完成交易日=周五
+    (datetime(2026, 10, 10, 16), "2026-10-09",
+     {"2026-10-08": 1, "2026-10-09": 1, "2026-10-10": 0}),
+    # 模拟节假日分析：10-01/10-02 明确记录为非交易日，认上一交易日
+    (datetime(2026, 10, 2, 16), "2026-09-30",
+     {"2026-09-29": 1, "2026-09-30": 1, "2026-10-01": 0, "2026-10-02": 0}),
 ], ids=["weekend", "synthetic_holiday"])
-def test_qr5_qualified_cached_calendar_preserves_live_exit(monkeypatch, tmp_path, now, quote_day):
-    """有效缓存日历下，周末/节假日分析认上一交易日，合格行情仍获硬授权。"""
-    _cached_calendar(monkeypatch, tmp_path, now)
+def test_qr5_qualified_cached_calendar_preserves_live_exit(monkeypatch, tmp_path, now, quote_day, days):
+    """合格覆盖日历下，周末/节假日分析认上一交易日，合格行情仍获硬授权。"""
+    _cached_calendar(monkeypatch, tmp_path, now, days=days)
     ok, rej = authorize_hard_findings([_hard(as_of=quote_day)], "600000", live=True,
                                       analysis_date=now.date().isoformat(),
                                       mode="jianzong",
@@ -104,7 +116,9 @@ def test_qr5_trading_day_premarket_accepts_previous_close(monkeypatch, tmp_path)
     """guard P1：交易日 15:00 前当日行情尚不存在——盘前分析认上一交易日收盘，
     不误判「行情已陈旧」（场次语义与 recent_trade_date 展示口径一致）。"""
     _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 8, 9),
-                     dates=["2026-09-29", "2026-09-30", "2026-10-07", "2026-10-08"])
+                     days={"2026-09-30": 1, "2026-10-01": 0, "2026-10-02": 0,
+                           "2026-10-03": 0, "2026-10-04": 0, "2026-10-05": 0,
+                           "2026-10-06": 0, "2026-10-07": 1, "2026-10-08": 1})
     ok, rej = authorize_hard_findings([_hard(as_of="2026-10-07")], "600000", live=True,
                                       analysis_date="2026-10-08", mode="jianzong",
                                       stock_data=_sd(price=30, ma5=31, low_60d=10,
@@ -115,12 +129,13 @@ def test_qr5_trading_day_premarket_accepts_previous_close(monkeypatch, tmp_path)
 def test_qr5_trading_day_postmarket_still_requires_same_day(monkeypatch, tmp_path):
     """对照：交易日 15:00 后（收盘后）当日口径生效——昨日收盘行情视为陈旧。"""
     _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 8, 16),
-                     dates=["2026-09-29", "2026-09-30", "2026-10-07", "2026-10-08"])
+                     days={"2026-10-07": 1, "2026-10-08": 1})
     ok, rej = authorize_hard_findings([_hard(as_of="2026-10-07")], "600000", live=True,
                                       analysis_date="2026-10-08", mode="jianzong",
                                       stock_data=_sd(price=30, ma5=31, low_60d=10,
                                                      quote_as_of="2026-10-07"))
     assert not ok and rej
+    assert "陈旧" in rej[0].reason
 
 
 @pytest.mark.parametrize("stamp", ["2020-01-10garbage", "2026-02-30"])
@@ -149,10 +164,10 @@ def _stale_quote_sd():
 
 
 def test_qr5_stale_quote_rejected_with_plain_diagnostic(monkeypatch, tmp_path):
-    """陈旧行情（2000 年）在合格日历下拒绝硬授权，诊断含「陈旧/过期」等价措辞。"""
-    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 10, 16))
+    """陈旧行情（2000 年）在合格覆盖日历内拒绝硬授权，诊断含「陈旧/过期」等价措辞。"""
+    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 9, 16))  # 覆盖到 10-09
     ok, rej = authorize_hard_findings([_hard(as_of="2000-01-01")], "600000", live=True,
-                                      analysis_date="2026-10-10", mode="jianzong",
+                                      analysis_date="2026-10-09", mode="jianzong",
                                       stock_data=_stale_quote_sd())
     assert not ok and rej
     reason = rej[0].reason
@@ -167,7 +182,7 @@ def test_qr5_corrupt_calendar_built_at_rejects_hard_exit(monkeypatch, tmp_path):
                                       analysis_date="2026-10-10", mode="jianzong",
                                       stock_data=_stale_quote_sd())
     assert not ok and rej
-    assert "交易日历不可核实" in rej[0].reason
+    assert "覆盖待确认" in rej[0].reason
 
 
 def test_qr5_calendar_provider_failure_rejects_hard_exit(monkeypatch, tmp_path):
@@ -209,26 +224,63 @@ def test_qr5_expired_calendar_cache_rejects_hard_exit(monkeypatch, tmp_path):
     assert not ok and rej
 
 
-def test_qr5_calendar_bad_date_format_rejects(monkeypatch, tmp_path):
-    """日历含非法日期条目 → 格式错误 → 拒绝（格式错误不得部分采信）。"""
-    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 10, 16),
-                     dates=["2026-09-29", "2026-09-30", "garbage", "2026-10-09"])
+def test_qr5_calendar_bad_record_rejects(monkeypatch, tmp_path):
+    """覆盖记录含非法日期条目 → 格式错误 → 拒绝（格式错误不得部分采信）。"""
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 10, 16) if tz is None else datetime(2026, 10, 10, 16)
+    monkeypatch.setattr(fear_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(fear_history, "BASE_DIR", tmp_path / "calendar")
+    fear_history._atomic_write_json(fear_history.BASE_DIR / "trade_dates.json", {
+        "version": fear_history.FEAR_VERSION,
+        "built_at": datetime(2026, 10, 10, 16).isoformat(),
+        "dates": ["2026-10-08", "2026-10-09"],
+        "coverage": {"schema": 1, "start": "2026-10-08", "end": "2026-10-09",
+                     "days": {"2026-10-08": 1, "garbage": 1, "2026-10-09": 1}},
+    })
     ok, rej = authorize_hard_findings([_hard(as_of="2026-10-09")], "600000", live=True,
                                       analysis_date="2026-10-10", mode="jianzong",
                                       stock_data=_sd(price=30, ma5=31, low_60d=10))
     assert not ok and rej
 
 
-def test_qr5_calendar_gap_beyond_tolerance_rejects(monkeypatch, tmp_path):
-    """日历最后日期距分析日期超过容忍窗（覆盖不足）→ 拒绝，旧日历不冒充最新。"""
-    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 10, 16),
-                     dates=["2026-08-03", "2026-08-04", "2026-08-05"])
-    ok, rej = authorize_hard_findings([_hard(as_of="2026-08-05")], "600000", live=True,
-                                      analysis_date="2026-10-10", mode="jianzong",
+def test_qr5_analysis_day_outside_confirmed_coverage_rejects(monkeypatch, tmp_path):
+    """QR4：分析日不在已确认覆盖边界内（日历只到周五却分析周一）→ 拒绝——
+    新鲜 built_at 与合法日期串不能证明覆盖完整。"""
+    _cached_calendar(
+        monkeypatch, tmp_path, datetime(2026, 10, 12, 16),
+        built_at="2026-10-09T16:00:00",
+        days={"2026-10-07": 1, "2026-10-08": 1, "2026-10-09": 1})  # 覆盖只到周五
+    ok, rej = authorize_hard_findings([_hard(as_of="2026-10-09")], "600000", live=True,
+                                      analysis_date="2026-10-12", mode="jianzong",
                                       stock_data=_sd(price=30, ma5=31, low_60d=10,
-                                                     quote_as_of="2026-08-05"))
+                                                     quote_as_of="2026-10-09"))
     assert not ok and rej
-    assert "覆盖" in rej[0].reason
+    assert "覆盖待确认" in rej[0].reason
+
+
+def test_qr5_sparse_rows_cannot_prove_decades_of_coverage(monkeypatch, tmp_path):
+    """QR4：旧一行 + 未来一行——声称几十年覆盖但记录稀疏 → 消费端逐日复核
+    失败 → 拒绝（未来一行不能证明中间已覆盖）。"""
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return datetime(2026, 10, 12, 16) if tz is None else datetime(2026, 10, 12, 16)
+    monkeypatch.setattr(fear_history, "datetime", FrozenDateTime)
+    monkeypatch.setattr(fear_history, "BASE_DIR", tmp_path / "calendar")
+    fear_history._atomic_write_json(fear_history.BASE_DIR / "trade_dates.json", {
+        "version": fear_history.FEAR_VERSION,
+        "built_at": "2026-10-09T16:00:00",
+        "dates": ["2000-01-04", "2026-11-02"],
+        "coverage": {"schema": 1, "start": "2000-01-04", "end": "2026-11-02",
+                     "days": {"2000-01-04": 1, "2026-11-02": 1}},
+    })
+    ok, rej = authorize_hard_findings([_hard(as_of="2000-01-04")], "600000", live=True,
+                                      analysis_date="2026-10-12", mode="jianzong",
+                                      stock_data=_sd(price=30, ma5=31, low_60d=10,
+                                                     quote_as_of="2000-01-04"))
+    assert not ok and rej
 
 
 # ── Q-R1：缺数据资格 + 复算结果资格 ───────────────────────
@@ -388,12 +440,12 @@ def _offline_engine(monkeypatch):
 def test_qr5_stale_quote_packet_not_exit_with_plain_wording(monkeypatch, tmp_path):
     """packet 级：陈旧行情经真实聚合/门/执行链后不得 EXIT，授权标志 False。"""
     from src.core.decision_contract import DesiredAction
-    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 10, 16))
+    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 9, 16))  # 覆盖到 10-09
     engine = _offline_engine(monkeypatch)
     packet, dr, out, _, _ = engine.analyze_packet(
         _stale_quote_sd(), confirmed_ratio=.2, position_state="HELD",
         current_position_ratio=.2, has_position=True, trade_plan=_plan(),
-        today="2026-10-10", ai_enabled=False)
+        today="2026-10-09", ai_enabled=False)
     assert packet.desired_action != DesiredAction.EXIT, packet.desired_action
     assert not out.top_signal_authorized
     assert any(("陈旧" in w or "过期" in w) and "行情" in w for w in dr.warnings), dr.warnings
@@ -402,12 +454,12 @@ def test_qr5_stale_quote_packet_not_exit_with_plain_wording(monkeypatch, tmp_pat
 def test_qr5_valid_triple_still_exits_live(monkeypatch, tmp_path):
     """合格当前数据正例：合法三倍纪律经新门仍 EXIT（合格正例不因新门普遍降权）。"""
     from src.core.decision_contract import DesiredAction
-    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 10, 16))
+    _cached_calendar(monkeypatch, tmp_path, datetime(2026, 10, 9, 16))  # 覆盖到 10-09
     engine = _offline_engine(monkeypatch)
     packet, _, out, _, _ = engine.analyze_packet(
         _sd(price=30, ma5=31, low_60d=10), confirmed_ratio=.2, position_state="HELD",
         current_position_ratio=.2, has_position=True, trade_plan=_plan(),
-        today="2026-10-10", ai_enabled=False)
+        today="2026-10-09", ai_enabled=False)
     assert packet.desired_action == DesiredAction.EXIT
     assert out.top_signal_authorized
 

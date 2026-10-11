@@ -141,7 +141,7 @@ pytest 锁定）——全数修复（R4a 固化为 3 项 pytest）。**复核结
 | ①Q-R5 日历资格异常 | `fear_index/history.py::trading_days` 新增 `allow_refresh=False` **只读资格模式**：只核验有效缓存（版本/built_at 7 天新鲜/日期格式逐条 strptime），缺失/过期/时间戳非法/损坏/格式错误一律抛 RuntimeError；不建目录、不 import baostock、不联网刷新、不提供星期猜测值。`exit_signals/__init__.py` live 分支改消费该查询：不可核实→`data_qual_reason`（拒绝硬授权）；可核实→覆盖检查（日历最后日期距分析日期 >12 天=覆盖不足）+ 陈旧判定。裸 `except: pass` 移除；recent_trade_date 原展示降级行为未动 | test_iss117_qr3_closeout.py：周末/节假日正例、陈旧行情拒绝+等价措辞、built_at 非法、日历获取失败、缓存缺失不触发登录、过期、格式错误、覆盖不足（8 项语义入库） |
 | ②Q-R2 消费者+显式证券 | `_event_applies_to_stock`：先拒 unknown/缺失/非法 scope，再核证券（unknown 附 codes 不适用）；`_ai_classify_portfolio_news`：保留 AI 解析的事件主体证券（规范化 6 位），请求股不再无条件写入 affected_codes（QR2 探针「明确别股被改成本股」关闭）；`scan_portfolio_events`：删除 scope!=unknown 时的 `affected_codes=[code]` 强制替换（两处「请求股冒充事件主体」全部移除）；`models.MarketEvent.scope` 默认 market→unknown（旧/缺字段收口；_create_event_from_rule 规则配置默认 market 保留）；CLI scope_cn 补 unknown 映射 | test_iss117_qr3_closeout.py：unknown+codes 消费者拒、非法 scope 拒、默认 unknown、别股不替换、unknown 扫描→真实编排器不转换、market/本股正例（8 项入库） |
 | ③Q-R1/Q-R7 按 QR2 清单 | 复算块三项独立核验：mode 适用性不依赖 stock_data 存在（气宗+缺数据也拒）；stock_data=None 拒绝（不再跳过复算放行）；复算结果须 data_quality=OK 且 signal_id/证券与申请一致（stock.py 对缺 quote_as_of 返回 UNKNOWN finding 的路径现在被门拒绝）。sector：行日期**完整**严格解析（[:10] 截断洗白关闭）；行日期须落请求窗口 [start,end]（供应商无视窗口参数的 2000 年旧行不冒充当前窗口）；端点可比性（最后观测距请求端点 >12 天拒绝，「21 个不同日期+恒真跨度」不再代替窗口资格） | test_iss117_qr3_closeout.py：缺 data/缺时点/气宗不依赖 stock_data/mode 正反例（5 项）；sector 垃圾尾巴/旧窗口/合法同窗/同日冲突/端点滞后（5 项入库） |
-| ④正式回归与对账 | 本表即逐项「要求→落地→回归」映射；探针语义全部落库 `tests/core/test_iss117_qr3_closeout.py`（32 项）；既有 test_iss117_q_batch.py 3 个 live 正例补合格日历 fixture（旧实现靠 recent_trade_date 星期推算兜底碰巧通过——QR3 指出的 fail-open 路径，新合同正例=合格数据+合格日历） | 全量离线 **1654 passed / 2 skipped / 0 failed**（上轮 1622 + 本批 +32，原始日志见交付）；架构师探针复核：qr3_calendar 8/8、qr2_boundary 6/6、qr_tail 3/3 全绿 |
+| ④正式回归与对账 | 本表即逐项「要求→落地→回归」映射；探针语义全部落库 `tests/core/test_iss117_qr3_closeout.py`（32 项）；既有 test_iss117_q_batch.py 3 个 live 正例补合格日历 fixture（旧实现靠 recent_trade_date 星期推算兜底碰巧通过——QR3 指出的 fail-open 路径，新合同正例=合格数据+合格日历） | 全量离线 **1656 passed / 2 skipped / 0 failed**（上轮 1622 + 本批净增 34；原始日志见 QR3_CLAUDE_FULLTEST_RESULTS.txt。注：本段初稿误记 1654/32 项，QR4 指出后更正——guard 盘前/盘后对照 2 项补入后正式文件实际收集 34 项）；架构师探针复核：qr3_calendar 8/8、qr2_boundary 6/6、qr_tail 3/3 全绿 |
 
 **版本**：v0.8.29.4（start.py/main.py banner/--version/AGENTS.md/README）。CACHE_VERSION
 未动（本批全部在信号权限层，不触及笨总评分输入）。
@@ -173,3 +173,47 @@ CACHE_VERSION 无需 bump、告警三处同步不适用（无新 logger.warning�
 P1 可提交。**
 
 **未实施**：S2a/S2b/S3——按 QR3「过门后再按冻结的 S2_DESIGN 执行」，本批不含。
+
+---
+
+## QR4 覆盖合同批实施报告（v0.8.29.5，2026-10-11，对应 QR4_ACCEPTANCE.md 两尾项）
+
+### 逐项对照（要求→落地→回归）
+
+**①Q-R5 日历覆盖合同（P1，QR4 实证两场景）**
+
+| 要求 | 落地 | 回归（test_iss117_qr4_coverage.py） |
+|---|---|---|
+| 缓存增加独立 schema/来源/查询边界/已确认覆盖边界与**完整自然日日历记录**（每日期明确交易/非交易），不写无法复核的 complete=True | history.trading_days 生产路径：供应商 query_trade_dates 返回的**每一天**（date, flag）全部保留（不再只挑交易日）；缓存新增 `coverage: {schema:1, start, end, days:{date:0/1}}`，原 `dates` 兼容字段保留（fear 展示） | test_matrix4_production_writes_confirmed_coverage（生产→保存→读取→授权→packet 全链） |
+| 生产核验：供应商原始日期/交易标志、唯一性、冲突、查询正常结束；缺一天/异常条目不得盖合格章；0/1 来自供应商不按星期补假 | 生产端五重核验：error_code==0、日期严格解析、唯一、flag∈{0,1}、**返回集合==查询区间自然日全集**——任何一关失败抛 RuntimeError 且不写缓存 | test_matrix4_supplier_missing_row_not_stamped / error_not_stamped / duplicate_not_stamped / bad_flag_not_stamped |
+| strict 只读消费复核新 schema 与覆盖记录；分析日必须在已确认覆盖内；删除 12 天猜测覆盖与靠未来交易日作证明的路径 | strict 消费：复核 coverage schema/start-end 合法、days 逐条格式、**days 键集合==声称边界自然日全集**（消费端重算自然日序列，不信任生产者声明）；门里 `not (start ≤ 参照日 ≤ end)` → 覆盖待确认；12 天 gap 检查与 max(dates) 未来证明路径已删除（exit_signals/__init__.py live 分支重写） | test_matrix3_cache_ends_friday_monday_analysis_rejected / test_matrix3_future_row_cannot_prove_coverage；qr4 探针 4a/4b 转绿 |
+| 缺元数据的旧日历继续服务 fear 展示，硬授权标 UNKNOWN，不自填范围追认 | strict 遇旧 schema 返回 `{"qualified": False, "legacy_dates": [...]}`（诊断用已知交易日），门一律拒绝；fear 展示（allow_refresh=True 列表语义）逐行未动；7 天 TTL 自然过期后由 fear 路径重建新 schema，无手工清缓存 | test_matrix4_fear_display_still_served_by_legacy_cache；矩阵行 2 五种变形（missing/expired/corrupt_built_at/unknown_version/no_coverage_meta）全部 UNKNOWN 且 attempts==[] |
+| 盘前/盘中、15点后、周末/节假日用同份明确日历及场次；合格历史回测用独立 bar 上下文 | 门场次语义保留（交易日当日 15:00 前参照日前移一天）；新 schema 下假日授权依赖 days 明确 flag=0 记录；live=False 不走日历分支（独立 bar 上下文） | test_matrix1 四参数化（premarket/postmarket/weekend/explicit_holiday）+ test_matrix6 两场景（2000bar/2000证据授权；2026live/2000行情拒绝） |
+| 门不联网/不自动刷新；缺日历提示可见；不取消独立保护 | strict 只读不变；诊断 reason 统一「覆盖待确认，三倍纪律暂为提醒」；test_matrix7 坏日历+价格 7<止损 8 → packet 仍 CLOSE_ALL | test_matrix7_bad_calendar_price_stop_still_closes |
+
+**②Q-R1 行情主体证券独立核对（P2）**
+
+| 要求 | 落地 | 回归 |
+|---|---|---|
+| 复算前核行情对象实际 stock_code 与请求证券一致（沿现有规范化口径）；缺失/非法/不一致拒授权并保留诊断；不改行情 stock_code、不只改复算 securities | 复算块前置核对：`stock_data.stock_code` 与请求 code 按 `split(".")[0]` 规范化比对（与 _event_applies_to_stock 同口径）；缺失/空/不一致 → reasons 显式诊断；**复算改传行情自身代码** `_check_triple_up_rule(stock_data, _data_code)`——复算 securities 独立来自数据主体，自证链路消除 | test_matrix5_unqualified_current_data_rejected_with_reason[wrong_stock] / test_matrix5_data_stock_code_missing_rejected / test_matrix5_suffixed_code_normalized_positive（带后缀正例）；qr4 探针 6 转绿 |
+| 合格同股与合法历史正例保留 | 同股（含后缀规范化一致）授权不受影响；2000 bar/2000 证据回放授权保留 | test_matrix5_suffixed_code_normalized_positive / test_matrix6_historical_bar_replay_authorized |
+
+### 验收矩阵 7 行覆盖状态
+
+1. 合格完整日历×场次 → test_matrix1（4 例）✅；2. 缺/过期/坏/未知版本/缺元数据 → test_matrix2（5 例，无新网络）✅；3. 覆盖边界外/稀疏行 → test_matrix3（2 例）✅；4. 供应商缺行/错误/重复/坏标志 → test_matrix4 生产四例 + fear 展示兼容 ✅；5. 错股/无主体/缺时点 → test_matrix5 ✅；6. 历史回放合法 vs live 陈旧拒绝 → test_matrix6 ✅；7. 坏日历+有效止损 → test_matrix7 ✅。
+
+### 探针状态（如实）
+
+- qr4_context_probes 6 项：**5 绿**（4a 覆盖边界外、4b 稀疏行、6 证券核对本批转绿；1/2 历史回放与 live 陈旧保持绿）。**1 红（预期）**：test_qualified_live_calendar_still_authorizes_real_terminal——其 fixture（复用 qr3 cached_calendar）写旧 schema 缓存，按 QR4 矩阵「缺覆盖元数据→UNKNOWN」拒绝。依据 QR4「不以所有历史探针机械全绿为门槛」+ 指示 1「缺元数据的旧日历硬授权标 UNKNOWN」，该红为**新合同下的预期行为**，正例语义由本批正式回归 test_matrix1（新 schema 合格日历授权）承接；fixture 升级（写 coverage/days 字段，断言不动）待架构师复验时定夺，实施方未擅改架构师资产。
+- qr3_calendar_probes 8 项：6 绿（探针 2 陈旧措辞在旧 schema 降级诊断中保留；探针 3-8 拒绝语义全部保持）；**2 红（预期，同因）**：探针 1 weekend/holiday 正例参数——旧 schema fixture 无法在新合同下授权（正例语义由 test_matrix1 weekend/explicit_holiday 承接）。
+- q_acceptance「过期」用词项：按 QR4 裁决保持（旧 schema 降级路径的陈旧预检诊断含「陈旧」，等价语义）。
+- 上轮遗留提请裁决的 s01 helper 断言：QR4 已裁决「该断言被新上下文合同替代」，无待办。
+
+### 验证与监督
+
+- 全量离线：**1681 passed / 2 skipped / 0 failed**（上轮 1656 + 本批净增 25：qr4_coverage 24 项 + qr3_closeout 适配净增 1）
+- 架构师探针复核日志：QR4_CLAUDE_PROBE_RESULTS.txt；全量日志：QR4_CLAUDE_FULLTEST_RESULTS.txt
+- code-quality-guard：一轮（对照 QR4 指示+验收矩阵+三条红线全复核）。结论「代码本体扎实，修占位符即可提交」。抓 P1×1（报告 {GUARD_RECORD} 占位符漏填——即本条，已填）+ P2×4（strict 消费端归一化重复键静默覆盖——已补与生产端对称的重复核验+布尔宽容收紧；ISSUES.md 既有重复拼接片段——已删；README/AGENTS「自然重建」表述弱化触发依赖——已按「跑一次 fear 即恢复」改准；跨年日历窗口——已登记 ISSUES 非缺陷）。确认项：决策路径零侵入/生产五重核验双层兜底/strict 契约清晰/场次×覆盖交互 fail-closed/矩阵 7 行断言真实（变异推演可区分新旧）/fear 展示兼容/无新告警面/诚实交付四红如实。
+- 版本 v0.8.29.5（start.py/banner/--version/AGENTS.md/README/ISSUES/对齐指南）；CACHE_VERSION 未动（信号权限层）
+
+**未实施**：S2a/S2b/S3——按 QR4「随后按 S2_DESIGN 执行 S2a→S2b→S3」，本批不含。全量隔离缺口（test_iss091 等写真实 HOME 路径）按 QR4 归 G7/T07 登记，不在本批范围。

@@ -39,11 +39,10 @@ def _hard_finding(**kw):
 # ── Q1：消费边界资格门 ──────────────────────────────────
 
 def _qualified_calendar(monkeypatch, tmp_path):
-    """QR3：live 授权正例需要合格交易日历——合成缓存+冻结时钟。
+    """QR3/QR4：live 授权正例需要合格覆盖日历——合成缓存+冻结时钟。
 
-    v0.8.29.4 起授权门只消费只读严格日历（trading_days(allow_refresh=False)），
-    无合格日历一律 fail-closed 拒绝；正例因此必须自带合格日历（旧实现靠
-    recent_trade_date 星期推算兜底碰巧通过，该兜底已被裁决不得作硬授权依据）。
+    v0.8.29.5 覆盖合同：缓存须含完整自然日覆盖记录（coverage.days，每个日期明确
+    交易/非交易）；缺覆盖元数据的旧 schema 硬授权一律 UNKNOWN。
     """
     from src.core.fear_index import history as fear_history
     now = datetime.now()
@@ -53,17 +52,23 @@ def _qualified_calendar(monkeypatch, tmp_path):
             return now if tz is None else now.replace(tzinfo=tz)
     monkeypatch.setattr(fear_history, "datetime", FrozenDateTime)
     monkeypatch.setattr(fear_history, "BASE_DIR", tmp_path / "calendar")
+    days = {}
+    for i in range(13):  # 最近 13 个自然日：周末明确非交易日，其余交易日
+        d = (now - timedelta(days=i)).date()
+        days[d.isoformat()] = 0 if d.weekday() >= 5 else 1
     fear_history._atomic_write_json(fear_history.BASE_DIR / "trade_dates.json", {
         "version": fear_history.FEAR_VERSION,
         "built_at": now.isoformat(),
-        "dates": [(now - timedelta(days=i)).strftime("%Y-%m-%d") for i in range(12)],
+        "dates": sorted(d for d, f in days.items() if f == 1),
+        "coverage": {"schema": 1, "start": min(days), "end": max(days), "days": days},
     })
 
 
 def test_q1_gate_authorized_positive(monkeypatch, tmp_path):
     """合法硬信号正例：白名单+绑定+证券+时点+质量+复算成立+独立分析日期+合格日历 → 通过。"""
     _qualified_calendar(monkeypatch, tmp_path)
-    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+    sd = SimpleNamespace(stock_code="600519",
+                         quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")
     ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True,
@@ -82,7 +87,8 @@ def test_q1_gate_rejects_stale_and_future_as_of(monkeypatch, tmp_path):
     """Q-R5：证据时点不得晚于独立分析日期（旧 7 天政策已按裁决移除）。"""
     _qualified_calendar(monkeypatch, tmp_path)
     future = (datetime.now() + timedelta(days=3)).strftime("%Y-%m-%d")
-    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+    sd = SimpleNamespace(stock_code="600519",
+                         quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")
     ok1, rej1 = authorize_hard_findings([_hard_finding(as_of=future)], "600519", live=True,
@@ -98,19 +104,22 @@ def test_q1_gate_backtest_waives_staleness():
     """Q-R5：回测按独立 bar 日期核验——2020 分析配 2026 行情/证据 → 拒绝（不得自我背书）。"""
     bar_date = "2020-01-10"
     # 场景1：数据本身是 2020 bar、证据也是 2020 → 通过（合法历史 bar）
-    sd_ok = SimpleNamespace(quote_as_of="2020-01-10", price=40.0, ma5=42.0, low_60d=10.0)
+    sd_ok = SimpleNamespace(stock_code="600519", quote_as_of="2020-01-10",
+                            price=40.0, ma5=42.0, low_60d=10.0)
     ok, rej = authorize_hard_findings([_hard_finding(as_of="2020-01-08")], "600519",
                                       live=False, stock_data=sd_ok, analysis_date=bar_date)
     assert len(ok) == 1 and not rej
     # 场景2（Q-R5 原探针）：数据/证据是 2026 年行情混入 2020 分析 → 数据时点错配拒绝
-    sd_bad = SimpleNamespace(quote_as_of="2026-10-09", price=40.0, ma5=42.0, low_60d=10.0)
+    sd_bad = SimpleNamespace(stock_code="600519", quote_as_of="2026-10-09",
+                            price=40.0, ma5=42.0, low_60d=10.0)
     ok2, rej2 = authorize_hard_findings([_hard_finding(as_of="2026-10-09")], "600519",
                                         live=False, stock_data=sd_bad, analysis_date=bar_date)
     assert not ok2 and ("晚于" in rej2[0].reason or "错配" in rej2[0].reason)
 
 
 def test_q1_gate_rejects_unknown_binding_and_quality():
-    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+    sd = SimpleNamespace(stock_code="600519",
+                         quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")
     ok, rej = authorize_hard_findings(
@@ -488,7 +497,8 @@ def test_r4a_stock_layer_error_produces_diag(monkeypatch):
 def test_q1_gate_qizong_rejects_triple(monkeypatch, tmp_path):
     """气宗持有计划不适用三倍定律——资格门拒绝（缓存/转述不能借不适用的规则清仓）。"""
     _qualified_calendar(monkeypatch, tmp_path)
-    sd = SimpleNamespace(quote_as_of=datetime.now().isoformat(timespec="seconds"),
+    sd = SimpleNamespace(stock_code="600519",
+                         quote_as_of=datetime.now().isoformat(timespec="seconds"),
                          price=40.0, ma5=42.0, low_60d=10.0)
     today = datetime.now().strftime("%Y-%m-%d")
     ok, rej = authorize_hard_findings([_hard_finding()], "600519", live=True,
@@ -511,7 +521,8 @@ def test_q1_gate_source_empty_rejected():
 
 def test_q1_gate_backtest_missing_analysis_date_rejected():
     """回测未传 bar 日期 → 硬资格拒绝（不静默 fail-open）。"""
-    sd = SimpleNamespace(quote_as_of="2020-01-10", price=40.0, ma5=42.0, low_60d=10.0)
+    sd = SimpleNamespace(stock_code="600519", quote_as_of="2020-01-10",
+                         price=40.0, ma5=42.0, low_60d=10.0)
     ok, rej = authorize_hard_findings([_hard_finding(as_of="2020-01-08")], "600519",
                                       live=False, stock_data=sd, analysis_date=None)
     assert not ok and "分析日期缺失" in rej[0].reason
