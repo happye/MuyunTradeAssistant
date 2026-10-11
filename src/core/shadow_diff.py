@@ -126,7 +126,11 @@ logger = logging.getLogger(__name__)
 # 可证明空仓（context_for PARTIAL 保护贯穿投影分支，NONE→UNKNOWN）；衍生观察
 # 的账户维度随之变化，升候选协议；v10 及更早保留独立诊断分桶，不追认为当期
 # 有效样本（任务卡第九轮指示：按实际差异登记，非映射规则变化不凑版本）。
-SHADOW_DERIVATION_VERSION = "shadow_v11"
+# v12（S2a 补修 D 组）：legacy 臂聚合身份变化——decision 分数从归一化占比改为
+# 动作强度 A/P/C 协议（aggregation_protocol=s2a-v1），旧 v11 观察的 legacy 动作
+# 基础与新合同不可比，按既有分桶机制整体降为 older_versions 只诊断不进当前
+# 有效分母；旧记录原件不重写、不追认。S3 授权桥接仍留后批。
+SHADOW_DERIVATION_VERSION = "shadow_v12"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 

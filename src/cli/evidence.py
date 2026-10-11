@@ -206,17 +206,12 @@ def load_evidence(code: str, limit: int = 2) -> list:
     return rows[-limit:] if limit and limit > 0 else rows
 
 
-def diff_evidence(code: str) -> Optional[dict]:
-    """同股最近两次证据比较。不足两条返回 None（调用方提示需先积累）。
+def _diff_records(old: dict, new: dict) -> dict:
+    """两条证据记录的字段级比较（S2a 补修 D 组抽纯函数，测试可直调）。
 
-    返回 {old, new, changes: {字段: (旧, 新)}, new_warnings, signal_changes}——
-    只列**发生变化的字段**；数值型给 (旧, 新, delta)。old=文件中倒数第二条
-    （先发生），new=最后一条（后发生）。
+    返回 {old, new, changes, new_warnings, signal_changes}——只列**发生变化的
+    字段**；数值型给 (旧, 新, delta)。score 的跨协议 Δ 特殊处理见循环内。
     """
-    rows = load_evidence(code, limit=2)
-    if len(rows) < 2:
-        return None
-    old, new = rows[-2], rows[-1]
 
     def _f(v):
         try:
@@ -232,6 +227,16 @@ def diff_evidence(code: str) -> Optional[dict]:
     for field in ("price", "score", "target_weight"):
         a, b = _f(old.get(field)), _f(new.get(field))
         if a is not None and b is not None and abs(b - a) > 1e-9:
+            if field == "score":
+                # ISS-117 S2a 补修 D 组：跨协议 score 不给数值 Δ（口径不同不可比——
+                # 旧归一化占比 vs 新动作强度），标明双方协议；价格 Δ 不受影响；
+                # 同协议 Δ 保留
+                op = old.get("aggregation_protocol") or "pre-s2a（当时未记录）"
+                np_ = new.get("aggregation_protocol") or "pre-s2a（当时未记录）"
+                if op != np_:
+                    changes["score"] = (a, b, "口径不同，数值不可比",
+                                        {"old_protocol": op, "new_protocol": np_})
+                    continue
             changes[field] = (a, b, b - a)
 
     new_warnings = [w for w in (new.get("warnings") or []) if w not in (old.get("warnings") or [])]
@@ -251,3 +256,11 @@ def diff_evidence(code: str) -> Optional[dict]:
 
     return {"old": old, "new": new, "changes": changes,
             "new_warnings": new_warnings, "signal_changes": signal_changes}
+
+
+def diff_evidence(code: str) -> Optional[dict]:
+    """同股最近两次证据比较。不足两条返回 None（调用方提示需先积累）。"""
+    rows = load_evidence(code, limit=2)
+    if len(rows) < 2:
+        return None
+    return _diff_records(rows[-2], rows[-1])

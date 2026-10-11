@@ -282,12 +282,20 @@ class Orchestrator:
             expected_base, rule_versions = self.skill_engine.base_roster(
                 self.decision_engine.weights)
         except ValueError as e:
-            logger.warning(f"S2a 技能注册表不可用，普通投票降级: {e}")
+            logger.warning(f"S2a base 注册表不可用，普通投票降级: {e}")
             expected_base, rule_versions = {}, {}
+        try:
+            # regulator 注册表独立核验——坏 regulator 权重不连带打死 base 普通投票
+            expected_regulators, regulator_rule_versions =                 self.skill_engine.regulator_roster(self.decision_engine.weights)
+        except ValueError as e:
+            logger.warning(f"S2a regulator 注册表不可用，调节全部弃权: {e}")
+            expected_regulators, regulator_rule_versions = {}, {}
         decision_result = self.decision_engine.make_decision(
             data, signals, state, current_position_ratio=current_position_ratio,
             expected_base=expected_base, rule_versions=rule_versions,
             evaluation_as_of=getattr(data, "quote_as_of", None),
+            expected_regulators=expected_regulators,
+            regulator_rule_versions=regulator_rule_versions,
         )
         logger.info(f"Decision aggregate: {decision_result.decision} (score: {decision_result.score})")
 

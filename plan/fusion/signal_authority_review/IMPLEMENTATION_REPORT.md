@@ -269,3 +269,23 @@ CACHE_VERSION 未动。
 - CLI 人话摘要「信号口径」行与 chat formatter 的措辞同步为展示层，plan_guard/entry_exit
   不消费普通投票 A（无改动）。
 - 全量：**1719 passed / 2 skipped / 0 failed**（上轮 1687 + S2a 净增 32——含 guard P2 双版本对照/evidence 一致性两测试；guard P1-1 修复后的 override 语义收口：base 与 action 同向不构成覆盖，门分值走投票 A，override 通道仅方向翻转时携带触发票置信度；全量偶发的 d04 断言随语义收口修正，复跑 0 失败；原始日志 S2A_CLAUDE_FULLTEST_RESULTS.txt）。回归适配 12 项如实分类：10 项测试构造按新合同适配（sell_split×5/l1×1/g_block 全量偶发×2 复跑绿/d04×2 合同替代——veto 强度从 score 反灌改为 action_override_confidence 明确通道，由 strategy _gate_score 消费，原 D03 病根不复发）；test_conditions（YAMLBasedSkill 无 path 构造）为产品健壮性修复（rule_version 容错 adhoc）。- guard：一轮（对照冻结公式/实施单/设计稿+全库 score 消费 grep+探针实证）。确认项：冻结矩阵算术逐行对上、A/P/C 公式与原型一致、槽逻辑边界、降级协议、buy_gate 等价性、门收口 grep 无残留、CACHE_VERSION 红线、版本四处同步。抓 **P1×2**（①is_extreme 强止损条件只读 A[SELL]——止损覆盖场景 A=0，首日确认门把止损 SELL 降 HOLD 延迟一天，违反「独立硬退出不被覆盖率取消」——已改 _gate_score 口径（override 优先）+设计稿同步+c0 测试改真覆盖 strategy 止损路径（无 PlanGuard 救回场景）；②scan 路径 enabled_skills=[] 默认——load 侧 falsy 加载全集、roster 侧当空集，同配置两入口行为分叉且静默降级——base_roster falsy 语义与 load_skills 对齐+main.py:2881 默认 None）。**P2×7** 全部顺手收口（make_decision 入口坏注册表校验防 ZeroDivision；override_conf 覆盖两条压制路径如实记录；action_strength 存原值单源化；降级注释措辞；chat formatter 信号口径行；双版本对照+evidence 一致性两测试补齐；_resolve_type falsy 显式值口径）。全数修复后合入。
+
+---
+
+## S2a 四组补修报告（v0.8.29.8，2026-10-11，S2A_ACCEPTANCE 四组 + S2A_CLOSEOUT_TASK 复验矩阵）
+
+### 要求→实际源码 diff→正式测试 ID→终态（tests/core/test_s2a_aggregation.py 补修矩阵 16 项，全走产品聚合→真实 Strategy→packet）
+
+| 组 | 源码 diff | 正式测试 ID | 终态断言 |
+|---|---|---|---|
+| **B/P1 止损不被同向取消**（先修） | decision_engine：override_conf **触发即携带**（同向不清——「没有翻转方向」≠「没有独立保护」，撤回上轮错误收口）；strategy_layer._gate_score 改**双通道取较大者**（止损同向不被弱普通 A 拖延，强普通票不被较弱 action 拉低——两担心一个 max 同时解决） | test_closeout_b_stop_survives_weak_same_direction_base_votes（主反例：A_SELL=.40 同向 → 当日 EXIT/CLOSE_ALL）、…_strong_same_direction…（A_SELL=.95 不被 0.85 拉低）、…_b_gate_score_takes_max…；既有 c0（C=0/方向翻转）保持 | EXIT/CLOSE_ALL 同日到达；A 不混硬强度；确认/极端保护同源 |
+| **A/P1 固定预算身份核验** | skill_engine：抽 _typed_roster + regulator_roster（regulator 不再免检）；decision_engine._aggregate_votes：证券/时点/规则版本由**注册上下文**建立——评估时点与版本**缺失不得由票自报补齐**（缺→槽 UNKNOWN 保留 W 拒因可见），票自带身份与注册不一致（错股/错时点/**错版本**）→ 整槽 UNKNOWN 不投不计覆盖；UNKNOWN 槽隔离记录不污染合法槽组；_apply_regulators 重写为**槽化资格**（未注册/缺上下文/错股/错时点/错版本/非法权重（负/NaN）全部弃权留拒因，同槽重复合一/冲突弃权，合法正权重幅度公式与几何平均保留） | test_closeout_a_same_slot_wrong_version_copy…（主反例：副本不增预算 A=.20/C=.25）、…_single_wrong_version…、…_missing_asof_degrades_all_slots（quote_as_of=None→全槽 UNKNOWN）、…_regulator_duplicate_10x_same_as_single、…_regulator_wrong_security_version_abstain、…_bad_regulator_weight_cannot_flip_direction（−10/NaN）、…_zero_regulator_on_u0_not_clipped（U=0 不洗成方向票） | 配置预算不多发；错版不授权；重复/错股/坏权重调节不扩大资格；独立退出保留 |
+| **C/P1 新增出口完整门** | strategy_layer：BUY 分支**按当前 state 重过 buy_gate**（AI/事件改 state 后旧 BUY 不得落地，过不了→HOLD）；BUY/HOLD 全部新增出口补「目标≤已知当前→HOLD_POSITION」（不保留 ADD 假动作）；analysis_service：ADD 目标未高于当前 → 终态**改 HOLD**（不靠删目标掩盖） | test_closeout_c_state_change_revalidates_buy_gate（force_state 改 TRANSITION 后不 OPEN）、…_target_not_increasing_is_hold（.60 当前 + 目标 .60 → HOLD）、…_c_unknown_weight_no_precise_add（L1 保留） | 全部新增出口同一当前门；目标未增→HOLD；未知权重不造精确增量 |
+| **D/P1 记录口径** | evidence.py：diff_evidence 抽 _diff_records 纯函数，score 跨协议 Δ **不给数值**（标「口径不同，数值不可比」+双方协议；价格 Δ 照常；同协议 Δ 保留）；decision_contract.LegacyTrace 补 aggregation_protocol/voting_action_strength/opinion_share/coverage_ratio 四字段（旧记录 None=旧协议不补假 A）；analysis_service 构造同步；shadow_diff **SHADOW_DERIVATION_VERSION 升 shadow_v12**（S2a 聚合身份变化→旧 v11 整体降 older_versions 只诊断不进当前分母，既有分桶机制复用，旧原件不重写） | test_closeout_d_cross_protocol_score_delta_guarded、…_d_legacy_trace_carries_protocol_fields、…_d_shadow_version_buckets_old_v11_out | 跨协议不比数；新 A/P/C/协议同源落盘；旧 v11 不进当前分母 |
+
+### 版本与全量
+
+- v0.8.29.8（start.py/banner/--version/AGENTS/README）；CACHE_VERSION 不动。
+- 全量离线：**1735 passed / 2 skipped / 0 failed**（上轮 1719 + 补修矩阵净增 16）（shadow 版本升级连带 4 文件 12 处版本硬编码断言同步 v12——历次升级同款做法，旧记录字符串不动）。
+- guard：{GUARD_S2AC}
+- 原报告更正（保留历史记录）：S2a 批报告「所有测试真实链」应为「数值表主要到 make_decision，部分到 packet」（S2A_ACCEPTANCE 已指出，本批补齐 16 项真实链）；「影子本批已协议隔离」「旧记录读时标旧协议」当时无源码闭环，本批完成。

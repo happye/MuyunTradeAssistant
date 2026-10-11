@@ -583,16 +583,20 @@ class StrategyLayer:
         return self._is_opposite_direction(decision, state.last_decision)
 
     def _gate_score(self, decision_result: DecisionResult) -> float:
-        """普通票动作门分值（ISS-117 S2a）。
+        """普通票动作门分值（ISS-117 S2a，补修 B 组口径）。
 
-        动作信号覆盖（止损/止盈一票否决）→ 触发票置信度（明确来源，不反灌
-        普通投票 A）；否则 → 普通投票动作强度 A[decision]——不含 AI/事件
-        调节（AI 加分不得绕过基础新增资格）。降级（无注册表）→ 0。
+        独立硬纪律通道（action_override_confidence：止损/止盈一票否决/压制的
+        触发票置信度，触发即携带——同向也不清）与普通投票通道（A[decision]）
+        **取较大者**：止损一票否决同向时不被弱普通 A 拖延（确认/反转/极端保护
+        保留来源与强度），强普通票也不被较弱 action 拉低。均不含 AI/事件调节
+        （AI 加分不得绕过基础新增资格）。降级（无注册表）→ 0。
         """
-        if decision_result.action_override_confidence is not None:
-            return float(decision_result.action_override_confidence)
         A = decision_result.action_strength or {}
-        return float(A.get(decision_result.decision.value, 0.0))
+        base = float(A.get(decision_result.decision.value, 0.0))
+        ov = decision_result.action_override_confidence
+        if ov is None:
+            return base
+        return max(base, float(ov))
 
     def _apply_reverse_cost(
         self,
@@ -718,6 +722,11 @@ class StrategyLayer:
                 return PositionAction.REDUCE, target
 
         elif final_signal == SignalType.BUY:
+            # ISS-117 S2a 补修 C 组：方向生成和最终风险授权是两道约束——决策层早先
+            # 判的 BUY（可能在旧状态下）到仓位出口必须**按当前 state 重过 BUY 门**
+            # （AI/事件干预改 state 后旧 BUY 不得直接落地）；过不了门 → HOLD。
+            if not DecisionEngine.buy_gate(buy_score, sell_score, state):
+                return PositionAction.HOLD_POSITION, 0.0
             # v0.8.5 阶段 3.3: 高仓位上限只给 (RISK_ON + 高质量信号) 双条件
             if buy_score >= 0.4:
                 target = cap if (state == MarketState.RISK_ON and high_quality_signal) else min(self.OPEN_RATIO + self.ADD_RATIO, cap)
@@ -726,17 +735,25 @@ class StrategyLayer:
                     # 同 fusion 行6 预算未知→HOLD 语义）；持仓事实保留
                     return PositionAction.HOLD_POSITION, 0.0
                 if current_position_ratio > 0:
+                    if target <= current_position_ratio:
+                        # 补修 C 组：目标未增加 → HOLD（不能保留 ADD 假动作，
+                        # 也不能靠 packet 删目标掩盖）
+                        return PositionAction.HOLD_POSITION, 0.0
                     return PositionAction.ADD, target
                 return PositionAction.OPEN, target
             elif buy_score >= 0.25:
                 target = min(self.OPEN_RATIO, cap)
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
+                if current_position_ratio > 0 and target <= current_position_ratio:
+                    return PositionAction.HOLD_POSITION, 0.0  # 目标未增加 → HOLD
                 return PositionAction.OPEN, target
             else:
                 target = min(self.OPEN_RATIO * 0.5, cap)
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
+                if current_position_ratio > 0 and target <= current_position_ratio:
+                    return PositionAction.HOLD_POSITION, 0.0  # 目标未增加 → HOLD
                 return PositionAction.OPEN, target
 
         elif final_signal == SignalType.HOLD:
@@ -749,6 +766,9 @@ class StrategyLayer:
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 if current_position_ratio > 0:
+                    if target <= current_position_ratio:
+                        # 补修 C 组：目标未增加 → HOLD（不保留 ADD 假动作）
+                        return PositionAction.HOLD_POSITION, 0.0
                     return PositionAction.ADD, target
                 else:
                     # 空仓时不能"加仓"，改为建仓

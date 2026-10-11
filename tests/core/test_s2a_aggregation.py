@@ -25,6 +25,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from src.data.models import (
+    StrategyState, TradeLifecycle,
     SkillSignal, SignalType, MarketState, StockData, TradePlan,
     AIModifierResult,
 )
@@ -170,7 +171,8 @@ def test_s2a_zero_confidence_regulator_no_effect(monkeypatch):
     dr = engine.decision_engine.make_decision(
         _sd(), sigs, state=MarketState.RISK_ON,
         expected_base=dict(roster), rule_versions={"slot0": "rv0"},
-        evaluation_as_of="2026-10-09")
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0}, regulator_rule_versions={"reg0": "rv0"})
     assert dr.action_strength["BUY"] == pytest.approx(base.action_strength["BUY"])
     assert dr.decision == base.decision
 
@@ -185,7 +187,8 @@ def test_s2a_regulator_cannot_create_direction_from_nothing(monkeypatch):
     dr = engine.decision_engine.make_decision(
         _sd(), sigs, state=MarketState.RISK_ON,
         expected_base=dict(roster), rule_versions={k: "rv0" for k in roster},
-        evaluation_as_of="2026-10-09")
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0}, regulator_rule_versions={"reg0": "rv0"})
     assert dr.action_strength["BUY"] == 0
     assert dr.decision == H
 
@@ -200,7 +203,8 @@ def test_s2a_confident_regulator_scales_not_creates(monkeypatch):
     dr = engine.decision_engine.make_decision(
         _sd(), sigs, state=MarketState.RISK_ON,
         expected_base=dict(roster), rule_versions={"slot0": "rv0"},
-        evaluation_as_of="2026-10-09")
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0}, regulator_rule_versions={"reg0": "rv0"})
     assert dr.action_strength["BUY"] == pytest.approx(.015)
     assert dr.decision == H
 
@@ -409,3 +413,331 @@ def test_s2a_evidence_reads_same_fields(monkeypatch, tmp_path):
     assert rec["action_strength"]["BUY"] == pytest.approx(
         dr.action_strength["BUY"])
     assert rec["coverage_ratio"] == pytest.approx(dr.coverage_ratio)
+
+
+# ── 补修 A 组：固定预算不被身份/调节路径绕过（S2A_CLOSEOUT 固定复验矩阵） ──
+
+def test_closeout_a_same_slot_wrong_version_copy_gets_no_extra_budget(monkeypatch):
+    """E4，同 slot BUY .8 注册 rv0 + 错 version 副本：配置预算不多发——
+    合法单槽 A=.20/C=.25，错版不授权，终态不被副本改为 OPEN/ADD。"""
+    engine = Orchestrator(enabled_skills=[])
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(FOUR), {k: "rv0" for k in FOUR}))
+    sigs = [
+        SkillSignal(skill_name="slot0", skill_alias="a", signal=B, confidence=.8,
+                    skill_type="base", rule_version="rv0"),
+        SkillSignal(skill_name="slot0", skill_alias="a2", signal=B, confidence=.8,
+                    skill_type="base", rule_version="other-version"),
+    ]
+    dr = engine.decision_engine.make_decision(
+        _sd(), sigs, state=MarketState.RISK_ON,
+        expected_base=dict(FOUR), rule_versions={k: "rv0" for k in FOUR},
+        evaluation_as_of="2026-10-09")
+    assert dr.action_strength["BUY"] == pytest.approx(.2)
+    assert dr.coverage_ratio == pytest.approx(.25)
+    assert dr.decision == H
+    slots = next(t for t in dr.trace
+                 if t.step == "基础信号投票（s2a-v1）").data["slots"]
+    assert any("错版本" in n for n in slots)
+
+
+def test_closeout_a_single_wrong_version_slot_unknown(monkeypatch):
+    """单张错 version：整槽 UNKNOWN——不投不计覆盖（A=0/C=0）。"""
+    engine = Orchestrator(enabled_skills=[])
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(FOUR), {k: "rv0" for k in FOUR}))
+    sigs = [SkillSignal(skill_name="slot0", skill_alias="a", signal=B, confidence=.8,
+                        skill_type="base", rule_version="other-version")]
+    dr = engine.decision_engine.make_decision(
+        _sd(), sigs, state=MarketState.RISK_ON,
+        expected_base=dict(FOUR), rule_versions={k: "rv0" for k in FOUR},
+        evaluation_as_of="2026-10-09")
+    assert dr.action_strength["BUY"] == 0
+    assert dr.coverage_ratio == pytest.approx(0.0)
+    assert dr.decision == H
+
+
+def test_closeout_a_missing_asof_degrades_all_slots(monkeypatch):
+    """quote_as_of=None（缺独立时点）：全部槽 UNKNOWN——A=0/C=0/拒因可见。"""
+    engine = Orchestrator(enabled_skills=[])
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(FOUR), {k: "rv0" for k in FOUR}))
+    sigs = _vote_signals([(f"slot{i}", B, .8) for i in range(4)])
+    dr = engine.decision_engine.make_decision(
+        _sd(), sigs, state=MarketState.RISK_ON,
+        expected_base=dict(FOUR), rule_versions={k: "rv0" for k in FOUR},
+        evaluation_as_of=None)
+    assert dr.action_strength["BUY"] == 0
+    assert dr.coverage_ratio == pytest.approx(0.0)
+    assert dr.decision == H
+    slots = next(t for t in dr.trace
+                 if t.step == "基础信号投票（s2a-v1）").data["slots"]
+    assert any("缺独立评估时点" in n for n in slots)
+
+
+def test_closeout_a_regulator_duplicate_10x_same_as_single(monkeypatch):
+    """同一 BUY 调节器重复 10 次 vs 单次：合法去重后同 M/A/P/C，不能 HOLD→OPEN。"""
+    roster = {"slot0": 1.0}
+
+    def run(regs):
+        engine = Orchestrator(enabled_skills=[])
+        monkeypatch.setattr(engine.skill_engine, "base_roster",
+                            lambda w: (dict(roster), {"slot0": "rv0"}))
+        monkeypatch.setattr(engine.skill_engine, "regulator_roster",
+                            lambda w: ({"reg0": 1.0}, {"reg0": "rv0"}))
+        return engine.decision_engine.make_decision(
+            _sd(), _with_regulator([("slot0", B, .01)], regs),
+            state=MarketState.RISK_ON,
+            expected_base=dict(roster), rule_versions={"slot0": "rv0"},
+            evaluation_as_of="2026-10-09",
+            expected_regulators={"reg0": 1.0},
+            regulator_rule_versions={"reg0": "rv0"})
+
+    single = run([("reg0", B, 1.0)])
+    dup10 = run([("reg0", B, 1.0)] * 10)
+    assert dup10.action_strength["BUY"] == pytest.approx(single.action_strength["BUY"])
+    assert dup10.opinion_share == single.opinion_share
+    assert dup10.coverage_ratio == single.coverage_ratio
+    assert dup10.decision == single.decision == H  # 不 HOLD→OPEN
+
+
+def test_closeout_a_regulator_wrong_security_version_abstain(monkeypatch):
+    """调节器明确另一证券/错版本：不参与调节并留拒因，不扩大当前证券资格。"""
+    roster = {"slot0": 1.0}
+    engine = Orchestrator(enabled_skills=[])
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(roster), {"slot0": "rv0"}))
+    monkeypatch.setattr(engine.skill_engine, "regulator_roster",
+                        lambda w: ({"reg0": 1.0, "reg1": 1.0},
+                                   {"reg0": "rv0", "reg1": "rv0"}))
+    sigs = _vote_signals([("slot0", B, .01)]) + [
+        SkillSignal(skill_name="reg0", skill_alias="r0", signal=B, confidence=1.0,
+                    skill_type="regulator", security="000001"),  # 另股
+        SkillSignal(skill_name="reg1", skill_alias="r1", signal=B, confidence=1.0,
+                    skill_type="regulator", rule_version="other"),  # 错版本
+    ]
+    dr = engine.decision_engine.make_decision(
+        _sd(), sigs, state=MarketState.RISK_ON,
+        expected_base=dict(roster), rule_versions={"slot0": "rv0"},
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0, "reg1": 1.0},
+        regulator_rule_versions={"reg0": "rv0", "reg1": "rv0"})
+    assert dr.action_strength["BUY"] == pytest.approx(.01)  # 无调节抬升
+    assert dr.decision == H
+    notes = next(t for t in dr.trace if t.step == "调节器修正").data["regulator_notes"]
+    assert any("错股" in n for n in notes)
+    assert any("错版本" in n for n in notes)
+
+
+def test_closeout_a_bad_regulator_weight_cannot_flip_direction(monkeypatch):
+    """权重−10 的 SELL 调节器：弃权留拒因（不把 BUY 抬升 / 不 OPEN）；
+    NaN 权重同样弃权——不用 clip 掩盖非法数。"""
+    roster = {"slot0": 1.0}
+    for bad_w in (-10, float("nan")):
+        engine = Orchestrator(enabled_skills=[])
+        monkeypatch.setattr(engine.skill_engine, "base_roster",
+                            lambda w: (dict(roster), {"slot0": "rv0"}))
+        monkeypatch.setattr(engine.skill_engine, "regulator_roster",
+                            lambda w: ({"reg0": 1.0}, {"reg0": "rv0"}))
+        monkeypatch.setattr(engine.decision_engine, "weights",
+                            {"reg0": bad_w, "slot0": 1.0})
+        dr = engine.decision_engine.make_decision(
+            _sd(), _with_regulator([("slot0", B, .8)], [("reg0", S, 1.0)]),
+            state=MarketState.RISK_ON,
+            expected_base=dict(roster), rule_versions={"slot0": "rv0"},
+            evaluation_as_of="2026-10-09",
+            expected_regulators={"reg0": 1.0},
+            regulator_rule_versions={"reg0": "rv0"})
+        assert dr.action_strength["BUY"] == pytest.approx(.8), bad_w  # 调节未发生
+        assert dr.decision == B  # 合法 base 票照常；坏调节器不翻转方向
+        notes = next(t for t in dr.trace
+                     if t.step == "调节器修正").data["regulator_notes"]
+        assert any("非法权重" in n for n in notes), bad_w
+
+
+def test_closeout_a_zero_regulator_on_u0_not_clipped_into_direction(monkeypatch):
+    """全无 base 意见（U=0）+ NaN 权重 regulator：不得被 clip 洗成方向票
+    （BUY/SELL 不凭空变 1），C=0 无新增。"""
+    engine = Orchestrator(enabled_skills=[])
+    roster = FOUR
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(roster), {k: "rv0" for k in roster}))
+    monkeypatch.setattr(engine.skill_engine, "regulator_roster",
+                        lambda w: ({"reg0": float("nan")}, {"reg0": "rv0"}))
+    monkeypatch.setattr(engine.decision_engine, "weights",
+                        {"reg0": float("nan"), **{k: 1.0 for k in roster}})
+    dr = engine.decision_engine.make_decision(
+        _sd(), _with_regulator([], [("reg0", B, 1.0)]), state=MarketState.RISK_ON,
+        expected_base=dict(roster), rule_versions={k: "rv0" for k in roster},
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0}, regulator_rule_versions={"reg0": "rv0"})
+    assert dr.action_strength["BUY"] == 0 and dr.action_strength["SELL"] == 0
+    assert dr.decision == H
+    assert dr.coverage_ratio == pytest.approx(0.0)
+
+
+# ── 补修 B 组：独立止损不被同向普通票取消 ──────────────────
+
+def _stop_engine(monkeypatch, base_votes):
+    engine = _offline_engine(monkeypatch, FOUR, base_votes)
+    engine.skill_engine.execute_all = lambda data: (
+        _vote_signals(base_votes)
+        + [SkillSignal(skill_name="stop_loss", skill_alias="止损", signal=S,
+                       confidence=0.9, skill_type="action", reason=["跌破止损价"])])
+    return engine
+
+
+def _held_packet(monkeypatch, engine):
+    return engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=.2, position_state="HELD",
+        current_position_ratio=.2, has_position=True, trade_plan=None,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD, entry_price=20.0,
+                                     current_position_ratio=0.2),
+        today="2026-10-09", ai_enabled=False)
+
+
+def test_closeout_b_stop_survives_weak_same_direction_base_votes(monkeypatch):
+    """止损 .9 + 两个弱普通 SELL .8（同向，A_SELL=.40/C=.5）：不得被确认门
+    拖延——当日 EXIT/CLOSE_ALL（补修 B 组主反例）。"""
+    packet, dr, out, _, _ = _held_packet(
+        monkeypatch, _stop_engine(monkeypatch, [("slot0", S, .8), ("slot1", S, .8)]))
+    assert dr.action_strength["SELL"] == pytest.approx(.4)
+    assert dr.coverage_ratio == pytest.approx(.5)
+    assert dr.decision == S
+    assert dr.action_override_confidence == pytest.approx(0.9)  # 来源保留
+    assert packet.desired_action == DesiredAction.EXIT
+    assert out.position_action.value == "CLOSE_ALL"
+
+
+def test_closeout_b_stop_survives_strong_same_direction_base_votes(monkeypatch):
+    """强 base 同向（A_SELL≈.95 > 止损 .85）：强普通票不被较弱 action 拉低、
+    止损来源也不消失——同日退出保持。"""
+    packet, dr, out, _, _ = _held_packet(
+        monkeypatch, _stop_engine(monkeypatch, [(f"slot{i}", S, .95) for i in range(4)]))
+    assert dr.action_strength["SELL"] == pytest.approx(.95)
+    assert dr.action_override_confidence == pytest.approx(0.9)
+    assert packet.desired_action == DesiredAction.EXIT
+
+
+def test_closeout_b_gate_score_takes_max_of_both_channels():
+    """_gate_score：独立硬纪律通道与普通投票通道取较大者（两通道互不拉低）。"""
+    from src.core.strategy_layer import StrategyLayer
+    sl = StrategyLayer()
+    dr_weak_stop = _decision_fixture(S, A_sell=.4, override=.9)
+    assert sl._gate_score(dr_weak_stop) == pytest.approx(.9)   # 止损不被普通 A 拖延
+    dr_strong_base = _decision_fixture(S, A_sell=.95, override=.85)
+    assert sl._gate_score(dr_strong_base) == pytest.approx(.95)  # 强票不被 action 拉低
+
+
+def _decision_fixture(direction, A_sell, override):
+    """构造带 A 与 override 的 DecisionResult（门分值单测用）。"""
+    from src.data.models import DecisionResult, PositionAction
+    return DecisionResult(
+        stock=_sd(), state=MarketState.RISK_ON, decision=direction, score=0.0,
+        signals=[], action_strength={"BUY": 0.0, "SELL": A_sell, "HOLD": 0.0,
+                                     "WATCH": 0.0},
+        action_override_confidence=override,
+        position_action=PositionAction.REDUCE, position_ratio=None)
+
+
+# ── 补修 C 组：当前状态门重验 + 目标未增→HOLD ───────────────
+
+def test_closeout_c_state_change_revalidates_buy_gate(monkeypatch):
+    """RISK_ON 一票满置信（A_BUY=.25）先产 BUY；AI 状态干预改 TRANSITION 后
+    同状态 BUY 门拒绝——最终不 OPEN。"""
+    engine = _offline_engine(monkeypatch, FOUR, [("slot0", B, 1.0)])
+    engine.ai_modifier = SimpleNamespace(
+        is_available=lambda: True,
+        analyze=lambda d: AIModifierResult(confidence=1.0, force_state="TRANSITION",
+                                           adjusted=True))
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=0.0, position_state="FLAT",
+        current_position_ratio=0.0, has_position=False, trade_plan=None,
+        today="2026-10-09", ai_enabled=True)  # AI 状态干预开着
+    assert dr.state == MarketState.TRANSITION  # 状态已被干预改变
+    assert out.position_action.value != "OPEN"
+    assert packet.desired_action != DesiredAction.OPEN
+
+
+def _confirmed_open_engine(monkeypatch):
+    from src.core.strategy_layer import StrategyLayer
+    monkeypatch.setattr(StrategyLayer, "CONFIRMATION_MIN_CONSECUTIVE", 1)
+    return _offline_engine(monkeypatch, FOUR, [(f"slot{i}", B, .8) for i in range(4)])
+
+
+def test_closeout_c_target_not_increasing_is_hold(monkeypatch):
+    """当前 .60、四票 BUY .8（RISK_ON 目标 .60 = 当前）：目标未增加 → HOLD，
+    不报 ADD（packet 不靠删目标掩盖动作错误）。"""
+    engine = _confirmed_open_engine(monkeypatch)
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=.6, position_state="HELD",
+        has_position=True, trade_plan=None,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD, entry_price=10.0,
+                                     current_position_ratio=0.6),
+        today="2026-10-09", ai_enabled=False)
+    assert dr.decision == B
+    assert out.position_action.value == "HOLD_POSITION"
+    assert packet.desired_action == DesiredAction.HOLD
+
+
+def test_closeout_c_unknown_weight_no_precise_add(monkeypatch):
+    """未知权重持仓 + BUY 过门：不造精确增量（L1 保留），终态不 ADD。"""
+    engine = _confirmed_open_engine(monkeypatch)
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=.2, position_state="HELD",
+        has_position=True, trade_plan=None,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD, entry_price=10.0,
+                                     current_position_ratio=None),
+        today="2026-10-09", ai_enabled=False)
+    assert out.position_action.value == "HOLD_POSITION"
+    assert packet.desired_action != DesiredAction.ADD
+
+
+# ── 补修 D 组：新旧分数不混用 ───────────────────────────────
+
+def test_closeout_d_cross_protocol_score_delta_guarded():
+    """旧无协议 score=1 vs s2a score=.2：不给跨协议数值 Δ−.8（标口径不同）；
+    同一次 price 10→11 的价格 Δ 保留。"""
+    from src.cli import evidence as ev
+    old_rec = {"decision": "BUY", "price": 10.0, "score": 1.0}  # 旧协议：无字段
+    new_rec = {"decision": "BUY", "price": 11.0, "score": 0.2,
+               "aggregation_protocol": "s2a-v1"}
+    changes = ev._diff_records(old_rec, new_rec)["changes"]
+    sc = changes["score"]
+    assert "口径不同" in str(sc[2]), sc
+    assert sc[3]["old_protocol"].startswith("pre-s2a")
+    assert sc[3]["new_protocol"] == "s2a-v1"
+    assert changes["price"] == (10.0, 11.0, 1.0)  # 价格 Δ 正常
+
+
+def test_closeout_d_legacy_trace_carries_protocol_fields(monkeypatch):
+    """最终 packet 的 LegacyTrace 带 aggregation_protocol/纯投票 A/P/C——
+    普通票资格与综合展示数独立回溯；旧记录（无字段）读 None=旧协议。"""
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=0.0, position_state="FLAT",
+        current_position_ratio=0.0, has_position=False, trade_plan=None,
+        today="2026-10-09", ai_enabled=False)
+    lt = packet.legacy_trace
+    assert lt.aggregation_protocol == "s2a-v1"
+    assert lt.voting_action_strength["BUY"] == pytest.approx(.8)
+    assert lt.coverage_ratio == pytest.approx(1.0)
+    assert lt.opinion_share["BUY"] == pytest.approx(1.0)
+    legacy_only = _decision_fixture(B, .9, None)
+    assert legacy_only.aggregation_protocol == "pre-s2a"  # 旧构造=旧协议语义（未记录）
+
+
+def test_closeout_d_shadow_version_buckets_old_v11_out():
+    """shadow 协议升 v12：旧 v11 记录不再进当前有效分母（版本常量+分桶机制）。"""
+    from src.core import shadow_diff
+    assert shadow_diff.SHADOW_DERIVATION_VERSION == "shadow_v12"
+    records = [
+        {"derivation_version": "shadow_v11", "observation_kind": "effective",
+         "mid_effective": True},
+        {"derivation_version": "shadow_v12", "observation_kind": "effective",
+         "mid_effective": True},
+    ]
+    cur = [r for r in records
+           if r.get("derivation_version") == shadow_diff.SHADOW_DERIVATION_VERSION]
+    assert len(cur) == 1 and cur[0]["derivation_version"] == "shadow_v12"

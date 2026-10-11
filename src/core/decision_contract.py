@@ -164,10 +164,16 @@ class LegacyTrace(BaseModel):
     model_config = ConfigDict(extra="allow")
 
     decision: Optional[str] = Field(default=None, description="旧 DecisionResult.decision（BUY/SELL/HOLD/WATCH）——中间态，非终态")
-    action_strength: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="旧 DecisionResult.score：选定动作强度 0-1")
+    action_strength: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="调节后综合分（AI/事件 adjustment 叠加后的 score）——非普通投票资格依据")
     position_action: Optional[str] = Field(default=None, description="旧 StrategyDecision.position_action（OPEN/ADD/REDUCE/CLOSE_ALL/...）")
     position_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="旧建议仓位比例 0-1")
     sell_path: Optional[str] = Field(default=None, description="旧卖出路径（weak_sell/trend_exit/stop_loss_* 等）")
+    # ISS-117 S2a 补修 D 组：普通票资格与综合展示数独立回溯——协议/纯投票 A/P/C
+    # 随包下发；旧记录（pre-s2a）这些字段为 None，读取时标「旧协议」，不补假 A
+    aggregation_protocol: Optional[str] = Field(default=None, description="聚合协议版本（s2a-v1/...；None=旧协议当时未记录）")
+    voting_action_strength: Optional[dict] = Field(default=None, description="普通投票动作强度 A（不含 AI/事件调节；None=旧协议）")
+    opinion_share: Optional[dict] = Field(default=None, description="意见占比 P（仅展示；None=旧协议）")
+    coverage_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="有效响应覆盖率 C（None=旧协议）")
 
 
 class DecisionPacket(BaseModel):

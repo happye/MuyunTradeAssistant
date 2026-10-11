@@ -109,39 +109,50 @@ class SkillEngine:
         except Exception:
             return "base"
 
-    def base_roster(self, weights: dict) -> tuple[dict[str, float], dict[str, str]]:
-        """S2a 固定分母：启用 base 技能集合 E 及其正有限权重 + 规则版本表。
+    def _typed_roster(self, weights: dict, ttype: str) -> tuple[dict[str, float], dict[str, str]]:
+        """按类型枚举启用槽（base/regulator 共用口径，S2a 补修 A 组）。
 
-        E 的口径（S2_DESIGN 冻结公式 §1）：
-        - load_skills 显式名单 → 该名单中 type=base 的技能（含加载失败/缺失槽）；
-          名单为 None（加载全部）→ skills 目录全部 yaml stem 中 type=base 者
+        - load_skills 显式名单 → 该名单中 type=ttype 的技能（含加载失败/缺失槽）；
+          名单 falsy（[] 或 None）→ skills 目录全部 yaml stem 中 type=ttype 者
           （文件存在即启用，执行失败仍占 W）。
-        - action/regulator 不进 E；配置明确停用的（不在名单/目录）不进 E。
-        - 权重来自 DecisionEngine.weights，须正有限——坏权重显式 ValueError
-          （禁止新增风险，不静默换权重）。
-        - rule_versions = 技能 YAML 内容 sha1 前 12 位（成功加载者取加载时算好的
-          指纹；未成功加载的槽版本记 "unavailable"——该槽占 W 但必然无票，覆盖亏空如实）。
-
-        Returns:
-            (E, rule_versions)；E 为空时由调用方按 UNKNOWN 降级（不静默换全集）。
+        - 权重须正有限——坏权重显式 ValueError。
+        - rule_versions = 技能 YAML 内容 sha1 前 12 位（未成功加载的槽记
+          "unavailable"——该槽占 W 但必然无票，覆盖亏空如实）。
         """
-        # 与 load_skills 同一 falsy 语义（guard P1）：[] 与 None 同为「全部」——
-        # scan 路径默认 enabled_skills=[] 时 load 侧加载全集、roster 侧若当空集
-        # 会让普通投票静默死亡（同配置两入口行为分叉）
+        # 与 load_skills 同一 falsy 语义（guard P1）：[] 与 None 同为「全部」
         names = self._requested_names or self._discovered_names
         roster: dict[str, float] = {}
         rule_versions: dict[str, str] = {}
         for name in names or []:
-            if self._resolve_type(name) != "base":
+            if self._resolve_type(name) != ttype:
                 continue
             w = weights.get(name, 1.0)
-            if not isinstance(w, (int, float)) or isinstance(w, bool)                     or not math.isfinite(w) or w <= 0:
+            if not isinstance(w, (int, float)) or isinstance(w, bool) or not math.isfinite(w) or w <= 0:
                 raise ValueError(f"技能权重非法（须正有限）: {name}={w!r}")
             roster[name] = float(w)
             skill = self.skills.get(name)
             rv = getattr(skill, "rule_version", None)
             rule_versions[name] = rv or "unavailable"
         return roster, rule_versions
+
+    def base_roster(self, weights: dict) -> tuple[dict[str, float], dict[str, str]]:
+        """S2a 固定分母：启用 base 技能集合 E 及其正有限权重 + 规则版本表。
+
+        E 的口径（S2_DESIGN 冻结公式 §1）：显式名单→名单中 type=base 者；
+        falsy→目录全部 type=base 者（文件存在即启用，执行失败仍占 W）。
+        action/regulator 不进 E；配置明确停用的（不在名单/目录）不进 E。
+        E 为空时由调用方按 UNKNOWN 降级（不静默换全集）。
+        """
+        return self._typed_roster(weights, "base")
+
+    def regulator_roster(self, weights: dict) -> tuple[dict[str, float], dict[str, str]]:
+        """S2a 补修 A 组：regulator 槽注册表（与 base 同口径同校验）。
+
+        regulator 不进 base W，但不是免检渠道——启用身份/规则版本/权重同样
+        预先固定，决策引擎据此做槽资格/去重/错股错时点核验。
+        """
+        return self._typed_roster(weights, "regulator")
+
 
 
 class YAMLBasedSkill(Skill):

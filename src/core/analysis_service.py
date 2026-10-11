@@ -153,6 +153,9 @@ def build_decision_packet(
             elif desired in (DesiredAction.ADD, DesiredAction.OPEN):
                 if desired is DesiredAction.ADD and known_confirmed and cand <= confirmed_ratio + 1e-9:
                     _clamp("适配钳制: 加仓目标未高于当前仓位，target 置 None 待复核")
+                    # ISS-117 S2a 补修 C 组：目标未增加 → 终态改 HOLD（不能保留
+                    # ADD 动作却删目标掩盖矛盾——packet 是唯一终态）
+                    desired = DesiredAction.HOLD
                 elif cand > 0:
                     target = cand
         if target is None:
@@ -214,6 +217,11 @@ def build_decision_packet(
             position_action=pos_action,
             position_ratio=(float(sd_ratio) if sd_ratio is not None else None),
             sell_path=getattr(strategy_decision, "sell_path", None),
+            # ISS-117 S2a 补修 D 组：普通票资格/协议独立回溯（旧记录 None=旧协议）
+            aggregation_protocol=getattr(decision_result, "aggregation_protocol", None),
+            voting_action_strength=getattr(decision_result, "action_strength", None),
+            opinion_share=getattr(decision_result, "opinion_share", None),
+            coverage_ratio=getattr(decision_result, "coverage_ratio", None),
         ),
     )
     logger.debug(

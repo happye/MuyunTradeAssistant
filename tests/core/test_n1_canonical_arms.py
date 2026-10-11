@@ -295,7 +295,7 @@ def test_no_position_state_migration_is_explicit():
 
 def test_decision_table_version_is_v4():
     assert DECISION_TABLE_VERSION == "v4"
-    assert SHADOW_DERIVATION_VERSION == "shadow_v11"
+    assert SHADOW_DERIVATION_VERSION == "shadow_v12"
 
 
 # ── 4. 旧桶独立计数 + v9 分桶 + 去重回归 ─────────────────────────────
@@ -336,10 +336,10 @@ def test_v9_records_and_old_protocols_bucketed(tmp_path, monkeypatch):
               "delta_reasons": ["agree"]}
     store.write_text(json.dumps(old_v7, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == "shadow_v11"
+    assert rec.derivation_version == "shadow_v12"
     assert rec.append_status == "saved", "跨协议不互判重复"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v11"
+    assert report["protocol_version"] == "shadow_v12"
     assert report["cur_mid_effective"] == 1
     assert report["legacy_records"] == 1
     assert report["older_versions"]["shadow_v7"]["records"] == 1

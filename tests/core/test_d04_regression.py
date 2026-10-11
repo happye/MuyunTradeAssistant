@@ -186,9 +186,11 @@ def test_action_override_sell_score_is_max_of_bucket_and_confidence():
                          evaluation_as_of="2026-10-09")
     assert r.decision == SignalType.SELL
     assert r.score == pytest.approx(0.95), f"score 应为 base 投票动作强度，实际 {r.score}"
-    # base 与 action 同向（都是 SELL）不构成方向覆盖——override 通道不触发，
-    # 强度由投票 A 表达（0.95 > 0.85，action 不会拉低 base 票强度）
-    assert r.action_override_confidence is None
+    # S2a 补修 B 组：action 触发判定即携带置信度（同向也保留来源）；两通道在
+    # strategy._gate_score 取较大者——强 base（0.95）不被较弱 action（0.85）拉低
+    assert r.action_override_confidence == pytest.approx(0.85)
+    from src.core.strategy_layer import StrategyLayer
+    assert StrategyLayer()._gate_score(r) == pytest.approx(0.95)
 
 
 def test_stop_loss_veto_not_downgraded_by_reverse_cost():

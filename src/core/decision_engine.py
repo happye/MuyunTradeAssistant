@@ -155,6 +155,8 @@ class DecisionEngine:
         expected_base: Optional[dict[str, float]] = None,
         rule_versions: Optional[dict[str, str]] = None,
         evaluation_as_of: Optional[str] = None,
+        expected_regulators: Optional[dict[str, float]] = None,
+        regulator_rule_versions: Optional[dict[str, str]] = None,
     ) -> DecisionResult:
         """信号聚合（v0.7.2: 不再是最终决策，而是信号聚合结果）
 
@@ -240,7 +242,11 @@ class DecisionEngine:
             ))
 
         # 第二步：上下文调节器（S2a：幅度按调节器自身置信度缩放；零/坏置信度不参与）
-        regulator_modifiers = self._apply_regulators(data, regulator_signals, weighted_scores)
+        regulator_modifiers, regulator_notes = self._apply_regulators(
+            data, regulator_signals, weighted_scores,
+            expected_regulators=expected_regulators,
+            regulator_rule_versions=regulator_rule_versions,
+            evaluation_as_of=evaluation_as_of)
         regulator_details = [f"{k.value}: ×{v:.3f}" for k, v in regulator_modifiers.items()]
 
         for sig_type, modifier in regulator_modifiers.items():
@@ -261,10 +267,11 @@ class DecisionEngine:
 
         trace.append(DecisionTrace(
             step="调节器修正",
-            description="regulator修改base得分（S2a：幅度×调节器自身置信度）",
+            description="regulator修改base得分（S2a：幅度×调节器自身置信度，槽资格核验）",
             data={
                 "modifiers": regulator_details,
                 "adjusted_U": {k.value: round(v, 4) for k, v in weighted_scores.items()},
+                "regulator_notes": regulator_notes,
             }
         ))
 
@@ -292,12 +299,12 @@ class DecisionEngine:
             current_position_ratio=current_position_ratio,
         )
         # override_conf = 触发本次覆盖判定的信号置信度（_apply_action_signals 返回；
-        # 空仓止损压制 BUY→WATCH / 止盈压制 BUY→HOLD 也如实记录——明确来源，
-        # 不按最终方向过滤（guard P2）。仅方向真正翻转时保留：base 与 action 同向
-        # 不构成覆盖，门分值走投票 A（否则 action 置信度会拉低更强的 base 票）。
+        # 空仓止损压制 BUY→WATCH / 止盈压制 BUY→HOLD 也如实记录）。**方向未翻转
+        # 也保留**（S2a 补修 B 组裁决：「没有翻转方向」不等于「没有独立保护」——
+        # 止损一票否决与 base 同向时若清掉来源，确认门会拿弱普通 A 把止损 SELL
+        # 拖成 HOLD 延迟一天）。它与普通投票 A 分通道存放，消费端 _gate_score
+        # 取两者较大者：强普通票不被较弱 action 拉低，硬止损也不被弱普通票拖延。
         overridden = final_signal != pre_action_signal
-        if not overridden:
-            override_conf = None
         trace.append(DecisionTrace(
             step="动作信号覆盖",
             description=f"止损/止盈优先级检查{'→ 覆盖!' if overridden else '→ 未覆盖'}",
@@ -362,10 +369,13 @@ class DecisionEngine:
     ) -> tuple[dict[SignalType, float], float, list[str]]:
         """按固定分母聚合格票，返回 (U_d, C, 槽诊断)。
 
-        槽 = (skill_id, security, evaluation_as_of, rule_version)。同一次调用内
-        同技能的多张票必然同槽（security/as_of/rule_version 由引擎统一绑定）：
-        完全相同票合一；冲突/任一 confidence 非有限越界/错股错时点 → 整槽
-        UNKNOWN，保留 W 不投票。不在 E 的槽不参与。c=0 的合格响应计覆盖、贡献 0。
+        槽 = (skill_id, security, evaluation_as_of, rule_version)。身份绑定规则
+        （S2a 补修 A 组）：证券/评估时点/规则版本由**注册上下文**建立——证券可用
+        本次分析标的补绑定（本地技能不要求自报）；**评估时点与规则版本缺失不得
+        由票自报补齐**（缺 context 不能靠信号自报填成合格）；票自带身份与注册
+        不一致（错股/错时点/错版本）→ 该票弃权：不投票不计覆盖，W 保留（同槽其余合格票不受污染）。
+        完全相同票合一；同槽冲突/任一 confidence 非有限越界 → 同上。
+        不在 E 的槽不参与。c=0 的合格响应计覆盖、贡献 0。
         """
         W = float(sum(expected_base.values()))
         grouped: dict[str, list[tuple[SignalType, float, SkillSignal]]] = {}
@@ -374,19 +384,28 @@ class DecisionEngine:
             if sig.skill_name not in expected_base:
                 notes.append(f"{sig.skill_name}: 未注册（不参与投票与分母）")
                 continue
-            sec = sig.security or getattr(data, "stock_code", None)
-            as_of = sig.evaluation_as_of or evaluation_as_of
-            rv = sig.rule_version or (rule_versions or {}).get(sig.skill_name)
-            slot_key = (sig.skill_name, sec, as_of, rv)
-            # 错股/错时点（票自带身份且与本次上下文不一致）→ 槽 UNKNOWN
-            if sig.security and sig.security != getattr(data, "stock_code", None):
+            sec = getattr(data, "stock_code", None)
+            reg_rv = (rule_versions or {}).get(sig.skill_name)
+            slot_key = (sig.skill_name, sec, evaluation_as_of, reg_rv)
+            # 槽资格——上下文缺失/错配一律 UNKNOWN（票自报不能补缺）
+            if not sec:
+                notes.append(f"{sig.skill_name}: 缺证券上下文→槽 UNKNOWN")
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
+            if not evaluation_as_of:
+                notes.append(f"{sig.skill_name}: 缺独立评估时点→槽 UNKNOWN")
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
+            if not reg_rv or reg_rv == "unavailable":
+                notes.append(f"{sig.skill_name}: 缺注册规则版本→槽 UNKNOWN")
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
+            if sig.security and sig.security != sec:
                 notes.append(f"{sig.skill_name}: 错股({sig.security})→槽 UNKNOWN")
-                grouped.setdefault(str(slot_key), []).append((None, sig.confidence, sig))
-                continue
-            if sig.evaluation_as_of and evaluation_as_of                     and sig.evaluation_as_of != evaluation_as_of:
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
+            if sig.evaluation_as_of and sig.evaluation_as_of != evaluation_as_of:
                 notes.append(f"{sig.skill_name}: 错时点({sig.evaluation_as_of})→槽 UNKNOWN")
-                grouped.setdefault(str(slot_key), []).append((None, sig.confidence, sig))
-                continue
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
+            if sig.rule_version and sig.rule_version != reg_rv:
+                notes.append(f"{sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→槽 UNKNOWN")
+                continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             grouped.setdefault(str(slot_key), []).append((sig.signal, sig.confidence, sig))
 
         U = {st: 0.0 for st in SignalType}
@@ -418,16 +437,26 @@ class DecisionEngine:
         self,
         data: StockData,
         regulator_signals: list[SkillSignal],
-        base_scores: dict[SignalType, float]
-    ) -> dict[SignalType, float]:
-        """应用上下文调节器，返回各信号类型的修正系数
+        base_scores: dict[SignalType, float],
+        expected_regulators: Optional[dict[str, float]] = None,
+        regulator_rule_versions: Optional[dict[str, str]] = None,
+        evaluation_as_of: Optional[str] = None,
+    ) -> tuple[dict[SignalType, float], list[str]]:
+        """应用上下文调节器，返回(各信号类型修正系数, 槽诊断)。
 
-        调节器逻辑：
-        - regulator 输出 SELL → 降低BUY得分(×0.6)，提高SELL得分(×1.3)
-        - regulator 输出 BUY → 提高BUY得分(×1.3)，降低SELL得分(×0.6)
-        - regulator 输出 WATCH → 降低BUY和SELL得分(×0.8)
-        - regulator 输出 HOLD → 不调整(×1.0)
-        - 多个regulator叠加时取几何平均
+        S2a 补修 A 组：regulator 不是免检渠道——槽资格与去重同 base（启用身份/
+        规则版本/证券/时点核验、同槽重复合一、冲突/错股/错时点/坏权重弃权并留
+        拒因）；零/非有限置信度不参与（不贡献不稀释）。合法有限正权重的既有幅度
+        公式与几何平均保留（不另选强度）。未提供注册表（None/空）→ 全部弃权
+        （与 base 降级同语义）。调节器不能凭空创造 U_d=0 的方向证据（几何平均
+        只乘不改方向基准，U=0 时乘积仍 0）。
+
+        调节器逻辑（幅度沿用）：
+        - regulator 输出 SELL → 降低BUY得分，提高SELL得分
+        - regulator 输出 BUY → 提高BUY得分，降低SELL得分
+        - regulator 输出 WATCH → 轻微降低BUY和SELL得分
+        - regulator 输出 HOLD → 不调整
+        - 多个regulator叠加时取几何平均（幅度已按各自置信度缩放）
         """
         modifiers = {
             SignalType.BUY: [],
@@ -435,29 +464,70 @@ class DecisionEngine:
             SignalType.HOLD: [],
             SignalType.WATCH: [],
         }
+        notes: list[str] = []
+        if not expected_regulators:
+            if regulator_signals:
+                notes.append("regulator 全部弃权：无注册表（降级）")
+            return {st: 1.0 for st in SignalType}, notes
 
+        grouped: dict[str, list[tuple[SignalType, float, float, SkillSignal]]] = {}
+        sec = getattr(data, "stock_code", None)
         for sig in regulator_signals:
+            if sig.skill_name not in expected_regulators:
+                notes.append(f"regulator {sig.skill_name}: 未注册→弃权")
+                continue
+            reg_rv = (regulator_rule_versions or {}).get(sig.skill_name)
+            if not sec or not evaluation_as_of:
+                notes.append(f"regulator {sig.skill_name}: 缺证券/时点上下文→弃权")
+                continue
+            if not reg_rv or reg_rv == "unavailable":
+                notes.append(f"regulator {sig.skill_name}: 缺注册规则版本→弃权")
+                continue
+            if sig.security and sig.security != sec:
+                notes.append(f"regulator {sig.skill_name}: 错股({sig.security})→弃权，不扩大当前证券资格")
+                continue
+            if sig.evaluation_as_of and sig.evaluation_as_of != evaluation_as_of:
+                notes.append(f"regulator {sig.skill_name}: 错时点({sig.evaluation_as_of})→弃权")
+                continue
+            if sig.rule_version and sig.rule_version != reg_rv:
+                notes.append(f"regulator {sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→弃权")
+                continue
             weight = self.weights.get(sig.skill_name, 1.0)
-            # 权重越高，调节力度越大（既有幅度与上限沿用，不另选强度）
-            impact = 0.5 + (weight - 1.0) * 0.2  # 基础0.5，权重1.5时impact=0.6
-            impact = min(impact, 0.8)  # 最大0.8
-
-            # S2a（冻结公式 §4）：m_i = 1 + c_i*(m_legacy - 1)——调节幅度按调节器
-            # 自身置信度缩放；零/非有限置信度的调节器既不贡献也不稀释已有调节
-            #（加入零票不能稀释），直接跳过。不能凭 regulator 创造 U_d=0 的方向证据
-            #（几何平均只乘不改方向基准，U=0 时乘积仍 0）。
+            if (not isinstance(weight, (int, float)) or isinstance(weight, bool)
+                    or not math.isfinite(weight) or weight <= 0):
+                # 负/NaN 权重不得翻转调节方向或被 clip 洗成合法——弃权留拒因
+                notes.append(f"regulator {sig.skill_name}: 非法权重({weight!r})→弃权")
+                continue
             c = sig.confidence
             if not isinstance(c, (int, float)) or isinstance(c, bool) \
                     or not math.isfinite(c) or c <= 0:
+                notes.append(f"regulator {sig.skill_name}: 零/坏置信度→不参与（不贡献不稀释）")
                 continue
+            slot = str((sig.skill_name, sec, evaluation_as_of, sig.rule_version or reg_rv))
+            grouped.setdefault(slot, []).append((sig.signal, c, weight, sig))
 
-            if sig.signal == SignalType.SELL:
+        # 逐槽：完全相同票合一；同槽冲突（方向或置信度不一致）弃权
+        qualified = []
+        for key, rows in grouped.items():
+            name = rows[0][3].skill_name
+            if len(rows) > 1 and len({(d, round(float(c), 10)) for d, c, _w, _s in rows}) > 1:
+                notes.append(f"regulator {name}: 同槽冲突→弃权")
+                continue
+            qualified.append(rows[0])
+
+        for sig_signal, c, weight, sig in qualified:
+            # 权重越高，调节力度越大（既有幅度与上限沿用，不另选强度）
+            impact = 0.5 + (weight - 1.0) * 0.2  # 基础0.5，权重1.5时impact=0.6
+            impact = min(impact, 0.8)  # 最大0.8
+            # S2a（冻结公式 §4）：m_i = 1 + c_i*(m_legacy - 1)——幅度按调节器
+            # 自身置信度缩放（c 已过资格核验）
+            if sig_signal == SignalType.SELL:
                 modifiers[SignalType.BUY].append(1.0 - c * impact)    # 降低BUY
                 modifiers[SignalType.SELL].append(1.0 + c * impact)   # 提高SELL
-            elif sig.signal == SignalType.BUY:
+            elif sig_signal == SignalType.BUY:
                 modifiers[SignalType.BUY].append(1.0 + c * impact)    # 提高BUY
                 modifiers[SignalType.SELL].append(1.0 - c * impact)   # 降低SELL
-            elif sig.signal == SignalType.WATCH:
+            elif sig_signal == SignalType.WATCH:
                 modifiers[SignalType.BUY].append(1.0 - c * impact * 0.5)  # 轻微降低BUY
                 modifiers[SignalType.SELL].append(1.0 - c * impact * 0.5) # 轻微降低SELL
             # HOLD 不调整
@@ -467,7 +537,6 @@ class DecisionEngine:
         for sig_type in [SignalType.BUY, SignalType.SELL, SignalType.HOLD, SignalType.WATCH]:
             mods = modifiers[sig_type]
             if mods:
-                # 几何平均
                 product = 1.0
                 for m in mods:
                     product *= m
@@ -475,7 +544,8 @@ class DecisionEngine:
             else:
                 result[sig_type] = 1.0
 
-        return result
+        return result, notes
+
 
     def _apply_action_signals(
         self,
