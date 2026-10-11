@@ -217,3 +217,24 @@ P1 可提交。**
 - 版本 v0.8.29.5（start.py/banner/--version/AGENTS.md/README/ISSUES/对齐指南）；CACHE_VERSION 未动（信号权限层）
 
 **未实施**：S2a/S2b/S3——按 QR4「随后按 S2_DESIGN 执行 S2a→S2b→S3」，本批不含。全量隔离缺口（test_iss091 等写真实 HOME 路径）按 QR4 归 G7/T07 登记，不在本批范围。
+
+---
+
+## QR5 完整性收口批实施报告（v0.8.29.6，2026-10-11，对应 QR5_ACCEPTANCE.md 指示 1-4）
+
+| 指示 | 落地 | 回归（test_iss117_qr5_integrity.py） |
+|---|---|---|
+| ①生产与 strict 都核对**精确集合** | 抽共用纯校验助手 `_verify_calendar_days(days_raw, start, end)`：逐键规范化+标志合法（布尔拒）+归一化重复键拒绝+**键集合与 [start,end] 自然日全集精确相等**——缺行、**范围外多行**均拒且差异写清（多行诊断「孤立旧日期不能证明覆盖、不得参与最近交易日判定」）。生产端行级核验后调用助手（供应商 431+1 行 → 抛错不写缓存）；strict 消费端以同助手替换原「只查 missing」逻辑 | test_producer_refuses_extra_out_of_range_row（查询参数+432 行遍历确实发生+不落盘）；test_verify_days_rejects_missing_and_extra_with_clear_diff（缺/多/重复/布尔/精确相等五态） |
+| ②原始 JSON 解析阶段识别重复键 | 新增 `_pairs_without_duplicates`（json object_pairs_hook，任意层级 dict 生成前拦截）+ `_load_json_strict`（strict 专用：重复键/语法错误一律 RuntimeError fail-closed 带诊断）；**仅 strict 资格消费路径使用**，fear 展示宽容加载（_load_json）逐行未动 | test_raw_duplicate_json_key_rejected_before_dict_merge（原始字符串手写同键两次→解析期拒绝→真实末端 packet 不 EXIT/未授权/原因可见）；test_strict_load_rejects_duplicate_key_at_any_depth（顶层/嵌套/合法/缺失四态） |
+| ③消费者只从已核定区间选最近已完成交易日 | 门内交易日选取加下界：`_cal["start"] ≤ d ≤ 参照日`（上游核验已保证精确集合，此处防御纵深）；场次截止/独立分析时点/历史 bar 语义不变，无墙钟否决历史、无 7 天行情政策、无 12 天猜测 | test_gate_selects_trading_day_within_confirmed_range（核定区间内正常授权不受防护影响） |
+| ④三红反例落正式回归 | 上表三例全部入库，packet 级断言不 EXIT/未授权/拒绝原因可见；生产反例断言查询参数与遍历次数。完整生产全链合法正例、缺行/中途错/重复行/坏标志、错股、盘前/盘后、周末/假日、历史 bar、独立价格止损正例由 test_iss117_qr4_coverage.py（24 项）与 test_iss117_qr3_closeout.py（35 项）承接，本批全绿未动 | 本文件合计 6 项新增；全量 **1687 passed / 2 skipped / 0 failed**（上轮 1681 + 本批净增 6，原始日志 QR5_CLAUDE_FULLTEST_RESULTS.txt） |
+
+**两项披露裁决落实**：年底供应商窗口保持保守边界（ISSUES 已登记非缺陷）；日历升级
+过渡期表述全面改准（README/AGENTS/对齐指南）——仍新鲜的旧格式缓存由 fear 路径直接
+复用（TTL 内不重建），仅过期/缺失后才重建，不承诺「跑一次 fear 立即恢复」，不要求
+用户手动删除/编辑缓存。
+
+**版本**：v0.8.29.6（start.py/banner/--version/AGENTS.md/README/ISSUES/对齐指南）。
+CACHE_VERSION 未动。
+
+**监督**：code-quality-guard 一轮（对照 QR5 指示 1-4+三红反例语义+文档裁决落实）。确认项：_verify_calendar_days 边界（缺/多同时存在 fail-closed、单日区间、430 天性能）、_load_json_strict 异常分流（OSError 原样上抛由门兜转 UNKNOWN，端到端 fail-closed）、strict/宽容路径分流正确且 legacy 行为不变、门下界与场次前移交互 fail-closed、三反例与架构师探针语义逐一对齐且非假红、文档三处裁决表述落实。抓 P2×3（报告占位符——提交前已填；AGENTS/README 版本段未随批 bump——已新开 v0.8.29.6 段；cov 边界非补零字典序比较可扩大授权面——已归一化回写 2 行）。全数修复后合入。

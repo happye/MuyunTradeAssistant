@@ -102,6 +102,73 @@ def _natural_days(start: str, end: str) -> list[str]:
     return out
 
 
+def _verify_calendar_days(days_raw: dict, start: str, end: str) -> dict:
+    """日历覆盖记录核验（生产端与 strict 消费端**共用口径**，QR5 指示 1）。
+
+    逐键规范化（strptime/strftime）、交易标志合法（布尔拒）、归一化重复键拒绝；
+    最后键集合必须与 [start, end] 自然日全集**精确相等**——少行、多行均拒并写清
+    差异：范围外的孤立行（如一条 2000 年记录）不得借「不缺行」混过覆盖核验，
+    也不能参与最近已完成交易日判定（QR5 组内反例一）。
+    """
+    days = {}
+    for d, f in days_raw.items():
+        try:
+            d_iso = datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d")
+        except (TypeError, ValueError):
+            raise RuntimeError(f"交易日历覆盖记录含非法日期: {d!r}")
+        if isinstance(f, bool) or f not in (0, 1, "0", "1"):
+            raise RuntimeError(f"交易日历覆盖记录含非法交易标志: {d!r}={f!r}")
+        if d_iso in days:
+            # 归一化后重复键（如 "2026-10-08" 与 "2026-10-8"）：冲突标志不得
+            # 后写者胜
+            raise RuntimeError(f"交易日历覆盖记录含重复日期: {d_iso}")
+        days[d_iso] = int(f)
+    expected = _natural_days(start, end)
+    missing = [d for d in expected if d not in days]
+    if missing:
+        raise RuntimeError(
+            f"交易日历覆盖记录不完整（声称 {start}~{end} 但缺 {len(missing)} 天，"
+            f"如 {missing[:3]}）——未来交易日不能证明中间已覆盖")
+    expected_set = set(expected)
+    extra = [d for d in days if d not in expected_set]
+    if extra:
+        raise RuntimeError(
+            f"交易日历覆盖记录含范围外日期（声称 {start}~{end} 但多出 "
+            f"{len(extra)} 天，如 {extra[:3]}）——孤立旧日期不能证明覆盖、"
+            f"不得参与最近交易日判定（QR5）")
+    return days
+
+
+def _pairs_without_duplicates(pairs):
+    """json object_pairs_hook：原始 JSON 解析阶段拒绝任意层级重复键（QR5 指示 2）。
+
+    json.load 默认把同名键后写覆盖前写——「10月9日先写交易、后写休市」的冲突在
+    转成 dict 后就消失了，事后遍历无法发现。必须在 dict 生成前拦截。
+    """
+    out = {}
+    for k, v in pairs:
+        if k in out:
+            raise ValueError(f"重复键: {k}")
+        out[k] = v
+    return out
+
+
+def _load_json_strict(path: Path) -> Optional[dict]:
+    """strict 只读专用加载：解析阶段即拒绝重复键/语法错误（一律 UNKNOWN 方向）。
+
+    与宽容版 _load_json（fear 展示兼容路径）不同：本函数只服务硬授权资格消费，
+    任何解析异常都显式抛 RuntimeError（fail-closed 带诊断），绝不静默降级。
+    """
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f, object_pairs_hook=_pairs_without_duplicates)
+    except FileNotFoundError:
+        return None
+    except ValueError as e:
+        # 含 _pairs_without_duplicates 的重复键 ValueError 与 JSON 语法错误
+        raise RuntimeError(f"交易日历缓存解析失败（{e}）") from e
+
+
 def trading_days(allow_refresh: bool = True):
     """交易日历（baostock，缓存 7 天）。
 
@@ -124,7 +191,9 @@ def trading_days(allow_refresh: bool = True):
     绝不建目录、绝不登录 baostock、绝不联网刷新，也不提供按星期猜测的近似值。
     """
     path = BASE_DIR / "trade_dates.json"
-    payload = _load_json(path)
+    # strict 只读资格消费用严格加载（原始重复键拦截）；fear 展示路径仍用宽容
+    # _load_json（旧缓存兼容行为不变，QR5 指示 2）。
+    payload = _load_json_strict(path) if not allow_refresh else _load_json(path)
     if not allow_refresh:
         if not _valid_cache(payload):
             raise RuntimeError("交易日历缓存无效（缺失/版本不符/损坏）")
@@ -156,30 +225,15 @@ def trading_days(allow_refresh: bool = True):
             raise RuntimeError("交易日历覆盖边界非法（无法解析 start/end）")
         if _s > _e:
             raise RuntimeError("交易日历覆盖边界非法（start 晚于 end）")
+        # 规范化回写（"2026-10-9"→"2026-10-09"）：strptime 容忍非补零，而边界
+        # 比较是 ISO 字符串字典序——不归一化会让不补零的 end 扩大授权面（guard P2）
+        cov_start, cov_end = _s.isoformat(), _e.isoformat()
         days_raw = cov.get("days")
         if not isinstance(days_raw, dict) or not days_raw:
             raise RuntimeError("交易日历覆盖记录缺失（days 非法）")
-        days = {}
-        for d, f in days_raw.items():
-            try:
-                d_iso = datetime.strptime(str(d), "%Y-%m-%d").strftime("%Y-%m-%d")
-            except (TypeError, ValueError):
-                raise RuntimeError(f"交易日历覆盖记录含非法日期: {d!r}")
-            if isinstance(f, bool) or f not in (0, 1, "0", "1"):
-                raise RuntimeError(f"交易日历覆盖记录含非法交易标志: {d!r}={f!r}")
-            if d_iso in days:
-                # 归一化后重复键（如 "2026-10-08" 与 "2026-10-8"）：与生产端对称，
-                # 冲突标志不得后写者胜（guard P2）
-                raise RuntimeError(f"交易日历覆盖记录含重复日期: {d_iso}")
-            days[d_iso] = int(f)
-        # 消费端完整性复核（QR4 核心）：覆盖记录必须与声称边界逐自然日一致——
-        # 「未来一行」或稀疏行都不能证明中间已覆盖。
-        expected = _natural_days(cov_start, cov_end)
-        missing = [d for d in expected if d not in days]
-        if missing:
-            raise RuntimeError(
-                f"交易日历覆盖记录不完整（声称 {cov_start}~{cov_end} 但缺 {len(missing)} 天，"
-                f"如 {missing[:3]}）——未来交易日不能证明中间已覆盖")
+        # 消费端完整性复核（QR4/QR5）：逐键核验 + 键集合与声称边界**精确相等**
+        #（缺行、范围外多行均拒），口径与生产端共用 _verify_calendar_days。
+        days = _verify_calendar_days(days_raw, cov_start, cov_end)
         return {"qualified": True, "start": cov_start, "end": cov_end, "days": days}
 
     if _valid_cache(payload):
@@ -220,14 +274,10 @@ def trading_days(allow_refresh: bool = True):
         if str(flag) not in ("0", "1"):
             raise RuntimeError(f"交易日历供应商返回非法交易标志: {d!r}={flag!r}")
         days[d_iso] = int(flag)
-    # 生产端覆盖核验：返回集合必须与查询区间自然日全集完全一致（QR4——查询参数
-    # 是目标范围不是「已查全」证明，缺一天都不盖章）。
-    expected = _natural_days(start, end)
-    missing = [d for d in expected if d not in days]
-    if missing:
-        raise RuntimeError(
-            f"交易日历供应商返回不完整（查询 {start}~{end} 缺 {len(missing)} 天，"
-            f"如 {missing[:3]}）——不盖覆盖合格章")
+    # 生产端覆盖核验（QR4/QR5）：返回集合必须与查询区间自然日全集**精确一致**
+    #（查询参数是目标范围不是「已查全」证明）——缺行、多行（范围外孤立记录）
+    # 都不盖覆盖合格章，与 strict 消费端共用 _verify_calendar_days 口径。
+    days = _verify_calendar_days(days, start, end)
     trading = sorted(d for d, f in days.items() if f == 1)
     if not trading:
         raise RuntimeError("交易日历查询结果无任何交易日")

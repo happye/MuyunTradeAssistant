@@ -145,9 +145,12 @@ def authorize_hard_findings(findings, stock_code: str, *, live: bool = False,
                     data_qual_reason = ("交易日历覆盖待确认（分析日期不在已确认覆盖"
                                         "边界内），三倍纪律暂为提醒，行情时点资格未知")
                 else:
-                    # 覆盖记录已经 strict 读取逐自然日复核完整（含参照日当天）。
+                    # 覆盖记录已经 strict 读取核验为「键集合与声称边界精确相等」
+                    #（QR5：缺行/范围外多行均拒）。交易日选取仍加明确范围防护
+                    #（下界=覆盖起点）：消费者只从已核定区间取最近已完成交易日。
                     _trading_prior = [d for d, f in _cal["days"].items()
-                                      if f == 1 and d <= _ref_day.isoformat()]
+                                      if f == 1
+                                      and _cal["start"] <= d <= _ref_day.isoformat()]
                     if not _trading_prior:
                         data_qual_reason = ("交易日历覆盖内无已完成交易日，"
                                             "行情时点资格未知，三倍纪律暂为提醒")
