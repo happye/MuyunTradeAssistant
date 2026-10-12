@@ -11,104 +11,44 @@
 
 ## 一、怎么跑
 
+Python 3.11+；日常运行 `uv run python start.py`，CLI单股分析 `python -m src.cli.main -l 600519`。命令输出、工作流与报告说明见 [使用手册](使用手册.md)，速查：
+
 ```
-uv run python start.py          # 交互式 REPL（推荐日常使用）
-python -m src.cli.main -l 600519  # CLI 模式：分析单只股票
-# l 600519,000001               # REPL 多代码批量深分析（v0.8.9.0，中英文逗号/空格分隔均可）
+l 600519,000001                  # 多代码深分析；中英文逗号/空格分隔
+bz 600519 [--refresh]            # 6维AI评分；--refresh跳过缓存
+bz 600519,000001                 # 多代码评分排名，缓存优先
+bz scan 氮化镓,钽电容            # 主题定位+评分
+bz scan shrink_pullback 科技     # 规则+主题，规则名可模糊匹配
+bz --check / bz --manual         # 数据源体检 / 单股手动评分兜底
+expect [天数]                   # 默认未来30天事件/预期透支；events为事后事件
+fear / fear history / fear backfill  # 客观恐慌指数 / 历史图 / 断点回填
+scan review [天数]              # 默认7天扫描收益、沪深300同窗超额/走势
+scan review import              # 导入旧扫描报告，同(时间,来源)幂等
+watch / watch add <代码|#N> / watch rm <代码>
+la / ba / l all [-f]             # 所有持仓深分析 / 上次扫描评分 / 上次扫描深分析
+doctor / 诊断                  # 只读环境体检，零AI零网络
+diff <代码> / 对比             # 同股最近两次证据变化
+tasks / 任务                   # 批量进度、失败与续跑
 ```
 
-笨总评分 + 主题选股（v0.8.6）：
-```
-bz 600519            # 6 维 AI 自动评分（每维 1 次 AI，约 30-60s）
-bz 600519 --refresh  # 强制刷新跳过缓存
-bz 600519,000001     # 多代码批量评分排名（v0.8.9.0，中英文逗号/空格分隔均可，缓存优先）
-bz scan 氮化镓,钽电容 # 法C 主题精准定位+笨总评分排名（细分赛道也能精准）
-bz scan shrink_pullback 科技 # 规则+主题一起用：科技板块内按缩量回调形态初筛（首词可模糊匹配规则名）
-bz --check           # 数据源连通性体检
-bz --manual          # 旧交互式手动打分（兜底，只支持单只）
-```
+- **费用/数据纪律**：bz每维1次AI；fear、scan review零AI。l all默认跳过当天已析股，`-f`才强制重析，失败股不记成功账、下次重试；同类批量重跑复用当日成功缓存。fear缺失标MISSING并剔除权重，分位样本不足降固定阈值且标注，不补假数据；backfill有供应商约20–30交易日历史限制。
+- **扫描与观察池**：save_last_scan统一记录scan market/bz scan/chat，`~/.muyun/scan_history.jsonl`全量追加不prune，展示窗口由查询控制；当天扫描不进统计，窗口无可评估而有更早历史时扩大并明说。行情预算为一轮批量（60只/请求）、逐票日线各1次全窗口、沪深300日线1次，当日kline_cache复用。无持仓且l/la/l all/chat判WATCH自动入池；手工add缺省实时价、已有不重复，rm是唯一出池通道，再次WATCH入池另立锚点；`~/.muyun/watchlist.jsonl`按add/remove重放，入池失败不得承诺成功。
+- **证据/任务存储**：l/la/l all/chat追加 `~/.muyun/analysis_evidence.jsonl` 不prune，证据卡在 `分析报告/analysis/` 同分钟防覆盖；旧缺字段为“当时未记录”，笨总评分版本用CACHE_VERSION、决策评分按聚合协议比较。批量账本 `~/.muyun/batch_tasks.json` 原子写、保留最近5个任务。扫描/观察报告在 `分析报告/scan/`，fear图在 `~/.muyun/fear_index/charts/`；详细展示见使用手册。
+- **诊断隐私**：doctor只查解释器/依赖/配置存在性/状态缓存/RAG/报告目录，缺失如实标注；settings.local.yaml只报存在性，API key与内容绝不回显。
 
-预期事件日历（v0.8.7，事前预期透支）：
-```
-暮云> expect           # 未来30天事件日历 + 预期透支度面板（环境温度计）
-暮云> expect 60        # 自定义天数
-# 详见 使用手册.md「预期事件日历」章节；与 events（事后）互补
-```
+依赖事实源为钉版本的 `requirements.txt`，不要盲目升级，升级须独立验证：
 
-市场恐慌指数（v0.8.10，纯客观/零 AI）：
 ```
-fear               # 一键总览：0-100 恐慌分（越高越恐慌）+ 7 成分溯源明细（原始值/数据源/状态）
-fear history       # 近5日/10日/1个月/3个月回顾 + 走势图存 ~/.muyun/fear_index/charts/
-fear backfill      # 涨停池历史回填（断点续传；东财仅保留约20-30个交易日，首次使用建议跑）
-# chat 里问"市场恐慌吗/情绪如何"自动调 get_fear_index 工具；板块/个股下钻 P2/P3 上线
-# 数据缺失显式标 MISSING 并剔除权重，绝不补假数据；分位样本不足自动降级固定阈值口径并标注
-```
-
-扫描复盘（v0.8.11，验证选股，零 AI）：
-```
-scan review [天数]  # 复盘近N天扫描历史（默认7）：每只票「扫描价→现价」累计涨跌 + 迷你走势列（▁▂▃▄▅▆▇，>10点均匀降采样保端点）
-#                   #   + 沪深300同窗基准超额 + 涨跌胜率汇总 + 「扫描组 vs 沪深300」整体走势曲线；报告含逐日全量数值存 分析报告/scan/review_*.md
-scan review import  # 一次性导入 v0.8.7~v0.8.10 的旧扫描报告（分析报告/scan/*.md，解析标题来源+文件名时间戳+明细字段），同(时间,来源)幂等跳过
-#                   # 历史由 save_last_scan 收口自动落盘 ~/.muyun/scan_history.jsonl（scan market/bz scan/chat 三路全盖；v0.8.12.1 起全量保留不 prune，展示窗口由查询侧控制）
-#                   # 反爬预算=批量行情1轮(60只/请求)+逐票日线各1次拉全窗口(A股历史无批量接口,逐票一次即下限;kline_cache当日缓存,同日重复零请求)+沪深300日线1次(当日缓存)；当天扫描不进统计
-#                   # 窗口内无可评估记录但历史里有更早的 → 自动扩大到全部历史并明说（导入旧记录常超默认窗口）
-```
-
-观察池（v0.8.12，`l`/`la`/`l all`/chat 分析出 WATCH 且无持仓时自动入池）：
-```
-watch               # 复用 review 引擎看在池股「入池价→现价」涨跌+走势+沪深300对比；报告存 分析报告/scan/watch_*.md
-watch add <代码|#N> # 手动入池（缺省拉实时价；已在池不重复）
-watch rm <代码>     # 移出（唯一出池通道；移出后再分析 WATCH 会重新入池=新锚点价）
-#                   # 存储 ~/.muyun/watchlist.jsonl 事件流（add/remove 重放得在池，同 scan_history 同构故 review 引擎直接吃）
-#                   # scan review 表格「池」列标注在池股；人话摘要措辞随池状态变化（已放进/已在观察池/入池失败不承诺）
-```
-
-一键/批量（v0.8.7.1）：
-```
-暮云> la               # 一键分析所有持仓——每只一张「人话摘要」卡（该做什么/阶段/笨总评分），compact 模式
-暮云> ba               # 对最近一次扫描（bz scan / scan market）结果批量笨总评分排名表
-暮云> l all            # bz scan / scan market 出结果后接续用：批量深分析（v0.8.7.9），逐只 compact 简明卡
-#                        当天已析股默认跳过（防重复花AI费用），l all -f 强制全部重析；失败股不记账、下次自动重试
-# l 命令输出顶部现在带「📖 人话摘要」面板：白话结论+原因+趋势阶段+笨总评分+术语小词典；详细报告保留在下方不变
-```
-
-运行诊断（v0.8.16，零 AI 零网络）：
-```
-doctor / 诊断        # 只读环境体检：解释器/核心依赖/配置存在性/~/.muyun 状态缓存/RAG 知识库/报告目录
-#                   # 缺失项如实标注「未生成/缺失」；settings.local.yaml 只报存在性，内容（API key）绝不回显
-```
-
-分析证据与对比（v0.8.17，plan/ C1）：
-```
-diff <代码> / 对比   # 同股最近两次深分析的关键证据比较：价格/评分 Δ、决策与仓位动作变化、
-#                    # 技能信号转向/新增/消失、新增数据缺口提示——只列变化项
-#                    # 数据源：l/la/l all/chat 每次分析自动追加 ~/.muyun/analysis_evidence.jsonl（追加式不 prune）
-#                    # 同步落人话证据卡 分析报告/analysis/{时间}_{代码}_{名字}.md（同分钟 _2 防覆盖）
-#                    # 口径纪律：证据字段语义跨版本稳定，旧记录缺字段视为"当时未记录"不误报；评分口径变化由 CACHE_VERSION 标注
-```
-
-批量任务账本（v0.8.17，plan/ C2）：
-```
-tasks / 任务         # 最近批量任务（l all/la/ba/l 多代码）的进度与失败项——中断续跑可见
-#                    # 重跑同类命令即续跑：成功项由当日缓存复用（既有语义），失败项自动重试
-#                    # 账本 ~/.muyun/batch_tasks.json 原子写（保留最近 5 个任务）
-```
-
-依赖安装（事实源 = `requirements.txt`，钉版本的已验证清单，2026-06-24 实测口径）：
-```
-# 推荐：uv 建 venv 后按清单安装
 uv venv .venv
 uv pip install -r requirements.txt
-
-# 或标准 venv + pip
+# 或标准venv
 python -m venv .venv
 .venv\Scripts\python -m pip install -r requirements.txt
 ```
 
-Python 3.11+。注意：仓库**没有 pyproject.toml**，`uv sync` 不可用（plan/ M6 已把全部文档的安装入口统一到 requirements.txt，旧文档写 uv sync 是错的）；依赖版本不盲目升级，升级须走独立验证。
+仓库没有pyproject.toml，`uv sync`不可用。
 
 ---
-
 ## 二、这是什么项目
 
 AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回测 + 决策辅助。
@@ -125,17 +65,29 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
 
-v0.8.23（第三轮 J0/J1，2026-09-27）：事实/评估唯一真值——类型化事实核验范围门（`claim_extraction.py` TYPED_RULE_VERSION=j0.typed_scope_v1：自由文本最高 EXCERPT_GROUNDED，类型化数值/否定事实须谓词一致+词元边界+来源公开时点齐备才 FACT_CHECKED，N1 关闭）；证据引用实存解析（`assess_thesis` evidence_resolver，无 resolver 一律不 VALID，N3 关闭）；AssessmentStore 唯一真值贯穿草稿/影子（`shadow_diff.py` shadow_v4：按 assessment_id 核对消费同一 status，缺失/错配→待复核，旧计划 facts+refs 重判退役，N2 关闭）；REFUTES/否定主张绝不进正面支撑+单主张单必需命题（`research_service.py` j4.assoc_v1）；checkpoint 合法建立渠道；因子绑定合格快照（裸 raw dict 旁路封堵）；映射边界与原件核定（`financial_data.py`：单位漂移映射幂等+已核定证券×已观测报告期范围门，N4 关闭；`research_store.py` 原件核对记录）；万科A 2024H1 负债率发行人原件核定 0.72937（`orig_6366a5eff46fb65a`）。测试 1222→1266。
-当前版本：**v0.8.29.8**（ISS-117 S2a 四组补修，2026-10-11）。**B/P1 止损独立来源**——override_conf 触发即携带（同向不清，撤回「仅翻转时携带」的错误收口），strategy._gate_score 改独立硬纪律通道与普通投票通道**取较大者**（止损同向不被弱普通 A 拖延、强普通票不被较弱 action 拉低）；**A/P1 槽身份核验**——证券/时点/规则版本由注册上下文建立，评估时点与版本缺失不得由票自报补齐（缺→槽 UNKNOWN 保留 W 拒因可见），票自带身份与注册不一致→整槽 UNKNOWN 不投不计覆盖，UNKNOWN 槽隔离不入组；**regulator 槽化**（regulator_roster 同口径同校验：未注册/缺上下文/错股/错时点/错版本/非法权重全部弃权留拒因，同槽重复合一/冲突弃权，重复 10 次=单次）；**C/P1 新增出口完整门**——strategy BUY 分支按当前 state 重过 buy_gate（AI/事件改 state 后旧 BUY 不落地，过不了→HOLD），BUY/HOLD 全部新增出口「目标≤已知当前→HOLD_POSITION」，analysis_service ADD 目标未高于当前→终态改 HOLD；**D/P1 记录口径**——evidence diff score 跨协议不给数值 Δ（标口径不同+双方协议，价格 Δ 照常，同协议保留，diff 消费端渲染适配），LegacyTrace 补 aggregation_protocol/纯投票 A/P/C 四字段（旧记录 None=旧协议），shadow 升 shadow_v12（旧 v11 降 older_versions 不进当前分母）。补修矩阵 16 项落 test_s2a_aggregation.py（全走产品聚合→真实 Strategy→packet）。上一版 **v0.8.29.7**（ISS-117 S2a 投票机制改造，2026-10-11）。冻结公式 V1 落地（设计稿 plan/fusion/signal_authority_review/S2A_IMPL_DESIGN.md）：**①固定分母 E**——SkillEngine.base_roster() 从 load_skills 目标名单+目录预先确定启用 base 集合（加载失败/执行失败槽仍占 W，不以本次返回信号反推；坏权重显式 ValueError→orchestrator 捕获降级）；**②一槽一票**——槽=(skill_id,证券,evaluation_as_of,rule_version)（规则版本=YAML 内容 sha1 指纹，技能执行侧自填），同槽同票合一、冲突/错股/错时点整槽 UNKNOWN 保留 W、confidence=0 计覆盖贡献 0、非法 confidence 在模型构造期拒绝（不 clamp）；**③A/P/C 分离**——A_d=clip(M·U/W)（不按方向和归一化）、P_d 仅展示、C 独立记录；调节器幅度按自身置信度缩放 m_i=1+c(m_legacy−1)，零/坏置信度不参与（不贡献不稀释），regulator 不创造 U=0 的方向；**④门收口**——DecisionResult 新增 action_strength/opinion_share/coverage_ratio/aggregation_protocol/action_override_confidence 具名字段；trace.final_scores 兼容值=A 且带 s2a-v1 协议标记；strategy_layer 仓位/强卖/强止损改读 A（不再靠中文 trace step 名抓分数），HOLD→ADD 必须先过同状态既有 BUY 门（DecisionEngine.buy_gate 唯一实现），反转成本/确认门读 _gate_score（action 覆盖用触发票置信度明确通道，否则 A——AI/事件加分不绕基础资格）；**⑤降级协议**——缺 E 直调显式降级（legacy-no-roster/v1-unknown-roster），普通票不产方向、不按成功票缩分母，止损/止盈/PlanGuard 独立纪律不受影响；**⑥展示与证据**——evidence 落 protocol/A/C 三字段（旧记录按旧协议读取），CLI 人话摘要新增「信号口径」行（动作强度/覆盖率，如实措辞不称胜率）。正式回归 tests/core/test_s2a_aggregation.py 30 项（冻结数值矩阵 14 行走产品聚合→真实 Strategy→packet、固定分母/regulator/降级/门收口/双字段一致性）。CACHE_VERSION 不动（笨总评分输入未变）；decision score 语义变化（=调节后综合分，A 为新具名字段）由协议字段分桶，无磁盘缓存迁移。上一版 **v0.8.29.6**（ISS-117 QR5 日历完整性收口批，2026-10-11）。QR5 两个完整性漏口关闭：**①覆盖记录精确集合核验**——「只查缺行不查多行」关闭：抽共用纯校验助手 _verify_calendar_days（逐键规范化+标志合法+归一化重复键拒+**键集合与声称边界自然日全集精确相等**，缺行/范围外多行均拒且差异写清），生产端（供应商多一条 2000 年记录→抛错不落盘）与 strict 消费端同口径；**②原始 JSON 重复键解析期拦截**——strict 专用加载 _load_json_strict（object_pairs_hook 任意层级 dict 生成前拦截），同日先写交易后写休市的冲突不再被 json.load 的后写覆盖吞掉；fear 展示宽容路径不变。门内交易日选取限定核定区间（下界=覆盖起点，防御纵深）。三红反例（范围外多日期/原始重复键/生产多行）落正式回归 test_iss117_qr5_integrity.py 6 项；架构师 qr5 探针 11/11 全绿。日历升级过渡期表述按 QR5 裁决改准（TTL 内复用旧格式、不承诺跑一次 fear 立即恢复、不要求手工删缓存）。上一版 **v0.8.29.5**（ISS-117 QR4 覆盖合同批，2026-10-11）。QR4 两个尾项关闭：**①Q-R5 日历覆盖合同（P1）**——「列表里没有这天」不再能证明休市：trading_days 生产路径保留供应商 query_trade_dates 返回的**每一天**（交易日/非交易日标志），核验查询正常结束、日期唯一、标志合法、返回集合与查询区间自然日全集完全一致才落缓存（缺行/中途错误/重复/异常条目一律抛错不盖覆盖合格章，绝不按星期补假记录）；strict 只读消费逐自然日复核覆盖记录完整性（不信任生产者自我声明），分析日必须在已确认覆盖内；**12 天猜测覆盖与靠未来交易日作证明的路径删除**；旧 schema 缓存继续服务 fear 展示，硬授权一律 UNKNOWN（不自填范围追认）；覆盖待确认时三倍纪律降为提醒（提示可见），价格止损/ST/期限等独立保护不受影响；缓存 7 天 TTL 是原日历政策；仍新鲜的旧格式缓存会被 fear 路径直接复用（TTL 内不重建），仅过期/缺失后的正常获取路径才重建新 schema——过渡期内三倍授权持续 UNKNOWN（提示可见），不承诺跑一次 fear 立即恢复（QR5 裁决）。另：QR5 完整性收口——覆盖记录核验升级为**精确集合相等**（缺行、范围外多行均拒，孤立旧日期不得参与最近交易日判定，生产/strict 共用 _verify_calendar_days 口径）；strict 专用 JSON 加载在**原始解析阶段拦截任意层级重复键**（同日先写交易后写休市的冲突不再被 dict 合并吞掉）；门内交易日选取限定核定区间（下界=覆盖起点）。正式回归 test_iss117_qr5_integrity.py 6 项（三红反例+共用助手单元级+范围防护）。**②Q-R1 行情主体证券独立核对（P2）**——复算前核 stock_data.stock_code 与请求证券一致（split(".")[0] 规范化口径），复算改传行情自身代码（复算 securities 不再由申请参数回填，消除自证链路）；错股/无主体/带后缀规范化后一致的正例各有明确行为。正式回归：test_iss117_qr4_coverage.py（固定验收矩阵 7 行+生产→保存→读取→授权→packet 全链）24 项 + test_iss117_qr3_closeout.py 升级 35 项；架构师 qr4 探针 4a/4b/6 转绿，qr3 探针 1/qr4 探针 3 的正例fixture 因旧 schema 缺覆盖元数据按新合同预期转 UNKNOWN（待架构师适配 fixture，依据「不以所有历史探针机械全绿为门槛」）。上一版 **v0.8.29.4**（ISS-117 QR3 收口批，2026-10-11）。QR3 验收四条指示落地：**①Q-R5 日历资格 fail-closed**——trading_days(allow_refresh=False) 只读严格模式（只核验有效缓存：版本/built_at 7天新鲜/日期格式，无效抛 RuntimeError，绝不登录/建目录/刷新），授权门 live 分支改消费该查询，缺失/过期/损坏/覆盖不足/格式错误一律拒绝硬授权（彻底移除 recent_trade_date 星期推算兜底与裸 except 吞异常两条 fail-open 路径，fear 展示降级行为不变）；**②Q-R2 消费者+显式证券**——_event_applies_to_stock 先拒 unknown/非法 scope 再核证券；_ai_classify_portfolio_news 保留 AI 解析的事件主体证券（请求股不再强制替换）；scan_portfolio_events 删除非 unknown 时的 affected_codes=[code] 重写；MarketEvent.scope 默认值 market→unknown（旧/缺字段收口，显式 market 与规则配置默认保留）；**③Q-R1 复算三项核验**——模式适用性不依赖行情对象存在；缺行情对象/缺行情时点拒绝；复算结果须 data_quality=OK 且 signal_id/证券与申请一致（不再以非 None 放行）；**④Q-R7 sector 请求窗口**——行日期完整严格解析（[:10] 截断洗白关闭）、行日期须落请求窗口 [start,end]、端点可比性（最后观测距请求端点>12天拒绝，21行恒真跨度不再冒充窗口资格）。正式回归 tests/core/test_iss117_qr3_closeout.py 32 项入库（QR2/QR3 探针语义落库）；架构师 QR3 探针 8/8 全绿、QR2 剩余 6 红全部转绿。上一版 **v0.8.29.3**（ISS-117 Q-R2尾项+Q-R5 analysis_date 严格解析，2026-10-11）。QR2 验收（部分通过）两处补修：Q-R2 尾项——scan_portfolio_events 不再无条件重写 affected_codes=[请求股]（scope=unknown 时留空，不借请求上下文获得证券适用性）；Q-R5——analysis_date 严格解析完整字符串（非法非空值不截断不回退当天），live 行情快照日期 ≥ 独立市场交易日历最近交易日（fear_index 缓存，周末/节假日正例保留），陈旧行情降 research 不授权三倍定律。上一版 **v0.8.29.2**（ISS-117 Q尾项 Q-R1/R2/R5/R7，2026-10-10）。S01 Q批验收（部分通过）四组尾项落地：Q-R1 研究缓存不能冒用硬信号身份（资格门复算纯函数确认当前数据确实成立才授权；绑定精确相等禁子串；holder/margin 缓存按各自 signal_id 校验）；Q-R2 事件范围解析（scope 缺省/非法=unknown 不默认全市场；affected_codes 规范化保存并在 prompt 中要求输出；scope=unknown 不适用软调节）；Q-R5 时点参照（复用 source_time.parse_source_time/source_time_in_future，坏字符串不截断洗白；证据不得晚于本次分析数据时点——回测参照当前 bar 日期、live 参照行情快照；7天政策按裁决移除）；Q-R7 数据资格（sector 日期严格解析/未来剔/同日冲突放弃/跨度核验；股东户数显式「户数+本次/上次」列映射、无统计日期列 fail-closed、缺公开时点标 UNKNOWN；2个假绿测试修为真断言拉取与遍历发生）。guard 两轮监督全数修复（初审 P0-1 隔离层 logger 未定义/P0-2 DataFeeder 缺 quote_as_of/P1×3；复核 R1 双计/R2 文案/R3 死代码/R4a 固化）。S2a/S2b 仍待本批过门（S2_DESIGN.md DESIGN_READY）。上一版 **v0.8.29.1**（ISS-117 Q1-Q7 补修批，2026-10-10）。S01 验收 16 反例归 7 组落地：Q1 消费边界资格门（authorize_hard_findings：signal_id 白名单/策略绑定/证券/时点新鲜度（live 7天）/质量，缓存重放同门；StrategyDecision.top_signal_authorized + plan_guard P1 只认已授权，未授权字符串仅诊断）；Q2 事件硬权限收口（本批无独立核验器——不 force_state/不硬限仓；证券适用范围门 _event_applies_to_stock：空证券≠全市场、scope=stock 须 affected_codes 含当前股）；Q3 AI invalidate 降红线候选（不写硬 invalidate/不强制 F，规则版硬排除与 ST 政策不撤销）；Q4 cap 增量语义（_soft_cap_target：delta=max(0,min(t,k)-c)，delta=0 转 HOLD/HOLD_POSITION，REDUCE 方向不参与，单点应用收口 4 处 min，当前权重未知不伪造增量）；Q5 三倍定律价格资格门（有限正值+as_of 来自 quote_as_of）+ DataFeeder 回测补 bar 日期（guard P0-2：否则回测硬纪律被资格门静默降权）；Q6 公告旧格式规范化+子信号/逐层隔离（异常→diag 条目显式诊断，不吞独立保护）+ 新告警「异常（已隔离）」三处同步；Q7 旗手/户数行级日期有效性（同日≠窗口、未来日无资格、剔除后走缓存）。guard 两轮：本轮初审抓 P0-1（隔离层 logger 未定义）/P0-2（回测 quote_as_of 缺失）/P1×3，全部修复。S01 探针反例落回归（test_iss117_q_batch.py 25 项）。CACHE_VERSION v0.8.29.1（Q3 语义）。S2a/S2b 待本批过门后按 S2_DESIGN.md 实施。上一版 **v0.8.29**（ISS-117 信号权限收口 S0+S1，2026-10-10）。架构师专项审查（plan/fusion/signal_authority_review/，30探针23反例）裁决：「检测到现象」与「获准改变动作」必须分离。落地：**①权限合同** models.SignalFinding（signal_id/来源/适用证券/as_of/data_quality/action_scope/verified/strategy_binding/detail/reason，缺字段默认最严）；**②S0 弱证据降权**——exit_signals 全子信号返回 SignalFinding（check_top_signals 改 list）：减持标题（E1 否定/澄清/未实施语义如实标注，一律待核验 research）、股东户数（A02+E2 按日期列倒序取最新+去重）、融资余额（as_of=实际两端日期）、缩量加速（E3 连续性证据缺失=UNKNOWN 不放宽单日）、宏观10万亿（A12 未经实证降 research）、旗手滞涨（A12 AI 标注关系未核定降 research，sector 取数 qfq 同口径+≥21收盘观测 E4）；仅三倍定律保持 exit 资格（既有周期纪律）；AI black_swan 不再 force PANIC（D1：cap/压分按自报置信度缩放，conf=0 无调节）、事件层四要素缺失=UNKNOWN 不硬覆盖（D2：confidence 来自真实性而非 impact、限仓仅空头方向）、事件消费先按资格筛选（D3）、风险红线跨字段子串兜底删除（A07/D6）、skill_engine 未知条件 fail-closed（A04/D4）、plan_guard 坏价格不判穿止损（A11）。**③S1 数据修正**——预告公开日期资格门（缺失/非法/未来跳过+同日时序不明标注 A05）、baostock 备用源 adjust 透传（qfq 同口径）、exit_signal 缓存 v2（旧字符串缓存不复活）。S2（A08 投票公式需架构师先固定矩阵/A09 模式重裁/A10 三态/A11 执行措辞）与 S3（A13 shadow/全消费者闭环）为后续卡片，ISS-117 保持打开。上一版 **v0.8.28.1**（板块层渗透率30+误触发强制清仓修复，2026-10-08/09）。架构师裁决落地（决策简报 docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md）：用户实证新开仓（笨总B/准B/jianzong）当天盘后连续被 top_signal CLOSE_ALL——根因=pos add 时 _annotate_sector_meta 的 prompt 强制 penetration_stage 四选一（无「不适用」出口），银行/基建被 AI 标 '30+'，消费层 check_sector_top_signal 纯字符串匹配即 P1 强制清仓（PlanGuard 不可压、评分无关）。修复：**①板块层 '30+' 降级为研究提醒**（penetration_research_reminder → decision warnings/风险提示，与强制退出原因分开展示；旗手滞涨有 20 日涨幅数据核实保持强制不变）；**②标注 prompt 加「不适用/证据不足」出口**，禁止把「行业成熟」换算成 30+，非法值校验同步；**③旧标签立即受新规则约束**（不做数据迁移，原值保留可追溯——不做建仓冷静期、不做行业例外）；**④证据记录/卡片补 top_signal 专门触发字段**（此前 reason 只进 INFO 日志，事后无法定位），warnings 截断 6→8。实证：000001 强制信号=None+提醒正常；000498 渗透率不再触发但旗手滞涨（600170 20日-1.8% vs 标的+23.9%，真实数据核实的独立信号）浮出为可见原因。回测路径不受影响（板块层 live 门控本来跳过）。实施账本 `plan/fusion/iteration9/EXECUTION_RECORD.md`。上一版 **v0.8.28**（P0/P1，2026-10-02）。R15裁决O1/O2接收关闭、O0部分接收后，本轮补齐三组缺口：**Z1**账本PARTIAL保护贯穿投影分支（旧零投影不再证明空仓→UNKNOWN/None/待对账）、**Z2**holding_entries投影枚举失败传播incomplete（合法YAML坏记录不再谎报完整，账本独立持仓保留）、**Z3**chat get_portfolio全路径读共享清单（账本独有条目标注缺口）+ l/la启动提示按ctx三态（账本有仓不再同屏宣称FLAT起点；pos存在但ctx未对账时追加缺口原因）。表v4保持；**shadow_v11候选**（账户输入语义变化，v10及更早独立桶不追认）。固定验收矩阵9行参数化落回归（tests/core/test_p0_account_exception_matrix.py、tests/chat/test_p1_shared_portfolio_view.py）。多端支持范围已转录[ISSUES.md](ISSUES.md)持久台账（G2/G7/T01）。**K1未冻结、M2生产未放行（DESIGN_READY）、capture_only不变**。实施账本 `plan/fusion/iteration9/EXECUTION_RECORD.md`。
-v0.8.21（第二轮 R0 资格止血，2026-09-26）：架构师 iteration2 裁决落地——投资逻辑 VALID 需事实带可解析证据引用（`research.py` 资格门，「一条 facts 文本即 VALID」废止，探针 P1 反例回归）；latest-only 财务证据不入历史严格 PIT 快照（`research_snapshot.py` A01 临时保守门，`drop_reasons` 记录 + qualify「版本不可追溯」话术，探针 P4 反例回归）；影子对照来源逐周期标注（`shadow_diff.py` shadow_v3，`mid/long_plan_source` + `mid/long_thesis_status`，旧整行字段为兼容口径 R3 移除）；plan2 带事实时明示「按逻辑未立处理」；E0 等价/E1 互补实证/E7 全路径扩大措辞修正（原始报告保留加注记）；账本 `plan/fusion/iteration2/EXECUTION_RECORD.md`。资格门为安全门不随策略回滚撤销；R1/R3 以正式字段替代临时门。
-v0.8.20（影子阶段前置，2026-09-26）：`shadow` 影子对照报告（l/la/chat 分析持仓时自动用 fusion 中期/长期决策表出对照包，差异分原因落 `~/.muyun/shadow_diff.jsonl`，开关 `fusion.shadow_capture`）；`plan2` 计划V2（`plan2 <代码> mid|long <意图> --facts 事实` 立中期/长期计划，`plan2 accept <代码>` 激活——激活后影子用真计划裁决，每股每周期一份存 `~/.muyun/horizon_plans.json`）；`diff` 无参数列可对比清单 + `diff <代码> --ai` 可选 AI 解读；today「等待条件」逐只明细 + 单股额度显示（用户风险档 `fusion.risk_profile`）；E0 正确性基线真实执行（21 案例双臂，差异在噪声阈内，报告 `plan/fusion/E0_BASELINE_REPORT.md`）；E6 组合实验真实执行（报告 `plan/fusion/E6_REPORT.md`）；数据资格探查落地 + 财务季频接线（`src/data/financial_data.py`）；RAG 加载峰值保护 `MUYUN_RAG_MAX_THREADS`（§五硬件节）。
-v0.8.19（融合架构 F0–F9 已全部实施，2026-09-25）：`today` 今日工作台、`pos confirm` 成交确认、持仓事实与建议分离（分析不改持仓）、终态统一输出（摘要/diff/排名）、证据快照 PIT 资格、三路候选池与因子登记、周期决策表（fusion_mid/long，未接入生产）、claim 事件谱系、组合预算求解、实验矩阵与回放基建、五阶段发布阶梯。
-测试 811→**1059**。**版本逐批叙事**（v0.8.15–v0.8.19）已迁入 `docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md`；用户可感知变更清单见 README「版本历史」；**F 批实施账本与交接入口 = `plan/fusion/EXECUTION_RECORD.md`**（F0–F9 全部 VERIFIED；E0 基线与影子差异机制已落地，待办：影子数据积累→opt_in 推进、E1–E7 逐实验执行、八类用户走查，见账本未完成条款）。
+当前版本：**v0.8.29.9**（2026-10-12）。S2a 集中补修 X/Y/Z：**X 日期资格**——evaluation_as_of=独立分析截止（backtest=bar 日期/live=当天，不用待核 quote 自我背书）；评估截止与行情时点严格 parse_source_time（缺失/非法/垃圾尾巴→槽 UNKNOWN 拒因可见，先解析成功才用 source_time_in_future）；截止日精度按**日期比较**（同日带时刻的 live 实时行情合法——不虚构午夜精度全拒，guard P0）；base/regulator 共用 _eval_time_qualified；**Y HOLD 保仓位**——_update_lifecycle OPEN/EXIT 生命周期 HOLD_POSITION 占位 0 不再清策略记忆仓位（.60 仍 .60/None 仍 None，ADD/REDUCE/CLOSE_ALL 原语义）；**Z 保存依据**——evidence/LegacyTrace 补 opinion_share 与 action_override_confidence（独立止损通道回看可区分），人话卡渲染信号口径行，evidence 测试三路径隔离+文件生成断言，diff 渲染四元组落回归。固定反例+正例落 test_s2a_aggregation.py（62 项全绿）。上一版 **v0.8.29.8**（2026-10-11）。ISS-117 S2a 最新独立验收为**部分接收**，X 日期资格、Y 持仓状态/动作、Z 保存依据尚待补修；不以批次测试数或实施报告代替独立审批。
 
-> **v0.8.14 及更早的版本叙事已迁入归档**：`docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md`（用户可感知的变更清单见 README.md「版本历史」；跨版本仍生效的硬约束以本文件 §五 为准）。
+当前及后续实施唯一入口：[S2AC_FINAL_CLOSEOUT_TASK.md](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)；已通过/未通过范围与证据：[S2AC_ACCEPTANCE.md](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)。S2b/S3尚未启动，ISS-117打开；K1未冻结、M2生产未放行（DESIGN_READY）、capture_only不变。长期目标与状态仍见根 MILESTONES.md、plan/fusion/STATUS.md。
+
+版本变更见 [README 版本历史](README.md#版本历史)；较早叙事保存在现有 [截至v0.8.14归档](docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md) 与 [v0.8.15–v0.8.19归档](docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md)。归档与历史实施账本只作历史证据，不作为当前执行或通过保证。
+
+### 融合与信号权限的持续约束
+
+以下保留跨版本安全边界；具体实现是否过门，以独立审批为准。
+
+- **事实/评估唯一真值**：自由文本最高 EXCERPT_GROUNDED；类型化数值/否定事实须谓词一致、词元边界与来源公开时点齐备才 FACT_CHECKED。VALID 必须有实存可解析引用，无 evidence_resolver 不得判 VALID；AssessmentStore 按 assessment_id 提供草稿/影子同一状态，缺失/错配待复核，不以旧 facts+refs 重判。REFUTES/否定主张不得支撑正面结论，单主张单必需命题；checkpoint走合法建立渠道，因子须绑定合格快照，禁止裸 raw dict 旁路；财务映射须单位幂等及已核定证券×已观测报告期范围门，保留原件核对记录。latest-only财务不得入历史严格PIT快照；资格安全门不随策略回滚撤销。
+- **账户事实与建议分离**：分析只记录观察量和待确认建议，实际成交经 `pos confirm` 才改持仓；PARTIAL账本或不完整持仓枚举不能证明空仓，UNKNOWN/None与缺口原因须贯穿投影、共享清单、chat及l/la。旧shadow按版本独立分桶，不追认当前分母。多端范围以ISSUES的G2/G7/T01为准。
+- **检测与硬授权分离**：SignalFinding缺字段默认最严；硬动作消费端核signal_id白名单、策略绑定精确相等、证券、时点、质量，缓存重放走同门，PlanGuard P1只认top_signal_authorized。复算须有行情主体/时点，主体证券独立核对（代码后缀规范化），结果质量OK且signal_id/证券一致；不得用请求股回填自证。旧字符串exit_signal缓存不得复活；holder/margin缓存各按signal_id核验。非法价格不得判穿止损；子信号/层异常显式隔离，不吞独立保护；未知技能条件fail-closed。
+- **弱证据不得清仓**：减持标题的否定/澄清/未实施、宏观10万亿、未经核定旗手关系均为research；缩量加速缺连续证据为UNKNOWN。板块30+仅研究提醒，旧标签同样受限，禁止把行业成熟换算30+；标注须允许不适用/证据不足，不新增冷静期或行业例外。AI invalidate仅红线候选，不硬invalidate/强制F；规则硬排除/ST纪律保留。AI black_swan不强制PANIC，软调节按置信度缩放，零置信度无调节；风险红线不做跨字段子串匹配。
+- **事件与软限仓**：scope缺省/非法为unknown，先拒unknown再核证券；stock须显式affected_codes含当前股，不以请求上下文重写事件主体。四要素缺失为UNKNOWN，confidence取真实性而非impact；无独立核验器不force_state/硬限仓，软限仓仅空头方向。增量cap为 `max(0,min(目标,上限)-当前)`，零增量转HOLD/HOLD_POSITION，REDUCE不参与，未知当前不伪造增量。
+- **数据与时点资格**：日期完整严格解析，不截断/回退洗白；证据不得晚于分析数据时点（live行情快照、回测bar），三倍价格须有限正值、quote_as_of；不恢复已撤销的live统一7天证据政策。预告缺失/非法/未来公开日期跳过，同日时序不明标注。sector行须在请求窗口、未来剔除、同日冲突放弃、qfq同口径、至少21收盘观测并核跨度，末观测距请求端点>12天拒绝；股东户数按统计日期倒序去重，显式本次/上次户数映射，无统计日期fail-closed、无公开时点UNKNOWN；融资as_of用实际两端日期，备用Baostock透传adjust。
+- **日历硬授权只读且拒绝不完整覆盖**：`trading_days(allow_refresh=False)`不得登录/建目录/刷新；缓存须版本正确、built_at在7天TTL内，覆盖日期与声明区间自然日全集精确相等、唯一、标志合法、查询正常结束。strict在原始JSON解析拦任意层级重复键；门内交易日限定核定区间，分析日须在覆盖内，行情快照不得早于独立最近交易日。缺失/过期/损坏/旧schema/覆盖不足一律UNKNOWN，不猜星期、12天范围或借未来日期补证明。旧缓存可继续服务fear展示，TTL内不重建，不承诺跑一次fear立即恢复或要求手工删缓存；三倍纪律降提醒，价格止损/ST/期限保护保留。
+- **冻结投票合同**：启用base集合E由目标名单/目录预先确定，加载/执行失败仍占W；坏权重显式拒绝/降级，缺E不从成功票缩分母，普通票不产方向。槽=(skill_id,证券,evaluation_as_of,rule_version)，版本为YAML内容sha1；注册时点/版本不得由票自报补齐，缺失/错股/错时点/错版本/冲突槽UNKNOWN保留W、不投不计覆盖、不入组，同槽同票合一。regulator同注册同校验，重复不能放大；confidence=0计覆盖但贡献0，非法confidence拒绝不clamp。A=clip(M·U/W)、P仅展示、C独立；调节幅度 `1+c(m_legacy−1)`，零/坏置信度不贡献不稀释，不创造U=0方向。
+- **动作出口与记录合同**：仓位/强卖/强止损用具名A，不抓中文trace名；独立override触发即携带，同向不清，_gate_score取独立与普通通道较大值，AI/事件加分不得绕基础资格。BUY/HOLD→ADD须过当前状态buy_gate，目标≤已知当前转HOLD_POSITION/终态HOLD；无roster降级不妨碍独立止损/止盈/PlanGuard。协议/A/P/C与独立action依据按冻结合同贯穿记录；旧缺字段标当时未记录，不补假0。score跨协议不算数值Δ（标双方协议），价格Δ照常；shadow旧v11不进v12当前分母。decision score语义以协议分桶，笨总输入不变不改CACHE_VERSION、不迁磁盘缓存；展示动作强度/覆盖率不得称胜率。
+
+融合命令速查：`today` 今日工作台（待确认建议/继续持有/等待条件）；`shadow` 影子对照（`fusion.shadow_capture`，记录 `~/.muyun/shadow_diff.jsonl`）；`plan2 <代码> mid|long <意图> --facts 事实` 与 `plan2 accept <代码>`（每股每周期计划存 `~/.muyun/horizon_plans.json`，事实不自动使逻辑VALID）；`diff` 无参数列清单，`diff <代码> --ai` 为可选AI解读。
 
 ---
-
 ## 二·五、最高优先级开发原则：用户可感知（2026-06-18 立项）
 
 > **任何代码改动必须让用户在跑 `start.py` 时实测得到差异。** 看不见的改动 = 没做。
@@ -381,30 +333,12 @@ docs/               # 详细文档
 
 ## 七、当前状态
 
-### 已完成（v0.8.0 → v0.8.6.3）
+当前交付与阻断见 §二的独立审批指针及 plan/fusion/STATUS.md，历史已完成清单见 README 版本历史与现有归档，不在此重复维护。
 
-- AI 调节层（技术面感知 + 新闻情绪）
-- 全市场扫描（4 条规则 + 大盘风控 + 60 日趋势排序）
-- 事件驱动预警 + **现象级事件四要素**（v0.8.6.3，真实性<30 信号一票否决 v0.8.6.8 强化）
-- 四维排名 + RAG 策略知识检索（Recall@5=0.800）
-- 买卖点精确触发（Chandelier/趋势破坏/止盈）
-- 金字塔仓位管理（历史能力，已于 2026-07-17 拍板移除，commit 9b89ecd）
-- Weinstein 四阶段分类（S1-S4）
-- 买卖点分歧检测（技术 vs AI）
-- 回测框架 + 分层对照 + 偏差审计
-- **TradePlan 子系统 + PlanGuard**（v0.8.5）：`pos plan <code|all> [--update]` 生成/更新/批量
-- **笨总 6 维 AI 评分 + 主题法C选股**（v0.8.6）：`bz`/`bz scan <主题>`/`bz --check`
-- **气宗持有模式**（v0.8.6.3，ISS-033）：PlanGuard 压 trend_exit/take_profit_trim 拿住牛股（验证边际收益，指向"跳出现有思维"）
-- **数据源连通性体检**（ISS-043）：`bz --check` 一键测全源
-- **笨总当中长期决策主驾「跳法A」阶段1+2**（v0.8.6.4，ISS-046）：建仓笨总评分定气宗/剑宗 mode（笨总首次真正参与决策）+ 高位止盈3维度（`src/core/exit_signals/`，宏观成交额/个股换手缩量减持，PlanGuard P1 不可压）+ 气宗走固定长持参数（MarketState 降级为展示）
-- **阶段4 五年回测验证通过**（v0.8.6.5，ISS-046）：12 股 × 2020-2024。**2026-08-23 安全网修复后全量复跑：牛股组平均 Δ +12.32pp 正向 8/8**（寒武纪从 -14.59pp 翻正到 +13.62pp），见顶/对照组不恶化；批次3（2026热门板块含 8/19 暴跌）qizong 5/5 正向平均 +17.3pp。明细见 ISSUES ISS-046 更新记录
-- **景气度硬闸门 + 双通道选股 + 网络超时修复**（v0.8.6.4，ISS-047）：`effective_grade()` 让景气度成为真闸门；`bz scan` 双通道去龙头偏向；AI client 加 timeout
-- **网络根治+缓存版本+风险维降级+截断优化**（v0.8.6.5，ISS-047 续）：akshare/baostock 三层线程级硬超时根治冻结；缓存版本校验杜绝"改代码不生效"；风险维新闻缺失改中性50；业务纯度 prompt 限 reasoning≤60字
-- **笨总视频理念优化**（v0.8.6.8，来源 51 份视频总结）：宏观流动性状态 `assess_liquidity_state`(0.8/1.3/1.5万亿分档) + 市场宽度 `assess_market_breadth`(通杀/分化/普涨) advisory 展示；自主可控标的强制剑宗(`_mode_from_grade` is_self_reliance 闸门)；板块层 `sector.py`(渗透率30%魔咒+旗手滞涨baostock fetch)；个股层三倍定律(气宗跳过)+股东户数/融资余额激活(日缓存+live门控)；`pos overweight` 超配策略(三铁律)；永不满仓警告+弱势期+高位利好提示；AI标注旗手+渗透率。单股回测 sanity(宁德2020 Δ+68.64pp)未破坏气宗。详见 `docs/2026-08-10_笨总视频理念优化报告.md`+`docs/2026-08-12_未做事项评估.md`
-
+持仓计划命令：`pos plan <code|all> [--update]` 生成/更新/批量计划；`pos overweight` 超配须守三铁律（见使用手册）。自主可控标的强制剑宗；宏观流动性/市场宽度为advisory展示，MarketState不替代气宗固定持有纪律。金字塔仓位管理已移除，禁止重新引用已删配置/兼容壳。
 ### 待办（优先级排序）
 
-详见 `ISSUES.md`。近期落地：ISS-053 建仓后基本面恶化硬退出（ST+业绩预亏，独立 fundamental_alert 通道）/ ISS-052 激活实控人减持公告 top_signal 子信号（live 生效，回测跳过）/ ISS-055 景气闸门降级+低置信度透明度警告（不动笨总公式）。待办重点：跳法A 阶段5（板块维度信号）；行业景气度维接入客观数据源（治本，撞数据可得性天花板，评估见 `docs/2026-08-24_景气度客观数据源评估.md`，决策待用户）。
+待办以 `ISSUES.md` 顶部和当前独立审批为准，不从旧版本清单推定仍待实施。行业景气度客观数据源的可得性及用户待决策项见 `docs/2026-08-24_景气度客观数据源评估.md` 与 ISSUES 对应记录。
 > 已拍板关闭勿再提（2026-08-24）：换手率 fetcher（不做，死代码已移除）、宏观 10 万亿阈值（维持现状）、
 > **气宗压 trend_exit/chandelier 开闸（ISS-078 P1(b)，2026-09-05 拍板：维持现状勿再提——该口径承载 ISS-033 全部回测基线，要动先走 env 开关 A/B 立项）**、
 > 公告关键词扩展（不做）、美债监测面板（ISS-062）、拥挤度代理面板（ISS-064）、M-A 单独统一口径（ISS-065）。
@@ -436,7 +370,7 @@ docs/               # 详细文档
 | `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-098）+ 顶部当前待办汇总 |
 | `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史M/C与F接手记录；当前状态见 `plan/fusion/STATUS.md`，不从归档推定完成状态 |
 | `docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接（已归档）：scan review/观察池交付明细 |
-| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；R10 独立验收与第四轮任务卡见 `plan/fusion/iteration4/`。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
+| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；ISS-117当前及后续执行唯一入口为 §二的 S2AC_FINAL_CLOSEOUT_TASK.md，审批为 S2AC_ACCEPTANCE.md；iteration历史只作证据。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
 | `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
 | `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |

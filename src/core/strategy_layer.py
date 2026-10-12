@@ -1024,7 +1024,12 @@ class StrategyLayer:
                 new_state.add_protection_remaining = 0
             elif decision in (SignalType.HOLD, SignalType.BUY) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 new_state.lifecycle = TradeLifecycle.HOLD  # 确认建仓成功
-                new_state.current_position_ratio = position_ratio
+                # ISS-117 S2a-Y：ADD 写新目标（合法状态变更）；HOLD_POSITION 的
+                # position_ratio=0.0 是「无新增」占位——**不是持仓目标**，写进去
+                # 会把策略记忆里的仓位清零（.60→0/None→0），只保留原值
+                if position_action == PositionAction.ADD and position_ratio is not None:
+                    new_state.current_position_ratio = position_ratio
+                # HOLD_POSITION：current_position_ratio 原样保留（.60 仍 .60，None 仍 None）
             elif decision == SignalType.SELL and position_action == PositionAction.REDUCE:
                 new_state.lifecycle = TradeLifecycle.HOLD  # 减仓但仍持有
                 new_state.current_position_ratio = position_ratio
@@ -1074,7 +1079,9 @@ class StrategyLayer:
             elif decision in (SignalType.BUY, SignalType.HOLD) and position_action in (PositionAction.HOLD_POSITION, PositionAction.ADD):
                 # 方向转回看多 → 回到HOLD
                 new_state.lifecycle = TradeLifecycle.HOLD
-                new_state.current_position_ratio = position_ratio
+                # S2a-Y：同 OPEN 分支——HOLD_POSITION 占位 0 不清策略记忆仓位
+                if position_action == PositionAction.ADD and position_ratio is not None:
+                    new_state.current_position_ratio = position_ratio
             # EXIT状态下如果已清仓 → COOLDOWN（L1：None=有仓但权重未知——不进清仓冷却）
             if new_state.current_position_ratio is not None \
                     and new_state.current_position_ratio <= 0:

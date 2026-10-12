@@ -55,7 +55,12 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
             # 不把旧 score（归一化占比语义）读成新 A（动作强度）
             "aggregation_protocol": getattr(decision_result, "aggregation_protocol", "pre-s2a"),
             "action_strength": (getattr(decision_result, "action_strength", None) or None),
+            "opinion_share": (getattr(decision_result, "opinion_share", None) or None),
             "coverage_ratio": getattr(decision_result, "coverage_ratio", None),
+            # S2a-Z：独立 action 通道（止损/止盈一票否决/压制的触发票置信度）同源
+            # 落盘——普通 A_SELL=0、C=0 但 override=.9 仍 EXIT 时，回看明确这是
+            # 独立纪律 .9（不从中文 reason/sell_path 猜身份）
+            "action_override_confidence": getattr(decision_result, "action_override_confidence", None),
             "position_action": (strategy_decision.position_action.value
                                 if strategy_decision and hasattr(strategy_decision.position_action, "value")
                                 else None),
@@ -115,6 +120,14 @@ def _write_card(rec: dict, decision_result) -> None:
         f"> 时间：{rec['ts']} ｜ 来源：{rec['source']}",
         f"> 决策：**{rec['decision']}** ｜ 评分：{rec['score']:.3f} ｜ 价格：{rec['price']}",
         f"> 仓位动作：{rec.get('position_action') or '-'} ｜ 卖出路径：{rec.get('sell_path') or '-'}",
+        # ISS-117 S2a-Z：信号口径/独立纪律随卡展示（回看可区分普通票与独立止损）
+        *( [f"> 信号口径：动作强度(普通票) {rec['action_strength'].get(rec['decision'], 0):.2f}"
+            f" ｜ 覆盖率 {rec['coverage_ratio']:.0%}"
+            f" ｜ 独立纪律强度 {rec['action_override_confidence']:.2f}"
+            if rec.get("action_override_confidence") is not None
+            else f"> 信号口径：动作强度(普通票) {rec['action_strength'].get(rec['decision'], 0):.2f}"
+                 f" ｜ 覆盖率 {rec['coverage_ratio']:.0%}（无独立纪律触发）"]
+          if rec.get("action_strength") else [] ),
         *( [f"> 触发原因（top_signal）：{rec['top_signal']}"] if rec.get("top_signal") else [] ),
         "",
         "## 技能信号",

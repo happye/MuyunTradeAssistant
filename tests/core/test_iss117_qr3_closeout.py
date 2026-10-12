@@ -513,11 +513,16 @@ def test_qr7_old_window_rows_not_current_evidence(monkeypatch):
 
 
 def test_qr7_real_same_window_rows_positive(monkeypatch):
-    """合法同窗 21 个不同交易日观测保留（正例，随墙钟不漂移：末端=2天前）。"""
+    """合法同窗 21 个不同交易日观测保留（正例）。末端对齐到最近工作日——
+    bdate_range 遇周末 end 会少生成一天（墙钟漂移实证：周一跑时 end=周六）。"""
     import pandas as pd
-    end = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+    end_dt = datetime.now() - timedelta(days=2)
+    while end_dt.weekday() >= 5:
+        end_dt -= timedelta(days=1)
+    end = end_dt.strftime("%Y-%m-%d")
     rows = [[d.strftime("%Y-%m-%d"), "10"]
             for d in pd.bdate_range(end=end, periods=21)]
+    assert len(rows) == 21
     assert _sector_rows(monkeypatch, rows) == 0
 
 

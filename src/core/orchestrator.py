@@ -290,10 +290,19 @@ class Orchestrator:
         except ValueError as e:
             logger.warning(f"S2a regulator 注册表不可用，调节全部弃权: {e}")
             expected_regulators, regulator_rule_versions = {}, {}
+        # ISS-117 S2a-X：评估时点=**独立分析截止**——backtest 用调用方 bar 日期
+        #（today），live 用当天；绝不用待核行情自己的 quote_as_of 当自己的截止
+        #（自我背书）。backtest 缺可信 bar 日期 → None → 引擎全槽 UNKNOWN 拒普通
+        # 新增（拒因可见），独立合格退出不受影响。
+        if is_backtest:
+            _eval_asof = today
+        else:
+            from datetime import datetime as _eval_dt
+            _eval_asof = today or _eval_dt.now().strftime("%Y-%m-%d")
         decision_result = self.decision_engine.make_decision(
             data, signals, state, current_position_ratio=current_position_ratio,
             expected_base=expected_base, rule_versions=rule_versions,
-            evaluation_as_of=getattr(data, "quote_as_of", None),
+            evaluation_as_of=_eval_asof,
             expected_regulators=expected_regulators,
             regulator_rule_versions=regulator_rule_versions,
         )

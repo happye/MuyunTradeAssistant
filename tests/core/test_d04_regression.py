@@ -137,11 +137,12 @@ def _mk(name, alias, sig, conf, stype):
 
 
 def _stock(price=10.0, change_pct=-3.5, ma20=11.2, ma60=12.0):
+    # S2a-X：行情时点是槽资格必要上下文（quote 与调用方 evaluation_as_of 同日合法）
     return StockData(
         stock_code="sh600000", stock_name="测试", price=price,
         open=10.6, high=10.7, low=9.9, change_pct=change_pct,
         ma5=10.8, ma10=11.0, ma20=ma20, ma60=ma60, ma120=12.5,
-        volume=1e6, avg_volume_20=1e6,
+        volume=1e6, avg_volume_20=1e6, quote_as_of="2026-10-09",
         index_trend="bull", index_ma20=4000, index_ma60=3900,
         index_close=4100, index_ma250=3800, index_high_250d=4200,
     )

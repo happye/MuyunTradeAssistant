@@ -18,6 +18,7 @@
 """
 import os
 import sys
+from datetime import datetime, timedelta
 from types import SimpleNamespace
 
 import pytest
@@ -398,10 +399,13 @@ def test_s2a_old_vs_new_divergence_documented(monkeypatch):
 
 
 def test_s2a_evidence_reads_same_fields(monkeypatch, tmp_path):
-    """evidence 落盘字段与 decision_result 同源（protocol/A/C 一致）。"""
+    """evidence 落盘字段与 decision_result 同源（protocol/A/P/C/override 一致）；
+    _STATE_DIR/_EVIDENCE_FILE/_REPORT_DIR 三条路径全隔离，JSONL 与人话卡确实生成
+    （严禁写真实目录——补修单 Z）。"""
     from src.cli import evidence as ev
-    monkeypatch.setattr(ev, "_EVIDENCE_FILE", tmp_path / "evidence.jsonl")
-    monkeypatch.setattr(ev, "_STATE_DIR", tmp_path)  # 人话卡片也落 tmp
+    monkeypatch.setattr(ev, "_STATE_DIR", tmp_path)
+    monkeypatch.setattr(ev, "_EVIDENCE_FILE", tmp_path / "analysis_evidence.jsonl")
+    monkeypatch.setattr(ev, "_REPORT_DIR", tmp_path / "cards")
     engine = _offline_engine(monkeypatch, FOUR, [(f"slot{i}", B, .8) for i in range(4)])
     packet, dr, out, _, _ = engine.analyze_packet(
         _risk_on_sd(), confirmed_ratio=0.0, position_state="FLAT",
@@ -410,9 +414,56 @@ def test_s2a_evidence_reads_same_fields(monkeypatch, tmp_path):
     rec = ev.record_evidence(dr, out, source="s2a-test")
     assert rec is not None
     assert rec["aggregation_protocol"] == dr.aggregation_protocol == "s2a-v1"
-    assert rec["action_strength"]["BUY"] == pytest.approx(
-        dr.action_strength["BUY"])
+    assert rec["action_strength"]["BUY"] == pytest.approx(dr.action_strength["BUY"])
+    assert rec["opinion_share"]["BUY"] == pytest.approx(dr.opinion_share["BUY"])
     assert rec["coverage_ratio"] == pytest.approx(dr.coverage_ratio)
+    # JSONL 与人话卡确实生成在隔离目录
+    assert (tmp_path / "analysis_evidence.jsonl").exists()
+    assert (tmp_path / "evidence.jsonl").exists() is False  # 旧路径名未误用
+    cards = list((tmp_path / "cards").glob("*.md"))
+    assert cards, "人话证据卡应落盘"
+
+
+def test_s2a_evidence_carries_override_channel(monkeypatch, tmp_path):
+    """独立止损通道同源落盘：普通 A_SELL=0、C=0、override=.9 仍 EXIT 时，
+    回看证据明确这是独立纪律 .9（不从中文 reason 猜身份）。"""
+    from src.cli import evidence as ev
+    monkeypatch.setattr(ev, "_STATE_DIR", tmp_path)
+    monkeypatch.setattr(ev, "_EVIDENCE_FILE", tmp_path / "analysis_evidence.jsonl")
+    monkeypatch.setattr(ev, "_REPORT_DIR", tmp_path / "cards")
+    engine = _offline_engine(monkeypatch, FOUR, [])
+    engine.skill_engine.execute_all = lambda data: [
+        SkillSignal(skill_name="stop_loss", skill_alias="止损", signal=S,
+                    confidence=0.9, skill_type="action", reason=["跌破止损价"])]
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _risk_on_sd(), confirmed_ratio=.2, position_state="HELD",
+        current_position_ratio=.2, has_position=True, trade_plan=None,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD, entry_price=20.0,
+                                     current_position_ratio=0.2),
+        today="2026-10-09", ai_enabled=False)
+    rec = ev.record_evidence(dr, out, source="s2a-stop")
+    assert rec["action_strength"]["SELL"] == 0       # 普通票无卖出意见
+    assert rec["coverage_ratio"] == pytest.approx(0.0)
+    assert rec["action_override_confidence"] == pytest.approx(0.9)  # 独立纪律 .9
+    assert packet.desired_action == DesiredAction.EXIT  # 仍退出
+    # packet 的 LegacyTrace 同源
+    assert packet.legacy_trace.action_override_confidence == pytest.approx(0.9)
+    assert (tmp_path / "analysis_evidence.jsonl").exists()
+
+
+def test_s2a_diff_render_handles_cross_protocol_quadruple():
+    """真实 diff 渲染消费端：跨协议 4 元组不崩溃、如实标口径（补修单 Z：
+    真实 diff 命令场景落正式回归——guard P0 修复的持续保护）。"""
+    from src.cli.main import _diff_change_text
+    d = {"changes": {
+        "score": (1.0, 0.2, "口径不同，数值不可比",
+                  {"old_protocol": "pre-s2a（当时未记录）", "new_protocol": "s2a-v1"}),
+        "price": (10.0, 11.0, 1.0),
+    }, "signal_changes": [], "new_warnings": []}
+    text = _diff_change_text(d)  # 返回已 join 的完整文本
+    assert "口径不同" in text and "pre-s2a" in text and "s2a-v1" in text
+    assert "Δ-0.8" not in text and "Δ+1.00" not in text  # 无误导数值 Δ
+    # 价格 Δ 照常（真实 UI 渲染由 CLI 人工验收，此处锁四元组不崩+文案）
 
 
 # ── 补修 A 组：固定预算不被身份/调节路径绕过（S2A_CLOSEOUT 固定复验矩阵） ──
@@ -472,7 +523,7 @@ def test_closeout_a_missing_asof_degrades_all_slots(monkeypatch):
     assert dr.decision == H
     slots = next(t for t in dr.trace
                  if t.step == "基础信号投票（s2a-v1）").data["slots"]
-    assert any("缺独立评估时点" in n for n in slots)
+    assert any("评估时点缺失" in n for n in slots)
 
 
 def test_closeout_a_regulator_duplicate_10x_same_as_single(monkeypatch):
@@ -741,3 +792,160 @@ def test_closeout_d_shadow_version_buckets_old_v11_out():
     cur = [r for r in records
            if r.get("derivation_version") == shadow_diff.SHADOW_DERIVATION_VERSION]
     assert len(cur) == 1 and cur[0]["derivation_version"] == "shadow_v12"
+
+
+# ── 补修 X 组：日期资格（固定反例 + 合法正例，S2AC_FINAL X 节） ──
+
+@pytest.mark.parametrize("bad_quote", [
+    "not-a-date", "2026-00-01", "2026-10-09garbage", "2099-01-01",
+], ids=["not_a_date", "invalid_calendar", "garbage_tail", "future"])
+def test_closeout_x_bad_quote_cannot_open_or_add(monkeypatch, bad_quote):
+    """live analysis=2026-10-09，quote 为坏/未来时点：普通票不产 OPEN/ADD
+    （缺时点/非法/未来三类同核，W 保留、拒因可见）。"""
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _sd(quote_as_of=bad_quote, index_close=4000.0, index_ma250=3500.0,
+            index_high_250d=4100.0),
+        confirmed_ratio=0.0, position_state="FLAT", current_position_ratio=0.0,
+        has_position=False, trade_plan=None, today="2026-10-09", ai_enabled=False)
+    assert dr.action_strength["BUY"] == 0
+    assert dr.coverage_ratio == pytest.approx(0.0)
+    assert packet.desired_action != DesiredAction.OPEN
+    assert packet.desired_action != DesiredAction.ADD
+
+
+def test_closeout_x_backtest_future_quote_rejected(monkeypatch):
+    """backtest analysis=2000-01-10 配 quote=2026-10-09（未来数据）：不 OPEN/ADD。"""
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _sd(quote_as_of="2026-10-09", price=30, ma5=31, low_60d=10),
+        confirmed_ratio=.2, position_state="HELD", current_position_ratio=.2,
+        has_position=True, trade_plan=_plan(), today="2000-01-10",
+        ai_enabled=False, is_backtest=True)
+    assert dr.action_strength["BUY"] == 0
+    assert packet.desired_action != DesiredAction.OPEN
+    assert packet.desired_action != DesiredAction.ADD
+
+
+def test_closeout_x_backtest_valid_bar_open_preserved(monkeypatch):
+    """正例：backtest analysis=bar=2000-01-10 → 合法 OPEN 保留（历史回放不被
+    墙钟否决、同日有效收盘不误拒）。"""
+    from src.core.strategy_layer import StrategyLayer
+    monkeypatch.setattr(StrategyLayer, "CONFIRMATION_MIN_CONSECUTIVE", 1)
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _sd(quote_as_of="2000-01-10", price=30, ma5=31, low_60d=10),
+        confirmed_ratio=0.0, position_state="FLAT", current_position_ratio=0.0,
+        has_position=False, trade_plan=None, today="2000-01-10",
+        ai_enabled=False, is_backtest=True)
+    assert dr.action_strength["BUY"] == pytest.approx(.8)
+    assert dr.decision == B
+    assert packet.desired_action == DesiredAction.OPEN
+
+
+def test_closeout_x_regulator_bad_quote_abstains(monkeypatch):
+    """行情时点非法时 regulator 同样弃权（base/regulator 共用同一资格，
+    防止只改一个入口）。"""
+    engine = Orchestrator(enabled_skills=[])
+    roster = {"slot0": 1.0}
+    monkeypatch.setattr(engine.skill_engine, "base_roster",
+                        lambda w: (dict(roster), {"slot0": "rv0"}))
+    monkeypatch.setattr(engine.skill_engine, "regulator_roster",
+                        lambda w: ({"reg0": 1.0}, {"reg0": "rv0"}))
+    dr = engine.decision_engine.make_decision(
+        _sd(quote_as_of="2099-01-01"),  # 未来行情
+        _with_regulator([("slot0", B, .8)], [("reg0", B, 1.0)]),
+        state=MarketState.RISK_ON,
+        expected_base=dict(roster), rule_versions={"slot0": "rv0"},
+        evaluation_as_of="2026-10-09",
+        expected_regulators={"reg0": 1.0}, regulator_rule_versions={"reg0": "rv0"})
+    assert dr.action_strength["BUY"] == 0  # base 弃权
+    notes = next(t for t in dr.trace if t.step == "调节器修正").data["regulator_notes"]
+    assert any("晚于分析截止" in n for n in notes)  # regulator 同拒
+
+
+# ── 补修 P1：Y 的 new_state 直接断言（HOLD_POSITION 占位 0 不清策略记忆仓位） ──
+
+def test_closeout_y_open_lifecycle_hold_position_keeps_ratio():
+    """OPEN 生命周期 + HOLD_POSITION（占位 0）：.60 仍 .60，不写 0 清记忆。"""
+    from src.core.strategy_layer import StrategyLayer
+    from src.data.models import TradeLifecycle, PositionAction, StrategyState
+    sl = StrategyLayer()
+    st = StrategyState(lifecycle=TradeLifecycle.OPEN, entry_price=10.0,
+                       current_position_ratio=0.6)
+    new = sl._update_lifecycle(st, SignalType.HOLD, PositionAction.HOLD_POSITION,
+                               _sd(), position_ratio=0.0)
+    assert new.current_position_ratio == pytest.approx(0.6)
+    assert new.lifecycle == TradeLifecycle.HOLD
+    # None（未知权重）同样保留
+    st_none = StrategyState(lifecycle=TradeLifecycle.OPEN, entry_price=10.0,
+                            current_position_ratio=None)
+    new_none = sl._update_lifecycle(st_none, SignalType.HOLD,
+                                    PositionAction.HOLD_POSITION, _sd(),
+                                    position_ratio=0.0)
+    assert new_none.current_position_ratio is None
+
+
+def test_closeout_y_exit_lifecycle_hold_position_keeps_ratio_and_stays():
+    """EXIT 生命周期 + HOLD_POSITION：.60 保留且不假进 COOLDOWN（真清仓才归零）。"""
+    from src.core.strategy_layer import StrategyLayer
+    from src.data.models import TradeLifecycle, PositionAction, StrategyState
+    sl = StrategyLayer()
+    st = StrategyState(lifecycle=TradeLifecycle.EXIT, entry_price=10.0,
+                       current_position_ratio=0.6)
+    new = sl._update_lifecycle(st, SignalType.BUY, PositionAction.HOLD_POSITION,
+                               _sd(), position_ratio=0.0)
+    assert new.current_position_ratio == pytest.approx(0.6)
+    assert new.lifecycle == TradeLifecycle.HOLD
+    # 对照：CLOSE_ALL 才归零进冷却（合法状态变更）
+    new_close = sl._update_lifecycle(st, SignalType.SELL,
+                                     PositionAction.CLOSE_ALL, _sd(),
+                                     position_ratio=0.0)
+    assert new_close.current_position_ratio == 0.0
+    assert new_close.lifecycle == TradeLifecycle.COOLDOWN
+
+
+def test_closeout_y_add_still_writes_new_target():
+    """ADD 仍写新目标（合法状态变更不受 Y 修复影响）。"""
+    from src.core.strategy_layer import StrategyLayer
+    from src.data.models import TradeLifecycle, PositionAction, StrategyState
+    sl = StrategyLayer()
+    st = StrategyState(lifecycle=TradeLifecycle.OPEN, entry_price=10.0,
+                       current_position_ratio=0.1)
+    new = sl._update_lifecycle(st, SignalType.BUY, PositionAction.ADD,
+                               _sd(), position_ratio=0.2)
+    assert new.current_position_ratio == pytest.approx(0.2)
+
+
+def test_closeout_x_live_intraday_quote_still_votes(monkeypatch):
+    """guard P0 正例：live 同日**带时刻精度**的实时行情（新浪主源形态
+    {今天}T15:00:03）不误拒——截止为日精度按日期比较，同日一律放行。"""
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    today = datetime.now().strftime("%Y-%m-%d")
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _sd(quote_as_of=f"{today}T15:00:03", index_close=4000.0,
+            index_ma250=3500.0, index_high_250d=4100.0),
+        confirmed_ratio=0.0, position_state="FLAT", current_position_ratio=0.0,
+        has_position=False, trade_plan=None, today=today, ai_enabled=False)
+    assert dr.action_strength["BUY"] == pytest.approx(.8)  # 同日时刻行情合法
+    assert dr.decision == B
+
+
+def test_closeout_x_live_next_day_quote_still_rejected(monkeypatch):
+    """对照：行情日期晚于分析截止（次日）仍拒——日期比较只放行同日/更早。"""
+    engine = _offline_engine(monkeypatch, FOUR,
+                             [(f"slot{i}", B, .8) for i in range(4)])
+    today = datetime.now().strftime("%Y-%m-%d")
+    tomorrow = (datetime.now().replace(hour=0, minute=0)
+                + timedelta(days=1)).strftime("%Y-%m-%d")
+    packet, dr, out, _, _ = engine.analyze_packet(
+        _sd(quote_as_of=tomorrow, index_close=4000.0,
+            index_ma250=3500.0, index_high_250d=4100.0),
+        confirmed_ratio=0.0, position_state="FLAT", current_position_ratio=0.0,
+        has_position=False, trade_plan=None, today=today, ai_enabled=False)
+    assert dr.action_strength["BUY"] == 0
+    assert packet.desired_action != DesiredAction.OPEN

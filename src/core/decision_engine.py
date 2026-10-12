@@ -12,6 +12,38 @@ from src.data.models import (
 logger = logging.getLogger(__name__)
 
 
+def _eval_time_qualified(evaluation_as_of, quote_as_of) -> tuple[bool, str]:
+    """S2a-X 评估时点资格（base/regulator **共用**，防只修一个入口）。
+
+    Returns: (合格?, 拒因)
+    - 评估截止严格 parse_source_time（缺失/非法/垃圾尾巴→不合格，不切前 10 位）
+    - 行情时点严格解析（缺失/非法→不合格）；解析成功才用 source_time_in_future
+      （坏值返回 False 不能当合格）
+    - **截止为日精度 → 按日期比较**（同日无论时刻一律放行——不虚构午夜精度把
+      live 当天带时刻的实时行情全拒掉，guard P0 实证；口径与 Q 已验收 exit 门
+      「分析日期是日精度，不做盘中时点对比」一致）；截止带时刻→按实际时刻比较
+    - 行情晚于截止 → 不合格（未来数据）；同日/更早合法
+    """
+    from src.core.source_time import parse_source_time, source_time_in_future
+    if not quote_as_of:
+        return False, "行情时点缺失"
+    _qp = parse_source_time(quote_as_of)
+    if _qp is None:
+        return False, f"行情时点非法({quote_as_of!r})"
+    if not evaluation_as_of:
+        return False, "评估时点缺失"
+    _cp = parse_source_time(evaluation_as_of)
+    if _cp is None:
+        return False, f"评估时点非法({evaluation_as_of!r})"
+    if _cp[1] is False:
+        if _qp[0].date() > _cp[0].date():
+            return False, f"行情时点({quote_as_of})晚于分析截止({evaluation_as_of})"
+    else:
+        if source_time_in_future(quote_as_of, _cp[0]):
+            return False, f"行情时点({quote_as_of})晚于分析截止({evaluation_as_of})"
+    return True, ""
+
+
 class StateMachine:
     """市场状态机 - 基于A股行业标准判断市场状态
 
@@ -171,7 +203,8 @@ class DecisionEngine:
                 None 或空 = 调用方无法提供注册表 → 显式降级（普通投票不产方向，
                 action 覆盖照常），绝不按成功票缩分母。
             rule_versions: 各槽规则版本（skill_engine 内容指纹）。
-            evaluation_as_of: 本次评估时点（独立传入，如 data.quote_as_of）。
+            evaluation_as_of: **独立分析截止**——backtest=调用方 bar 日期，live=当天；
+                不得用待核行情自身时点（data.quote_as_of）自我背书。
 
         ISS-001: 分层决策 + 信号去重；ISS-007: 决策追溯
         """
@@ -380,9 +413,18 @@ class DecisionEngine:
         W = float(sum(expected_base.values()))
         grouped: dict[str, list[tuple[SignalType, float, SkillSignal]]] = {}
         notes: list[str] = []
+        # S2a-X：评估时点资格（共用 _eval_time_qualified——cutoff 日精度按日期
+        # 比较，同日带时刻的实时行情合法；guard P0 修复）
+        _ok, _quote_note = _eval_time_qualified(evaluation_as_of,
+                                                getattr(data, "quote_as_of", None))
+        if not _ok:
+            notes.append(f"评估时点资格不足：{_quote_note}→全部槽 UNKNOWN")
         for sig in base_signals:
             if sig.skill_name not in expected_base:
                 notes.append(f"{sig.skill_name}: 未注册（不参与投票与分母）")
+                continue
+            if _quote_note:
+                notes.append(f"{sig.skill_name}: {_quote_note}→槽 UNKNOWN")
                 continue
             sec = getattr(data, "stock_code", None)
             reg_rv = (rule_versions or {}).get(sig.skill_name)
@@ -470,6 +512,12 @@ class DecisionEngine:
                 notes.append("regulator 全部弃权：无注册表（降级）")
             return {st: 1.0 for st in SignalType}, notes
 
+        # S2a-X：与 base 共用同一时点资格（_eval_time_qualified）
+        _ok, _quote_note = _eval_time_qualified(evaluation_as_of,
+                                                getattr(data, "quote_as_of", None))
+        if not _ok:
+            notes.append(f"regulator 全部弃权：{_quote_note}")
+            return {st: 1.0 for st in SignalType}, notes
         grouped: dict[str, list[tuple[SignalType, float, float, SkillSignal]]] = {}
         sec = getattr(data, "stock_code", None)
         for sig in regulator_signals:
@@ -479,6 +527,9 @@ class DecisionEngine:
             reg_rv = (regulator_rule_versions or {}).get(sig.skill_name)
             if not sec or not evaluation_as_of:
                 notes.append(f"regulator {sig.skill_name}: 缺证券/时点上下文→弃权")
+                continue
+            if _quote_note:
+                notes.append(f"regulator {sig.skill_name}: {_quote_note}→弃权")
                 continue
             if not reg_rv or reg_rv == "unavailable":
                 notes.append(f"regulator {sig.skill_name}: 缺注册规则版本→弃权")

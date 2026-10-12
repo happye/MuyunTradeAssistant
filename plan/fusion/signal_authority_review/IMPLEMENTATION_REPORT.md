@@ -289,3 +289,22 @@ CACHE_VERSION 未动。
 - 全量离线：**1735 passed / 2 skipped / 0 failed**（上轮 1719 + 补修矩阵净增 16）（shadow 版本升级连带 4 文件 12 处版本硬编码断言同步 v12——历次升级同款做法，旧记录字符串不动）。
 - guard：{GUARD_S2AC}
 - 原报告更正（保留历史记录）：S2a 批报告「所有测试真实链」应为「数值表主要到 make_decision，部分到 packet」（S2A_ACCEPTANCE 已指出，本批补齐 16 项真实链）；「影子本批已协议隔离」「旧记录读时标旧协议」当时无源码闭环，本批完成。
+
+---
+
+## S2a 集中补修 X/Y/Z 报告（v0.8.29.9，2026-10-12，S2AC_FINAL_CLOSEOUT_TASK 三组）
+
+### 要求→源码位置→正式测试 ID→终态（test_s2a_aggregation.py 计 62 项全绿）
+
+| 组 | 源码位置 | 正式测试 ID | 终态 |
+|---|---|---|---|
+| **X 日期资格** | orchestrator（evaluation_as_of=独立分析截止：backtest=bar 日期缺→None 全槽 UNKNOWN 拒普通新增，live=today or 当天——**不再用待核 quote 自我背书**）；decision_engine 抽模块级 `_eval_time_qualified`（base/regulator 共用，防只修一个入口）：评估截止严格 parse_source_time（缺失/非法/垃圾尾巴→不合格不切前 10 位）、行情时点严格解析（先解析成功才用 source_time_in_future——坏值 False 不当合格）、**截止为日精度按日期比较（同日无论时刻放行——不虚构午夜精度把 live 当天带时刻的实时行情全拒掉，guard P0 实证；口径与 Q 已验收 exit 门一致）**、行情晚于截止→拒 | test_closeout_x_bad_quote_cannot_open_or_add（not-a-date/2026-00-01/garbage/2099 四参数化）、…_backtest_future_quote_rejected、…_backtest_valid_bar_open_preserved（正例 bar=2000-01-10 保留 OPEN）、…_regulator_bad_quote_abstains、…_live_intraday_quote_still_votes（同日 T15:00:03 时刻形态照投——guard P0 正例）、…_live_next_day_quote_still_rejected（次日仍拒） | 坏/缺/未来时点不产生 BUY 资格/新增；W 保留拒因可见；合法 bar/同日时刻行情/硬保护不回归 |
+| **Y HOLD 保仓位** | strategy_layer._update_lifecycle：OPEN/EXIT 生命周期 HOLD_POSITION **不再把占位 ratio=0.0 写进 current_position_ratio**（.60 仍 .60、None 仍 None——策略记忆不丢）；ADD 仍写新目标、REDUCE/CLOSE_ALL 原语义（CLOSE_ALL 清零合法） | test_closeout_y_open_lifecycle_hold_position_keeps_ratio（.60/None 直断言）、…_exit_lifecycle…（.60 保留且不假进 COOLDOWN + CLOSE_ALL 归零对照）、…_add_still_writes_new_target | 实际不增仓准确说 HOLD 且策略记忆不丢；已持仓真增准确说 ADD |
+| **Z 保存依据** | evidence.rec 补 opinion_share/action_override_confidence（同源 getattr 单点）；LegacyTrace 补 action_override_confidence；人话卡渲染「信号口径」行（普通 A+覆盖率+独立纪律强度——回看可区分普通票与独立止损）；evidence 测试三路径（_STATE_DIR/_EVIDENCE_FILE/_REPORT_DIR）隔离+JSONL/卡片确实生成断言；diff 渲染四元组场景落正式回归 | test_s2a_evidence_reads_same_fields（重写）、…_evidence_carries_override_channel（A_SELL=0/C=0/override=.9 仍 EXIT 的回看证据）、…_diff_render_handles_cross_protocol_quadruple | 普通票与独立止损可区分回看；P 不参与授权；旧记录不重写 |
+
+### 版本与全量
+
+- v0.8.29.9（start.py/banner/--version/AGENTS/README）；CACHE_VERSION 不动。
+- 全量离线：**1749 passed / 2 skipped / 0 failed**（上轮 1735 + X/Y/Z 净增 14；原始日志 S2AC_CLAUDE_FULLTEST_RESULTS.txt）。QR7 正例测试周末漂移修复（end 对齐工作日——周一跑时 end=周六致 bdate_range 少一天，UNIFIED 单早有此警告）。
+- guard：两轮独立审查（两 Agent 并行，结论交叉印证）。确认项：X 解析语义/反例真实/边界 F 无越界、Y 全生命周期写点核对、Z 同源单点/三路径隔离/旧记录安全、全量计数一致。两轮共抓 **P0×1**（live 同日带时刻精度的实时行情被 cutoff 虚构午夜精度误拒——交易日普通买卖票全哑——两轮均在同一点；已修：cutoff 日精度按**日期比较**，与 Q 已验收 exit 门口径一致，不动 source_time.py）+ **P1×1**（Y 修复零回归覆盖——已补 OPEN/EXIT 生命周期直测 .60 保留/None 保留/不假进COOLDOWN/CLOSE_ALL 归零对照/ADD 写新目标）+ P2×4（docstring 自我背书示例、资格块复制提共用 _eval_time_qualified、人话卡缺 P/override 渲染、d04 fixture 缺 quote_as_of）全数修复。live 常态场景自查：quote≤今天恒合法，无误杀。
+- 越界自查：未添加 7 天有效期/墙钟淘汰历史 bar/覆盖率下限/票数门槛；Q 已验收三倍定律/日历/ST/时间纪律文件未触碰。

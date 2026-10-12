@@ -222,6 +222,7 @@ def build_decision_packet(
             voting_action_strength=getattr(decision_result, "action_strength", None),
             opinion_share=getattr(decision_result, "opinion_share", None),
             coverage_ratio=getattr(decision_result, "coverage_ratio", None),
+            action_override_confidence=getattr(decision_result, "action_override_confidence", None),
         ),
     )
     logger.debug(

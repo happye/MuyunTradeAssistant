@@ -174,6 +174,7 @@ class LegacyTrace(BaseModel):
     voting_action_strength: Optional[dict] = Field(default=None, description="普通投票动作强度 A（不含 AI/事件调节；None=旧协议）")
     opinion_share: Optional[dict] = Field(default=None, description="意见占比 P（仅展示；None=旧协议）")
     coverage_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="有效响应覆盖率 C（None=旧协议）")
+    action_override_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="独立 action 通道（止损/止盈触发票置信度；None=未触发/旧协议）")
 
 
 class DecisionPacket(BaseModel):
