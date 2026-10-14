@@ -40,10 +40,10 @@ CLAIM_SCHEMA_VERSION = "f6.v1"
 # R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2/cv2 标签和结果保留，新协议单独命名。
 # G3: cv4 adds source-local reporting period, geography and business-object binding.
 # Historical verification labels remain historical; revalidation uses the new rules.
-CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv4"
+CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv5"
 # J0/K0b 类型化事实核验范围规则版本（DELIVERY_PLAN J0a/K0b-1：只有支持该类型的确定性
 # 规则完整验证才进 FACT_CHECKED；改动关键词表/绑定规则必须 bump——旧核验结果不冒充新语义）
-TYPED_RULE_VERSION = "g3.binding_v2"
+TYPED_RULE_VERSION = "g3.binding_v3"
 
 # 核验范围闭集（verification_scope；""=自由文本——最高只能 EXCERPT_GROUNDED）
 SCOPE_NUMERIC_EVENT = "typed_numeric_event"
@@ -411,6 +411,13 @@ _NEGATION_MARKERS = ("无新", "没有新", "未获", "未取得", "未签", "�
 _FRAMEWORK_MARKERS = ("框架协议", "意向", "拟签", "拟与", "合作备忘", "战略协议", "框架合作")
 
 
+def _amount_is_range_bound(text: str, start: int) -> bool:
+    """数字紧跟在「数字+连字符/至」后面时，是区间端点，不是单点。"""
+    if start < 2:
+        return False
+    return text[start - 1] in "-~～至–—" and text[start - 2].isdigit()
+
+
 def _numeric_text_variants(value: float, unit: str) -> list[str]:
     """(value, unit) 在原文中的候选文本形态（金额单位换算族 + 千分位）。
     非有限值（NaN/inf——JSON 非标扩展可产生）返回空（不做数值检查，审查 P2）。"""
@@ -543,7 +550,7 @@ _FACT_PREFIX = (rf"(?P<period>{_FACT_PERIOD})?(?:本公司|公司)?(?:公告[:�
 # Objects are literal noun spans before an explicit business/product/project boundary.
 # No industry dictionary or claim-supplied scope fields participate in this grammar.
 _FACT_OBJECT = r"(?:(?P<business>[\u4e00-\u9fff]+?)(?P<object_kind>业务|产品|项目))?"
-_FACT_METRIC = r"(?:营业收入|收入占比|业务收入|净利润|利润|营收|收入|暴露|占比|份额|盈利|亏损)"
+_FACT_METRIC = (r"(?P<metric>营业收入|收入占比|业务收入|净利润|利润|营收|收入|暴露|占比|份额|盈利|亏损)")
 _FACT_FINANCIAL_RE = re.compile(
     _FACT_PREFIX + r"(?:实现)?" + _FACT_OBJECT + _FACT_METRIC
     + r"(?:为|达|达到)?" + _FACT_AMOUNT)
@@ -614,23 +621,47 @@ def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]]
              and any(s <= o["start"] and o["end"] <= e for o in occurrences)}
     if len(local) != 1:
         return "unknown", "数值存在多个原文局部，报告期/地域/业务对象无法唯一绑定"
-    (start, _), sentence_text = next(iter(local.items()))
+    (start, end), sentence_text = next(iter(local.items()))
     # A qualifier in an earlier sentence may govern this metric. Do not inherit
     # it, and do not treat it as absent just because this sentence omits it.
     earlier = source_text[:start]
     if re.search(_FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", earlier):
         return "unknown", "数值前文存在跨句范围限定，有限语法不推断其继承关系"
-    source = _parse_fact_scope(sentence_text, claim.event_type)
+    rest = source_text[end:]
+    if re.search(r"上述.{0,16}(?:收入|利润|净利).{0,8}(?:仅为|只为|仅指|仅是)", rest):
+        return "unknown", "数值后文存在确指限定，有限语法不把它当成无范围"
+    parsed_text = sentence_text
+    source = _parse_fact_scope(parsed_text, claim.event_type)
+    if source is None and occurrences:
+        rel = occurrences[0]["start"] - start
+        value_clause = ""
+        others = []
+        for clause, c_start, c_end in _clauses_with_spans(sentence_text):
+            if c_start <= rel <= c_end:
+                value_clause = clause
+            else:
+                others.append(clause)
+        other_text = "".join(others)
+        if (value_clause and not re.search(
+                _FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", other_text)
+                and _parse_fact_scope(value_clause, claim.event_type)):
+            parsed_text = value_clause
+        source = _parse_fact_scope(parsed_text, claim.event_type)
     statement = _parse_fact_scope(claim.statement, claim.event_type)
     if source is None or statement is None:
         return "unknown", "报告期/地域/业务对象含未支持修饰或多解句式，范围未能唯一解析"
     fields = (("period", "报告期"), ("region", "地域"),
               ("business", "业务对象"), ("object_kind", "业务对象类别"))
     for field, label in fields:
+        if field not in source or field not in statement:
+            continue
         left, right = source[field], statement[field]
         if left and right and left != right:
             return "conflict", f"{label}与原文明确冲突: 原文{left!r}，主张{right!r}"
+    fields = fields + (("metric", "指标"),)
     for field, label in fields:
+        if field not in source or field not in statement:
+            continue
         left, right = source[field], statement[field]
         if left != right:
             return "unknown", f"{label}限定被省略或无同源支持: 原文{left!r}，主张{right!r}"
@@ -866,12 +897,18 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
             return _cap_excerpt_grounded(
                 "数值与主张谓词未绑定到同一原文局部（数值可能属于同句其他指标/主体）"
                 "——需人工核对")
+        variants = _numeric_text_variants(claim.value, claim.unit)
+        if variants and not any(v in claim.statement for v in variants):
+            if re.search(r"[0-9][0-9,]*(?:\.[0-9]+)?(?:万元|亿元|元)", claim.statement):
+                return _reject("主张文字中的金额与结构化数值不一致")
         if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
             return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
         # 期间/地域/业务对象绑定正文里包含该数值的那一句，不绑定调用方裁短的 quote。
         body_occurrences = _find_value_occurrences(
             matched.body, _numeric_text_variants(claim.value, claim.unit))
         body_sign = [o for o in body_occurrences if o["text_negative"] == claim_negative]
+        if any(_amount_is_range_bound(matched.body, o["start"]) for o in body_sign):
+            return _cap_excerpt_grounded("区间端点不能核成已实现单点——需人工核对")
         scope_status, scope_reason = _source_fact_scope(
             claim, _sentences_with_spans(matched.body), body_sign, kw_stmt, matched.body)
         if scope_status == "conflict":

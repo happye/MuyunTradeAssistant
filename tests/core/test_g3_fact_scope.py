@@ -125,8 +125,41 @@ def test_english_unimplemented_is_honestly_capped():
 
 
 def test_scope_rule_and_verification_protocol_are_new_semantics():
-    assert TYPED_RULE_VERSION == "g3.binding_v2"
-    assert CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv4"
+    assert TYPED_RULE_VERSION == "g3.binding_v3"
+    assert CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv5"
+
+
+def test_statement_amount_must_match_structured_value():
+    result = verify(
+        "2024年公司境外磷酸铁锂业务收入100万元。",
+        "2024年公司境外磷酸铁锂业务收入200万元",
+        quote_text="业务收入100万元")
+    assert result.level is not VerificationLevel.FACT_CHECKED
+    assert "source_fact_scope_bound" not in result.checks
+
+
+def test_profit_substring_is_not_net_profit():
+    result = verify("公司利润100万元。", "公司净利润100万元",
+                    event_type="earnings", quote_text="利润100万元")
+    assert result.level is not VerificationLevel.FACT_CHECKED
+
+
+def test_same_metric_positive_still_fact_checked():
+    result = verify("公司利润100万元。", "公司利润100万元", event_type="earnings")
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
+
+
+def test_later_sentence_qualification_is_not_absent():
+    result = verify(
+        "公司收入100万元；上述收入仅为2024年公司境外磷酸铁锂业务收入。",
+        "公司收入100万元", event_type="earnings", quote_text="收入100万元")
+    assert result.level is not VerificationLevel.FACT_CHECKED
+
+
+def test_unrelated_later_sentence_stays_positive():
+    result = verify("公司收入100万元；公司签订新订单。", "公司收入100万元",
+                    event_type="earnings", quote_text="收入100万元")
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
 
 
 def test_matching_sentence_does_not_bypass_publication_gate():

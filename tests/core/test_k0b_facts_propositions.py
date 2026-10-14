@@ -112,12 +112,12 @@ def test_d1_positive_thousands_separator_and_negative_claim():
     assert r2.level is VerificationLevel.FACT_CHECKED, f"带符号负值被误杀: {r2.failures}"
 
 
-def test_d1b_interval_upper_bound_not_misjudged_as_negative():
-    """监督审查 P2-5 回归：区间上界（净利润100-200万元，主张取 200）合法可核定——
-    负号前后皆数字=区间连接符，不是负值标记；负值反例仍 REJECTED。"""
+def test_d1b_hyphen_between_digits_is_not_a_negative_sign():
+    """连字符两边都是数字时不是负号。区间不能核成单点事实。"""
     r = _verify("公司净利润100-200万元。", "公司净利润200万元",
                 event_type="earnings", value=200, unit="万元")
-    assert r.level is VerificationLevel.FACT_CHECKED, f"区间上界被误封: {r.failures}"
+    assert r.level is not VerificationLevel.FACT_CHECKED, f"区间被核成单点: {r.failures}"
+    assert r.level is not VerificationLevel.REJECTED, f"区间被当成负号拒绝: {r.failures}"
     r2 = _verify("公司净利润-100万元。", "公司净利润100万元",
                  event_type="earnings", value=100, unit="万元")
     assert r2.level is VerificationLevel.REJECTED, "真负值主张正值仍必须拒绝"
