@@ -38,12 +38,12 @@ logger = logging.getLogger(__name__)
 
 CLAIM_SCHEMA_VERSION = "f6.v1"
 # R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2/cv2 标签和结果保留，新协议单独命名。
-# K0b/D1：cv3 = 绑定元组核验（同一原文局部：主体×谓词×带符号数值×单位×期间×阶段×
-# 否定对象）；cv2 时代 FACT_CHECKED 结果按旧协议标签保留，重验按 cv3 语义降级。
-CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv3"
+# G3: cv4 adds source-local reporting period, geography and business-object binding.
+# Historical verification labels remain historical; revalidation uses the new rules.
+CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv4"
 # J0/K0b 类型化事实核验范围规则版本（DELIVERY_PLAN J0a/K0b-1：只有支持该类型的确定性
 # 规则完整验证才进 FACT_CHECKED；改动关键词表/绑定规则必须 bump——旧核验结果不冒充新语义）
-TYPED_RULE_VERSION = "k0b.binding_v1"
+TYPED_RULE_VERSION = "g3.binding_v2"
 
 # 核验范围闭集（verification_scope；""=自由文本——最高只能 EXCERPT_GROUNDED）
 SCOPE_NUMERIC_EVENT = "typed_numeric_event"
@@ -441,6 +441,8 @@ def _numeric_text_variants(value: float, unit: str) -> list[str]:
 
 # K0b/D1：绑定元组核验的原文局部（子句）切分——数值/谓词/否定对象必须在同一子句内
 _CLAUSE_SPLIT_RE = re.compile(r"[。！？；;!?，,、\n\r]")
+# G3 范围绑定用句子，不用逗号。逗号留在句内，调用方裁短的 quote 不能把期间/地域/产品切掉。
+_SENTENCE_SPLIT_RE = re.compile(r"[。！？；;!?\n\r]")
 # 词元边界补充（K0b/D1c）：前一字符为小数点（半角/全角）= 小数尾部，不是独立数值
 _DECIMAL_BOUNDARY_CHARS = ".．"
 _NEGATIVE_SIGNS = "-－−"
@@ -532,6 +534,109 @@ def _resolve_verification_scope(claim: "ClaimRecord") -> str:
     return ""
 
 
+_FACT_PERIOD = r"(?:[12][0-9]{3}年(?:度|上半年|下半年|第[一二三四1234]季度)?|本期|上期)"
+_FACT_REGION = r"(?:境内|境外|国内|海外|全公司)"
+_FACT_NUMBER = r"[-－−]?[0-9][0-9,]*(?:\.[0-9]+)?(?:[-~～至][0-9]+(?:\.[0-9]+)?)?"
+_FACT_AMOUNT = _FACT_NUMBER + r"(?:亿元|万元|元|%|亿股|万股|股|倍)"
+_FACT_PREFIX = (rf"(?P<period>{_FACT_PERIOD})?(?:本公司|公司)?(?:公告[:：]?)?"
+                rf"(?P<region>{_FACT_REGION})?")
+# Objects are literal noun spans before an explicit business/product/project boundary.
+# No industry dictionary or claim-supplied scope fields participate in this grammar.
+_FACT_OBJECT = r"(?:(?P<business>[\u4e00-\u9fff]+?)(?P<object_kind>业务|产品|项目))?"
+_FACT_METRIC = r"(?:营业收入|收入占比|业务收入|净利润|利润|营收|收入|暴露|占比|份额|盈利|亏损)"
+_FACT_FINANCIAL_RE = re.compile(
+    _FACT_PREFIX + r"(?:实现)?" + _FACT_OBJECT + _FACT_METRIC
+    + r"(?:为|达|达到)?" + _FACT_AMOUNT)
+_FACT_ORDER_RE = re.compile(
+    _FACT_PREFIX + _FACT_OBJECT
+    + r"(?:(?:公告)?(?:与(?:某)?客户)?(?:正式)?(?:获得|获|签订|签署|中标)?" + _FACT_AMOUNT
+    + r"(?:销售)?(?:订单|合同)|(?:订单|合同)(?:金额|公告)?(?:为|达)?(?:"
+    + _FACT_AMOUNT + r")?)")
+# Coordinated objects, qualifiers and accounting transformations have no unique noun
+# interpretation here. Identical text still does not establish a checked proposition.
+_FACT_OBJECT_UNSUPPORTED = (
+    "及", "和", "或", "等", "的", "部分", "主要", "相关", "口径", "调整",
+    "境内", "境外", "国内", "海外", "全公司", "预计", "拟", "按", "其中",
+)
+
+
+def _parse_fact_scope(text: str, event_type: str) -> Optional[dict[str, str]]:
+    """Parse one bounded Chinese numeric clause; unknown syntax returns no scope.
+
+    Supported order: optional year/half-year/quarter, company, geography, literal
+    X-business/product/project, metric and amount (or simple order amount syntax).
+    No translation, table interpretation, omitted-context inference or industry aliases.
+    """
+    compact = re.sub(r"\s+", "", text).strip("。.!！")
+    pattern = _FACT_ORDER_RE if event_type == "order" else _FACT_FINANCIAL_RE
+    parsed = pattern.fullmatch(compact)
+    if parsed is None:
+        return None
+    fields = {k: v or "" for k, v in parsed.groupdict().items()}
+    if any(token in fields["business"] for token in _FACT_OBJECT_UNSUPPORTED):
+        return None
+    return fields
+
+
+def _sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
+    """正文 → 句子 [(句子文本, 起始偏移, 结束偏移)]。
+
+    只在句号/问号/叹号/分号/换行处切开。逗号和顿号留在句内，避免把同一句里的
+    期间、地域、产品从数值旁边切走。"""
+    out: list[tuple[str, int, int]] = []
+    start = 0
+    for m in _SENTENCE_SPLIT_RE.finditer(text):
+        if m.start() > start:
+            out.append((text[start:m.start()], start, m.start()))
+        start = m.end()
+    if start < len(text):
+        out.append((text[start:], start, len(text)))
+    return out
+
+
+def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]],
+                       occurrences: list[dict], predicates: list[str],
+                       source_text: str) -> tuple[str, str]:
+    """Return ok/conflict/unknown and a human-readable reason, never infer scope.
+
+    sentences/occurrences are offsets into source_text, which is the source
+    document body. A trimmed quote cannot prove that period, region or product
+    qualifiers are absent. Multiple value locations, a qualifier in an earlier
+    sentence, or a sentence that does not uniquely parse all require review.
+    The statement must contain just one parseable local fact. Self-reported
+    extra fields are ignored.
+    """
+    unique_spans = {(o["start"], o["end"]) for o in occurrences}
+    if len(unique_spans) != 1:
+        return "unknown", "数值存在多个原文局部，报告期/地域/业务对象无法唯一绑定"
+    local = {(s, e): text for text, s, e in sentences
+             if any(k in text for k in predicates)
+             and any(s <= o["start"] and o["end"] <= e for o in occurrences)}
+    if len(local) != 1:
+        return "unknown", "数值存在多个原文局部，报告期/地域/业务对象无法唯一绑定"
+    (start, _), sentence_text = next(iter(local.items()))
+    # A qualifier in an earlier sentence may govern this metric. Do not inherit
+    # it, and do not treat it as absent just because this sentence omits it.
+    earlier = source_text[:start]
+    if re.search(_FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", earlier):
+        return "unknown", "数值前文存在跨句范围限定，有限语法不推断其继承关系"
+    source = _parse_fact_scope(sentence_text, claim.event_type)
+    statement = _parse_fact_scope(claim.statement, claim.event_type)
+    if source is None or statement is None:
+        return "unknown", "报告期/地域/业务对象含未支持修饰或多解句式，范围未能唯一解析"
+    fields = (("period", "报告期"), ("region", "地域"),
+              ("business", "业务对象"), ("object_kind", "业务对象类别"))
+    for field, label in fields:
+        left, right = source[field], statement[field]
+        if left and right and left != right:
+            return "conflict", f"{label}与原文明确冲突: 原文{left!r}，主张{right!r}"
+    for field, label in fields:
+        left, right = source[field], statement[field]
+        if left != right:
+            return "unknown", f"{label}限定被省略或无同源支持: 原文{left!r}，主张{right!r}"
+    return "ok", ""
+
+
 def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
                         *, as_of: datetime) -> ClaimVerificationResult:
     """分级核验（R2 主入口，DATA_TRUST §4 五级；**强制显式 as_of** 且必须带时区——
@@ -550,8 +655,10 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
     来源公开时点已知。自由文本/缺组件最高停在 EXCERPT_GROUNDED（摘录真实存在
     但结论不被自动支持——「未发现矛盾」不等于「整句成立」）。
 
-    确定性内容检查（**只在 quote_text 内判定**——quote 是主张自选的支撑摘录，
-    正文其余部分可能是套话/澄清/无关段落，全文扫描会误杀真实主张，审查 P1）：
+    确定性内容检查里，主体、否定、框架标记、数值定位和谓词同子句绑定仍只在
+    quote_text 内判定（quote 是主张自选的支撑摘录，全文扫描会误杀真实主张）。
+    报告期、地域和业务对象除外：它们绑定 SourceDocument.body 里包含该数值的
+    唯一句子，裁短的 quote 不能证明这些限定不存在：
     - 引用解析：文档级 uri 匹配 + **hash 与文档版本一致**（冲突=篡改/版本错配→
       REJECTED，审查 P1）+ 归属主体一致 + 文档在 as_of 前已公开
     - 摘录定位：quote_text 必须真实存在于正文（quote_span 给了则按区间精确校验）
@@ -761,6 +868,17 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
                 "——需人工核对")
         if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
             return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
+        # 期间/地域/业务对象绑定正文里包含该数值的那一句，不绑定调用方裁短的 quote。
+        body_occurrences = _find_value_occurrences(
+            matched.body, _numeric_text_variants(claim.value, claim.unit))
+        body_sign = [o for o in body_occurrences if o["text_negative"] == claim_negative]
+        scope_status, scope_reason = _source_fact_scope(
+            claim, _sentences_with_spans(matched.body), body_sign, kw_stmt, matched.body)
+        if scope_status == "conflict":
+            return _reject(scope_reason)
+        if scope_status != "ok":
+            return _cap_excerpt_grounded(scope_reason + "——需人工核对")
+        checks.append("source_fact_scope_bound")
         checks.append(SCOPE_NUMERIC_EVENT)
     elif scope == SCOPE_NEGATION:
         # 否定型（K0b/D1d）：主张文本自身要有否定语义，且**否定对象绑定**——主张与

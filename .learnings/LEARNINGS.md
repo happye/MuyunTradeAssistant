@@ -2457,3 +2457,36 @@ NewsClient._stock_news_cache 是类级 dict（进程级新闻缓存，TTL 1小�
 ### Resolution
 - **Resolved**: 2026-10-02
 - **Notes**: 测试显式清空缓存后全量 1543 passed/2 skipped/1 deselected。
+
+---
+
+## [LRN-20261009-ARCH13] 资格、权限与最终消费必须一起验证
+
+**Logged**: 2026-10-09 | **Priority**: high | **Status**: applied（2026-10-14限定P0/P1/P2及相邻尾项已过门，持续遵循） | **Area**: architecture/testing
+
+验收矩阵每格须同时核对 request ctx、状态、packet、同源shadow与公开消费者；不能只断言“清单有代码”。失败请求保持UNKNOWN，后续重读/重试不得洗成有效；警示词或建议标签不是硬动作授权。合法硬退出须作为组合正例，验证贯穿最终Strategy与用户文案；UNKNOWN不得显示成已确认失效或已具备买入条件。测试与独立复核的边界须如实区分。
+
+投影外层dict合法不证明内层字段可用：在请求边界按真实消费模型核验，并保留独立数量及另行核定的合法计划；不能因坏成本/计数把有效止损计划一同丢掉。显示规范码与原存储键分开，刷新后的真实管理器仍按原键记录观察量。已采用的禁止新增来源须贯穿仓位出口；后置保护改变动作时同步结构化采用依据。风险文字不决定数据资格，未记录资格不能伪称完整公司研究。
+
+公开入口测试必须验证真正调用及落盘变化：实例spy不能监视reload后新实例；观察层只搬运上游状态，fixture须显式提供要保存的状态。固定输入只能证明边界正确性，不能当真实券商成交或投资效果证据。只读查询必须区分键缺席与显式null，三类计划/候选/接受引用分别验，坏一周期不能隐藏另一周期；查询不借写服务刷新草稿，不以合成VALID宣称完整真实研究。子Agent的来源主体、地域和期间仍须回原件核对；境外业务不能偷换全公司，另一发行人的材料不能串用，URL目录日期不能自证公开时点。
+
+G3新增独立反例（尚未关闭）：引用hash与摘录确实存在，不证明摘录保留了完整限定；核数值范围须绑定原文body中所在完整局部，不能让裁剪quote抹掉年份/地域/产品后自证。范围负例必须含完整quote和被裁quote两种。检查条件是验证约定，不是公司事实；保存所有消费字段及到期复核，内容ID排除随机ID，同固定as_of可幂等；旧记录不补新资格。G3当前148项目标绿但裁剪P1仍红，交接不得称已修完或v15已冻结。
+
+按需模型分工时，角色/型号配置不等于任务已派发。执行前先判断是否存在有价值的独立子任务并实际调用派发工具；型号覆盖使用fresh fork，实际model/effort以turn_context为准。用户新的分工授权优先于旧会话中“不用agent”的决定。
+
+原ISS-117接收范围见[ISSUES.md](../ISSUES.md)及现有[S2AC验收](../plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)；本次尾项与M2有限只读接线独立PASS见[R15](../plan/fusion/iteration9/R15_ACCEPTANCE.md)。K1 shadow_v14已冻结，M2已接收；G3真实研究样板、capture_only及投资效果门槛保持。
+
+---
+
+## [LRN-20261014-G3SCOPE] 裁剪 quote 不能证明来源句子没有范围限定
+
+**Logged**: 2026-10-14 | **Priority**: high | **Status**: applied（工作树已改，未验收、未提交） | **Area**: claim-verification
+
+### Summary
+`verify_claim_tiered` 原先只对 `claim.quote_text` 做报告期/地域/业务对象比对。正文 `2024年公司境外磷酸铁锂业务收入100万元。` 在真实 body hash、证券 issuer、过去公开时点下，把 quote 裁成 `业务收入100万元`（exposure，主张 `公司业务收入100万元`）或 `收入100万元`（earnings，主张 `公司收入100万元`），修复前仍 `FACT_CHECKED` 并记 `source_fact_scope_bound`。先红后修：两条反例在改代码前 2 failed；改后 `tests/core/test_g3_fact_scope.py` 35 passed。范围改绑正文里包含该数值的唯一中文句子（`_sentences_with_spans` / `_source_fact_scope`）。句切分不含逗号。多个数值位置、前文另有期间/地域/业务/产品/项目、或该句解析失败，都降为非 FACT_CHECKED。协议版本仍是 cv4 / g3.binding_v2。横幅仍 v0.8.33。G3 不通过，ISS 未清零，shadow_v15 未冻结。本会话没有独立 Sol/high。
+
+### 同类点
+`_source_fact_scope` 全库只有定义和 `verify_claim_tiered` 里这一处调用，没有第二处范围放行。仍只读 quote、且不能单独追加 `source_fact_scope_bound` 的检查有 4 类，留在原处：`value_bound`（quote 子句）、`_OTHER_SUBJECT_MARKERS`、`_NEGATION_MARKERS`、`_FRAMEWORK_MARKERS`。它们继续限制摘录，不证明期间/地域/产品缺失。
+
+### 习惯缺口
+Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、STATUS 与 RESUME」和「收尾维护：更新长期里程碑、状态、RESUME」。`AGENTS.md` 只写「交付/审批后同步」。第一遍因此没把进度入口改成与工作树一致。该习惯已写入 Grok 自己的 `harness-project-init`。本条把同一事实记进仓库：行为变了并有测试之后，更新现有里程碑、状态和恢复指针；未验收写「已改未验收」。文档同步不是修复本身。
