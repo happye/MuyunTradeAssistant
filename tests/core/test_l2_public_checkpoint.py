@@ -1,8 +1,9 @@
 """L2 公开检查点端到端回归测试（plan/fusion iteration5，DELIVERY_PLAN L2；R11 V4 反例）
 
 锁死语义（检查点从公开入口可建立、可复核——全部实走 parse_input→run_cli）：
-1. V4 正例：research --claims --checkpoint --confirm-risk --ref <证据ID> → 检查点命题
-   window_and_refutation 可建立（TRUE）——证据引用从公开入口绑定（不再固定 []）
+1. V4 正例：research 命令本身带 --claims --checkpoint --confirm-risk --ref
+   --review-at --refute-if --on-expiry REVIEW_REQUIRED。helper 不补旗标。
+   时窗命题可建立（TRUE）。全链含保存、accept、重启只读、影子和报告。
 2. 稳定证据ID：主张文件 claim_id 尊重/缺省内容确定性生成——同命令重放不换引用；
    未给 --ref 时列可选证据ID与缺口（不自动绑定任何主张）
 3. 伪引用/错主体拒绝；缺原件（未达已核验）给明确下一步；未确认风险不建立
@@ -18,6 +19,7 @@ import json
 import os
 import sys
 from contextlib import redirect_stdout
+from datetime import datetime, timezone
 from unittest.mock import patch
 
 import pytest
@@ -114,9 +116,11 @@ def test_v4_full_chain_research_accept_shadow(tmp_path, monkeypatch):
     cid = r1["verified_claim_ids"][0]
     assert _window_value(r1["assessment_ids"]["MID"]) == "UNKNOWN", \
         "未给引用时检查点命题必须 UNKNOWN（不得自动绑定任何主张）"
-    # 第 2 跑：--ref 绑定 → 命题可建立；重放不换引用
+    # 第 2 跑：命令本身带齐引用、风险确认和三个复核参数。helper 不补旗标。
     out2 = _repl(f"research {CODE} --claims {claims} --checkpoint 到期复核 "
-                 f"--confirm-risk --ref {cid} --json")
+                 f"--confirm-risk --ref {cid} "
+                 f"--review-at 2026-10-30T16:00:00+08:00 "
+                 f"--refute-if 合同取消 --on-expiry REVIEW_REQUIRED --json")
     r2 = json.loads(out2[out2.index("{"):])
     assert r2["verified_claim_ids"] == r1["verified_claim_ids"], \
         "同输入重放不得更换证据ID（稳定引用）"
@@ -128,6 +132,17 @@ def test_v4_full_chain_research_accept_shadow(tmp_path, monkeypatch):
     plan = store.get(CODE, "MID")
     assert plan is not None and plan.activated, "计划必须已激活"
     assert store.is_accepted_version(plan), "精确接受版本引用必须成立"
+    # 重启只读：新实例读盘，不重跑研究，也不写计划。
+    from src.core.research_application import ResearchApplicationService
+    from src.data.research_store import ResearchStore
+    view = ResearchApplicationService(
+        store=ResearchStore(research_store_module.RESEARCH_DIR),
+        plans_store=HorizonPlanStore(),
+        assessment_store=AssessmentStore(research_store_module.RESEARCH_DIR),
+    ).get_daily_view(CODE, as_of=datetime(2026, 10, 14, 8, tzinfo=timezone.utc))
+    assert view["horizons"]["MID"]["accepted"] is True
+    assert view["horizons"]["MID"]["assessment_id"] == r2["assessment_ids"]["MID"]
+    assert _window_value(view["horizons"]["MID"]["assessment_id"]) == "TRUE"
     # 隔离 l（行情数据替身=数据隔离；研究/接受/捕获全真）→ 影子/报告
     # （l 命令函数内 from src.data.akshare_client import get_stock_data——patch 源模块）
     stub = StockData(stock_code=CODE, stock_name="测试股", price=10.0, volume=100000,
@@ -141,6 +156,12 @@ def test_v4_full_chain_research_accept_shadow(tmp_path, monkeypatch):
     assert store.get(CODE, "MID").activated
     assert report["cur_mid_effective"] == 1, \
         f"已接受计划+可解析评估+账户版本+行情时点齐 → 影子有效分母 1: {report['cur_drop_counts']}"
+    shadow_lines = shadow_module.SHADOW_STORE_PATH.read_text(encoding="utf-8").splitlines()
+    recorded = json.loads(shadow_lines[-1])
+    saved = AssessmentStore(research_store_module.RESEARCH_DIR).load(r2["assessment_ids"]["MID"])
+    assert recorded["mid_assessment_id"] == r2["assessment_ids"]["MID"]
+    assert recorded["mid_thesis_status"] == saved.status.value
+    assert recorded["fusion_mid_action"] != "EXIT"
 
 
 # ── 缺引用/伪引用/错主体/缺原件/未确认风险 ─────────────────────────
@@ -238,7 +259,9 @@ def test_v4_restart_persists_accepted_state(tmp_path, monkeypatch):
                  f"--confirm-risk --json")
     cid = json.loads(out1[out1.index("{"):])["verified_claim_ids"][0]
     out2 = _repl(f"research {CODE} --claims {claims} --checkpoint 到期复核 "
-                 f"--confirm-risk --ref {cid} --json")
+                 f"--confirm-risk --ref {cid} "
+                 f"--review-at 2026-10-30T16:00:00+08:00 "
+                 f"--refute-if 合同取消 --on-expiry REVIEW_REQUIRED --json")
     aid = json.loads(out2[out2.index("{"):])["assessment_ids"]["MID"]
     _repl(f"plan2 accept {CODE} mid --primary")
     # 重启：模块级 monkeypatch 不变（等价新实例）——直接新构造存储读取

@@ -2535,3 +2535,12 @@ Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、ST
 
 ### Summary
 评估身份以前只等于 `g3.assertion_v2`。方法字符串相同的旧 VALID 评估仍可被消费，影子报告也只按 `shadow_v15` 和记录里的 effective 布尔计当前分母。现在综合方法是 `g3.method_v1:` 加七个固定组件的 SHA256：协议、typed、association、checkpoint、proposition、assertion、service。命题算法仍是 `g3.assertion_v2`。method 进入 run 缓存键和 `asm.method_version`。旧方法原件保留，消费时待复核，新评估 id 不同所以只进候选。报告当前分母还要 binding 的方法等于当前综合方法；旧方法、缺 binding、历史 false 和 `shadow_v14` 不晋升。报告不改历史文件。横幅仍 v0.8.33。G3 未验收。
+
+---
+
+## [LRN-20261015-G3R07] 公开正例必须自己带齐检查条件
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: public-research
+
+### Summary
+两个公开全链正例以前只写 `--checkpoint` 文字、`--confirm-risk` 和 `--ref`，却断言时窗命题 TRUE。缺复核时间、推翻事实或到期处理时，命题现在是 UNKNOWN。正例改为在真实 REPL 命令里写上 `--review-at`、`--refute-if`、`--on-expiry REVIEW_REQUIRED`。`_repl` 不补旗标。全链包含保存、accept、重启只读、影子和报告。旧文字入口仍提示不完整并保持 UNKNOWN。`tests/core/test_l2_public_checkpoint.py`：12 passed。横幅仍 v0.8.33。G3 未验收。
