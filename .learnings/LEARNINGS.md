@@ -2514,3 +2514,15 @@ Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、ST
 
 ### 同类点
 金额子串匹配只此一处，已换成 `_statement_quantity_status`。谓词关键词仍用 `in claim.statement`，那是指标词不是金额。R05 的 as_of 原始 isoformat 不在本切片。
+
+---
+
+## [LRN-20261015-G3R05] 一次捕获不能多次取墙钟
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: shadow-capture
+
+### Summary
+`capture_shadow` 先取一次 `datetime.now()` 当作记录时点，随后加载评估、论文状态和 binding 又各自取墙钟。假钟在第一次之后跨过 `review_at` 时，记录时点仍在到期前，论文状态却变成 `REVIEW_REQUIRED`，和同一时刻的只读 view 不一致。修复：捕获只确定一个带时区的 `as_of`，每个周期只加载一次，状态和 binding 复用这次结果。到期后的新查询是待复核，不改旧捕获行，也不因此产生退出。横幅仍 v0.8.33。G3 未验收。
+
+### 同类点
+`shadow_diff.py` 里历史查询的 `datetime.now() - timedelta` 仍用墙钟做展示窗口，不改已落盘记录，本切片不修。

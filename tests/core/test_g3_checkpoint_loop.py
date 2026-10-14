@@ -217,6 +217,83 @@ def test_review_time_or_expiry_change_still_creates_candidate(tmp_path, changes)
     assert app.plans_store.get_candidate(SECURITY, "MID").assessment_id == second.assessment_ids["MID"]
 
 
+def test_capture_uses_one_as_of_across_review_deadline(tmp_path, monkeypatch):
+    import src.core.shadow_diff as shadow_diff
+    import src.data.account_service as account_service
+    from src.core.analysis_service import build_decision_packet
+    from src.core.shadow_diff import capture_shadow
+    from src.data.models import (
+        PositionAction, SignalType, StrategyDecision, StrategyState, TradeLifecycle,
+    )
+    from types import SimpleNamespace
+
+    monkeypatch.setattr(account_service, "DEFAULT_LEDGER_PATH", tmp_path / "no-ledger.jsonl")
+    app = _app(tmp_path)
+    first = app.run(SECURITY, as_of=AS_OF, horizons=("MID",),
+                    documents=_documents(), checkpoints=[_condition()])
+    assert app.plans_store.accept(SECURITY, "MID")[0]
+    aid = first.assessment_ids["MID"]
+    before = datetime(2026, 10, 20, 8, tzinfo=timezone.utc)
+    after = REVIEW_AT
+    calls = {"n": 0}
+
+    def _now(tz=None):
+        calls["n"] += 1
+        return before if calls["n"] == 1 else after
+
+    class _Clock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return _now(tz)
+
+    monkeypatch.setattr(shadow_diff, "datetime", _Clock)
+    decision = SimpleNamespace(
+        decision=SimpleNamespace(value="HOLD"), score=0.6,
+        stock=SimpleNamespace(stock_code=SECURITY, stock_name="测试股"), warnings=[])
+    strategy = StrategyDecision(
+        decision=SignalType.HOLD, position_action=PositionAction.HOLD_POSITION,
+        position_ratio=0.1, sell_path=None,
+        lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.HOLD,
+        strategy_reasons=["持有"], divergence=None, new_state=StrategyState())
+    execution = SimpleNamespace(effective_action=SimpleNamespace(value="HOLD"), blocked=False)
+    packet = build_decision_packet(decision, strategy, execution, confirmed_ratio=0.1, source="test")
+    early = capture_shadow(
+        decision, strategy, execution,
+        SimpleNamespace(stock_code=SECURITY, stock_name="测试股", current_ratio=0.1, trade_plan=None),
+        packet=packet, source="test",
+        config={"fusion": {"mode": "opt_in", "shadow_capture": True}},
+        store_path=tmp_path / "shadow.jsonl",
+        plans_store=app.plans_store, assessment_store=app.assessment_store,
+        account_version="v-r05", quote_as_of="2026-10-14")
+    view = app.get_daily_view(SECURITY, as_of=before)
+    assert datetime.fromisoformat(early.as_of) == before
+    assert early.mid_thesis_status == "VALID"
+    assert early.mid_assessment_id == aid
+    assert early.mid_binding["assessment_id"] == aid
+    assert early.mid_thesis_status == view["horizons"]["MID"]["assessment_status"]
+    assert early.mid_effective is True
+    assert view["horizons"]["MID"]["assessment_status"] == "VALID"
+    stored = {str(p.relative_to(tmp_path)): p.read_bytes()
+              for p in tmp_path.rglob("*") if p.is_file() and p.name != "shadow.jsonl"}
+    first_line = (tmp_path / "shadow.jsonl").read_bytes().splitlines()[0]
+    late = capture_shadow(
+        decision, strategy, execution,
+        SimpleNamespace(stock_code=SECURITY, stock_name="测试股", current_ratio=0.1, trade_plan=None),
+        packet=packet, source="test-late", as_of=after,
+        config={"fusion": {"mode": "opt_in", "shadow_capture": True}},
+        store_path=tmp_path / "shadow.jsonl",
+        plans_store=app.plans_store, assessment_store=app.assessment_store,
+        account_version="v-r05", quote_as_of="2026-10-14")
+    late_view = app.get_daily_view(SECURITY, as_of=after)
+    assert late.mid_thesis_status == "REVIEW_REQUIRED"
+    assert late_view["horizons"]["MID"]["assessment_status"] == "REVIEW_REQUIRED"
+    assert late.fusion_mid_action != "EXIT"
+    assert late.hard_exit is False
+    assert (tmp_path / "shadow.jsonl").read_bytes().splitlines()[0] == first_line
+    assert {str(p.relative_to(tmp_path)): p.read_bytes()
+            for p in tmp_path.rglob("*") if p.is_file() and p.name != "shadow.jsonl"} == stored
+
+
 def test_semantic_change_creates_candidate_and_preserves_accepted_main(tmp_path):
     app = _app(tmp_path)
     first = app.run(SECURITY, as_of=AS_OF, horizons=("MID",),

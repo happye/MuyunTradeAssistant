@@ -281,38 +281,52 @@ def _derive_shadow_plan(horizon, security_id: str, as_of: datetime,
 
 
 def _load_verified_assessment(plan, horizon_value: str, security_id: str,
-                              assessment_store=None):
+                              assessment_store=None, *, as_of=None, gaps=None):
     """按 J0b 口径加载并核对评估（J5 审查 P2-2：与 thesis 消费共用同一核对——
     security 非空且一致 / horizon / snapshot / method_version / 不在未来）。
     核对通过返回 ThesisAssessment；否则 None（调用方按各自语义降级：
     thesis→REVIEW_REQUIRED，有效观察→不登记引用）。"""
+    def reject(reason):
+        if gaps is not None:
+            gaps.append(reason)
+        return None
+
     aid = str(getattr(plan, "assessment_id", "") or "").strip()
     if not aid or ":" in aid or not aid.startswith("asm_"):
-        return None  # 旧格式合成串（R3 草稿）不是评估库 id
+        return reject("缺少当前评估引用")
     if assessment_store is None:
         from src.data.research_store import AssessmentStore
         assessment_store = AssessmentStore()
     asm = assessment_store.load(aid)
     if asm is None:
-        return None
+        return reject("评估引用缺失、损坏或不可读")
     if not str(asm.security_id or "").strip() or \
             (security_id and asm.security_id != security_id):
-        return None  # 实体缺失/错配（空实体不冒充任意证券）
+        return reject("评估证券缺失或错配")
     if str(asm.horizon) != str(horizon_value):
-        return None  # 周期错配
+        return reject("评估周期错配")
     plan_snap = str(getattr(plan, "snapshot_id", "") or "")
     asm_snap = str(asm.snapshot_id or "").strip()
     if not plan_snap or not asm_snap:
         # K0c/A2：计划与评估 snapshot **两侧非空且相等**才可消费——空值不作通配
         #（旧实现任一侧为空即跳过比较，让缺快照评估冒充消费资格）
-        return None
+        return reject("计划或评估缺少快照引用")
     if plan_snap != asm_snap:
-        return None  # 快照错配
+        return reject("评估快照错配")
     from src.core.research_service import ASSERTION_METHOD_VERSION
     if str(asm.method_version or "").strip() != ASSERTION_METHOD_VERSION:
-        return None  # 方法版本不符——旧评估不冒充当前语义
-    if asm.evaluated_as_of is not None and asm.evaluated_as_of > datetime.now().astimezone():
-        return None  # 评估时点在未来——不可消费
+        return reject("评估方法版本非当前版本，待复核")
+    # Default shadow callers retain their existing wall-clock semantics. Daily
+    # queries supply an independent cutoff; evidence cannot provide its own clock.
+    cutoff = as_of if as_of is not None else datetime.now().astimezone()
+    if as_of is not None and asm.evaluated_as_of is None:
+        return reject("评估时点缺失，待复核")
+    if asm.evaluated_as_of is not None and asm.evaluated_as_of > cutoff:
+        return reject("评估时点晚于查询时点，待复核")
+    from src.core.research_service import checkpoint_review_gaps
+    condition_gaps = checkpoint_review_gaps(asm, as_of=cutoff)
+    if condition_gaps:
+        return reject("；".join(condition_gaps))
     return asm
 
 
@@ -411,8 +425,12 @@ def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[b
     return (not ordered), ordered
 
 
+_NOT_LOADED = object()
+
+
 def _thesis_status_for(plan, horizon_value: str, security_id: str,
-                       assessment_store=None):
+                       assessment_store=None, *, as_of=None,
+                       verified_asm=_NOT_LOADED):
     """单周期逻辑状态（J0b v4：评估唯一真值——影子消费同一 Assessment，不再重判）。
 
     - plan 带 assessment_id → 核对（security/horizon/snapshot/method/时效）后消费
@@ -431,7 +449,11 @@ def _thesis_status_for(plan, horizon_value: str, security_id: str,
     if not aid or ":" in aid or not aid.startswith("asm_"):
         # 无评估引用（或 R3 旧合成串格式——非评估库 id）→ 旧计划降级
         return ThesisStatus.UNESTABLISHED
-    asm = _load_verified_assessment(plan, horizon_value, security_id, assessment_store)
+    if verified_asm is _NOT_LOADED:
+        asm = _load_verified_assessment(
+            plan, horizon_value, security_id, assessment_store, as_of=as_of)
+    else:
+        asm = verified_asm
     if asm is None:
         return ThesisStatus.REVIEW_REQUIRED  # 找不到/错配/过期——明确待复核（不救成 VALID）
     return asm.status
@@ -506,7 +528,8 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
                    plans_store=None, assessment_store=None,
                    account_version: str = "", quote_as_of: str = "",
                    quote_fetched_at: str = "",
-                   account_context=None) -> Optional[ShadowDiffRecord]:
+                   account_context=None,
+                   as_of: Optional[datetime] = None) -> Optional[ShadowDiffRecord]:
     """一次持仓分析的影子对照捕获（纯读 + 追加一条 JSONL；异常如实告警不吞）。
 
     plans_store: HorizonPlanStore 注入（测试密闭用；None=读真实 ~/.muyun/horizon_plans.json）。
@@ -556,7 +579,10 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     )
     from src.core.decision_policy import HorizonFacts, evaluate_horizon
 
-    as_of = datetime.now().astimezone()
+    if as_of is None:
+        as_of = datetime.now().astimezone()
+    elif as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise ValueError("as_of 必须带时区")
     security_id = packet.security_id
 
     # v3：用户 plan2 计划优先（每股每周期一份——mid/long 可各立），来源逐周期标注。
@@ -590,6 +616,12 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             return "simulated" if up is None else "user_plan_draft"
     mid_src = _source_of(user_plans.get("MID"))
     long_src = _source_of(user_plans.get("LONG"))
+    verified_by_horizon = {}
+    for h, up in user_plans.items():
+        if up is None:
+            continue
+        verified_by_horizon[h] = _load_verified_assessment(
+            up, h, security_id, assessment_store, as_of=as_of)
 
     # J4 有效观察绑定信息：接受计划的 revision/评估引用/快照；账户版本缺失 →
     # 只记 diagnostic（不进有效比较分母——「缺账户…保留诊断但不进有效比较」）
@@ -613,7 +645,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             policy_versions.append(pv)
         # 与 _thesis_status_for 同一核对（J5 审查 P2-2 口径对称）：
         # 核对通过才登记评估引用为「可解析」——否则 observation 降级
-        asm = _load_verified_assessment(up, h, security_id, assessment_store)
+        asm = verified_by_horizon.get(h)
         resolved = str(getattr(up, "assessment_id", "") or "") if asm is not None else ""
         if h == "MID":
             mid_rev, mid_aid = int(getattr(up, "revision", 0) or 0), resolved
@@ -640,8 +672,9 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         hf = dict(hf_kwargs)
         # 事实只作用于用户计划所在的周期——不把一份计划的逻辑事实泄漏到另一周期；
         # 状态消费评估唯一真值（J0b v4：assessment 引用——缺失/错配→待复核，不重判）
-        thesis_status = _thesis_status_for(up, horizon.value, security_id,
-                                           assessment_store=assessment_store)
+        thesis_status = _thesis_status_for(
+            up, horizon.value, security_id, assessment_store=assessment_store,
+            as_of=as_of, verified_asm=verified_by_horizon.get(horizon.value, _NOT_LOADED))
         per_horizon_thesis[horizon.value] = thesis_status.value
         hf["thesis_status"] = thesis_status
         plan = up if up is not None else _derive_shadow_plan(
@@ -711,7 +744,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             active_ref = store.get_active_ref(security_id)
         except Exception:
             active_ref = None
-        asm = _load_verified_assessment(up, h, security_id, assessment_store)
+        asm = verified_by_horizon.get(h)
         aid = str(getattr(up, "assessment_id", "") or "") if asm is not None else ""
         quote_cutoff = str(quote_as_of or "").strip() or None
         # v8：采集时点（诊断留痕）——不进资格门（资格是价格有效时点 quote_cutoff）
