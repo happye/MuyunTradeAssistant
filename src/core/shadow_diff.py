@@ -130,7 +130,7 @@ logger = logging.getLogger(__name__)
 # 动作强度 A/P/C 协议（aggregation_protocol=s2a-v1），旧 v11 观察的 legacy 动作
 # 基础与新合同不可比，按既有分桶机制整体降为 older_versions 只诊断不进当前
 # 有效分母；旧记录原件不重写、不追认。S3 授权桥接仍留后批。
-SHADOW_DERIVATION_VERSION = "shadow_v12"
+SHADOW_DERIVATION_VERSION = "shadow_v15"
 
 SHADOW_STORE_PATH = Path.home() / ".muyun" / "shadow_diff.jsonl"
 
@@ -650,6 +650,33 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
             evaluate_horizon(plan, HorizonFacts(**hf), security_id,
                              confirmed_ratio=confirmed_ratio,
                              position_state=ctx_state))
+    # 同向卖出若 legacy 包已 BLOCKED，fusion 臂不另造可执行资格。
+    from src.core.decision_contract import ExecutionStatus, DesiredAction, DecisionPacket
+    needs_order = {DesiredAction.OPEN, DesiredAction.ADD, DesiredAction.REDUCE, DesiredAction.EXIT}
+
+    def _order_side(action):
+        return "BUY" if action in {DesiredAction.OPEN, DesiredAction.ADD} else "SELL"
+
+    for i, hp in enumerate(horizon_packets):
+        if hp.desired_action not in needs_order:
+            continue
+        status = ExecutionStatus.UNKNOWN
+        blockers = []
+        if (packet.desired_action in needs_order
+                and _order_side(hp.desired_action) == _order_side(packet.desired_action)):
+            if packet.execution_status == ExecutionStatus.BLOCKED:
+                status, blockers = ExecutionStatus.BLOCKED, list(packet.blockers)
+            elif (packet.execution_status == ExecutionStatus.ELIGIBLE
+                  and hp.desired_action == packet.desired_action
+                  and hp.target_weight == packet.target_weight):
+                status = ExecutionStatus.ELIGIBLE
+        payload = hp.model_dump()
+        payload.update(
+            execution_status=status, blockers=blockers,
+            executable_action=hp.desired_action if status == ExecutionStatus.ELIGIBLE else None,
+            execution_simulated=getattr(execution_eval, "simulated", None),
+            execution_diagnostics=getattr(execution_eval, "diagnostics", []))
+        horizon_packets[i] = DecisionPacket.model_validate(payload)
     mid_packet, long_packet = horizon_packets[0], horizon_packets[1]
 
     legacy_desired = packet.desired_action.value
