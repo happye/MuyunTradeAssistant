@@ -14,14 +14,14 @@ BODY = "2024年公司境外磷酸铁锂业务收入100万元"
 
 
 def verify(body, statement=None, event_type="exposure", published_at=PUB,
-           quote_text=None, **updates):
+           quote_text=None, value=100, unit="万元", **updates):
     doc = SourceDocument(canonical_uri="synthetic://g3", body=body,
                          content_hash=SourceDocument.body_hash(body),
                          security_ids=["600000"], published_at=published_at)
     excerpt = body if quote_text is None else quote_text
     claim = ClaimRecord(security_id="600000", subject="600000",
                         statement=body if statement is None else statement,
-                        event_type=event_type, value=100, unit="万元",
+                        event_type=event_type, value=value, unit=unit,
                         fact_stage="revenue_recognized", citation_uri=doc.canonical_uri,
                         citation_hash=doc.content_hash, quote_text=excerpt,
                         published_at=PUB, **updates)
@@ -127,6 +127,48 @@ def test_english_unimplemented_is_honestly_capped():
 def test_scope_rule_and_verification_protocol_are_new_semantics():
     assert TYPED_RULE_VERSION == "g3.binding_v3"
     assert CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv5"
+
+
+@pytest.mark.parametrize("body,statement,event_type,value,unit", [
+    ("公司收入100万元。", "公司收入2100万元", "earnings", 100, "万元"),
+    ("公司净利润100万元。", "公司净利润-100万元", "earnings", 100, "万元"),
+    ("公司收入占比100%。", "公司收入占比200%", "exposure", 100, "%"),
+])
+def test_r01_amount_must_match_as_token_sign_and_unit(body, statement, event_type, value, unit):
+    result = verify(body, statement, event_type, value=value, unit=unit)
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+    assert "source_fact_scope_bound" not in result.checks
+
+
+@pytest.mark.parametrize("body,statement,event_type,value,unit", [
+    ("公司净利润-100万元。", "公司净利润-100万元", "earnings", -100, "万元"),
+    ("公司签订1,900万元订单。", "公司签订1,900万元订单", "order", 1900, "万元"),
+    ("公司收入1亿元。", "公司收入10000万元", "earnings", 1, "亿元"),
+    ("公司收入100元。", "公司收入100元", "earnings", 100, "元"),
+    ("公司收入1亿元。", "公司收入1亿元", "earnings", 1, "亿元"),
+    ("公司收入占比100%。", "公司收入占比100%", "exposure", 100, "%"),
+    ("公司收入2倍。", "公司收入2倍", "earnings", 2, "倍"),
+    ("公司收入100股。", "公司收入100股", "earnings", 100, "股"),
+    ("公司收入1万股。", "公司收入1万股", "earnings", 1, "万股"),
+    ("公司收入1亿股。", "公司收入1亿股", "earnings", 1, "亿股"),
+    ("公司收入1亿股。", "公司收入10000万股", "earnings", 1, "亿股"),
+])
+def test_r01_supported_quantity_forms_stay_fact_checked(body, statement, event_type, value, unit):
+    result = verify(body, statement, event_type, value=value, unit=unit)
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
+
+
+@pytest.mark.parametrize("body,statement,event_type,quote", [
+    ("按特殊口径，公司收入100万元。", "公司收入100万元", "earnings", "收入100万元"),
+    ("预计，公司收入100万元。", "公司收入100万元", "earnings", "收入100万元"),
+    ("公司未签订，100万元订单。", "公司100万元订单", "order", "100万元订单"),
+    ("公司收入100万元。该收入仅为2024年公司境外磷酸铁锂业务收入。",
+     "公司收入100万元", "earnings", "收入100万元"),
+])
+def test_r03_unknown_modifier_or_anaphora_is_not_absent(body, statement, event_type, quote):
+    result = verify(body, statement, event_type, quote_text=quote)
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+    assert "source_fact_scope_bound" not in result.checks
 
 
 def test_statement_amount_must_match_structured_value():

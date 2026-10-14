@@ -2502,3 +2502,15 @@ Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、ST
 
 ### 同类点
 本切片只改 `next_checks` 的生成。剩余 2 处原始 `isoformat` 仍进入内容键，属于 R05，此处不修：`research_service.py` 的 run_key `as_of.isoformat()`，以及 `research_store.py` 的 `evaluated_as_of.isoformat()`。同一次捕获如果截止时区写法不同，run/asm 仍会分叉。
+
+---
+
+## [LRN-20261015-G3R01] 金额子串和未解析子句不能升成已核对事实
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: claim-verification
+
+### Summary
+`cc31524` 之后，`any(v in statement)` 仍把「100万元」认进「2100万元」，也不比较主张文字里的负号；「200%」因单位不在万元/亿元/元里而放过。完整句解析失败时，只要旁边子句没有年/地域/产品，就把数值子句当成没有修饰，于是「按特殊口径」「预计」「未签订」仍 FACT_CHECKED。「该收入仅为……」绕过只认「上述」的后文门。先红后修：金额按词元、符号和同族单位做一次规范比较；旁边子句必须自身可解析且不新增范围或否定，否则不回退；后文指代限定用同一类「该/此/上述/前述 + 指标 + 仅为」降为摘录。`tests/core/test_g3_fact_scope.py` 与 `test_k0b_facts_propositions.py` 77 passed。协议仍是 cv5 / g3.binding_v3。横幅仍 v0.8.33。G3 未验收。
+
+### 同类点
+金额子串匹配只此一处，已换成 `_statement_quantity_status`。谓词关键词仍用 `in claim.statement`，那是指标词不是金额。R05 的 as_of 原始 isoformat 不在本切片。

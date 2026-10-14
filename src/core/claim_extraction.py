@@ -25,6 +25,7 @@ external/AI opt-in 评测跑，见 tests/core/test_claim_extraction.py 的 mock 
 import hashlib
 import json
 import logging
+import math
 import re
 from datetime import datetime, timezone
 from enum import Enum
@@ -418,27 +419,63 @@ def _amount_is_range_bound(text: str, start: int) -> bool:
     return text[start - 1] in "-~～至–—" and text[start - 2].isdigit()
 
 
+# Longest unit first. Money and share counts convert inside one family;
+# percent and multiples compare as themselves.
+_QUANTITY_SCALES = (
+    ("亿元", "money", 1e8),
+    ("万元", "money", 1e4),
+    ("亿股", "share", 1e8),
+    ("万股", "share", 1e4),
+    ("元", "money", 1.0),
+    ("股", "share", 1.0),
+    ("%", "percent", 1.0),
+    ("倍", "multiple", 1.0),
+)
+_AMOUNT_TOKEN_RE = re.compile(
+    r"(?<![0-9.．])(?P<sign>[-－−])?(?P<number>[0-9][0-9,]*(?:\.[0-9]+)?)"
+    r"(?P<range>[-~～至–—][0-9]+(?:\.[0-9]+)?)?"
+    r"(?P<unit>亿元|万元|亿股|万股|元|股|%|倍)"
+)
+
+
+def _quantity_family(unit: str):
+    for name, family, scale in _QUANTITY_SCALES:
+        if name == unit:
+            return family, scale
+    return None
+
+
+def _canonical_quantity(value: float, unit: str):
+    found = _quantity_family(unit)
+    if found is None or not math.isfinite(value):
+        return None
+    family, scale = found
+    return family, float(value) * scale
+
+
 def _numeric_text_variants(value: float, unit: str) -> list[str]:
-    """(value, unit) 在原文中的候选文本形态（金额单位换算族 + 千分位）。
+    """(value, unit) 在原文中的候选文本形态（同族单位换算 + 千分位）。
     非有限值（NaN/inf——JSON 非标扩展可产生）返回空（不做数值检查，审查 P2）。"""
-    import math
     if not isinstance(value, (int, float)) or isinstance(value, bool) \
             or not math.isfinite(value):
         return []
     out: list[str] = []
-    to_yuan = {"元": 1.0, "万元": 1e4, "亿元": 1e8}
     base_forms = [f"{value:g}"]
     if value == int(value):
         base_forms.append(f"{int(value):,}")
-    if unit in to_yuan:
-        yuan = value * to_yuan[unit]
-        for u, k in to_yuan.items():
-            v = yuan / k
+    found = _quantity_family(unit)
+    if found is not None:
+        family, scale = found
+        base = float(value) * scale
+        for other, other_family, other_scale in _QUANTITY_SCALES:
+            if other_family != family:
+                continue
+            v = base / other_scale
             if v == int(v) and v > 0:
-                out.append(f"{int(v):,}{u}")
-                out.append(f"{int(v)}{u}")
+                out.append(f"{int(v):,}{other}")
+                out.append(f"{int(v)}{other}")
                 if v < 1:  # 小数元值（0.5亿）
-                    out.append(f"{v:g}{u}")
+                    out.append(f"{v:g}{other}")
     for f in base_forms:
         out.append(f"{f}{unit}" if unit else f)
         if unit:
@@ -585,6 +622,79 @@ def _parse_fact_scope(text: str, event_type: str) -> Optional[dict[str, str]]:
     return fields
 
 
+def _iter_amount_tokens(text: str):
+    """Yield ('range') or (family, signed magnitude) for each complete amount."""
+    compact = re.sub(r"\s+", "", text)
+    for match in _AMOUNT_TOKEN_RE.finditer(compact):
+        if match.group("range"):
+            yield "range"
+            continue
+        found = _quantity_family(match.group("unit"))
+        if found is None:
+            continue
+        family, scale = found
+        number = float(match.group("number").replace(",", ""))
+        if match.group("sign"):
+            number = -number
+        yield family, number * scale
+
+
+def _statement_quantity_status(statement: str, value: float, unit: str, event_type: str) -> str:
+    """Compare one parsed claim amount with the structured value.
+
+    A full sentence is one fact: its amount must be the same family and
+    magnitude, including sign. A substring such as 100 inside 2100 does not
+    count. Unparsed text may contain several supported amounts; a different
+    family is not treated as a hard conflict.
+    """
+    if value is None or _quantity_family(unit) is None:
+        return "absent"
+    target = _canonical_quantity(value, unit)
+    if target is None:
+        return "absent"
+    compact = re.sub(r"\s+", "", statement).strip("。.!！")
+    amounts = list(_iter_amount_tokens(compact))
+    if not amounts:
+        return "absent"
+    if any(item == "range" for item in amounts):
+        return "range"
+    same = [item for item in amounts if item[0] == target[0]]
+    if not same:
+        return "absent"
+    matched = [item for item in same
+               if math.isclose(item[1], target[1], rel_tol=1e-9, abs_tol=1e-6)]
+    pattern = _FACT_ORDER_RE if event_type == "order" else _FACT_FINANCIAL_RE
+    if pattern.fullmatch(compact):
+        return "match" if len(same) == 1 and matched else "conflict"
+    return "match" if matched else "conflict"
+
+
+def _siblings_keep_value_clause(clauses, event_type: str, value_fields: dict) -> bool:
+    """A sibling may stand beside the value only when it is itself a supported
+    fact and does not add period, region, business or negation."""
+    for clause in clauses:
+        if not clause.strip():
+            continue
+        if any(marker in clause for marker in _NEGATION_MARKERS):
+            return False
+        parsed = _parse_fact_scope(clause, event_type)
+        if not parsed:
+            return False
+        for field in ("period", "region", "business", "object_kind"):
+            extra = parsed.get(field) or ""
+            mine = value_fields.get(field) or ""
+            if extra and extra != mine:
+                return False
+    return True
+
+
+# Demonstrative restrictions the current grammar cannot bind back to the value.
+_UNBOUND_ANAPHORA_RE = re.compile(
+    r"(?:上述|前述|该|此).{0,12}(?:收入|利润|净利|营收|订单|占比)"
+    r".{0,8}(?:仅为|只为|仅指|仅是)"
+)
+
+
 def _sentences_with_spans(text: str) -> list[tuple[str, int, int]]:
     """正文 → 句子 [(句子文本, 起始偏移, 结束偏移)]。
 
@@ -628,10 +738,9 @@ def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]]
     if re.search(_FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", earlier):
         return "unknown", "数值前文存在跨句范围限定，有限语法不推断其继承关系"
     rest = source_text[end:]
-    if re.search(r"上述.{0,16}(?:收入|利润|净利).{0,8}(?:仅为|只为|仅指|仅是)", rest):
-        return "unknown", "数值后文存在确指限定，有限语法不把它当成无范围"
-    parsed_text = sentence_text
-    source = _parse_fact_scope(parsed_text, claim.event_type)
+    if _UNBOUND_ANAPHORA_RE.search(rest):
+        return "unknown", "数值后文存在未能绑定的指代限定，有限语法不把它当成无范围"
+    source = _parse_fact_scope(sentence_text, claim.event_type)
     if source is None and occurrences:
         rel = occurrences[0]["start"] - start
         value_clause = ""
@@ -641,12 +750,9 @@ def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]]
                 value_clause = clause
             else:
                 others.append(clause)
-        other_text = "".join(others)
-        if (value_clause and not re.search(
-                _FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", other_text)
-                and _parse_fact_scope(value_clause, claim.event_type)):
-            parsed_text = value_clause
-        source = _parse_fact_scope(parsed_text, claim.event_type)
+        value_fields = _parse_fact_scope(value_clause, claim.event_type) if value_clause else None
+        if value_fields and _siblings_keep_value_clause(others, claim.event_type, value_fields):
+            source = value_fields
     statement = _parse_fact_scope(claim.statement, claim.event_type)
     if source is None or statement is None:
         return "unknown", "报告期/地域/业务对象含未支持修饰或多解句式，范围未能唯一解析"
@@ -897,10 +1003,12 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
             return _cap_excerpt_grounded(
                 "数值与主张谓词未绑定到同一原文局部（数值可能属于同句其他指标/主体）"
                 "——需人工核对")
-        variants = _numeric_text_variants(claim.value, claim.unit)
-        if variants and not any(v in claim.statement for v in variants):
-            if re.search(r"[0-9][0-9,]*(?:\.[0-9]+)?(?:万元|亿元|元)", claim.statement):
-                return _reject("主张文字中的金额与结构化数值不一致")
+        quantity = _statement_quantity_status(
+            claim.statement, claim.value, claim.unit, claim.event_type)
+        if quantity == "conflict":
+            return _reject("主张文字中的金额与结构化数值不一致")
+        if quantity == "range":
+            return _cap_excerpt_grounded("主张文字是区间，不能核成已实现单点——需人工核对")
         if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
             return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
         # 期间/地域/业务对象绑定正文里包含该数值的那一句，不绑定调用方裁短的 quote。
