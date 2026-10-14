@@ -23,7 +23,7 @@ import pytest
 
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
-from src.core.research_service import ASSERTION_METHOD_VERSION
+from src.core.research_service import ASSERTION_METHOD_VERSION, RESEARCH_SERVICE_VERSION
 from src.core.shadow_diff import (
     build_shadow_report,
     capture_shadow,
@@ -111,7 +111,7 @@ def _seed_accepted_plan(tmp_path, plans_store, assessment_store, code="601318"):
                        accepted_at=datetime.now().isoformat(timespec="seconds"),
                        horizon="MID", policy_id=POLICY_ID_MID,
                        intent="锂电需求回暖驱动盈利兑现",
-                       policy_version="r4.research_service_v1",
+                       policy_version=RESEARCH_SERVICE_VERSION,
                        facts_observed=["6月订单环比+30%"])
     asm = ThesisAssessment(thesis_id=f"thesis_{code}_MID", security_id=code,
                            horizon="MID", snapshot_id="snap-j4",

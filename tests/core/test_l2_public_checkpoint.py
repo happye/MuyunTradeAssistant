@@ -275,3 +275,55 @@ def test_v4_new_material_goes_candidate_not_accepted(tmp_path, monkeypatch):
     plan_after = store_after.get(CODE, "MID")
     assert plan_after.activated and plan_after.content_hash() == accepted_before.content_hash(), \
         "已接受版本不得被新材料研究覆盖（双槽语义）"
+
+
+def _mid_checkpoint(payload: dict):
+    asm = AssessmentStore(research_store_module.RESEARCH_DIR).load(
+        payload["assessment_ids"]["MID"])
+    assert asm is not None and asm.checkpoint_results
+    return asm.checkpoint_results[0].condition
+
+
+def test_public_review_flags_reach_saved_checkpoint(tmp_path, monkeypatch):
+    """公开 research 三个参数进入已保存的检查条件，不经测试自己组条件。"""
+    _isolate(tmp_path, monkeypatch)
+    claims = _claims_file(tmp_path)
+    out = _repl(
+        f"research {CODE} --claims {claims} --checkpoint 核验订单 "
+        f"--confirm-risk --review-at 2026-10-30T16:00:00+08:00 "
+        f"--refute-if 合同取消 --on-expiry REVIEW_REQUIRED --json")
+    assert "检查条件不完整" not in out
+    data = json.loads(out[out.index("{"):])
+    cp = _mid_checkpoint(data)
+    assert cp.refute_if == "合同取消"
+    assert cp.expiry_action == "REVIEW_REQUIRED"
+    assert cp.review_at is not None and cp.review_at.utcoffset() is not None
+
+
+def test_old_checkpoint_text_still_runs_and_names_missing_flags(tmp_path, monkeypatch):
+    """旧文字入口仍可跑，缺三个参数时提示不完整，不把时窗命题写成成立。"""
+    _isolate(tmp_path, monkeypatch)
+    claims = _claims_file(tmp_path)
+    out = _repl(f"research {CODE} --claims {claims} --checkpoint 到期复核 "
+                f"--confirm-risk --json")
+    assert "检查条件不完整" in out
+    assert "--review-at" in out and "--refute-if" in out and "--on-expiry" in out
+    data = json.loads(out[out.index("{"):])
+    assert _window_value(data["assessment_ids"]["MID"]) == "UNKNOWN"
+
+
+def test_bad_public_review_flags_stop_before_a_saved_run(tmp_path, monkeypatch):
+    """无时区时间和非法到期动作在公开入口拒绝，不产出研究结果。"""
+    _isolate(tmp_path, monkeypatch)
+    naive = _repl(
+        f"research {CODE} --checkpoint 到期复核 --confirm-risk "
+        f"--review-at 2026-10-30T16:00:00 --refute-if 合同取消 "
+        f"--on-expiry REVIEW_REQUIRED --json")
+    assert "检查条件格式无效" in naive
+    assert "{" not in naive
+    bad = _repl(
+        f"research {CODE} --checkpoint 到期复核 --confirm-risk "
+        f"--review-at 2026-10-30T16:00:00+08:00 --refute-if 合同取消 "
+        f"--on-expiry EXIT --json")
+    assert "检查条件格式无效" in bad
+    assert "{" not in bad

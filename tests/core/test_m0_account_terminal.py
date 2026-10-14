@@ -95,7 +95,11 @@ def _ctx(*, state="HELD", weight=None, quantity=100, version="v_test", reason=""
 def _sd(pos_action="CLOSE_ALL", ratio=0.0, sell_path=None, decision=None):
     decision = decision or ("SELL" if pos_action in ("CLOSE_ALL", "REDUCE") else
                             ("BUY" if pos_action in ("OPEN", "ADD") else "HOLD"))
-    return StrategyDecision(
+    from src.data.models import SignalFinding
+    findings = [SignalFinding(signal_id="exit.policy.st", source="explicit qualified ST fixture",
+        securities=[CODE], as_of=PRICE_DAY, verified=True, data_quality="OK", action_scope="exit",
+        strategy_binding="accepted-st-policy-v1")] if sell_path == "fundamental_alert" else []
+    return StrategyDecision(analysis_as_of=PRICE_DAY, signal_findings=findings,
         decision=SignalType(decision), position_action=PositionAction(pos_action),
         position_ratio=ratio, sell_path=sell_path,
         lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.HOLD,
@@ -430,13 +434,13 @@ def _seed_accepted_mid_plan(tmp_path):
     from src.data.research_store import AssessmentStore
     from src.core.decision_policy import POLICY_ID_MID
     from src.core.research import ThesisAssessment
-    from src.core.research_service import ASSERTION_METHOD_VERSION
+    from src.core.research_service import ASSERTION_METHOD_VERSION, RESEARCH_SERVICE_VERSION
     from src.core.decision_contract import ThesisStatus
     plans = HorizonPlanStore(tmp_path / "plans.json")
     asm_store = AssessmentStore(tmp_path / "research")
     plan = HorizonPlan(plan_id=f"p2_{CODE}_m0", security_id=CODE,
                        horizon="MID", policy_id=POLICY_ID_MID,
-                       intent="测试意图", policy_version="r4.research_service_v1")
+                       intent="测试意图", policy_version=RESEARCH_SERVICE_VERSION)
     asm = ThesisAssessment(thesis_id=f"thesis_{CODE}_MID", security_id=CODE,
                            horizon="MID", snapshot_id="snap-m0",
                            status=ThesisStatus.VALID,

@@ -5,7 +5,7 @@
    （action/target/blockers/execution_status 同枚举同语义），原始
    StrategyDecision 字段只留 legacy_trace；不再出现「规范包 target=None 而
    legacy 臂 .1/KNOWN」「包 execution=ELIGIBLE 而 legacy 字段是动作名」
-2. 有效版本资格：仅当期已验证组合（生成版本 r4.research_service_v1 × 评估
+2. 有效版本资格：仅当期已验证组合（生成版本 RESEARCH_SERVICE_VERSION × 评估
    方法 ASSERTION_METHOD_VERSION × 当前决策表 v3）进有效分母；未知/不兼容
    版本 → diagnostic（版本字符串存在≠兼容；不改写历史计划）
 3. 行5 UNKNOWN 技术退出 → REVIEW（不给无规模 REDUCE）；行6 HELD+未知权重
