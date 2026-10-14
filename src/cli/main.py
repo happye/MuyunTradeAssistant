@@ -5873,9 +5873,9 @@ def _render_research_result(console, result) -> None:
             console.print(f"    · …共 {len(gaps)} 项缺口")
         from rich.text import Text
         from src.core.research import CheckpointResult
-        from src.core.research_service import checkpoint_summary
+        from src.core.research_service import checkpoint_display
         for receipt in asm.get("checkpoint_results") or []:
-            console.print(Text("    核验约定：" + checkpoint_summary(
+            console.print(Text("    核验约定：" + checkpoint_display(
                 CheckpointResult.model_validate(receipt))))
     if result.factors:
         parts = [f"{fid}={d['status']}" for fid, d in result.factors.items()]

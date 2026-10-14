@@ -2490,3 +2490,15 @@ G3新增独立反例（尚未关闭）：引用hash与摘录确实存在，不�
 
 ### 习惯缺口
 Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、STATUS 与 RESUME」和「收尾维护：更新长期里程碑、状态、RESUME」。`AGENTS.md` 只写「交付/审批后同步」。第一遍因此没把进度入口改成与工作树一致。该习惯已写入 Grok 自己的 `harness-project-init`。本条把同一事实记进仓库：行为变了并有测试之后，更新现有里程碑、状态和恢复指针；未验收写「已改未验收」。文档同步不是修复本身。
+
+---
+
+## [LRN-20261015-G3R04] 原始时区写法不能变成新的检查条件寻址
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: research-checkpoint
+
+### Summary
+`checkpoint_summary` 把 `review_at.isoformat()` 的原始偏移写进 `next_checks`。`AssessmentStore.assessment_id_of` 和计划草稿比较都读这份文字。同一时刻 `08:00+00:00` 与 `16:00+08:00` 的检查点指纹和 `run_id` 已经相同，但重启后 `asm_id` 不同，已接受主槽旁边多出 candidate。先红后修：寻址摘要改走 `semantic_payload` 的 UTC 时刻和全部消费字段；`checkpoint_display` 只在 research 命令的「核验约定」行附加原始时区，该后缀不进 `next_checks`。`tests/core/test_g3_checkpoint_loop.py` 与 `test_g3_checkpoint_storage.py` 37 passed。横幅仍 v0.8.33。G3 未验收，本会话不能派出 Sol/high。
+
+### 同类点
+本切片只改 `next_checks` 的生成。剩余 2 处原始 `isoformat` 仍进入内容键，属于 R05，此处不修：`research_service.py` 的 run_key `as_of.isoformat()`，以及 `research_store.py` 的 `evaluated_as_of.isoformat()`。同一次捕获如果截止时区写法不同，run/asm 仍会分叉。

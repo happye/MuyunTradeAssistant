@@ -26,7 +26,7 @@ documents 输入契约：list[dict]，每项 {"claim": ClaimRecord, "documents":
 import hashlib
 import json
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Callable, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -182,13 +182,38 @@ def checkpoint_condition_gaps(condition, security_id, verified_ids, as_of) -> li
 
 
 def checkpoint_summary(receipt) -> str:
-    cp = receipt.condition
-    when = cp.review_at.isoformat() if cp.review_at is not None else "当时未记录"
-    refutation = cp.refute_if or "当时未记录"
-    handling = "到期待复核" if cp.expiry_action == "REVIEW_REQUIRED" else "到期处理未记录"
+    """Addressing text. UTC instant plus every consumed semantic field.
+
+    The original offset is excluded. Same clock instant must not become new
+    next_checks content, and therefore must not change run, asm, or accepted_ref.
+    """
+    payload = receipt.condition.semantic_payload()
+    when = payload["review_at"] or "当时未记录"
+    refutation = payload["refute_if"] or "当时未记录"
+    handling = "到期待复核" if payload["expiry_action"] == "REVIEW_REQUIRED" else "到期处理未记录"
     qualification = "条件已建立（未证明兑现）" if receipt.evaluation is AssertionEvaluation.TRUE \
         else "条件待核：" + "；".join(receipt.reasons)
-    return f"{cp.description}；核验时间 {when}；推翻事实 {refutation}；{handling}；{qualification}"
+    refs = ",".join(payload["evidence_refs"]) or "无"
+    confirmed = "已确认" if payload["user_confirmed"] else "未确认"
+    horizon = payload["horizon"] or "通用"
+    return (
+        f"{payload['description']}；证券 {payload['security_id']}；周期 {horizon}；"
+        f"命题 {payload['proposition_type']}；材料 {refs}；来源 {payload['derived_from']}；"
+        f"风险意愿{confirmed}；核验时间 {when}；推翻事实 {refutation}；{handling}；{qualification}"
+    )
+
+
+def checkpoint_display(receipt) -> str:
+    """Operator line. A non-UTC offset is diagnostic and is not addressed."""
+    text = checkpoint_summary(receipt)
+    review_at = receipt.condition.review_at
+    if review_at is None:
+        return text
+    original = review_at.isoformat()
+    canonical = review_at.astimezone(timezone.utc).isoformat()
+    if original == canonical:
+        return text
+    return text + f"；原始时区 {original}（不参与寻址）"
 
 
 def checkpoint_review_gaps(assessment, *, as_of) -> list[str]:
