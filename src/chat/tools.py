@@ -630,32 +630,59 @@ def search_knowledge(query: str) -> str:
         return TOOL_ERROR_MARK + f"搜索策略知识时出错: {e}"
 
 
+def _industry_account_view(pm):
+    """One account snapshot for industry location. Does not fetch a price."""
+    from src.data.portfolio import POSITION_HELD, POSITION_UNKNOWN, _normalize_stock_code
+
+    facts = pm.request_account_facts()
+    entries, incomplete = facts.holding_entries()
+    positions = []
+    notes = []
+    seen = set()
+    if incomplete or facts._read_failed:
+        notes.append("账户待核：清单不完整或读取未完成，不能据此称为空仓")
+    for entry in entries:
+        norm = _normalize_stock_code(entry.stock_code) or str(entry.stock_code)
+        if norm in seen:
+            continue
+        seen.add(norm)
+        ctx = facts.context_for(entry.stock_code)
+        if ctx.position_state == POSITION_HELD:
+            positions.append({"stock_code": norm, "current_ratio": ctx.confirmed_weight})
+            if ctx.confirmed_weight is None:
+                notes.append(f"账户待核：{norm} 权重待核（{ctx.weight_reason}）")
+        elif ctx.position_state == POSITION_UNKNOWN:
+            notes.append(f"账户待核：{norm} {ctx.weight_reason}")
+    return positions, notes
+
+
 def analyze_industry(industry: str) -> str:
     """行业产业链深度分析（ISS-061）。
 
     组装"行业数据包"：产业链图谱(环节-公司-周期锚点+用户持仓定位)
     + 商品价格(期货/现货基差/仓单) + 需求端月度数据 + 宏观底色(PMI/PPI)。
     数据源为 2026-08-15 实测可用的 akshare 接口；单项失败降级标注[数据缺失]。
+    持仓只读同一次账户事实：HELD 才定位，未知权重不借用旧比例。
     """
+    from src.data.industry_data import build_industry_report
+
+    positions = []
+    notes = []
     try:
-        from src.data.industry_data import build_industry_report
-
-        # 持仓交叉定位：图谱内公司与用户持仓比对
-        positions = []
-        try:
-            pm = _portfolio_manager or PortfolioManager()
-            positions = [
-                {"stock_code": p.stock_code, "current_ratio": p.current_ratio}
-                for p in pm.list_positions()
-            ]
-        except Exception:
-            pass
-
-        # scanner_engine：全行业通用引擎解析THS板块成分股用（图谱未命中时）
-        return build_industry_report(industry, positions, scanner_engine=_scanner_engine)
+        pm = _portfolio_manager or PortfolioManager()
+        positions, notes = _industry_account_view(pm)
+    except Exception as e:
+        logger.error(f"analyze_industry账户装配失败: {e}")
+        notes = [f"账户待核：持仓装配失败（{e}），行业数据仍返回"]
+    try:
+        report = build_industry_report(industry, positions, scanner_engine=_scanner_engine)
     except Exception as e:
         logger.error(f"analyze_industry失败: {e}")
-        return f"{TOOL_ERROR_MARK}行业分析时出错: {e}"
+        report = f"{TOOL_ERROR_MARK}行业分析时出错: {e}"
+    if notes:
+        # 附在末尾：既有工具结果截断保留首尾时，账户待核不被切掉。
+        report += "\n\n【账户待核】\n" + "\n".join(notes)
+    return report
 
 
 def get_main_business(stock_code: str) -> str:

@@ -2544,3 +2544,12 @@ Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、ST
 
 ### Summary
 两个公开全链正例以前只写 `--checkpoint` 文字、`--confirm-risk` 和 `--ref`，却断言时窗命题 TRUE。缺复核时间、推翻事实或到期处理时，命题现在是 UNKNOWN。正例改为在真实 REPL 命令里写上 `--review-at`、`--refute-if`、`--on-expiry REVIEW_REQUIRED`。`_repl` 不补旗标。全链包含保存、accept、重启只读、影子和报告。旧文字入口仍提示不完整并保持 UNKNOWN。`tests/core/test_l2_public_checkpoint.py`：12 passed。横幅仍 v0.8.33。G3 未验收。
+
+---
+
+## [LRN-20261015-ISS116] 行业定位不能直接读旧持仓比例
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: chat-industry
+
+### Summary
+`analyze_industry` 以前调用 `list_positions()`，把投影里的 `current_ratio` 送进行业报告。别名和旧比例会各定位一次。现在每次调用只建一个 `request_account_facts()`，用 `holding_entries()` 和同一次 `context_for()`。只有 HELD 进入用户持仓，权重只用 `confirmed_weight`。UNKNOWN 写在文末「账户待核」，NONE 不称持仓。`tests/chat/test_iss116_analyze_industry.py`：5 passed。横幅仍 v0.8.33。ISS-116 未独立验收。
