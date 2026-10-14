@@ -991,14 +991,28 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
     # v8（M1）：分桶通用化——当期协议 cur_*；全部旧版本（v7/v6/更早）进
     # older_versions 按记录原样只诊断不追认（不再随版本升级逐个改名键）。
     current_version = SHADOW_DERIVATION_VERSION
+    from src.core.research_service import current_method_version
+    method = current_method_version()
     cur_records = [r for r in records if r.get("derivation_version") == current_version]
-    effective_n = sum(1 for r in cur_records if r.get("observation_kind") == "effective")
+
+    def _horizon_current(record, horizon: str) -> bool:
+        """Stored effective flag plus the binding's method. Today's clock is not consulted."""
+        if record.get(f"{horizon}_effective") is not True:
+            return False
+        binding = record.get(f"{horizon}_binding")
+        if not isinstance(binding, dict) or not binding:
+            return False
+        return str(binding.get("method_version") or "") == method
+
     # ── 当期协议分别计分母 + 旧协议记录只诊断 ──
-    cur_mid_effective = sum(1 for r in cur_records if r.get("mid_effective") is True)
-    cur_long_effective = sum(1 for r in cur_records if r.get("long_effective") is True)
+    # 历史 true 不够：binding 必须是当前综合方法。旧方法、缺 binding、历史 false 不晋升。
+    cur_mid_effective = sum(1 for r in cur_records if _horizon_current(r, "mid"))
+    cur_long_effective = sum(1 for r in cur_records if _horizon_current(r, "long"))
+    effective_n = sum(1 for r in cur_records
+                      if _horizon_current(r, "mid") or _horizon_current(r, "long"))
     cur_diagnostic = sum(1 for r in cur_records
-                         if r.get("mid_effective") is not True
-                         and r.get("long_effective") is not True)
+                         if not _horizon_current(r, "mid")
+                         and not _horizon_current(r, "long"))
     cur_drop_counts: dict = {}
     for r in cur_records:
         # K1 审查 P2-3：按记录去重（同一阻塞在 MID/LONG 双 binding 各记一次，

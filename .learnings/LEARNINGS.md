@@ -2526,3 +2526,12 @@ Grok 不自动加载 `CODEX.md`。该文件写「审批后同步 MILESTONES、ST
 
 ### 同类点
 `shadow_diff.py` 里历史查询的 `datetime.now() - timedelta` 仍用墙钟做展示窗口，不改已落盘记录，本切片不修。
+
+---
+
+## [LRN-20261015-G3R06] 综合方法不是命题版本字符串
+
+**Logged**: 2026-10-15 | **Priority**: high | **Status**: applied（已改未验收） | **Area**: research-method
+
+### Summary
+评估身份以前只等于 `g3.assertion_v2`。方法字符串相同的旧 VALID 评估仍可被消费，影子报告也只按 `shadow_v15` 和记录里的 effective 布尔计当前分母。现在综合方法是 `g3.method_v1:` 加七个固定组件的 SHA256：协议、typed、association、checkpoint、proposition、assertion、service。命题算法仍是 `g3.assertion_v2`。method 进入 run 缓存键和 `asm.method_version`。旧方法原件保留，消费时待复核，新评估 id 不同所以只进候选。报告当前分母还要 binding 的方法等于当前综合方法；旧方法、缺 binding、历史 false 和 `shadow_v14` 不晋升。报告不改历史文件。横幅仍 v0.8.33。G3 未验收。

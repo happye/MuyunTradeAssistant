@@ -32,6 +32,7 @@ from typing import Callable, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 from src.core.claim_extraction import (
+    CLAIM_VERIFICATION_PROTOCOL_VERSION,
     TYPED_RULE_VERSION,
     SourceDocument,
     VerificationLevel,
@@ -52,12 +53,39 @@ from src.core.research import (
 logger = logging.getLogger(__name__)
 
 RESEARCH_SERVICE_VERSION = "g3.research_service_v2"
-# K0b/D5：求值方法版本随命题规则语义升位（旧方法版本评估影子侧按待复核——重验不冒充）
-ASSERTION_METHOD_VERSION = ASSERTION_RULE_VERSION
+# K0b/D5：求值方法版本随命题规则语义升位。命题算法本身保持 assertion_v2。
+# 评估身份是七个固定组件的规范哈希，不用源码哈希，也不用命题版本代替综合方法。
+
+
+def composite_method_version(**overrides: str) -> str:
+    """Identity of the current research method. Only these seven strings participate."""
+    parts = {
+        "protocol": CLAIM_VERIFICATION_PROTOCOL_VERSION,
+        "typed": TYPED_RULE_VERSION,
+        "association": ASSOC_RULE_VERSION,
+        "checkpoint": CHECKPOINT_RULE_VERSION,
+        "proposition": PROPOSITION_RULE_VERSION,
+        "assertion": ASSERTION_RULE_VERSION,
+        "service": RESEARCH_SERVICE_VERSION,
+    }
+    unknown = set(overrides) - set(parts)
+    if unknown:
+        raise ValueError(f"未知方法组件: {sorted(unknown)}")
+    parts.update(overrides)
+    raw = json.dumps(parts, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    return "g3.method_v1:" + hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+
+def current_method_version() -> str:
+    return composite_method_version()
+
+
 # J0/K0b 关联/检查点/命题规则版本（改动映射与判定必须 bump——旧评估不冒充新语义）
 ASSOC_RULE_VERSION = "j4.assoc_v1"
 CHECKPOINT_RULE_VERSION = "g3.checkpoint_v2"
 PROPOSITION_RULE_VERSION = "k0b.propo_v1"  # K0b/D5：命题规则注册表语义（无规则默认 UNKNOWN）
+# 消费者和现有夹具沿这个名字读取综合方法。命题算法版本仍是 ASSERTION_RULE_VERSION。
+ASSERTION_METHOD_VERSION = current_method_version()
 
 # 必需命题保守绑定映射（J0b：一个订单不能同时证明业务纯度、利润兑现和长期优势——
 # 单主张至多绑定一个 required 命题；moat 等综合命题无确定性单主张通道）
@@ -293,7 +321,8 @@ class ResearchService:
 
         run_key = _content_hash({
             "v": RESEARCH_SERVICE_VERSION,
-            # J0 缓存合同：方法/规则版本进键（改规则即失效）
+            # 综合方法进缓存键。任一固定组件变化即失效；备注不进这个哈希。
+            "method": current_method_version(),
             "typed_rule": TYPED_RULE_VERSION,
             "assoc_rule": ASSOC_RULE_VERSION,
             "checkpoint_rule": CHECKPOINT_RULE_VERSION,
@@ -466,7 +495,7 @@ class ResearchService:
                 material_counter_evidence=[],
                 next_checks=list(horizon_checks),
                 checkpoint_results=checkpoint_results,
-                method_version=ASSERTION_METHOD_VERSION,
+                method_version=current_method_version(),
                 evaluated_as_of=as_of)
             assessments[horizon] = asm
             # J0b：评估唯一真值持久化（store 注入即落盘；None=内容派生 id 未持久化——
