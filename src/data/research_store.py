@@ -33,7 +33,7 @@ RESEARCH_DIR = Path.home() / ".muyun" / "research"
 
 RAW_SCHEMA_VERSION = 1
 INVALIDATION_SCHEMA_VERSION = 1
-ASSESSMENT_SCHEMA_VERSION = 1
+ASSESSMENT_SCHEMA_VERSION = 2
 
 
 def _atomic_write_jsonl_append(path: Path, record: dict) -> bool:
@@ -307,6 +307,12 @@ class AssessmentStore:
             "evaluated_as_of": (assessment.evaluated_as_of.isoformat()
                                 if assessment.evaluated_as_of else ""),
         }
+        if assessment.checkpoint_results is not None:
+            payload["checkpoint_results"] = [
+                {"condition": result.condition.semantic_payload(),
+                 "evaluation": result.evaluation.value, "reasons": list(result.reasons)}
+                for result in assessment.checkpoint_results
+            ]
         return "asm_" + hashlib.sha256(json.dumps(
             payload, ensure_ascii=False, sort_keys=True, default=str)
             .encode("utf-8")).hexdigest()[:16]
@@ -316,7 +322,8 @@ class AssessmentStore:
         aid = self.assessment_id_of(assessment)
         path = self.dir / "assessments" / f"{aid}.json"
         payload = {
-            "schema_version": ASSESSMENT_SCHEMA_VERSION,
+            "schema_version": (ASSESSMENT_SCHEMA_VERSION
+                               if assessment.checkpoint_results is not None else 1),
             "assessment_id": aid,
             "content_hash": aid[len("asm_"):],
             "saved_at": datetime.now().astimezone().isoformat(timespec="seconds"),
@@ -342,7 +349,17 @@ class AssessmentStore:
         try:
             from src.core.research import ThesisAssessment
             data = json.loads(path.read_text(encoding="utf-8"))
-            asm = ThesisAssessment.model_validate(data["assessment"])
+            schema = data.get("schema_version", 1)
+            if type(schema) is not int or schema not in (1, ASSESSMENT_SCHEMA_VERSION):
+                raise ValueError("unsupported assessment schema_version")
+            content = dict(data["assessment"])
+            if schema == 1:
+                # Old extras were not part of content addressing or qualification.
+                # Preserve historical addressing without promoting them to new receipts.
+                content["checkpoint_results"] = None
+            elif content.get("checkpoint_results") is None:
+                raise ValueError("assessment schema 2 requires checkpoint_results")
+            asm = ThesisAssessment.model_validate(content)
             recomputed = self.assessment_id_of(asm)
             if str(data.get("assessment_id") or "") != aid or recomputed != aid:
                 logger.warning(

@@ -16,18 +16,13 @@ ThesisAssessment（周期研究评估；状态优先级链）——shadow/CLI/�
 
 import hashlib
 import json
-import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from enum import Enum
 from typing import Literal, Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from src.core.decision_contract import ThesisStatus, TruthValue
-
-
-def _uuid_hex() -> str:
-    return uuid.uuid4().hex
 
 
 def _assertion_content_id(security_id: str, horizon: str, proposition_type: str,
@@ -174,7 +169,7 @@ class CheckpointCondition(BaseModel):
 
     model_config = ConfigDict(extra="allow")
 
-    condition_id: str = Field(default_factory=_uuid_hex)
+    condition_id: str = ""
     security_id: str = ""
     horizon: str = Field(default="", description="MID/LONG；空=两周期通用")
     proposition_type: str = Field(description="window_and_refutation / longterm_invalidation")
@@ -186,6 +181,55 @@ class CheckpointCondition(BaseModel):
         description="条件来源（经核实日历/披露安排/用户确认的风险意愿）")
     user_confirmed: bool = Field(default=False,
                                  description="用户已确认风险意愿——缺省 False 不自动通过")
+    review_at: Optional[datetime] = None
+    refute_if: str = ""
+    expiry_action: Optional[Literal["REVIEW_REQUIRED"]] = None
+
+    @field_validator("review_at", mode="before")
+    @classmethod
+    def _aware_review_at(cls, value):
+        if value is None:
+            return None
+        if isinstance(value, str):
+            value = datetime.fromisoformat(value)
+        if not isinstance(value, datetime) or value.tzinfo is None or value.utcoffset() is None:
+            raise ValueError("review_at 必须是带时区的完整日期时间")
+        return value
+
+    @field_validator("evidence_refs")
+    @classmethod
+    def _canonical_refs(cls, value):
+        return sorted(set(value))
+
+    def semantic_payload(self) -> dict:
+        """Only consumed fields determine identity; extras confer no qualification."""
+        return {
+            "security_id": self.security_id, "horizon": self.horizon,
+            "proposition_type": self.proposition_type, "description": self.description,
+            "evidence_refs": sorted(set(self.evidence_refs)),
+            "derived_from": self.derived_from, "user_confirmed": self.user_confirmed,
+            "review_at": (self.review_at.astimezone(timezone.utc).isoformat()
+                          if self.review_at is not None else None),
+            "refute_if": self.refute_if, "expiry_action": self.expiry_action,
+        }
+
+    def content_fingerprint(self) -> str:
+        return hashlib.sha256(json.dumps(
+            self.semantic_payload(), ensure_ascii=False, sort_keys=True)
+            .encode("utf-8")).hexdigest()
+
+    @model_validator(mode="after")
+    def _derive_content_id(self):
+        self.condition_id = "cp_" + self.content_fingerprint()[:16]
+        return self
+
+
+class CheckpointResult(BaseModel):
+    """Explicit checkpoint evaluation; user confirmation alone is not TRUE."""
+
+    condition: CheckpointCondition
+    evaluation: AssertionEvaluation = AssertionEvaluation.UNKNOWN
+    reasons: list[str] = Field(default_factory=list)
 
 
 class ThesisAssertion(BaseModel):
@@ -255,6 +299,7 @@ class ThesisAssessment(BaseModel):
     unresolved_gaps: list[str] = Field(default_factory=list, description="具体缺口（人话——缺哪个证据/哪个命题无法建立）")
     material_counter_evidence: list[str] = Field(default_factory=list, description="未核实的重大反证（→REVIEW_REQUIRED）")
     invalidation_results: list[dict] = Field(default_factory=list, description="失效条件求值记录 {rule_id, condition, evaluation}")
+    checkpoint_results: Optional[list[CheckpointResult]] = None
     next_checks: list[str] = Field(default_factory=list, description="下一可验证节点")
     method_version: str = Field(default="", description="评估方法版本")
     evaluated_as_of: Optional[datetime] = None
@@ -272,7 +317,7 @@ class ThesisAssessment(BaseModel):
 # 每个可自动建立的必需命题登记确定性规则（rule_id/version/输入/适用范围/判定条件）；
 # 规则未登记的命题一律 UNKNOWN（无规则默认 UNKNOWN——阈值有效性未验证时不凭空
 # 冻结投资阈值，研究性判断保留在评估层与人工通道）。
-ASSERTION_RULE_VERSION = "k0b.assertion_v1"
+ASSERTION_RULE_VERSION = "g3.assertion_v2"
 CASH_SUSTAINABILITY_MIN_PERIODS = 2
 
 

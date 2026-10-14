@@ -32,7 +32,7 @@ from src.core.research_service import ResearchService, ResearchBundle
 
 logger = logging.getLogger(__name__)
 
-RESEARCH_APPLICATION_VERSION = "j3.research_application_v1"
+RESEARCH_APPLICATION_VERSION = "g3.research_application_v2"
 
 # 需要人工/其他入口适配的消费者（J3 验收：显式标未支持——路由测试锁定）
 UNSUPPORTED_ENTRYPOINTS = ("chat", "web", "tui")
@@ -86,6 +86,96 @@ class ResearchApplicationService:
         self.assessment_store = assessment_store
         self.fetch_fn = fetch_fn
         self.n_quarters = n_quarters
+
+    def get_daily_view(self, security_id: str, *, as_of: datetime) -> dict:
+        """Consume local plan/assessment state without executing the research loop.
+
+        No account, quote, archive, fetch or write channel is used. Candidates are
+        independent display records and never replace the accepted main slot.
+        """
+        from src.core.decision_policy import HorizonPlan
+        from src.core.research_service import RESEARCH_SERVICE_VERSION
+        from src.core.shadow_diff import _load_verified_assessment
+
+        if not isinstance(as_of, datetime) or as_of.tzinfo is None or as_of.utcoffset() is None:
+            raise ValueError("as_of must be an independent timezone-aware datetime")
+        sid = str(security_id).strip()
+        status, data, root_gaps = self.plans_store.read_snapshot()
+        view = {"security_id": sid, "as_of": as_of.isoformat(),
+                "store_status": status, "horizons": {}, "next_steps": list(root_gaps)}
+        if status in ("CORRUPT", "UNREADABLE"):
+            return view
+
+        def describe(raw, horizon, ref=None, *, present=False, ref_present=False):
+            entry = {"has_plan": present, "accepted": False,
+                     "accepted_ref": ref, "assessment_status": "UNESTABLISHED",
+                     "assessment_gaps": [], "gaps": []}
+            if raw is None:
+                if present:
+                    entry["assessment_status"] = "REVIEW_REQUIRED"
+                    entry["gaps"].append("计划槽存在但记录为空，待核对修复")
+                if ref_present:
+                    entry["gaps"].append("接受引用没有对应主计划")
+                return entry
+            try:
+                plan = HorizonPlan.model_validate(raw)
+                if plan.security_id != sid or plan.horizon.value != horizon:
+                    raise ValueError("slot identity mismatch")
+            except Exception:
+                entry["assessment_status"] = "REVIEW_REQUIRED"
+                entry["gaps"].append("计划记录损坏或证券/周期与槽位错配")
+                return entry
+            entry.update(plan_id=plan.plan_id, revision=plan.revision,
+                         content_hash=plan.content_hash(), snapshot_id=plan.snapshot_id,
+                         assessment_id=plan.assessment_id, activated=plan.activated)
+            if isinstance(ref, dict):
+                entry["accepted"] = (ref.get("plan_id") == plan.plan_id
+                                     and ref.get("revision") == plan.revision
+                                     and ref.get("content_hash") == plan.content_hash())
+                if not entry["accepted"]:
+                    entry["gaps"].append("接受引用与计划精确版本不一致")
+            elif ref_present:
+                entry["gaps"].append("接受引用记录损坏")
+            asm = _load_verified_assessment(
+                plan, horizon, sid, self.assessment_store,
+                as_of=as_of, gaps=entry["assessment_gaps"])
+            if asm is not None:
+                entry["assessment_status"] = asm.status.value
+                entry["assessment_gaps"].extend(asm.unresolved_gaps)
+                entry["next_checks"] = list(asm.next_checks)
+                entry["checkpoint_results"] = (
+                    [r.model_dump(mode="json") for r in asm.checkpoint_results]
+                    if asm.checkpoint_results is not None else None)
+            else:
+                entry["assessment_status"] = "REVIEW_REQUIRED"
+            if plan.policy_version != RESEARCH_SERVICE_VERSION:
+                entry["version_note"] = "生成版本非当期已验证组合"
+                entry["assessment_status"] = "REVIEW_REQUIRED"
+                entry["assessment_gaps"].append("生成版本非当期已验证组合，待复核")
+            return entry
+
+        for horizon in ("MID", "LONG"):
+            key = self.plans_store._key(sid, horizon)
+            plans, refs, candidates = (data.get(name, {}) for name in ("plans", "accepted_refs", "candidates"))
+            raw, ref, cand_raw = plans.get(key), refs.get(key), candidates.get(key)
+            entry = describe(raw, horizon, ref, present=key in plans, ref_present=key in refs)
+            entry["candidate_available"] = key in candidates
+            entry["candidate"] = describe(cand_raw, horizon, present=True) if key in candidates else None
+            if entry["gaps"] or (entry["candidate"] and entry["candidate"]["gaps"]):
+                view["store_status"] = "CORRUPT"
+                view["next_steps"].append(f"{horizon} 记录缺口，请人工核对修复；另一周期仍独立展示")
+            elif key not in plans and key not in candidates:
+                view["next_steps"].append(
+                    f"{horizon} 无研究记录：research {sid} --claims <主张文件> 建立研究")
+            elif raw is not None and not entry["accepted"]:
+                view["next_steps"].append(f"{horizon} 草稿未接受：plan2 accept {sid} {horizon.lower()}")
+            if raw is not None and entry["assessment_status"] != "VALID":
+                view["next_steps"].append(f"{horizon} 逻辑状态 {entry['assessment_status']}，重跑 research {sid} 复核")
+            if key in candidates:
+                view["next_steps"].append(f"{horizon} 存在候选草稿，未接受不替换主计划；plan2 diff/accept 显式处理")
+            view["next_steps"].extend(f"{horizon} 核验节点：{check}" for check in entry.get("next_checks", []))
+            view["horizons"][horizon] = entry
+        return view
 
     def run(self, security_id: str, *, as_of: datetime,
             horizons: tuple[str, ...] = ("MID", "LONG"),
@@ -250,7 +340,8 @@ class ResearchApplicationService:
             snapshot_id=snap.snapshot_id,
             snapshot_dropped=dict(snap.drop_reasons),
             assessments={h: {"status": a["status"],
-                             "gaps": list(a["unresolved_gaps"])}
+                             "gaps": list(a["unresolved_gaps"]),
+                             "checkpoint_results": a.get("checkpoint_results")}
                          for h, a in bundle.assessments.items()},
             draft_plan_ids=draft_ids, draft_revisions=revisions, draft_kinds=draft_kinds,
             assessment_ids=assessment_ids,

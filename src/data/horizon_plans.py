@@ -106,6 +106,41 @@ class HorizonPlanStore:
         """槽位键：每股每周期一份（mid/long 正交并存）。"""
         return f"{security_id}:{str(horizon).upper()}"
 
+    def read_snapshot(self) -> tuple[str, dict, list[str]]:
+        """Fresh disk-only view; do not repair, cache or create storage on a query.
+
+        Slot records are validated by the consumer so one bad horizon does not hide
+        its healthy sibling. Malformed root maps cannot be represented as empty.
+        """
+        try:
+            raw = self.path.read_text(encoding="utf-8")
+        except FileNotFoundError:
+            return "EMPTY", {}, []
+        except UnicodeError:
+            return "CORRUPT", {}, ["研究计划库编码损坏，请人工核对修复后重试"]
+        except OSError:
+            return "UNREADABLE", {}, ["研究计划库不可读，请人工核对访问权限"]
+        try:
+            def unique_pairs(pairs):
+                result = {}
+                for key, value in pairs:
+                    if key in result:
+                        raise ValueError("duplicate JSON key")
+                    result[key] = value
+                return result
+            data = json.loads(raw, object_pairs_hook=unique_pairs)
+            if not isinstance(data, dict) or data.get("version") != PLANS_VERSION:
+                raise ValueError("invalid root/version")
+            if not isinstance(data.get("plans"), dict):
+                raise ValueError("invalid plans")
+            for name in ("accepted_refs", "candidates", "active_refs"):
+                if name in data and not isinstance(data[name], dict):
+                    raise ValueError("invalid root map")
+            empty = not data["plans"] and not data.get("candidates") and not data.get("accepted_refs")
+            return "EMPTY" if empty else "NORMAL", data, []
+        except (ValueError, TypeError, UnicodeError):
+            return "CORRUPT", {}, ["研究计划库损坏，请人工核对修复后重试"]
+
     def _parse(self, raw):
         if not raw:
             return None

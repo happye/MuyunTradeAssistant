@@ -43,18 +43,20 @@ from src.core.research import (
     AssertionEvaluation,
     ThesisAssertion,
     ThesisAssessment,
+    CheckpointCondition,
+    CheckpointResult,
     assess_thesis_by_assertions,
     evaluate_assertion,
 )
 
 logger = logging.getLogger(__name__)
 
-RESEARCH_SERVICE_VERSION = "r4.research_service_v1"
+RESEARCH_SERVICE_VERSION = "g3.research_service_v2"
 # K0b/D5：求值方法版本随命题规则语义升位（旧方法版本评估影子侧按待复核——重验不冒充）
 ASSERTION_METHOD_VERSION = ASSERTION_RULE_VERSION
 # J0/K0b 关联/检查点/命题规则版本（改动映射与判定必须 bump——旧评估不冒充新语义）
 ASSOC_RULE_VERSION = "j4.assoc_v1"
-CHECKPOINT_RULE_VERSION = "j4.checkpoint_v1"
+CHECKPOINT_RULE_VERSION = "g3.checkpoint_v2"
 PROPOSITION_RULE_VERSION = "k0b.propo_v1"  # K0b/D5：命题规则注册表语义（无规则默认 UNKNOWN）
 
 # 必需命题保守绑定映射（J0b：一个订单不能同时证明业务纯度、利润兑现和长期优势——
@@ -155,6 +157,71 @@ def _same_as_of(a, b: datetime) -> bool:
     return parsed.tzinfo is not None and parsed == b
 
 
+def checkpoint_condition_gaps(condition, security_id, verified_ids, as_of) -> list[str]:
+    """Qualification of a verification agreement, never a trading permission."""
+    gaps = []
+    if condition.security_id != security_id:
+        gaps.append("检查条件证券缺失或错配")
+    if not condition.description.strip():
+        gaps.append("description 缺检查条件说明")
+    if condition.review_at is None:
+        gaps.append("review_at 缺带时区的核验时间")
+    elif condition.review_at <= as_of:
+        gaps.append("review_at 检查条件已到期，需复核；不产生退出授权")
+    if not condition.refute_if.strip():
+        gaps.append("refute_if 缺可核对的推翻事实")
+    if condition.expiry_action != "REVIEW_REQUIRED":
+        gaps.append("expiry_action 缺到期处理（待复核）")
+    if not condition.user_confirmed:
+        gaps.append("user_confirmed 风险意愿未显式确认")
+    if not condition.evidence_refs:
+        gaps.append("evidence_refs 缺已核验材料引用")
+    elif any(ref not in verified_ids for ref in condition.evidence_refs):
+        gaps.append("evidence_refs 引用未全部核实")
+    return gaps
+
+
+def checkpoint_summary(receipt) -> str:
+    cp = receipt.condition
+    when = cp.review_at.isoformat() if cp.review_at is not None else "当时未记录"
+    refutation = cp.refute_if or "当时未记录"
+    handling = "到期待复核" if cp.expiry_action == "REVIEW_REQUIRED" else "到期处理未记录"
+    qualification = "条件已建立（未证明兑现）" if receipt.evaluation is AssertionEvaluation.TRUE \
+        else "条件待核：" + "；".join(receipt.reasons)
+    return f"{cp.description}；核验时间 {when}；推翻事实 {refutation}；{handling}；{qualification}"
+
+
+def checkpoint_review_gaps(assessment, *, as_of) -> list[str]:
+    """Read-only consumers apply time qualification to the stored original assessment.
+
+    The stored result is immutable. An expired agreement makes it unsuitable for
+    today's decision without rewriting yesterday's assessment to a new status.
+    """
+    checkpoint_assertions = [a for a in assessment.required_assertions
+                             if a.proposition_type in ("window_and_refutation", "longterm_invalidation")]
+    if not checkpoint_assertions:
+        return []  # Existing diagnostic assessments without this proposition remain readable.
+    receipts = assessment.checkpoint_results
+    if receipts is None:
+        return ["检查条件原件当时未记录，待复核"]
+    gaps = []
+    for assertion in checkpoint_assertions:
+        if assertion.evaluation is not AssertionEvaluation.TRUE:
+            continue  # An unestablished proposition is already disclosed by its assessment.
+        matching = [r for r in receipts if r.condition.proposition_type == assertion.proposition_type
+                    and (not r.condition.horizon or r.condition.horizon == assessment.horizon)]
+        if not matching:
+            gaps.append("已成立命题缺检查条件原件，待复核")
+        for receipt in matching:
+            reasons = checkpoint_condition_gaps(
+                receipt.condition, assessment.security_id,
+                set(assertion.supporting_evidence_ids), as_of)
+            if receipt.evaluation is not AssertionEvaluation.TRUE:
+                reasons.append("检查条件未建立，待复核")
+            gaps.extend(reasons)
+    return list(dict.fromkeys(gaps))
+
+
 class ResearchService:
     """研究链编排（依赖注入；步骤缓存幂等）。"""
 
@@ -187,7 +254,12 @@ class ResearchService:
         if getattr(as_of, "tzinfo", None) is None:
             raise ValueError("as_of 必须带时区（naive 拒收）")
         factor_capabilities = factor_capabilities or {}
-        checkpoints = list(checkpoints or [])  # 先定形——生成器不能被键哈希消费后丢失
+        # Revalidate copies and use consumed content, never a caller's random id.
+        normalized = [CheckpointCondition.model_validate(
+            cp.model_dump(mode="json") if isinstance(cp, CheckpointCondition) else cp)
+            for cp in (checkpoints or [])]
+        checkpoints = list({cp.content_fingerprint(): cp for cp in normalized}.values())
+        checkpoints.sort(key=lambda cp: cp.content_fingerprint())
         def _pool_hash(p):
             """核验池条目指纹（SourceDocument 用其 content_hash 字段；dict 直接哈希）。"""
             if isinstance(p, SourceDocument):
@@ -220,8 +292,7 @@ class ResearchService:
                                        "components": getattr(v, "components", None) or {}},
                             "binding": _normalize_binding((factor_bindings or {}).get(k))})
                         for k, v in factor_capabilities.items()},
-            "checkpoints": [_content_hash(cp.model_dump(mode="json"))
-                            for cp in (checkpoints or [])],
+            "checkpoints": [cp.content_fingerprint() for cp in checkpoints],
         })
         run_id = f"run_{run_key}"
         cached = self._step_cache.get(f"bundle:{run_key}")
@@ -285,6 +356,7 @@ class ResearchService:
         next_checks: list[str] = []
         for horizon in horizons:
             horizon_checks: list[str] = []
+            checkpoint_results: list[CheckpointResult] = []
             assertions = _default_assertions(security_id, horizon, run_id)
             bindings, counter_candidates = _build_support_bindings(
                 verified, assertions, horizon)
@@ -302,25 +374,38 @@ class ResearchService:
                 if a.proposition_type in ("window_and_refutation", "longterm_invalidation"):
                     # J0b 合法建立渠道：经核实材料（evidence_refs 全部已核验）+ 用户
                     # 已确认风险意愿；条件不是已发生公司事实，不进 facts_observed
-                    confirmed = [cp for cp in checkpoints
-                                 if cp.proposition_type == a.proposition_type
-                                 and (not cp.horizon or cp.horizon == horizon)
-                                 and (not cp.security_id or cp.security_id == security_id)
-                                 and cp.user_confirmed]
-                    if confirmed and all(cp.evidence_refs
-                                         and all(r in verified_ids for r in cp.evidence_refs)
-                                         for cp in confirmed):
-                        refs = sorted({r for cp in confirmed for r in cp.evidence_refs})
+                    relevant = [cp for cp in checkpoints
+                                if cp.proposition_type == a.proposition_type
+                                and (not cp.horizon or cp.horizon == horizon)]
+                    receipts = [CheckpointResult(
+                        condition=cp,
+                        evaluation=(AssertionEvaluation.UNKNOWN if
+                                    checkpoint_condition_gaps(cp, security_id, verified_ids, as_of)
+                                    else AssertionEvaluation.TRUE),
+                        reasons=checkpoint_condition_gaps(cp, security_id, verified_ids, as_of))
+                        for cp in relevant]
+                    checkpoint_results.extend(receipts)
+                    for receipt in receipts:
+                        horizon_checks.append(checkpoint_summary(receipt))
+                    if receipts and all(r.evaluation is AssertionEvaluation.TRUE for r in receipts):
+                        refs = sorted({ref for r in receipts for ref in r.condition.evidence_refs})
                         update["supporting_evidence_ids"] = refs
                         update["support_bindings"] = [{
                             "assertion_id": a.assertion_id, "evidence_ids": refs,
                             "relation": "SUPPORTS", "rule_version": CHECKPOINT_RULE_VERSION,
-                            "justification": "经核实的日历/披露安排生成检查点条件，"
-                                             "用户已确认风险意愿（条件不是已发生公司事实）"}]
+                            "justification": "完整检查条件已登记时间、推翻事实、到期复核、"
+                                             "经核实引用及风险确认；不代表公司事实已兑现"}]
                 a2 = a.model_copy(update=update) if update else a
-                evaluated.append(evaluate_assertion(
+                result = evaluate_assertion(
                     a2, available_capabilities=usable_caps,
-                    verified_evidence_ids=verified_ids, as_of=as_of))
+                    verified_evidence_ids=verified_ids, as_of=as_of)
+                if a.proposition_type in ("window_and_refutation", "longterm_invalidation"):
+                    bad = [reason for r in receipts for reason in r.reasons]
+                    if bad or not receipts:
+                        result = result.model_copy(update={
+                            "evaluation": AssertionEvaluation.UNKNOWN,
+                            "evaluation_note": "；".join(bad) if bad else "缺完整检查条件"})
+                evaluated.append(result)
             missing_reqs = sorted({req for a in evaluated
                                    for req in a.evidence_requirements
                                    if a.evaluation is not AssertionEvaluation.TRUE
@@ -342,6 +427,10 @@ class ResearchService:
                           and a.evaluation is not AssertionEvaluation.TRUE]
             status = assess_thesis_by_assertions(
                 evaluated, invalidation_value=None, verified_counter_evidence=False)
+            if any(r.condition.review_at is not None and r.condition.review_at <= as_of
+                   for r in checkpoint_results):
+                from src.core.decision_contract import ThesisStatus
+                status = ThesisStatus.REVIEW_REQUIRED
             asm = ThesisAssessment(
                 thesis_id=f"thesis_{security_id}_{horizon}", security_id=security_id,
                 horizon=horizon,
@@ -351,6 +440,7 @@ class ResearchService:
                 unresolved_gaps=unresolved,
                 material_counter_evidence=[],
                 next_checks=list(horizon_checks),
+                checkpoint_results=checkpoint_results,
                 method_version=ASSERTION_METHOD_VERSION,
                 evaluated_as_of=as_of)
             assessments[horizon] = asm
