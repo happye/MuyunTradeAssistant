@@ -44,6 +44,17 @@ def _eval_time_qualified(evaluation_as_of, quote_as_of) -> tuple[bool, str]:
     return True, ""
 
 
+def _eval_market_input(evaluation_as_of, data):
+    ok, reason = _eval_time_qualified(evaluation_as_of, getattr(data, "quote_as_of", None))
+    if not ok:
+        return ok, reason
+    price = getattr(data, "price", None)
+    if (not isinstance(price, (int, float)) or isinstance(price, bool)
+            or not math.isfinite(price) or price <= 0):
+        return False, "行情价格缺失/非法→UNKNOWN"
+    return True, ""
+
+
 class StateMachine:
     """市场状态机 - 基于A股行业标准判断市场状态
 
@@ -189,6 +200,7 @@ class DecisionEngine:
         evaluation_as_of: Optional[str] = None,
         expected_regulators: Optional[dict[str, float]] = None,
         regulator_rule_versions: Optional[dict[str, str]] = None,
+        evidence_resolver=None,
     ) -> DecisionResult:
         """信号聚合（v0.7.2: 不再是最终决策，而是信号聚合结果）
 
@@ -209,6 +221,7 @@ class DecisionEngine:
         ISS-001: 分层决策 + 信号去重；ISS-007: 决策追溯
         """
         trace: list[DecisionTrace] = []
+        slot_notes = []
 
         if state is None:
             state = StateMachine.determine_state(data)
@@ -243,6 +256,7 @@ class DecisionEngine:
                 for w in expected_base.values())
             if _bad_roster or sum(expected_base.values()) <= 0:
                 expected_base = None
+        data_gaps: list[str] = []
         degraded = not expected_base  # None 或空注册表都视为不可用（显式降级）
         if degraded:
             protocol = (self.PROTOCOL_NO_ROSTER if expected_base is None
@@ -262,7 +276,7 @@ class DecisionEngine:
             protocol = self.PROTOCOL_V1
             degraded_reason = ""
             weighted_scores, coverage_ratio, slot_notes = self._aggregate_votes(
-                base_signals, expected_base, rule_versions, evaluation_as_of, data)
+                base_signals, expected_base, rule_versions, evaluation_as_of, data, evidence_resolver, diagnostic_gaps=data_gaps)
             trace.append(DecisionTrace(
                 step="基础信号投票（s2a-v1）",
                 description=f"固定分母 W={sum(expected_base.values()):.2f}，覆盖率 C={coverage_ratio:.2f}",
@@ -279,7 +293,7 @@ class DecisionEngine:
             data, regulator_signals, weighted_scores,
             expected_regulators=expected_regulators,
             regulator_rule_versions=regulator_rule_versions,
-            evaluation_as_of=evaluation_as_of)
+            evaluation_as_of=evaluation_as_of, diagnostic_gaps=data_gaps)
         regulator_details = [f"{k.value}: ×{v:.3f}" for k, v in regulator_modifiers.items()]
 
         for sig_type, modifier in regulator_modifiers.items():
@@ -327,7 +341,7 @@ class DecisionEngine:
         ))
 
         # 第四步：动作信号覆盖（止损/止盈优先级）——独立纪律，不受覆盖率影响
-        final_signal, action_reason, override_conf = self._apply_action_signals(
+        final_signal, action_reason, override_conf, override_signal_id = self._apply_action_signals(
             action_signals, pre_action_signal, data,
             current_position_ratio=current_position_ratio,
         )
@@ -347,6 +361,7 @@ class DecisionEngine:
                 "overridden": overridden,
                 "action_reason": action_reason,
                 "override_confidence": override_conf,
+                "override_signal_id": override_signal_id,
             }
         ))
 
@@ -359,13 +374,24 @@ class DecisionEngine:
         if action_reason:
             reasons.insert(0, action_reason)
 
-        warnings = self._generate_warnings(data, signals, state)
+        warnings = self._generate_warnings(
+            data, signals, state, adopted_signal_id=override_signal_id,
+            adopted_confidence=override_conf, final_signal=final_signal,
+            current_position_ratio=current_position_ratio,
+        )
+        warnings.extend(n for n in (slot_notes + regulator_notes)
+                        if any(tag in n for tag in ("UNKNOWN", "未注册", "非法", "缺", "错", "弃权")))
+        if degraded_reason:
+            warnings.append(degraded_reason)
+            data_gaps.append(degraded_reason)
 
         position_action, position_ratio = self._calculate_position(
             final_signal, state,
             action_strength if action_strength is not None else weighted_scores,
             action_signals,
             current_position_ratio=current_position_ratio,
+            inhibit_risk_increase=(override_signal_id == "take_profit"
+                                   and final_signal == SignalType.HOLD),
         )
 
         return DecisionResult(
@@ -376,6 +402,7 @@ class DecisionEngine:
             signals=signals,
             reason=reasons,
             warnings=warnings,
+            data_gaps=list(dict.fromkeys(data_gaps)),
             trace=trace,
             position_action=position_action,
             position_ratio=position_ratio,
@@ -386,8 +413,10 @@ class DecisionEngine:
                            if opinion_share is not None else None),
             coverage_ratio=(round(coverage_ratio, 4) if coverage_ratio is not None else None),
             aggregation_protocol=protocol,
+            signal_authority_protocol="iss117-s3-v1",
             aggregation_degraded_reason=degraded_reason,
             action_override_confidence=override_conf,
+            action_override_signal_id=override_signal_id,
         )
 
     # ── S2a: 一槽一票聚合（冻结公式 §1-§3、§7 同槽去重） ──
@@ -399,6 +428,9 @@ class DecisionEngine:
         rule_versions: Optional[dict[str, str]],
         evaluation_as_of: Optional[str],
         data: StockData,
+        evidence_resolver=None,
+        *,
+        diagnostic_gaps: Optional[list[str]] = None,
     ) -> tuple[dict[SignalType, float], float, list[str]]:
         """按固定分母聚合格票，返回 (U_d, C, 槽诊断)。
 
@@ -413,45 +445,53 @@ class DecisionEngine:
         W = float(sum(expected_base.values()))
         grouped: dict[str, list[tuple[SignalType, float, SkillSignal]]] = {}
         notes: list[str] = []
+        def reject(note):
+            notes.append(note)
+            if diagnostic_gaps is not None:
+                diagnostic_gaps.append(note)
+        if diagnostic_gaps is not None:
+            responding_slots = {sig.skill_name for sig in base_signals}
+            for name in expected_base.keys() - responding_slots:
+                reject(f"{name}: 注册槽无返回票，资格待核，W保留")
         # S2a-X：评估时点资格（共用 _eval_time_qualified——cutoff 日精度按日期
         # 比较，同日带时刻的实时行情合法；guard P0 修复）
-        _ok, _quote_note = _eval_time_qualified(evaluation_as_of,
-                                                getattr(data, "quote_as_of", None))
+        _ok, _quote_note = _eval_market_input(evaluation_as_of, data)
         if not _ok:
-            notes.append(f"评估时点资格不足：{_quote_note}→全部槽 UNKNOWN")
+            reject(f"评估时点资格不足：{_quote_note}→全部槽 UNKNOWN")
         for sig in base_signals:
             if sig.skill_name not in expected_base:
-                notes.append(f"{sig.skill_name}: 未注册（不参与投票与分母）")
+                reject(f"{sig.skill_name}: 未注册（不参与投票与分母）")
                 continue
             if _quote_note:
-                notes.append(f"{sig.skill_name}: {_quote_note}→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: {_quote_note}→槽 UNKNOWN")
                 continue
             sec = getattr(data, "stock_code", None)
             reg_rv = (rule_versions or {}).get(sig.skill_name)
             slot_key = (sig.skill_name, sec, evaluation_as_of, reg_rv)
             # 槽资格——上下文缺失/错配一律 UNKNOWN（票自报不能补缺）
             if not sec:
-                notes.append(f"{sig.skill_name}: 缺证券上下文→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 缺证券上下文→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             if not evaluation_as_of:
-                notes.append(f"{sig.skill_name}: 缺独立评估时点→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 缺独立评估时点→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             if not reg_rv or reg_rv == "unavailable":
-                notes.append(f"{sig.skill_name}: 缺注册规则版本→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 缺注册规则版本→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             if sig.security and sig.security != sec:
-                notes.append(f"{sig.skill_name}: 错股({sig.security})→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 错股({sig.security})→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             if sig.evaluation_as_of and sig.evaluation_as_of != evaluation_as_of:
-                notes.append(f"{sig.skill_name}: 错时点({sig.evaluation_as_of})→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 错时点({sig.evaluation_as_of})→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             if sig.rule_version and sig.rule_version != reg_rv:
-                notes.append(f"{sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→槽 UNKNOWN")
+                reject(f"{sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→槽 UNKNOWN")
                 continue  # 弃权即不投不计覆盖（独立记录，不污染合法槽组）
             grouped.setdefault(str(slot_key), []).append((sig.signal, sig.confidence, sig))
 
         U = {st: 0.0 for st in SignalType}
         covered_w = 0.0
+        contributions = {}
         for key, rows in grouped.items():
             slot_name = rows[0][2].skill_name
             w = float(expected_base[slot_name])
@@ -464,14 +504,46 @@ class DecisionEngine:
                 directions.add(d)
             if len(rows) > 1 and len({(d, round(float(c), 10)) for d, c, _ in rows}) > 1:
                 eligible = False  # 同槽不同票（方向或置信度不一致）→ 冲突
+            if len(rows) > 1 and any(row[2].source_kind != rows[0][2].source_kind
+                    or row[2].evidence_binding != rows[0][2].evidence_binding for row in rows[1:]):
+                eligible = False
             if not eligible or (len(rows) > 1 and len(directions) != 1):
-                notes.append(f"{slot_name}: 槽 UNKNOWN（冲突/非法值）→弃权，W 保留")
+                reject(f"{slot_name}: 槽 UNKNOWN（冲突/非法值）→弃权，W 保留")
                 continue
             direction, confidence, _sig = rows[0]
-            covered_w += w  # 合格已响应槽计覆盖（c=0 也计）
-            U[direction] += w * confidence
+            binding = _sig.evidence_binding
+            if _sig.source_kind == "external" or binding is not None:
+                required = ("claim_id", "evidence_id", "revision", "security", "as_of")
+                resolved = None
+                if isinstance(binding, dict) and all(isinstance(binding.get(k), str) and binding[k].strip() for k in required) and callable(evidence_resolver):
+                    try:
+                        resolved = evidence_resolver(binding["evidence_id"])
+                    except Exception as exc:
+                        reject(f"{slot_name}: 证据解析失败({type(exc).__name__})")
+                if (not isinstance(resolved, dict) or resolved.get("verified") is not True
+                        or resolved.get("data_quality") != "OK" or resolved.get("revoked") is True
+                        or any(resolved.get(k) != binding[k] for k in required)
+                        or binding["security"] != data.stock_code
+                        or not _eval_time_qualified(evaluation_as_of, binding["as_of"])[0]):
+                    reject(f"{slot_name}: 外部命题无可解析合格证据→UNKNOWN，W保留")
+                    continue
+                budget_key = tuple(binding[k] for k in required)
+            else:
+                budget_key = ("technical", slot_name)  # Distinct predicates retain distinct budgets.
+            covered_w += w
+            contributions.setdefault(budget_key, []).append((direction, confidence, w, slot_name))
             if confidence == 0:
                 notes.append(f"{slot_name}: 置信度0（计覆盖、贡献0）")
+        for budget_key, votes in contributions.items():
+            if budget_key[0] != "technical" and len({v[0] for v in votes}) > 1:
+                covered_w -= sum(v[2] for v in votes)
+                reject("同一命题/证据修订意见冲突→组UNKNOWN，待回核验")
+                continue
+            scale = max(v[2] for v in votes) / sum(v[2] for v in votes)
+            for direction, confidence, weight, name in votes:
+                U[direction] += weight * confidence * scale
+                if len(votes) > 1:
+                    notes.append(f"{name}: 同源命题预算缩放={scale:g}，同材料不同命题不合票")
         coverage = covered_w / W if W > 0 else 0.0
         return U, coverage, notes
 
@@ -483,6 +555,7 @@ class DecisionEngine:
         expected_regulators: Optional[dict[str, float]] = None,
         regulator_rule_versions: Optional[dict[str, str]] = None,
         evaluation_as_of: Optional[str] = None,
+        diagnostic_gaps: Optional[list[str]] = None,
     ) -> tuple[dict[SignalType, float], list[str]]:
         """应用上下文调节器，返回(各信号类型修正系数, 槽诊断)。
 
@@ -507,52 +580,57 @@ class DecisionEngine:
             SignalType.WATCH: [],
         }
         notes: list[str] = []
+        def reject(note):
+            notes.append(note)
+            if diagnostic_gaps is not None:
+                diagnostic_gaps.append(note)
         if not expected_regulators:
             if regulator_signals:
-                notes.append("regulator 全部弃权：无注册表（降级）")
+                reject("regulator 全部弃权：无注册表（降级）")
             return {st: 1.0 for st in SignalType}, notes
 
         # S2a-X：与 base 共用同一时点资格（_eval_time_qualified）
-        _ok, _quote_note = _eval_time_qualified(evaluation_as_of,
-                                                getattr(data, "quote_as_of", None))
+        _ok, _quote_note = _eval_market_input(evaluation_as_of, data)
         if not _ok:
-            notes.append(f"regulator 全部弃权：{_quote_note}")
+            reject(f"regulator 全部弃权：{_quote_note}")
             return {st: 1.0 for st in SignalType}, notes
         grouped: dict[str, list[tuple[SignalType, float, float, SkillSignal]]] = {}
         sec = getattr(data, "stock_code", None)
         for sig in regulator_signals:
             if sig.skill_name not in expected_regulators:
-                notes.append(f"regulator {sig.skill_name}: 未注册→弃权")
+                reject(f"regulator {sig.skill_name}: 未注册→弃权")
                 continue
             reg_rv = (regulator_rule_versions or {}).get(sig.skill_name)
             if not sec or not evaluation_as_of:
-                notes.append(f"regulator {sig.skill_name}: 缺证券/时点上下文→弃权")
+                reject(f"regulator {sig.skill_name}: 缺证券/时点上下文→弃权")
                 continue
             if _quote_note:
-                notes.append(f"regulator {sig.skill_name}: {_quote_note}→弃权")
+                reject(f"regulator {sig.skill_name}: {_quote_note}→弃权")
                 continue
             if not reg_rv or reg_rv == "unavailable":
-                notes.append(f"regulator {sig.skill_name}: 缺注册规则版本→弃权")
+                reject(f"regulator {sig.skill_name}: 缺注册规则版本→弃权")
                 continue
             if sig.security and sig.security != sec:
-                notes.append(f"regulator {sig.skill_name}: 错股({sig.security})→弃权，不扩大当前证券资格")
+                reject(f"regulator {sig.skill_name}: 错股({sig.security})→弃权，不扩大当前证券资格")
                 continue
             if sig.evaluation_as_of and sig.evaluation_as_of != evaluation_as_of:
-                notes.append(f"regulator {sig.skill_name}: 错时点({sig.evaluation_as_of})→弃权")
+                reject(f"regulator {sig.skill_name}: 错时点({sig.evaluation_as_of})→弃权")
                 continue
             if sig.rule_version and sig.rule_version != reg_rv:
-                notes.append(f"regulator {sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→弃权")
+                reject(f"regulator {sig.skill_name}: 错版本({sig.rule_version}≠注册{reg_rv})→弃权")
                 continue
             weight = self.weights.get(sig.skill_name, 1.0)
             if (not isinstance(weight, (int, float)) or isinstance(weight, bool)
                     or not math.isfinite(weight) or weight <= 0):
                 # 负/NaN 权重不得翻转调节方向或被 clip 洗成合法——弃权留拒因
-                notes.append(f"regulator {sig.skill_name}: 非法权重({weight!r})→弃权")
+                reject(f"regulator {sig.skill_name}: 非法权重({weight!r})→弃权")
                 continue
             c = sig.confidence
             if not isinstance(c, (int, float)) or isinstance(c, bool) \
                     or not math.isfinite(c) or c <= 0:
                 notes.append(f"regulator {sig.skill_name}: 零/坏置信度→不参与（不贡献不稀释）")
+                if diagnostic_gaps is not None and c != 0:
+                    diagnostic_gaps.append(f"regulator {sig.skill_name}: 非法置信度，资格待核")
                 continue
             slot = str((sig.skill_name, sec, evaluation_as_of, sig.rule_version or reg_rv))
             grouped.setdefault(slot, []).append((sig.signal, c, weight, sig))
@@ -562,7 +640,7 @@ class DecisionEngine:
         for key, rows in grouped.items():
             name = rows[0][3].skill_name
             if len(rows) > 1 and len({(d, round(float(c), 10)) for d, c, _w, _s in rows}) > 1:
-                notes.append(f"regulator {name}: 同槽冲突→弃权")
+                reject(f"regulator {name}: 同槽冲突→弃权")
                 continue
             qualified.append(rows[0])
 
@@ -598,14 +676,15 @@ class DecisionEngine:
         return result, notes
 
 
+
     def _apply_action_signals(
         self,
         action_signals: list[SkillSignal],
         current_decision: SignalType,
         data: StockData,
         current_position_ratio: float = 0.0,
-    ) -> tuple[SignalType, Optional[str], Optional[float]]:
-        """应用动作信号（止损/止盈），返回(最终决策, 覆盖原因, 触发信票置信度)
+    ) -> tuple[SignalType, Optional[str], Optional[float], Optional[str]]:
+        """应用动作信号（止损/止盈），返回(最终决策, 覆盖原因, 触发信票置信度, 选中技能身份)
 
         层级逻辑（ISS-016 方案A：止损仓位感知）：
         - 有仓位时：止损SELL confidence≥0.8 → 直接覆盖为SELL（一票否决）
@@ -629,15 +708,15 @@ class DecisionEngine:
                     # 有仓位：止损一票否决，卖出保护本金
                     return (SignalType.SELL,
                             f"⚠️ 止损信号覆盖：{', '.join(sig.reason[:2])}",
-                            sig.confidence)
+                            sig.confidence, sig.skill_name)
                 else:
                     # 空仓：止损只是风险提示，压制BUY为WATCH（观望而非卖出）
                     if current_decision == SignalType.BUY:
                         return (SignalType.WATCH,
                                 f"⚠️ 止损风险提示（空仓观望）：{', '.join(sig.reason[:2])}",
-                                sig.confidence)
+                                sig.confidence, sig.skill_name)
                     # 空仓+HOLD/SELL/WATCH → 不变，止损不放大空仓的卖出信号
-                    return current_decision, None, None
+                    return current_decision, None, None, None
 
         # 止盈次之
         for sig in take_profit_signals:
@@ -645,13 +724,13 @@ class DecisionEngine:
                 if current_decision == SignalType.BUY:
                     return (SignalType.HOLD,
                             f"止盈信号压制买入：{', '.join(sig.reason[:2])}",
-                            sig.confidence)
+                            sig.confidence, sig.skill_name)
                 elif current_decision == SignalType.HOLD:
                     return (SignalType.SELL,
                             f"止盈信号确认卖出：{', '.join(sig.reason[:2])}",
-                            sig.confidence)
+                            sig.confidence, sig.skill_name)
 
-        return current_decision, None, None
+        return current_decision, None, None, None
 
     # ===== SELL分层门槛（ISS-016 方案C） =====
     # 依赖方案D（年线牛熊判断）的稳定市场状态
@@ -753,17 +832,17 @@ class DecisionEngine:
         # 动作信号理由优先展示
         for sig in action_signals:
             if sig.signal == final_signal and sig.reason:
-                reasons.extend(sig.reason[:2])
+                reasons.extend(sig.reason)
 
         # 基础信号理由
         for sig in base_signals:
             if sig.signal == final_signal and sig.reason:
-                reasons.extend(sig.reason[:2])
+                reasons.extend(sig.reason)
 
         # 调节器理由（标注为上下文）
         for sig in regulator_signals:
             if sig.reason:
-                for r in sig.reason[:1]:
+                for r in sig.reason:
                     reasons.append(f"[上下文] {r}")
 
         if len(reasons) < 3 and data.ma20:
@@ -780,13 +859,18 @@ class DecisionEngine:
                 seen.add(r)
                 unique_reasons.append(r)
 
-        return unique_reasons[:5]
+        return unique_reasons
 
     def _generate_warnings(
         self,
         data: StockData,
         signals: list[SkillSignal],
-        state: MarketState
+        state: MarketState,
+        *,
+        adopted_signal_id: Optional[str] = None,
+        adopted_confidence: Optional[float] = None,
+        final_signal: Optional[SignalType] = None,
+        current_position_ratio: Optional[float] = 0.0,
     ) -> list[str]:
         """生成风险提示（融入第41-55章策略智慧）"""
         warnings = []
@@ -826,7 +910,14 @@ class DecisionEngine:
         stop_loss_signals = [s for s in signals if s.skill_name == "stop_loss"]
         for sig in stop_loss_signals:
             if sig.signal == SignalType.SELL:
-                warnings.append("触发止损条件，止损只上移不下移，别让希望绑架决策")
+                adopted = (sig.skill_type == "action" and adopted_signal_id == "stop_loss"
+                           and adopted_confidence == sig.confidence and sig.confidence >= .8)
+                if adopted and final_signal == SignalType.SELL and (current_position_ratio is None or current_position_ratio > 0):
+                    warnings.append("已采用止损退出保护，止损只上移不下移，别让希望绑架决策")
+                elif adopted and final_signal == SignalType.WATCH:
+                    warnings.append("已采用止损风险保护：空仓抑制新增，保持观望")
+                else:
+                    warnings.append("止损技能线索：未采纳为独立退出保护，请核对技能类型、置信度和适用持仓")
 
         # 第52章：贪婪警告 - 不加杠杆
         buy_signals = [s for s in signals if s.signal == SignalType.BUY]
@@ -842,7 +933,14 @@ class DecisionEngine:
         take_profit_signals = [s for s in signals if s.skill_name == "take_profit"]
         for sig in take_profit_signals:
             if sig.signal == SignalType.SELL:
-                warnings.append("触发止盈条件，分批止盈落袋为安")
+                adopted = (sig.skill_type == "action" and adopted_signal_id == "take_profit"
+                           and adopted_confidence == sig.confidence and sig.confidence >= .75)
+                if adopted and final_signal == SignalType.HOLD:
+                    warnings.append("已采用止盈保护：抑制新增，不据此清仓")
+                elif adopted and final_signal == SignalType.SELL and (current_position_ratio is None or current_position_ratio > 0):
+                    warnings.append("已采用止盈退出保护，具体减仓动作由策略层核定")
+                else:
+                    warnings.append("止盈技能线索：未采纳为独立退出保护，请核对技能类型、置信度和适用持仓")
 
         # 成交量极度萎缩
         if data.avg_volume_20 and data.volume < data.avg_volume_20 * 0.3:
@@ -883,6 +981,8 @@ class DecisionEngine:
         weighted_scores: dict[SignalType, float],
         action_signals: list[SkillSignal],
         current_position_ratio: float = 0.0,
+        *,
+        inhibit_risk_increase: bool = False,
     ) -> tuple[PositionAction, float]:
         """根据最终决策、市场状态和信号强度，计算仓位动作和目标比例
 
@@ -970,21 +1070,26 @@ class DecisionEngine:
                     return PositionAction.HOLD_POSITION, 0.0
                 if current_position_ratio > 0:
                     return PositionAction.ADD, target
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
             elif buy_score >= 0.25:
                 # 中等买入：试探建仓
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO, cap)
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
             else:
                 # 弱买入：极轻仓
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 target = min(self.OPEN_RATIO * 0.5, cap)
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
 
         elif final_signal == SignalType.HOLD:
+            if inhibit_risk_increase:
+                return PositionAction.HOLD_POSITION, current_position_ratio
             # HOLD：维持当前仓位。S2a：相对优势（buy>sell*1.5）不再足以 ADD——
             # 新增须先过同状态既有 BUY 判据（buy_gate），实际仓位不增加时保持 HOLD
             if self.buy_gate(buy_score, sell_score, state):

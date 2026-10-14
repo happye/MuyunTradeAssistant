@@ -31,6 +31,9 @@ class ExecutionEvaluation:
         slippage_pct: float,
         impact_cost_pct: float,
         total_cost_pct: float,
+        execution_status=None,
+        diagnostics=None,
+        simulated: bool = False,
     ):
         self.original_action = original_action
         self.effective_action = effective_action
@@ -39,6 +42,9 @@ class ExecutionEvaluation:
         self.slippage_pct = slippage_pct
         self.impact_cost_pct = impact_cost_pct
         self.total_cost_pct = total_cost_pct
+        self.execution_status = execution_status
+        self.diagnostics = list(diagnostics or [])
+        self.simulated = simulated
 
 
 class ExecutionLayer:

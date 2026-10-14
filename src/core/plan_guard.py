@@ -46,37 +46,12 @@ def _days_since(start_date: str, today: Optional[str] = None) -> int:
         return 0
 
 
-def _check_invalidation_triggered(plan: TradePlan, data: StockData) -> tuple[bool, Optional[str]]:
-    """检查计划失效条件是否触发（基于规则的轻量判定）。
-
-    AI 辅助判定留到阶段 1.4 与 adjuster 一起做。本阶段先做技术面规则判定：
-    - "跌破 MA60" 类条件 → 看 data.ma60 与 data.price
-    - "MA20 死叉 MA60" → 看 ma20 < ma60
-    - "高点回撤 >X%" → 暂不实现（需要 high_since_entry 历史）
-    - "重大利空 / 财务造假" → 暂不实现（需要新闻面，留到 1.4）
-
-    Returns:
-        (是否触发, 触发的具体条件文本)
-    """
-    if not plan.when_sell_invalidate:
-        return False, None
-
-    for cond in plan.when_sell_invalidate:
-        # 跌破 MA60 类
-        # ISS-117 A11：价格资格门同款——price 坏数据不假触发失效条件（返回资格不符，
-        # 不抹掉其他独立退出）；price=None 曾直接 TypeError 炸穿 evaluate
-        if "MA60" in cond and "跌破" in cond:
-            _pf = _qualified_price(data)
-            if _pf is not None and data.ma60 is not None and _pf < data.ma60:
-                return True, cond
-        # MA20 死叉 MA60
-        if "MA20" in cond and ("死叉" in cond or "下穿" in cond):
-            if data.ma20 is not None and data.ma60 is not None and data.ma20 < data.ma60:
-                return True, cond
-        # 跌破止损（致命）单独由 _check_stop_breach 处理，不在这里
-        # 其他条件（重大利空/财务造假）需要新闻面，本阶段不判定
-
-    return False, None
+def _check_invalidation_triggered(plan, data):
+    """Compatibility wrapper; a complete TRUE predicate alone releases suppression."""
+    from src.core.trade_plan.conditions import evaluate_conditions
+    result = evaluate_conditions(plan, data)
+    hit = next((r["condition"] for r in result["conditions"] if r["value"] == "TRUE"), None)
+    return result["value"] == "TRUE", hit
 
 
 def _qualified_price(data: StockData) -> Optional[float]:
@@ -100,7 +75,8 @@ def _check_stop_breach(plan: TradePlan, data: StockData) -> bool:
     ISS-117 A11（S0/S1）：价格资格门——price 必须为有限正值才参与穿价比较；
     坏数据（0/负/NaN/Inf/缺失）不构成穿止损（也不抹掉其他独立退出）。
     """
-    if plan.current_stop is None or plan.current_stop <= 0:
+    from src.core.trade_plan.conditions import positive
+    if not positive(plan.current_stop):
         return False
     pf = _qualified_price(data)
     if pf is None:
@@ -167,11 +143,35 @@ class PlanGuard:
         # 用浅拷贝避免修改原对象 — Pydantic v2 推荐 model_copy
         adjusted = strategy_decision.model_copy(deep=True)
         reasons: list[str] = list(adjusted.strategy_reasons or [])
+        from src.core.trade_plan.conditions import evaluate_conditions
+        evaluation = evaluate_conditions(trade_plan, data, today)
+        adjusted.condition_evaluation = evaluation
+        adjusted.analysis_as_of = today or adjusted.analysis_as_of or datetime.now().strftime("%Y-%m-%d")
+        from src.core.source_time import parse_source_time
+        cutoff = parse_source_time(adjusted.analysis_as_of)
+        qualified = []
+        for f in adjusted.signal_findings:
+            stamp = parse_source_time(f.as_of)
+            if (f.verified and f.data_quality == "OK" and f.action_scope == "exit" and f.source
+                    and data.stock_code in f.securities and stamp is not None and cutoff is not None
+                    and stamp[0].date() <= cutoff[0].date()
+                    and (not cutoff[1] or not stamp[1] or stamp[0] <= cutoff[0])):
+                qualified.append(f)
+
+        def record_discipline(signal_id, detail):
+            from src.data.models import SignalFinding
+            adjusted.signal_findings.append(SignalFinding(
+                signal_id=signal_id, source="accepted_trade_plan", securities=[data.stock_code],
+                as_of=adjusted.analysis_as_of, data_quality="OK", action_scope="exit",
+                verified=True, strategy_binding="plan:" + trade_plan.plan_id,
+                detail=detail, reason="按已接受计划及明确数值核定"))
+            adjusted.decision_basis = [f"已采用独立退出依据: {signal_id}；{detail}"]
 
         # 规则 4：致命止损（最高优先级，不可压制）--穿 current_stop 强制全清
         # 审查修复 P0：execution_layer 只读 position_action（不读 decision/sell_path，无 STOP 概念），
         # 故必须设 position_action=CLOSE_ALL，否则 strategy_layer 输出 HOLD 时穿止损不卖（安全网静默失效）。
         if _check_stop_breach(trade_plan, data):
+            record_discipline("exit.plan.price_stop", f"{data.price} <= {trade_plan.current_stop}")
             if adjusted.decision != SignalType.SELL:
                 reasons.insert(0, f"PlanGuard 致命止损: 价格 ¥{data.price:.2f} ≤ current_stop ¥{trade_plan.current_stop:.2f}")
                 adjusted.decision = SignalType.SELL
@@ -215,13 +215,16 @@ class PlanGuard:
         # 规则 4.5：基本面恶化硬退出（ISS-053）--不可压制，仅次于致命止损，先于高位止盈
         # 持有期被 ST / 业绩预告预亏预减 -> 强制 SELL+CLOSE_ALL（暴雷比技术顶更急）
         # 独立 fundamental_alert 通道（非 top_signal），避暴雷被日志记成高位止盈污染复盘
-        if adjusted.fundamental_alert:
+        if adjusted.fundamental_alert and any(f.signal_id == "exit.policy.st" and f.verified
+                and f.action_scope == "exit" and f.data_quality == "OK" and data.stock_code in f.securities
+                and f.strategy_binding == "accepted-st-policy-v1" for f in qualified):
             if adjusted.decision != SignalType.SELL:
                 reasons.insert(0, f"PlanGuard 重大利空(不可压): {adjusted.fundamental_alert}")
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
             adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "fundamental_alert"
+            adjusted.decision_basis = [f"已采用独立退出依据: exit.policy.st；{adjusted.fundamental_alert}"]
             # v0.8.8.6：冷却对齐规则4（此前不写，强制清仓次日可立即买回被ST股票）
             _write_force_exit_cooldown(adjusted, "fundamental_alert")
             logger.warning(f"PlanGuard force EXIT by fundamental_alert: {adjusted.fundamental_alert}")
@@ -232,12 +235,17 @@ class PlanGuard:
         # 即使气宗持有期内，宏观/个股大顶信号触发也强制离场（绕开"该不该卖"的 AI 判断）。
         # ISS-117 Q1：仅「通过消费边界资格门」的 top_signal 获得本规则——旧字符串/缓存
         # 自授/未授权实例只作诊断展示，不再触发 CLOSE_ALL。
-        if adjusted.top_signal and adjusted.top_signal_authorized:
+        if adjusted.top_signal and adjusted.top_signal_authorized and trade_plan.mode != "qizong" and any(
+                f.signal_id == "exit.stock.triple_up" and f.verified and f.action_scope == "exit"
+                and f.data_quality == "OK" and data.stock_code in f.securities
+                and f.strategy_binding == "jiaoxue6-8/mode-rule（既有周期策略纪律）"
+                for f in qualified):
             if adjusted.decision != SignalType.SELL:
                 adjusted.decision = SignalType.SELL
             adjusted.position_action = PositionAction.CLOSE_ALL
             adjusted.position_ratio = 0.0  # A06 同步清零，防幽灵仓位
             adjusted.sell_path = "top_signal"
+            adjusted.decision_basis = [f"已采用独立退出依据: exit.stock.triple_up；{adjusted.top_signal}"]
             # v0.8.8.6：冷却对齐规则4
             _write_force_exit_cooldown(adjusted, "top_signal")
             reasons.insert(0, f"PlanGuard 高位止盈(不可压): {adjusted.top_signal}")
@@ -247,6 +255,7 @@ class PlanGuard:
 
         # 规则 3：时间止损 --到期强制全清（审查修复 P0：同规则4，必须设 position_action=CLOSE_ALL）
         if _check_max_hold_expired(trade_plan, today):
+            record_discipline("exit.plan.time_stop", f"{trade_plan.opened_at} + {trade_plan.max_hold_days}天")
             days = _days_since(trade_plan.opened_at, today)
             if adjusted.decision != SignalType.SELL:
                 reasons.insert(0, f"PlanGuard 时间止损: 已持有 {days} 天 ≥ max_hold_days {trade_plan.max_hold_days}")
@@ -286,14 +295,10 @@ class PlanGuard:
                 adjusted.strategy_reasons = reasons
                 return adjusted
 
-            # v0.8.6.3 气宗：跳过 invalidation（回调时 MA60 跌破正是该拿住的时刻，
-            # 仅致命止损+时间止损作安全网，已在规则4/3处理）
-            if not is_qizong:
-                invalidated, invalidate_cond = _check_invalidation_triggered(trade_plan, data)
-                if invalidated:
-                    reasons.insert(0, f"PlanGuard 不压制弱卖出: 失效条件已触发（{invalidate_cond}）")
-                    adjusted.strategy_reasons = reasons
-                    return adjusted
+            if evaluation["value"] == "TRUE":
+                reasons.insert(0, "PlanGuard 不压制弱卖出: 完整失效条件已触发")
+                adjusted.strategy_reasons = reasons
+                return adjusted
 
             # 计划未失效 + outlook 非 bearish → 压制
             outlook_label = trade_plan.fundamental_outlook
@@ -301,13 +306,15 @@ class PlanGuard:
             mode_label = "气宗" if is_qizong else None
             mode_tag = f"[{mode_label}压制 {adjusted.sell_path}] " if mode_label else ""
             reasons.insert(0,
-                f"PlanGuard: {mode_tag}计划未失效，压制弱卖出 "
+                f"PlanGuard: {mode_tag}{'条件已核查未触发' if evaluation['value'] == 'FALSE' else '按已接受纪律暂持，失效条件待复核'}，压制弱卖出 "
                 f"(outlook={outlook_label}, thesis: {thesis_short}{'...' if len(trade_plan.why_buy or '') > 40 else ''})"
             )
             adjusted.decision = SignalType.HOLD
             suppressed_path = adjusted.sell_path
             adjusted.sell_path = None  # 不再是卖出，清空 sell_path
             adjusted.position_action = PositionAction.HOLD_POSITION  # v0.8.6.3: 同步重置仓位动作，否则执行层仍按 REDUCE/CLOSE_ALL 卖出
+            adjusted.decision_basis = [
+                f"已采用计划持有纪律: plan:{trade_plan.plan_id}；失效条件{evaluation['value']}，压制{suppressed_path}"]
             adjusted.position_ratio = 0.0  # HOLD 不增减仓
             logger.info(f"PlanGuard suppress {suppressed_path} (qizong={is_qizong}): outlook={outlook_label}")
             adjusted.strategy_reasons = reasons

@@ -9,7 +9,7 @@ ExecutionEvaluation——执行可行性已评估）适配成统一决策契约�
   （DecisionResult.decision/score、entry_exit）全部进 legacy_trace 作诊断投影
 - 旧七层可能产出"对契约非法"的组合（如 ADD 但当前 0 仓）——适配器**钳制为合法
   包**并记 reason_code，绝不让非法包流入消费方，也绝不静默丢弃退出意图
-- research_status 由数据缺口（warnings）与分歧（divergence）判定；legacy 无投资
+- research_status 由源头结构化数据缺口与分歧判定；普通风险不改变数据完整性；legacy 无投资
   逻辑跟踪，thesis_status 固定 UNESTABLISHED（F5 落 PlanV2 后才有 VALID/INVALID）
 - AI 解释不创造数值：本适配器零 AI 输入
 """
@@ -79,7 +79,7 @@ def build_decision_packet(
     known_confirmed = confirmed_ratio is not None
 
     reason_codes: list[str] = [
-        str(r) for r in (getattr(strategy_decision, "strategy_reasons", None) or [])[:5]
+        str(r) for r in (getattr(strategy_decision, "strategy_reasons", None) or [])
     ]
 
     def _clamp(reason: str):
@@ -175,18 +175,26 @@ def build_decision_packet(
     elif blocked:
         execution_status = ExecutionStatus.BLOCKED
     else:
-        execution_status = ExecutionStatus.ELIGIBLE
+        raw_status = getattr(execution_eval, "execution_status", None)
+        execution_status = ExecutionStatus.ELIGIBLE if raw_status == ExecutionStatus.ELIGIBLE else ExecutionStatus.UNKNOWN
+        if execution_status == ExecutionStatus.UNKNOWN:
+            reason_codes.append("成交资格待确认；保留原动作意图")
 
     blockers = []
     if execution_status is ExecutionStatus.BLOCKED:
         blockers.append(Blocker(kind="execution", detail=block_reason or "执行层评估受阻"))
 
-    # ── research_status（数据缺口→INCOMPLETE；技术/AI 分歧→CONFLICTED）──
-    warnings = list(getattr(decision_result, "warnings", None) or [])
+    # 技术数据资格与公司命题分开：没有warning不能证明公司研究已经核验。
+    recorded_gaps = getattr(decision_result, "data_gaps", None)
+    data_gaps = list(recorded_gaps or [])
+    conditions = getattr(strategy_decision, "condition_evaluation", None)
+    if conditions and conditions["value"] == "UNKNOWN":
+        data_gaps.extend(conditions["gaps"])
+    data_gaps = list(dict.fromkeys(data_gaps))
     divergence = getattr(strategy_decision, "divergence", None)
     if divergence:
         research_status = ResearchStatus.CONFLICTED
-    elif warnings:
+    elif recorded_gaps is None or data_gaps:
         research_status = ResearchStatus.INCOMPLETE
     else:
         research_status = ResearchStatus.COMPLETE
@@ -209,8 +217,19 @@ def build_decision_packet(
         executable_action=(desired if execution_status is ExecutionStatus.ELIGIBLE else None),
         blockers=blockers,
         reason_codes=reason_codes,
+        decision_basis=getattr(strategy_decision, "decision_basis", None),
+        strategy_environment=getattr(strategy_decision, "strategy_environment", None),
+        risk_reminders=[w for w in (getattr(decision_result, "warnings", None) or [])
+                        if w not in data_gaps],
+        data_gaps=(data_gaps if recorded_gaps is not None or data_gaps else None),
+        research_scope="TECHNICAL_LEGACY",
         # M0：账户版本随包下发（同请求同版本可核对；空=未装配）
         portfolio_revision=(account_version or None),
+        signal_effects=[t.data for t in (getattr(decision_result, "trace", None) or []) if t.step == "信号作用留痕"],
+        condition_evaluation=conditions,
+        execution_diagnostics=getattr(execution_eval, "diagnostics", []),
+        execution_simulated=getattr(execution_eval, "simulated", None),
+        signal_findings=[f.model_dump(mode="json") for f in getattr(strategy_decision, "signal_findings", [])],
         legacy_trace=LegacyTrace(
             decision=decision_result.decision.value,
             action_strength=float(decision_result.score),
@@ -219,10 +238,12 @@ def build_decision_packet(
             sell_path=getattr(strategy_decision, "sell_path", None),
             # ISS-117 S2a 补修 D 组：普通票资格/协议独立回溯（旧记录 None=旧协议）
             aggregation_protocol=getattr(decision_result, "aggregation_protocol", None),
+            signal_authority_protocol=getattr(decision_result, "signal_authority_protocol", None),
             voting_action_strength=getattr(decision_result, "action_strength", None),
             opinion_share=getattr(decision_result, "opinion_share", None),
             coverage_ratio=getattr(decision_result, "coverage_ratio", None),
             action_override_confidence=getattr(decision_result, "action_override_confidence", None),
+            action_override_signal_id=getattr(decision_result, "action_override_signal_id", None),
         ),
     )
     logger.debug(

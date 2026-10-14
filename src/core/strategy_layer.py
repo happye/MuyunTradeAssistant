@@ -363,7 +363,7 @@ class StrategyLayer:
             raw_decision, adjusted_decision, new_state,
             inertia_applied, confirmation_required,
             cooldown_blocked, reverse_cost_paid, stability_adjusted,
-            is_extreme
+            False
         )
         position_reason = self._describe_position_action(
             adjusted_decision,
@@ -381,6 +381,18 @@ class StrategyLayer:
             strategy_reasons.append("最短持有窗口: 新开仓阶段不执行战术性减仓")
         if post_add_tactical_sell_blocked:
             strategy_reasons.append("加仓保护窗口: 刚加仓后不执行战术性减仓")
+        if self._has_adopted_buy_suppression(decision_result):
+            strategy_reasons.append("已采用独立止盈保护: 抑制新增风险，保持当前仓位")
+        decision_basis = list(strategy_reasons)
+        if decision_result.action_override_signal_id and decision_result.action_override_confidence is not None:
+            decision_basis.insert(0, f"独立动作来源: {decision_result.action_override_signal_id} / 强度{decision_result.action_override_confidence:.2f}")
+        elif decision_result.action_strength is not None:
+            decision_basis.append(f"普通动作强度: BUY={decision_result.action_strength.get('BUY', 0.):.2f} / SELL={decision_result.action_strength.get('SELL', 0.):.2f}")
+        strategy_environment = []
+        if is_extreme:
+            extreme_summary = "⚠ 极端行情模式（自动缩短惯性/跳过止损确认/缩短冷却期）"
+            strategy_environment.append(extreme_summary)
+            strategy_reasons.insert(0, extreme_summary)
 
         # ISS-033 二阶段（用户可感知）：在策略理由首条标注当前用的参数档
         # 例如 "参数档[牛市档]: 止盈保留85% / 浮盈门槛15% / 趋势退出-5%"
@@ -407,6 +419,7 @@ class StrategyLayer:
             f"{quality_label}"
         )
         strategy_reasons.insert(0, tier_summary)
+        strategy_environment.insert(0, tier_summary)
 
         return StrategyDecision(
             decision=adjusted_decision,
@@ -423,6 +436,8 @@ class StrategyLayer:
             stability_adjusted=stability_adjusted,
             new_state=new_state,
             strategy_reasons=strategy_reasons,
+            decision_basis=decision_basis,
+            strategy_environment=strategy_environment,
         )
 
     # ===== 决策惯性（Inertia） =====
@@ -722,6 +737,8 @@ class StrategyLayer:
                 return PositionAction.REDUCE, target
 
         elif final_signal == SignalType.BUY:
+            if self._has_adopted_buy_suppression(decision_result):
+                return PositionAction.HOLD_POSITION, current_position_ratio
             # ISS-117 S2a 补修 C 组：方向生成和最终风险授权是两道约束——决策层早先
             # 判的 BUY（可能在旧状态下）到仓位出口必须**按当前 state 重过 BUY 门**
             # （AI/事件干预改 state 后旧 BUY 不得直接落地）；过不了门 → HOLD。
@@ -740,23 +757,28 @@ class StrategyLayer:
                         # 也不能靠 packet 删目标掩盖）
                         return PositionAction.HOLD_POSITION, 0.0
                     return PositionAction.ADD, target
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
             elif buy_score >= 0.25:
                 target = min(self.OPEN_RATIO, cap)
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 if current_position_ratio > 0 and target <= current_position_ratio:
                     return PositionAction.HOLD_POSITION, 0.0  # 目标未增加 → HOLD
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
             else:
                 target = min(self.OPEN_RATIO * 0.5, cap)
                 if current_position_ratio is None:
                     return PositionAction.HOLD_POSITION, 0.0  # L1：权重未知阻精确新增
                 if current_position_ratio > 0 and target <= current_position_ratio:
                     return PositionAction.HOLD_POSITION, 0.0  # 目标未增加 → HOLD
-                return PositionAction.OPEN, target
+                return (PositionAction.ADD if current_position_ratio is not None and current_position_ratio > 0
+                        else PositionAction.OPEN), target
 
         elif final_signal == SignalType.HOLD:
+            if self._has_adopted_buy_suppression(decision_result):
+                return PositionAction.HOLD_POSITION, current_position_ratio
             # ISS-117 S2a：HOLD 不得靠相对优势（buy>sell*1.5）绕门变新增——
             # 新增须先过同状态既有 BUY 判据（DecisionEngine.buy_gate 唯一实现）；
             # 实际仓位不增加时保持 HOLD（下方 L1 语义保留）
@@ -778,6 +800,14 @@ class StrategyLayer:
 
         else:  # WATCH
             return PositionAction.STAY_OUT, 0.0
+
+    @staticmethod
+    def _has_adopted_buy_suppression(decision_result: DecisionResult) -> bool:
+        """Consume the selected independent source; ordinary HOLD retains its buy gate."""
+        confidence = decision_result.action_override_confidence
+        return (decision_result.decision == SignalType.HOLD
+                and decision_result.action_override_signal_id == "take_profit"
+                and confidence is not None and confidence >= .75)
 
     def _describe_position_action(
         self,

@@ -111,6 +111,8 @@ class TradePlan(BaseModel):
         description="失效条件文本列表（如['跌破MA60+成交量异常', '出现重大利空']）"
     )
 
+    invalidation_rules: list[dict] = Field(default_factory=list, description="已接受的版本化失效谓词；空时完整识别旧文本")
+
     # 风控核心
     locked_initial_stop: float = Field(description="建仓时定的初始止损价（绝对价，单向上移基线）")
     current_stop: float = Field(description="当前止损价（≥ initial_stop，trailing 后单调上移）")
@@ -166,6 +168,8 @@ class StockData(BaseModel):
     """股票数据结构"""
     stock_code: str = Field(description="股票代码，如 600519")
     stock_name: str = Field(description="股票名称，如 贵州茅台")
+
+    execution_facts: Optional[dict] = Field(default=None, description="经核验券商/交易所快照；证券、时点、来源、订单量、可成交量及停牌状态")
 
     # 价格数据
     price: float = Field(description="当前价格")
@@ -407,6 +411,10 @@ class StrategyDecision(BaseModel):
     # ISS-053: 基本面恶化硬退出（被ST/业绩预亏），独立通道（非 top_signal），PlanGuard 规则4.5 不可压制
     fundamental_alert: Optional[str] = Field(default=None, description="基本面恶化硬退出信号(被ST/业绩预亏)，触发即强制SELL+CLOSE_ALL")
 
+    analysis_as_of: Optional[str] = Field(default=None, description="独立分析截止，用于授权与影子核验")
+    condition_evaluation: Optional[dict] = Field(default=None, description="共享失效条件三态及证据缺口")
+    signal_findings: list["SignalFinding"] = Field(default_factory=list, description="本次实际核定的授权/研究发现")
+
     # 策略层过滤信息
     lifecycle_before: TradeLifecycle = Field(description="过滤前生命周期状态")
     lifecycle_after: TradeLifecycle = Field(description="过滤后生命周期状态")
@@ -421,6 +429,8 @@ class StrategyDecision(BaseModel):
 
     # 决策理由
     strategy_reasons: list[str] = Field(default_factory=list, description="策略层决策理由")
+    decision_basis: Optional[list[str]] = Field(default=None, description="实际采纳的策略依据；None=旧调用未记录，不含参数环境")
+    strategy_environment: Optional[list[str]] = Field(default=None, description="市场参数档及极端模式说明；不作为动作授权依据")
 
     # v0.8.3 Phase C: 买卖点计算结果
     entry_exit: Optional[dict] = Field(default=None, description="买卖点计算结果（EntryExitResult序列化）")
@@ -476,6 +486,8 @@ class SkillSignal(BaseModel):
     confidence: float = Field(ge=0.0, le=1.0, description="置信度 0-1")
     reason: list[str] = Field(default_factory=list, description="判断理由")
     metadata: dict = Field(default_factory=dict, description="额外数据")
+    evidence_binding: Optional[dict] = Field(default=None, description="外部命题+证据修订+证券/时点；必须由独立resolver核对")
+    source_kind: Literal["technical", "external"] = Field(default="technical", description="外部研究事实不得无可解析依据充票")
     skill_type: str = Field(default="base", description="技能类型: base/regulator/action")
     position_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="建议仓位比例(0-1)，None表示不指定")
     # ISS-117 S2a 槽身份（(skill_id, security, evaluation_as_of, rule_version)）：
@@ -502,6 +514,7 @@ class DecisionResult(BaseModel):
     signals: list[SkillSignal] = Field(default_factory=list, description="各技能信号")
     reason: list[str] = Field(default_factory=list, description="决策理由")
     warnings: list[str] = Field(default_factory=list, description="风险提示")
+    data_gaps: Optional[list[str]] = Field(default=None, description="源头记录的数据/注册资格缺口；None=旧调用未记录，风险提示不等于缺口")
     trace: list[DecisionTrace] = Field(default_factory=list, description="决策追溯路径")
     position_action: PositionAction = Field(default=PositionAction.STAY_OUT, description="仓位动作")
     position_ratio: Optional[float] = Field(default=0.0, ge=0.0, le=1.0, description="建议仓位比例(0-1)（None=权重未知不伪造精确目标，L1）")
@@ -517,9 +530,11 @@ class DecisionResult(BaseModel):
     action_strength: Optional[dict] = Field(default=None, description="普通投票动作强度 A_d（s2a-v1），None=降级无注册表")
     opinion_share: Optional[dict] = Field(default=None, description="意见占比 P_d（仅展示，禁止用于授权）")
     coverage_ratio: Optional[float] = Field(default=None, description="有效响应覆盖率 C（0-1）")
+    signal_authority_protocol: Optional[str] = Field(default=None, description="信号权限/同源预算版本；旧记录未记录")
     aggregation_protocol: str = Field(default="pre-s2a", description="聚合协议版本: s2a-v1/legacy-no-roster/v1-unknown-roster")
     aggregation_degraded_reason: str = Field(default="", description="降级拒因（无注册表/坏权重等）")
     action_override_confidence: Optional[float] = Field(default=None, description="动作信号覆盖触发票置信度（明确来源，不反灌普通投票 A）")
+    action_override_signal_id: Optional[str] = Field(default=None, description="实际选中的独立动作技能身份；旧记录未记录")
 
 
 # ===== 回测相关模型 =====
@@ -718,3 +733,6 @@ class SignalFinding(BaseModel):
     strategy_binding: str = Field(default="", description="策略/裁决版本绑定（如 jiaoxue8/ruling-2026-10-09）")
     detail: str = Field(default="", description="人话描述（将进报告/摘要）")
     reason: str = Field(default="", description="资格判定说明：核了什么、缺什么")
+
+
+StrategyDecision.model_rebuild()

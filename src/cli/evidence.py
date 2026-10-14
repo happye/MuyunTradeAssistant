@@ -53,6 +53,7 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
             "score": round(float(decision_result.score), 3),
             # ISS-117 S2a：聚合协议与 A/C 随证据落盘——旧记录按"旧协议"读取，
             # 不把旧 score（归一化占比语义）读成新 A（动作强度）
+            "signal_authority_protocol": getattr(decision_result, "signal_authority_protocol", None),
             "aggregation_protocol": getattr(decision_result, "aggregation_protocol", "pre-s2a"),
             "action_strength": (getattr(decision_result, "action_strength", None) or None),
             "opinion_share": (getattr(decision_result, "opinion_share", None) or None),
@@ -61,6 +62,7 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
             # 落盘——普通 A_SELL=0、C=0 但 override=.9 仍 EXIT 时，回看明确这是
             # 独立纪律 .9（不从中文 reason/sell_path 猜身份）
             "action_override_confidence": getattr(decision_result, "action_override_confidence", None),
+            "action_override_signal_id": getattr(decision_result, "action_override_signal_id", None),
             "position_action": (strategy_decision.position_action.value
                                 if strategy_decision and hasattr(strategy_decision.position_action, "value")
                                 else None),
@@ -72,10 +74,16 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
                            if strategy_decision else None),
             "signals": [
                 {"skill": s.skill_alias, "signal": (s.signal.value if hasattr(s.signal, "value") else str(s.signal)),
-                 "conf": round(float(s.confidence), 2)}
-                for s in (decision_result.signals or [])[:8]
+                 "conf": round(float(s.confidence), 2), "signal_id": getattr(s, "skill_name", None),
+                 "rule_version": getattr(s, "rule_version", None), "evidence_binding": getattr(s, "evidence_binding", None)}
+                for s in (decision_result.signals or [])
             ],
-            "warnings": list(decision_result.warnings or [])[:8],
+            "warnings": list(decision_result.warnings or []),
+            "trace": ([t.model_dump(mode="json") for t in decision_result.trace]
+                      if getattr(decision_result, "trace", None) is not None else None),
+            "decisive_reasons": list(getattr(strategy_decision, "strategy_reasons", []) or []),
+            "signal_findings": [f.model_dump(mode="json") for f in getattr(strategy_decision, "signal_findings", [])],
+            "condition_evaluation": getattr(strategy_decision, "condition_evaluation", None),
         }
         if packet is not None:
             # F2 终态字段：追加式，不改旧字段语义（ADR-F09 缺字段=未记录）
@@ -86,6 +94,16 @@ def record_evidence(decision_result, strategy_decision, *, source: str,
                 "execution_status": packet.execution_status.value,
                 "research_status": packet.research_status.value,
                 "policy_id": packet.policy_id,
+                "signal_effects": getattr(packet, "signal_effects", None),
+                "execution_diagnostics": getattr(packet, "execution_diagnostics", []),
+                "execution_simulated": getattr(packet, "execution_simulated", None),
+                "reason_codes": packet.reason_codes,
+                "blockers": [b.model_dump(mode="json") for b in packet.blockers],
+                "decision_basis": packet.decision_basis,
+                "strategy_environment": packet.strategy_environment,
+                "risk_reminders": packet.risk_reminders,
+                "data_gaps": packet.data_gaps,
+                "research_scope": packet.research_scope,
             })
         if position_state:
             rec["position_state"] = position_state  # M0：账户事实三态（追加式）
@@ -114,20 +132,31 @@ def _write_card(rec: dict, decision_result) -> None:
     ts = rec["ts"].replace(":", "-")
     safe_name = re.sub(r'[<>:"/\\|?*\s]+', "_", rec.get("name") or rec["code"]).strip("_.") or rec["code"]
     base = f"{ts}_{rec['code']}_{safe_name}"
+    from src.cli.action_view import action_headline
+    headline = (action_headline({"bucket": rec["desired_action"],
+                                "execution_status": rec.get("execution_status", "UNKNOWN"),
+                                "blocked": rec.get("execution_status") == "BLOCKED",
+                                "blocked_reason": "；".join(b["detail"] for b in rec.get("blockers") or [])})
+                if rec.get("desired_action") else "旧记录未记录统一终态，请勿从聚合分数推断可执行动作。")
     L = [
         f"# 分析证据 - {rec['code']} {rec.get('name') or ''}",
         "",
         f"> 时间：{rec['ts']} ｜ 来源：{rec['source']}",
-        f"> 决策：**{rec['decision']}** ｜ 评分：{rec['score']:.3f} ｜ 价格：{rec['price']}",
-        f"> 仓位动作：{rec.get('position_action') or '-'} ｜ 卖出路径：{rec.get('sell_path') or '-'}",
-        # ISS-117 S2a-Z：信号口径/独立纪律随卡展示（回看可区分普通票与独立止损）
+        "> " + headline,
+        f"> 技术聚合（诊断）：{rec['decision']} ｜ 展示评分：{rec['score']:.3f} ｜ 价格：{rec['price']}",
+        f"> 旧引擎末端（诊断）：{rec.get('position_action') or '-'} ｜ 卖出路径：{rec.get('sell_path') or '-'}",
         *( [f"> 信号口径：动作强度(普通票) {rec['action_strength'].get(rec['decision'], 0):.2f}"
-            f" ｜ 覆盖率 {rec['coverage_ratio']:.0%}"
-            f" ｜ 独立纪律强度 {rec['action_override_confidence']:.2f}"
-            if rec.get("action_override_confidence") is not None
-            else f"> 信号口径：动作强度(普通票) {rec['action_strength'].get(rec['decision'], 0):.2f}"
-                 f" ｜ 覆盖率 {rec['coverage_ratio']:.0%}（无独立纪律触发）"]
-          if rec.get("action_strength") else [] ),
+            f" ｜ 覆盖率 {rec['coverage_ratio']:.0%}"]
+          if rec.get("action_strength") is not None and rec.get("coverage_ratio") is not None
+          else ["> 信号口径：当时未记录"] ),
+        *( ["> 意见占比（仅展示）：" + " / ".join(
+            f"{direction} {value:.1%}" for direction, value in rec["opinion_share"].items())]
+          if rec.get("opinion_share") is not None else ["> 意见占比：当时未记录"] ),
+        *( [f"> 独立纪律：{rec.get('action_override_signal_id') or '来源当时未记录'}"
+            f" ｜ 强度 {rec['action_override_confidence']:.2f}"]
+          if rec.get("action_override_confidence") is not None
+          else ["> 独立纪律：未触发" if rec.get("aggregation_protocol") == "s2a-v1"
+                else "> 独立纪律：当时未记录"] ),
         *( [f"> 触发原因（top_signal）：{rec['top_signal']}"] if rec.get("top_signal") else [] ),
         "",
         "## 技能信号",
@@ -137,14 +166,33 @@ def _write_card(rec: dict, decision_result) -> None:
         L.append(f"- {s['skill']}：{s['signal']}（置信度 {s['conf']:.2f}）")
     if not rec.get("signals"):
         L.append("- （无信号记录）")
+    L.extend(["", "## 采用依据", ""])
+    if rec.get("decision_basis") is not None:
+        L.extend("- " + r for r in rec["decision_basis"])
+    else:
+        L.append("- 当时未记录结构化采用依据")
+    L.extend("- 策略环境：" + r for r in rec.get("strategy_environment") or [])
+    L.extend("- 待核事项：" + r for r in rec.get("data_gaps") or [])
+    if rec.get("execution_status"):
+        L.append("- 成交资格：" + rec["execution_status"] + "（建议不等于成交）")
+    L.extend("- " + r for r in rec.get("execution_diagnostics", []))
+    evaluation = rec.get("condition_evaluation")
+    if evaluation:
+        L.append("- 失效条件：" + evaluation["value"])
+        L.extend("- 待复核：" + r for r in evaluation["gaps"])
+    findings = rec.get("signal_findings", [])
+    research = [f for f in findings if f["action_scope"] == "research"]
+    if research:
+        L.extend(["", "## 辅助研究（不授权交易）", ""])
+        L.extend("- " + f["signal_id"] + "：" + f["detail"] + "；" + f["reason"] for f in research)
     reasons = getattr(decision_result, "reason", None) or []
     if reasons:
         L.extend(["", "## 决策理由", ""])
-        for r in reasons[:5]:
+        for r in reasons:
             L.append(f"- {r}")
     if rec.get("warnings"):
-        L.extend(["", "## 数据缺口 / 风险提示", ""])
-        for w in rec["warnings"]:
+        L.extend(["", "## 风险提醒与技能线索", ""])
+        for w in rec.get("risk_reminders") if rec.get("risk_reminders") is not None else rec["warnings"]:
             L.append(f"- {w}")
     L.extend(["", f"> 结构化记录已追加 ~/.muyun/analysis_evidence.jsonl（`diff {rec['code']}` 比较两次）", ""])
     content = "\n".join(L)
@@ -246,6 +294,11 @@ def _diff_records(old: dict, new: dict) -> dict:
                 # 同协议 Δ 保留
                 op = old.get("aggregation_protocol") or "pre-s2a（当时未记录）"
                 np_ = new.get("aggregation_protocol") or "pre-s2a（当时未记录）"
+                old_authority = old.get("signal_authority_protocol")
+                new_authority = new.get("signal_authority_protocol")
+                if old_authority != new_authority:
+                    op += "/" + (old_authority or "权限口径当时未记录")
+                    np_ += "/" + (new_authority or "权限口径当时未记录")
                 if op != np_:
                     changes["score"] = (a, b, "口径不同，数值不可比",
                                         {"old_protocol": op, "new_protocol": np_})

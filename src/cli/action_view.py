@@ -38,7 +38,7 @@ _ACTION_CN = {
 
 
 def terminal_verdict(strategy_decision, execution_eval=None, has_position: bool = False,
-                     fallback_decision=None) -> dict:
+                     fallback_decision=None, *, packet=None) -> dict:
     """末端 StrategyDecision → 终态行动判定（PROBES A/B 的接线回归锚点）。
 
     Args:
@@ -53,6 +53,17 @@ def terminal_verdict(strategy_decision, execution_eval=None, has_position: bool 
         bucket ∈ EXIT/REDUCE/ADD/OPEN/HOLD/WAIT/REVIEW；blocked=True 表示意图受阻
         （退出意图保留，不是"继续看好"——DESIGN §2.3 EXIT+BLOCKED 语义）。
     """
+    if packet is not None:
+        bucket = packet.desired_action.value
+        status = packet.execution_status.value
+        return {"bucket": bucket, "cn": _ACTION_CN[bucket], "blocked": status == "BLOCKED",
+                "blocked_reason": "；".join(b.detail for b in packet.blockers),
+                "reason": "；".join(packet.decision_basis or []), "degraded": False,
+                "packet_missing": False, "execution_status": status,
+                "execution_diagnostics": packet.execution_diagnostics or [],
+                "condition_evaluation": packet.condition_evaluation,
+                "target_weight": packet.target_weight,
+                "executable_action": getattr(packet.executable_action, "value", None)}
     if strategy_decision is None:
         # 降级：无末端结果（旧调用方/渲染容错）——按原始信号给保守判定
         raw = fallback_decision.decision.value if fallback_decision is not None else "WATCH"
@@ -62,11 +73,14 @@ def terminal_verdict(strategy_decision, execution_eval=None, has_position: bool 
         if raw == "WATCH":
             bucket = VERDICT_REVIEW if not has_position else VERDICT_HOLD
         return {"bucket": bucket, "cn": _ACTION_CN[bucket], "blocked": False,
-                "blocked_reason": "", "reason": "", "degraded": True}
+                "blocked_reason": "", "reason": "", "degraded": True,
+                "packet_missing": True, "execution_status": "UNKNOWN"}
 
     pos_action = strategy_decision.position_action.value
     blocked = bool(execution_eval is not None and getattr(execution_eval, "blocked", False))
     blocked_reason = (getattr(execution_eval, "block_reason", "") or "") if blocked else ""
+    status = getattr(execution_eval, "execution_status", None)
+    status = getattr(status, "value", status) or ("BLOCKED" if blocked else "UNKNOWN")
 
     mapping = {
         "CLOSE_ALL": VERDICT_EXIT,
@@ -83,7 +97,31 @@ def terminal_verdict(strategy_decision, execution_eval=None, has_position: bool 
     reason = reasons[0] if reasons else (strategy_decision.sell_path or "")
 
     return {"bucket": bucket, "cn": _ACTION_CN.get(bucket, bucket), "blocked": blocked,
-            "blocked_reason": blocked_reason, "reason": reason, "degraded": False}
+            "blocked_reason": blocked_reason, "reason": reason, "degraded": False,
+            "packet_missing": True,
+            "execution_status": status, "execution_diagnostics": getattr(execution_eval, "diagnostics", []),
+            "condition_evaluation": getattr(strategy_decision, "condition_evaluation", None)}
+
+
+def action_headline(verdict: dict) -> str:
+    """Same first sentence in CLI/chat/cards; qualification never becomes a fill promise."""
+    bucket = verdict.get("bucket", VERDICT_WAIT)
+    names = {VERDICT_OPEN: "建仓", VERDICT_ADD: "加仓", VERDICT_REDUCE: "减仓", VERDICT_EXIT: "退出/卖出"}
+    if bucket in names:
+        action = names[bucket]
+        status = verdict.get("execution_status", "UNKNOWN")
+        if verdict.get("blocked") or status == "BLOCKED":
+            extra = "，现在卖不出" if bucket == VERDICT_EXIT else ""
+            return f"当前建议：{action}，当前执行受阻、无法成交{extra}（{verdict.get('blocked_reason') or '执行受阻'}）；动作意图保留。"
+        if status == "ELIGIBLE":
+            return f"当前建议：{action}，成交资格已确认；按计划执行，实际成交仍需确认。"
+        checks = "盘口、订单数量与可成交量" if bucket in (VERDICT_OPEN, VERDICT_ADD) else "盘口、订单与可卖数量"
+        return f"当前建议：{action}，成交资格待确认（需核对{checks}）；动作意图保留，持仓未变。"
+    if bucket == VERDICT_HOLD:
+        evaluation = verdict.get("condition_evaluation")
+        return ("按已接受纪律暂持；失效条件待复核。" if evaluation and evaluation["value"] == "UNKNOWN"
+                else "继续持有，当前没有增减仓建议。")
+    return "需要复核：先核对条件。" if bucket == VERDICT_REVIEW else "观望：当前没有行动建议。"
 
 
 def render_action_card(verdict: dict, *, reasons: Optional[list[str]] = None,
@@ -96,28 +134,14 @@ def render_action_card(verdict: dict, *, reasons: Optional[list[str]] = None,
     bucket = verdict.get("bucket", VERDICT_WAIT)
     lines: list[str] = []
 
+    lines.append("**" + action_headline(verdict) + "**")
     if bucket == VERDICT_EXIT and verdict.get("blocked"):
-        # G03：受阻退出——保留退出意图，绝不写成"继续看好"
-        lines.append(f"**退出条件已触发，但当前无法成交**（{verdict.get('blocked_reason') or '执行受阻'}）。")
         lines.append("持仓记录保持不变，退出待办保留，下一交易时段重新检查可成交性。")
-    elif bucket == VERDICT_EXIT:
-        lines.append("**退出条件已触发：按纪律执行卖出，别拖。**")
-    elif bucket == VERDICT_REDUCE:
-        lines.append("**减仓纪律触发：按计划减一部分仓位。**")
-    elif bucket == VERDICT_ADD:
-        lines.append("**加仓条件成立：按计划加仓（注意总仓位纪律）。**")
-    elif bucket == VERDICT_OPEN:
-        lines.append("**买入条件成立：按纪律分批建仓，别一次打满。**")
-    elif bucket == VERDICT_HOLD:
-        lines.append("**继续持有，今天不用操作。**")
-    elif bucket == VERDICT_REVIEW:
-        lines.append("**需要复核：先看清楚再动手。**")
-    else:
-        lines.append("**观望：今天不是行动时点。**")
-
-    for r in (reasons or [])[:2]:
+    for diagnostic in verdict.get("execution_diagnostics", []):
+        lines.append("执行说明：" + diagnostic)
+    for r in (reasons or []):
         lines.append(f"原因：{r}")
-    for b in (blockers or [])[:1]:
+    for b in (blockers or []):
         lines.append(f"阻塞：{b}")
     if next_check:
         lines.append(f"下次关注：{next_check}")
@@ -125,4 +149,6 @@ def render_action_card(verdict: dict, *, reasons: Optional[list[str]] = None,
         lines.append(f"[dim]数据截至 {as_of}[/dim]")
     if verdict.get("degraded"):
         lines.append("[dim]（降级视图：终态结果缺失，按原始信号口径展示）[/dim]")
+    if verdict.get("packet_missing"):
+        lines.append("（旧调用未提供统一决策包；只展示末端意图，不能补造未记录的资格。）")
     return "\n".join(lines)

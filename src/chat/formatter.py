@@ -38,17 +38,22 @@ def format_basic_quote(stock_data) -> str:
 
 def format_analysis_result(
     stock_data, decision_result, strategy_decision,
-    execution_eval, ai_result
+    execution_eval, ai_result, *, packet=None
 ) -> str:
     """格式化完整分析结果（纯文本版本）"""
     lines = []
 
     # 基本信息
     lines.append(f"=== {stock_data.stock_name} ({stock_data.stock_code}) 分析报告 ===")
+    from src.cli.action_view import action_headline, terminal_verdict
+    verdict = terminal_verdict(strategy_decision, execution_eval, packet=packet)
+    lines.append(action_headline(verdict))
+    if packet is None:
+        lines.append("旧调用未提供统一决策包；只展示末端意图。")
     lines.append("")
     lines.append(f"当前价: {stock_data.price}  涨跌幅: {stock_data.change_pct}%")
     lines.append(f"市场状态: {decision_result.state.value}")
-    lines.append(f"综合决策: {decision_result.decision.value}  评分: {decision_result.score:.2f}")
+    lines.append(f"技术聚合（诊断）: {decision_result.decision.value}  展示评分: {decision_result.score:.2f}")
     # ISS-117 S2a：信号口径如实措辞（动作强度/有效响应覆盖），不称胜率/事实真实性
     _A = getattr(decision_result, "action_strength", None)
     if _A:
@@ -64,10 +69,7 @@ def format_analysis_result(
         "OPEN": "试探建仓", "ADD": "加仓", "REDUCE": "减仓",
         "CLOSE_ALL": "全部清仓", "HOLD_POSITION": "维持仓位", "STAY_OUT": "空仓观望"
     }
-    pos_action = pos_action_map.get(
-        strategy_decision.position_action.value,
-        strategy_decision.position_action.value
-    )
+    pos_action = verdict["cn"]
     lines.append(f"仓位动作: {pos_action}")
 
     # 技术指标
@@ -145,13 +147,20 @@ def format_analysis_result(
         lines.append(f"  信号稳定性: {strategy_decision.new_state.signal_stability_score:.0%}")
         if strategy_decision.strategy_reasons:
             lines.append(
-                f"  策略理由: {'; '.join(strategy_decision.strategy_reasons[:3])}"
+                f"  策略理由: {'; '.join(strategy_decision.strategy_reasons)}"
             )
 
     # 执行层
     if execution_eval and execution_eval.blocked:
         lines.append("")
         lines.append(f"执行约束: {execution_eval.block_reason}")
+
+    if execution_eval:
+        for diagnostic in getattr(execution_eval, "diagnostics", []):
+            lines.append("执行说明: " + diagnostic)
+    evaluation = getattr(strategy_decision, "condition_evaluation", None)
+    if evaluation and evaluation["value"] == "UNKNOWN":
+        lines.append("失效条件待复核: " + "；".join(evaluation["gaps"]))
 
     # 决策理由
     if decision_result.reason:
@@ -160,11 +169,19 @@ def format_analysis_result(
         for i, reason in enumerate(decision_result.reason, 1):
             lines.append(f"  {i}. {reason}")
 
+    source = packet if packet is not None else strategy_decision
+    if getattr(source, "decision_basis", None):
+        lines.append("采用依据：" + "；".join(source.decision_basis))
+    for environment in getattr(source, "strategy_environment", None) or []:
+        lines.append("策略环境：" + environment)
+    for gap in (packet.data_gaps if packet is not None else getattr(decision_result, "data_gaps", [])) or []:
+        lines.append("待核事项：" + gap)
     # 风险提示
-    if decision_result.warnings:
+    reminders = (packet.risk_reminders if packet is not None else decision_result.warnings) or []
+    if reminders:
         lines.append("")
         lines.append("--- 风险提示 ---")
-        for w in decision_result.warnings:
+        for w in reminders:
             lines.append(f"  - {w}")
 
     return "\n".join(lines)
@@ -201,19 +218,29 @@ def format_scan_result(candidates: list, scan_info: dict) -> str:
     return "\n".join(lines)
 
 
-def format_portfolio(positions: list) -> str:
+def format_portfolio(positions: list, *, contexts=None) -> str:
     """格式化持仓列表"""
     lines = ["=== 当前持仓 ==="]
     lines.append("")
 
     for pos in positions:
+        ctx = (contexts or {}).get(pos.stock_code)
+        lifecycle = pos.lifecycle
+        if ctx is not None:
+            weight = f"仓位:{ctx.confirmed_weight:.0%}" if ctx.confirmed_weight is not None else "仓位:权重待对账"
+            quantity = f" 数量:{ctx.quantity}股" if ctx.quantity is not None else ""
+            if ctx.position_state == "HELD" and lifecycle == "FLAT":
+                lifecycle = "有持仓（旧生命周期待核）"
+        else:
+            weight = f"仓位:{pos.current_ratio:.0%}"
+            quantity = ""
         price_str = f"开仓价:{pos.entry_price:.2f}" if pos.entry_price else ""
         semantic_str = f" 动作语义:{pos.last_action_semantic}" if pos.last_action_semantic else ""
         sell_path_str = f" 卖出路径:{pos.last_sell_path}" if pos.last_sell_path else ""
         lines.append(
             f"  {pos.stock_code} {pos.stock_name or '-':8s} "
-            f"仓位:{pos.current_ratio:.0%} {price_str} "
-            f"生命周期:{pos.lifecycle} "
+            f"{weight}{quantity} {price_str} "
+            f"生命周期:{lifecycle} "
             f"上次操作:{pos.last_action}({pos.last_action_date or '-'})"
             f"{semantic_str}{sell_path_str}"
         )

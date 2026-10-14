@@ -170,11 +170,13 @@ class LegacyTrace(BaseModel):
     sell_path: Optional[str] = Field(default=None, description="旧卖出路径（weak_sell/trend_exit/stop_loss_* 等）")
     # ISS-117 S2a 补修 D 组：普通票资格与综合展示数独立回溯——协议/纯投票 A/P/C
     # 随包下发；旧记录（pre-s2a）这些字段为 None，读取时标「旧协议」，不补假 A
+    signal_authority_protocol: Optional[str] = Field(default=None, description="权限预算协议；旧记录未记录")
     aggregation_protocol: Optional[str] = Field(default=None, description="聚合协议版本（s2a-v1/...；None=旧协议当时未记录）")
     voting_action_strength: Optional[dict] = Field(default=None, description="普通投票动作强度 A（不含 AI/事件调节；None=旧协议）")
     opinion_share: Optional[dict] = Field(default=None, description="意见占比 P（仅展示；None=旧协议）")
     coverage_ratio: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="有效响应覆盖率 C（None=旧协议）")
     action_override_confidence: Optional[float] = Field(default=None, ge=0.0, le=1.0, description="独立 action 通道（止损/止盈触发票置信度；None=未触发/旧协议）")
+    action_override_signal_id: Optional[str] = Field(default=None, description="实际选中的独立动作技能身份；旧记录未记录")
 
 
 class DecisionPacket(BaseModel):
@@ -243,6 +245,16 @@ class DecisionPacket(BaseModel):
         default=None, description="当前许可动作；仅 ELIGIBLE 可给（且等于 desired_action），否则 None")
     blockers: list[Blocker] = Field(default_factory=list)
     reason_codes: list[str] = Field(default_factory=list, description="有序结构化原因码（展示层消费）")
+    decision_basis: Optional[list[str]] = Field(default=None, description="已采用策略依据；旧记录未记录")
+    strategy_environment: Optional[list[str]] = Field(default=None, description="策略参数/模式背景，不参与动作授权")
+    risk_reminders: Optional[list[str]] = Field(default=None, description="完整风险与未采纳线索；与数据缺口分开")
+    data_gaps: Optional[list[str]] = Field(default=None, description="源头资格缺口；旧记录未记录")
+    research_scope: str = Field(default="UNRECORDED", description="研究状态适用口径；TECHNICAL_LEGACY不证明公司命题已核验")
+    signal_effects: Optional[list[dict]] = Field(default=None, description="辅助调节获准范围及实际作用前后值；旧记录未记录")
+    condition_evaluation: Optional[dict] = Field(default=None, description="完整失效条件三态及缺口；旧记录未记录")
+    signal_findings: Optional[list[dict]] = Field(default=None, description="同源授权/研究发现；旧记录未记录")
+    execution_diagnostics: Optional[list[str]] = Field(default=None, description="执行事实/估计/缺口；旧记录未记录")
+    execution_simulated: Optional[bool] = Field(default=None, description="是否为回测撮合假设；旧记录未记录")
 
     # ── 证据引用 ──
     evidence_ids: list[str] = Field(default_factory=list, description="支持证据（共享事件不重复计票）")

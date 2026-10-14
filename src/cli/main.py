@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.29.8[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.33[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -360,6 +360,12 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
         console.print(f"\n[bold dim]执行评估：[/bold dim]")
         console.print(f"  滑点: {execution_eval.slippage_pct:.3%}  冲击成本: {execution_eval.impact_cost_pct:.3%}  总成本: {execution_eval.total_cost_pct:.3%}")
 
+    if execution_eval:
+        for diagnostic in getattr(execution_eval, "diagnostics", []):
+            console.print(f"  [yellow]执行说明：{diagnostic}[/yellow]")
+        if getattr(execution_eval, "simulated", False):
+            console.print("  [dim]成本和撮合为模拟假设，不是实际成交[/dim]")
+
     # 风险提示
     if result.warnings:
         console.print("\n[bold yellow]风险提示：[/bold yellow]")
@@ -547,7 +553,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 has_position=has_position,
                 entry_price=pos.entry_price if pos else None,
                     high_since_entry=pos.high_since_entry if pos else None,
-                trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
+                trade_plan=acct_ctx.trade_plan,
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
             # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
@@ -588,10 +594,12 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             # 对无投影股安全返回 None）
             try:
                 if not pos.from_ledger and not pm.record_analysis_observation(
-                        pos.stock_code, stock_data.stock_name or pos.stock_code,
+                        acct_facts.storage_key_for(pos.stock_code) or pos.stock_code,
+                        stock_data.stock_name or pos.stock_code,
                         strategy_decision, stock_data):
                     logger.warning(f"观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
-                pm.record_proposal(pos.stock_code, stock_data.stock_name or pos.stock_code,
+                pm.record_proposal(acct_facts.storage_key_for(pos.stock_code) or pos.stock_code,
+                                   stock_data.stock_name or pos.stock_code,
                                    strategy_decision, source="la")
             except Exception as e:
                 logger.warning(f"观察量/建议记录失败(不影响分析主流程，持仓文件未改动): {e}")
@@ -924,16 +932,16 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             price_as_of=getattr(stock_data, "quote_as_of", None),
             nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
             account_context=acct_ctx)
-        pos = pm.get_position(stock_code)
+        pos = acct_facts.projection_for(stock_code)
         if pos:
             console.print(f"\n[bold green]📂 持仓记录[/bold green]")
-            console.print(f"  生命周期: {pos.lifecycle}")
-            if pos.weight_unknown:
+            console.print(f"  生命周期: {strategy_state.lifecycle.value}（按本次账户事实）")
+            if acct_ctx.confirmed_weight is None:
                 # L1：数量账户权重待重估——如实显示数量事实，不冒充已知比例
-                console.print(f"  当前仓位: [yellow]权重待重估[/yellow]（数量账户 {pos.quantity_held}股，"
-                              f"比例视图过期——估值与NAV齐后自动锁定）")
+                quantity = f"{acct_ctx.quantity}股" if acct_ctx.quantity is not None else "数量未确认"
+                console.print(f"  当前仓位: [yellow]权重待核[/yellow]（{quantity}；{acct_ctx.weight_reason}）")
             else:
-                console.print(f"  当前仓位: {pos.current_ratio:.0%}")
+                console.print(f"  当前仓位: {acct_ctx.confirmed_weight:.0%}")
             if pos.last_action_semantic:
                 console.print(f"  上次动作语义: {pos.last_action_semantic}")
             if pos.last_sell_path:
@@ -982,7 +990,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             has_position=has_position,
             entry_price=pos.entry_price if pos else None,
                     high_since_entry=pos.high_since_entry if pos else None,
-            trade_plan=pos.trade_plan if pos else None,  # v0.8.5: PlanGuard 守卫
+            trade_plan=acct_ctx.trade_plan,  # 独立核定计划不随坏成本/状态字段丢失
         )
         # v0.8.12: 观察池——WATCH 语义无持仓自动入池（失败不影响分析）
         try:
@@ -1026,10 +1034,12 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         if has_position and pos is not None:
             try:
                 if not pm.record_analysis_observation(
-                        stock_code, stock_data.stock_name or pos.stock_code,
+                        getattr(pos, "raw_storage_key", None) or stock_code,
+                        stock_data.stock_name or pos.stock_code,
                         strategy_decision, stock_data):
                     logger.warning(f"观察量未落盘({stock_code}): 持仓文件被外部修改或写入失败")
-                pm.record_proposal(stock_code, stock_data.stock_name or pos.stock_code,
+                pm.record_proposal(getattr(pos, "raw_storage_key", None) or stock_code,
+                                   stock_data.stock_name or pos.stock_code,
                                    strategy_decision, source="l")
             except Exception as e:
                 logger.warning(f"观察量/建议记录失败(不影响分析主流程，持仓文件未改动): {e}")
@@ -1038,10 +1048,11 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         try:
             _print_plain_summary(result, strategy_decision, stock_data, pos,
                                  watch_info=_watch_info, execution_eval=execution_eval,
-                                 account_context=acct_ctx)
+                                 account_context=acct_ctx, packet=_packet)
         except Exception as e:
             logger.debug(f"人话摘要渲染失败(不影响主流程): {e}")
 
+        _print_daily_research_view(stock_code)
         if not compact:
             display_result(result, strategy_decision, execution_eval, ai_result)
             # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
@@ -1051,6 +1062,61 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         console.print(f"\n[bold yellow]仅实时数据可用，无法进行技术分析[/bold yellow]")
         console.print("原因: 历史K线数据获取失败（网络不稳定或API限制）")
         console.print("建议: 使用交互模式手工输入数据进行分析")
+        _print_daily_research_view(stock_code)
+
+
+def _print_daily_research_view(stock_code, *, app=None, as_of=None):
+    """l/la共用的本地只读查询；失败不阻断技术分析或独立退出。"""
+    from datetime import datetime
+    from rich.text import Text
+
+    try:
+        if app is None:
+            from src.core.research_application import ResearchApplicationService
+            from src.data.horizon_plans import HorizonPlanStore
+            from src.data.research_store import AssessmentStore
+            app = ResearchApplicationService(
+                store=None, plans_store=HorizonPlanStore(), assessment_store=AssessmentStore())
+        view = app.get_daily_view(stock_code, as_of=as_of or datetime.now().astimezone())
+        _render_daily_research_view(view)
+        return view
+    except Exception as exc:
+        logger.info(f"只读研究视图不可用（不影响分析与保护）: {exc}")
+        console.print(Text("研究状态：读取失败，待复核；未重跑研究，技术建议与独立保护保留。", style="yellow"))
+        return None
+
+
+def _render_daily_research_view(view):
+    """展示主槽与候选的真实版本，不用候选冒充接受态。"""
+    from rich.text import Text
+
+    state_labels = {"NORMAL": "可读取", "EMPTY": "尚无记录", "CORRUPT": "记录损坏，待复核",
+                    "UNREADABLE": "读取失败，待复核"}
+    thesis_labels = {"VALID": "已核验有效", "INVALID": "已确认失效", "REVIEW_REQUIRED": "待复核",
+                     "UNESTABLISHED": "尚未建立"}
+    state = str(view.get("store_status", "UNREADABLE"))
+    console.print(Text(f"\n研究状态（本地只读）：{state_labels.get(state, '状态未知，待复核')}", style="bold cyan"))
+    for horizon, label in (("MID", "中期"), ("LONG", "长期")):
+        entry = view.get("horizons", {}).get(horizon, {})
+        if entry.get("has_plan") and entry.get("plan_id"):
+            accepted = "已接受" if entry.get("accepted") else "草稿，尚未接受"
+            status = thesis_labels.get(entry.get("assessment_status"), "状态未知，待复核")
+            console.print(Text(f"  {label}：{accepted} r{entry.get('revision', '?')}；逻辑{status}"))
+            console.print(Text(f"    主版本：{entry.get('plan_id', '未记录')}；内容校验 {entry.get('content_hash') or '未记录'}", style="dim"))
+        elif state in ("NORMAL", "EMPTY") and not entry.get("gaps"):
+            console.print(Text(f"  {label}：尚未建立研究"))
+        else:
+            console.print(Text(f"  {label}：记录待核，不能证明无计划", style="yellow"))
+        for gap in dict.fromkeys(entry.get("assessment_gaps", []) + entry.get("gaps", [])):
+            console.print(Text(f"    待核：{gap}", style="yellow"))
+        if entry.get("candidate_available"):
+            candidate = entry.get("candidate") or {}
+            console.print(Text(f"    候选草稿 r{candidate.get('revision', '?')}：尚未接受，不替换主版本", style="yellow"))
+            for gap in dict.fromkeys(candidate.get("assessment_gaps", []) + candidate.get("gaps", [])):
+                console.print(Text(f"      候选待核：{gap}", style="yellow"))
+    for step in view.get("next_steps", []):
+        console.print(Text(f"  下一步：{step}"))
+    console.print(Text("  本段只展示研究记录，不新增交易授权；查看不补采、不调用AI、不修改研究或计划。", style="dim"))
 
 
 def run_backtest(
@@ -1722,7 +1788,7 @@ def _watch_pool_touch(result, strategy_decision, sd, pos=None):
 
 
 def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=None,
-                         execution_eval=None, account_context=None) -> None:
+                         execution_eval=None, account_context=None, packet=None) -> None:
     """l 输出顶部的白话结论面板：该做什么/为什么/什么阶段/笨总怎么看。
 
     纯展示层翻译，不改任何决策逻辑；渲染失败静默降级（调用方包 try）。
@@ -1767,43 +1833,24 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     lines: list[tuple] = []  # (color|None, text)
 
     # 1) 今天该做什么——终态判定优先（F2）
-    if strategy_decision is not None:
-        from src.cli.action_view import terminal_verdict
-        v = terminal_verdict(strategy_decision, execution_eval, has_position=has_pos)
-        if v["bucket"] == "EXIT" and v["blocked"]:
-            # G03：受阻退出——保留退出意图，不写成"继续看好"
-            lines.append(("red", f"退出条件已触发，但现在卖不出（{v['blocked_reason'] or '执行受阻'}）。"
-                                 "持仓记录不变，退出待办保留，下个交易时段再检查可成交性。"))
-        elif v["bucket"] == "EXIT":
-            lines.append(("red", "退出条件已触发：按纪律卖出，别拖。"))
-            if ee.get("exit_reason"):
-                lines.append((None, f"原因：{ee['exit_reason']}"))
-            elif v["reason"]:
-                lines.append((None, f"原因：{v['reason']}"))
-            # M0/N0：权重待重估时明确数量事实与方向保留（ctx 判据——不与"无仓等待"矛盾）
+    if strategy_decision is not None or packet is not None:
+        from src.cli.action_view import action_headline, terminal_verdict
+        v = terminal_verdict(strategy_decision, execution_eval, has_position=has_pos, packet=packet)
+        if v["bucket"] in ("EXIT", "REDUCE", "ADD", "OPEN"):
+            color = "red" if v["bucket"] in ("EXIT", "REDUCE") else "yellow"
+            lines.append((color, action_headline(v)))
+            if v["bucket"] == "EXIT" and v["blocked"]:
+                lines.append((None, "持仓记录不变，退出待办保留，下个交易时段再检查可成交性。"))
             _note = _account_fact_note()
             if _note:
                 lines.append((None, _note))
-        elif v["bucket"] == "REDUCE":
-            lines.append(("red", "减仓纪律触发：按计划减一部分仓位。"))
-            if v["reason"]:
-                lines.append((None, f"原因：{v['reason']}"))
-            # M0/N0：权重待重估时明确数量事实与方向保留（ctx 判据——不出现矛盾口径）
-            _note = _account_fact_note()
-            if _note:
-                lines.append((None, _note))
-        elif v["bucket"] == "ADD":
-            lines.append(("yellow", "加仓条件成立：按计划加仓（注意总仓位纪律，别打满）。"))
-        elif v["bucket"] == "OPEN":
-            lines.append(("green", "今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。"))
-            if ee.get("entry_reason"):
-                lines.append((None, f"原因：{ee['entry_reason']}"))
         elif v["bucket"] == "HOLD":
             mode_note = ""
             tp = getattr(pos, "trade_plan", None)
             if tp is not None and getattr(tp, "mode", None) == "qizong":
                 mode_note = "（气宗模式：持有期内的日常波动不用管，有止损和见顶信号兜底）"
-            lines.append(("cyan", f"继续持有，今天什么都不用做。{mode_note}"))
+            hold_text = action_headline(v)
+            lines.append(("cyan", f"{hold_text}{mode_note}"))
             if ee.get("exit_triggered") and has_pos:
                 # PROBES A：原始卖点被压制/未采纳——只作诊断注解，不播报为卖出信号
                 lines.append(("dim", f"注：买卖点出现过卖出形态（{ee.get('exit_reason') or '技术信号'}），"
@@ -1845,13 +1892,13 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
         # 降级：无末端结果，维持旧原始信号口径（观察池文案不变）
         if ee.get("exit_triggered") and has_pos:
             action_cn = _exit_action_cn(ee.get("exit_action", ""), ee.get("exit_ratio", 0), ee.get("exit_type", ""))
-            lines.append(("red", f"今天出现【卖出信号：{action_cn}】。按纪律次日开盘执行，别拖。"))
+            lines.append(("red", f"降级技能线索：{action_cn}；终态结果缺失，成交资格待确认。"))
             if ee.get("exit_reason"):
                 lines.append((None, f"原因：{ee['exit_reason']}"))
         elif ee.get("entry_triggered"):
             pct = int(ee.get("entry_ratio", 0) * 100)
             if decision == "BUY":
-                lines.append(("green", f"今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，系统建议先建 {pct}% 仓位。"))
+                lines.append(("yellow", "降级技能线索：买入形态；终态结果缺失，成交资格待确认，不给精确建仓指令。"))
             elif decision == "SELL":
                 lines.append(("red", "虽然形态够到了买点，但综合判断当前是卖出环境——别接，观望。"))
             else:
@@ -1902,6 +1949,10 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
             lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
                                 f"仓位 {account_context.confirmed_weight:.0%}"
                                 "（合格估值：数量×价格/NAV）"))
+        elif account_context is not None and account_context.confirmed_weight is None:
+            quantity = str(account_context.quantity) if account_context.quantity is not None else "未确认"
+            lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
+                                f"数量 {quantity}（权重待核，{account_context.weight_reason}）"))
         elif getattr(pos, "weight_unknown", False):
             lines.append((None, f"你的持仓：成本 {pos.entry_price}，浮盈 {pnl:+.1f}%，"
                                 f"持有 {getattr(pos, 'quantity_held', 0) or 0} 股（权重待重估）"))
@@ -1924,6 +1975,34 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     else:
         lines.append(("dim", "笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）"))
 
+    if strategy_decision is not None or packet is not None:
+        source = packet if packet is not None else strategy_decision
+        decisive = getattr(source, "decision_basis", None)
+        if decisive:
+            lines.append((None, "采用依据：" + "；".join(decisive)))
+        elif decisive is None:
+            lines.append(("dim", "采用依据：当时未记录结构化依据；策略过程见详细报告。"))
+        for environment in getattr(source, "strategy_environment", None) or []:
+            lines.append((None, "策略环境：" + environment))
+        evaluation = getattr(source, "condition_evaluation", None)
+        if evaluation and evaluation["value"] == "UNKNOWN":
+            lines.append(("yellow", "失效条件待复核：" + "；".join(evaluation["gaps"])))
+        if packet is None:
+            lines.append(("dim", "旧调用未提供统一决策包；按末端意图展示。"))
+    risk_reminders = (packet.risk_reminders if packet is not None else getattr(result, "warnings", [])) or []
+    gaps = (packet.data_gaps if packet is not None else getattr(result, "data_gaps", [])) or []
+    for reminder in risk_reminders:
+        lines.append(("yellow", "风险提醒：" + reminder))
+    for gap in gaps:
+        lines.append(("yellow", "待核事项：" + gap))
+    if packet is not None:
+        for diagnostic in packet.execution_diagnostics or []:
+            lines.append(("yellow", "执行说明：" + diagnostic))
+    if strategy_decision is not None and v["bucket"] in ("OPEN", "ADD"):
+        mas = [getattr(sd, name, None) for name in ("ma5", "ma20", "ma60")]
+        if all(x is not None for x in mas) and 0 < mas[0] < mas[1] < mas[2]:
+            lines.append(("yellow", "建议性质：逆势技术候选，均线趋势未提供同向支持；不代表公司研究已核验。"))
+
     # ISS-117 S2a：信号口径一行（动作强度/覆盖率）——如实措辞，不称胜率/真实性
     try:
         _A = getattr(result, "action_strength", None)
@@ -1936,11 +2015,12 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
                                  "——覆盖率低说明多数信号没给意见，别当成全票通过。"))
     except Exception:
         pass  # 纯展示行，任何异常不影响摘要
-    body = []
+    from rich.text import Text
+    body = Text()
     for color, text in lines:
-        body.append(f"[{color}]{text}[/{color}]" if color else text)
-    body.append("[dim]小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）[/dim]")
-    console.print(Panel("\n".join(body), title="📖 人话摘要", border_style="cyan"))
+        body.append(text + "\n", style=color or "")
+    body.append("小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）", style="dim")
+    console.print(Panel(body, title="📖 人话摘要", border_style="cyan"))
 
 
 def _ba_dim_cell(row: dict, key: str) -> str:
@@ -2155,7 +2235,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
         console.print(f"[red]✗ {stock_code} 无持仓记录[/red]")
         return False
 
-    old_plan = pos.trade_plan if update else None
+    old_plan = pos.trade_plan  # Existing accepted plan is never silently overwritten.
     action_label = "更新" if (update and old_plan) else "生成"
 
     # 拉当前行情（同 _try_attach_trade_plan）
@@ -2194,7 +2274,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     is_self_reliance = False
     flagbearer_code = None
     penetration_stage = None
-    if old_plan and old_plan.mode:
+    if old_plan:
         benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
         # 报告2.1: 更新模式保留建仓时标注的旗手/渗透率（不重跑 AI 标注）
         flagbearer_code = old_plan.flagbearer_code
@@ -2243,26 +2323,26 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
         console.print(f"   [red]✗ {action_label}失败: {e}[/red]")
         return False
 
-    # 更新模式：保留 opened_at + current_stop 单向上移 + 记审计
+    # A refresh is a proposal. Preserve accepted holding/stop policy, including legacy mode=None.
     if old_plan:
-        plan.opened_at = old_plan.opened_at  # 建仓日期不变
-        plan.plan_id = old_plan.plan_id
-        # current_stop 单向上移（不低于旧值，trailing 纪律）
-        if old_plan.current_stop and plan.current_stop < old_plan.current_stop:
-            plan.locked_initial_stop = old_plan.locked_initial_stop
-            plan.current_stop = old_plan.current_stop
-            console.print(f"   [dim]current_stop 保持 ¥{old_plan.current_stop:.2f}（单向上移，不降）[/dim]")
-        # 保留旧调整历史 + 追加本次
-        plan.adjustments = list(old_plan.adjustments or [])
+        proposed_stop = max(old_plan.current_stop, plan.current_stop)
+        plan = old_plan.model_copy(deep=True)
+        plan.current_stop = proposed_stop
+        console.print(f"   [cyan]更新预览：mode={old_plan.mode or '未设定'}、期限={old_plan.max_hold_days}天保持；"
+                      f"止损 ¥{old_plan.current_stop:.2f} → ¥{proposed_stop:.2f}[/cyan]")
+        # Match the existing chat confirmation bridge; an unknown Rich input would loop forever.
+        try:
+            accepted = input("接受这次计划更新？（仅更新计划，不记成交）[y/N]: ").strip().lower() in ("y", "yes")
+        except (EOFError, KeyboardInterrupt):
+            accepted = False
+        if not accepted:
+            console.print("   [dim]未接受，原计划继续有效[/dim]")
+            return False
         from datetime import datetime
-        plan.adjustments.append({
-            "date": datetime.now().strftime("%Y-%m-%d"),
-            "field": "plan_refresh",
-            "old": "按旧行情",
-            "new": "按当前行情重算",
-            "reason": f"pos plan --update 按当前行情刷新（价格¥{stock_data.price:.2f}）",
-            "source": "user",
-        })
+        plan.adjustments.append({"date": datetime.now().strftime("%Y-%m-%d"),
+                                 "field": "current_stop", "old": old_plan.current_stop,
+                                 "new": proposed_stop, "source": "user",
+                                 "reason": "pos plan 更新预览明确接受；原模式/期限/初始止损保持"})
 
     # 写回
     if pm.attach_plan(stock_code, plan):
@@ -4276,24 +4356,13 @@ def today_command():
                         "source": rec.get("source", "")})
     except Exception:
         watch_failed = True  # F7 审查 P2-7：读取失败显式告知，不静默消失
-    # J2：账户事实区——同一账户服务读模型（纯文件重放，不写不联网）
-    account = None
-    account_failed = False
-    try:
-        from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
-        if DEFAULT_LEDGER_PATH.exists():
-            account = AccountService(DEFAULT_LEDGER_PATH).snapshot()
-    except Exception as e:
-        logger.warning(f"账户事件账本读取失败（今日账户区跳过）: {e}")
-        account_failed = True
     pm = PortfolioManager()
+    account_facts = pm.request_account_facts()
     view = build_today_view(pm, watch_entries=watch_entries,
                             risk_profile=(_fusion_risk_profile() or None),
-                            account=account)
+                            account_facts=account_facts)
     if watch_failed:
         view.notices.append("观察池状态暂不可用（读取失败）——不影响持仓与建议显示")
-    if account_failed:
-        view.notices.append("账户事件账本读取失败——今日账户事实区跳过（不影响持仓/建议显示）")
     console.print(render_today(view))
 
 
@@ -5287,7 +5356,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.29.8 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)"
+        version="%(prog)s v0.8.33 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+共享账户today工作台+影子对照+本地只读研究视图)"
     )
     parser.add_argument(
         "--verbose",
@@ -5564,6 +5633,7 @@ def research_command(rest: list):
       research <代码> --capture  缺失季度联网补采（baostock，真实网络；已归档零重复抓取）
       research <代码> --json     输出机器可读结果（跨入口一致的数据源）
       research <代码> --claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID]
+        --review-at 2026-10-30T16:00:00+08:00 --refute-if 推翻事实 --on-expiry REVIEW_REQUIRED
                                  检查点从公开入口绑定已核验证据（L2/V4：--ref 可重复；
                                  未给引用列可选证据与缺口；伪引用/错主体拒绝）
     输出：MID/LONG 各一句资格结论与理由 + 系统草稿（已存计划库，未激活） +
@@ -5577,11 +5647,12 @@ def research_command(rest: list):
     # K2a：公开研究闭环入参——主张文件导入（原文留样+核验）与检查点（显式风险确认）
     claims_file = None
     checkpoint_desc = ""
+    checkpoint_values = {}
     confirm_risk = "--confirm-risk" in rest
     ref_ids: list[str] = []
     consumed: set[int] = set()
     for _i, _p in enumerate(rest):
-        if _p in ("--claims", "--checkpoint", "--ref"):
+        if _p in ("--claims", "--checkpoint", "--ref", "--review-at", "--refute-if", "--on-expiry"):
             # K2a 审查 P3-3：旗标在场但缺值 → 显式报错（不静默跑无主张研究）
             if _i + 1 >= len(rest) or rest[_i + 1].startswith("--"):
                 console.print(f"  [red]✗ {_p} 缺值——用法: research <代码> "
@@ -5593,18 +5664,22 @@ def research_command(rest: list):
                 claims_file = rest[_i + 1]
             elif _p == "--checkpoint":
                 checkpoint_desc = rest[_i + 1]
-            else:
+            elif _p == "--ref":
                 ref_ids.append(rest[_i + 1])  # L2/V4：可重复（多证据引用）
+            else:
+                checkpoint_values[{"--review-at": "review_at", "--refute-if": "refute_if",
+                                   "--on-expiry": "expiry_action"}[_p]] = rest[_i + 1]
     codes = [p for _i, p in enumerate(rest)
              if not p.startswith("--") and _i not in consumed]
     if not codes:
         console.print("  [yellow]用法: research <代码> [--capture] [--json] "
                       "[--claims 主张.json] [--checkpoint 描述 --confirm-risk "
+                      "--review-at 带时区时间 --refute-if 推翻事实 --on-expiry REVIEW_REQUIRED "
                       "[--ref 证据ID]][/yellow]")
         return
-    if ref_ids and not checkpoint_desc:
-        console.print("  [red]✗ --ref 需与 --checkpoint 成对（证据引用绑定到检查点条件）"
-                      "——用法: --checkpoint 描述 --confirm-risk --ref 证据ID[/red]")
+    if (ref_ids or checkpoint_values or confirm_risk) and not checkpoint_desc:
+        console.print("  [red]✗ 检查条件参数需与 --checkpoint 成对；"
+                      "给出说明后再登记核验时间、推翻事实、到期处理与风险确认[/red]")
         return
     code = normalize_stock_code(codes[0])
     if not as_json:
@@ -5643,12 +5718,23 @@ def research_command(rest: list):
     checkpoints = []
     if checkpoint_desc:
         from src.core.research import CheckpointCondition
-        checkpoints.append(CheckpointCondition(
-            security_id=code, horizon="", proposition_type="window_and_refutation",
-            description=checkpoint_desc,
-            evidence_refs=list(dict.fromkeys(ref_ids)),
-            derived_from="user_confirmed_risk",
-            user_confirmed=confirm_risk))
+        try:
+            checkpoints.append(CheckpointCondition(
+                security_id=code, horizon="", proposition_type="window_and_refutation",
+                description=checkpoint_desc,
+                evidence_refs=list(dict.fromkeys(ref_ids)),
+                derived_from="user_confirmed_risk",
+                user_confirmed=confirm_risk, **checkpoint_values))
+        except ValueError:
+            console.print("  [red]✗ 检查条件格式无效：--review-at 必须是带时区的完整日期时间；"
+                          "--on-expiry 仅支持 REVIEW_REQUIRED（到期待复核）[/red]")
+            return
+        missing = [flag for flag, name in (("--review-at", "review_at"),
+                   ("--refute-if", "refute_if"), ("--on-expiry", "expiry_action"))
+                   if not checkpoint_values.get(name)]
+        if missing:
+            console.print(f"  [yellow]⚠ 检查条件不完整：缺 {'、'.join(missing)}；"
+                          "只保留研究约定，不能判时窗与反证命题成立[/yellow]")
         if not confirm_risk:
             console.print("  [yellow]⚠ 检查点未确认风险意愿（缺 --confirm-risk）——"
                           "不进入评估支撑（接受计划不自动替代风险确认）[/yellow]")
@@ -5785,6 +5871,12 @@ def _render_research_result(console, result) -> None:
             console.print(f"    · {g}")
         if len(gaps) > 3:
             console.print(f"    · …共 {len(gaps)} 项缺口")
+        from rich.text import Text
+        from src.core.research import CheckpointResult
+        from src.core.research_service import checkpoint_summary
+        for receipt in asm.get("checkpoint_results") or []:
+            console.print(Text("    核验约定：" + checkpoint_summary(
+                CheckpointResult.model_validate(receipt))))
     if result.factors:
         parts = [f"{fid}={d['status']}" for fid, d in result.factors.items()]
         console.print(f"\n  [dim]因子能力（绑定合格快照 {result.snapshot_id[:12]}…）: "
