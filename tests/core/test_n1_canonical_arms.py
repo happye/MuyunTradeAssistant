@@ -63,7 +63,7 @@ def _sd(pos_action="HOLD_POSITION", ratio=0.1, sell_path=None, decision="HOLD"):
 def _dr(decision="HOLD"):
     return SimpleNamespace(decision=SimpleNamespace(value=decision), score=0.6,
                            stock=SimpleNamespace(stock_code="600519", stock_name="测试股"),
-                           warnings=[])
+                           warnings=[], data_gaps=[])  # 合格两臂正例显式给数据资格
 
 
 def _eval(blocked=False):
@@ -169,13 +169,19 @@ def test_reduce_arm_execution_uses_status_enum(tmp_path, monkeypatch):
     _isolate(tmp_path, monkeypatch)
     plans, asm_store = _seed_accepted_mid(tmp_path)
     sd = _sd("REDUCE", ratio=0.1, sell_path="take_profit_trim", decision="SELL")
+    from src.data.models import SignalFinding
+    day = datetime.now().strftime("%Y-%m-%d")
+    sd.analysis_as_of = day
+    sd.signal_findings = [SignalFinding(signal_id="technical.take_profit", source="explicit qualified technical fixture",
+        securities=["600519"], as_of=day, data_quality="OK", verified=True, action_scope="reduce",
+        strategy_binding="accepted-entry-exit-v1")]
     packet = build_decision_packet(_dr("SELL"), sd, _eval(False),
                                    confirmed_ratio=0.2, source="test")
-    assert packet.execution_status.value == "ELIGIBLE"
+    assert packet.execution_status.value == "UNKNOWN"
     rec = _capture(tmp_path, plans, asm_store, sd=sd, packet=packet)
     arm = rec.mid_binding["arms"]["legacy"]
     assert arm["action"] == "REDUCE"
-    assert arm["execution"] == "ELIGIBLE", \
+    assert arm["execution"] == "UNKNOWN", \
         f"legacy execution 必须取规范包执行状态（同枚举）: {arm['execution']}"
     assert arm["target"] == packet.target_weight
     # 阻塞同语义：legacy 臂 = legacy 规范包（BLOCKED+阻塞原因）；
@@ -189,8 +195,8 @@ def test_reduce_arm_execution_uses_status_enum(tmp_path, monkeypatch):
     assert leg_b["execution"] == "BLOCKED", f"legacy 臂取自己包的执行状态: {leg_b}"
     assert leg_b["blockers"] == [b.detail for b in packet_b.blockers] and leg_b["blockers"]
     # fusion 臂消费 fusion 规范包自身执行语义（行5 REDUCE → ELIGIBLE）——不混用 legacy 阻塞
-    assert fus_b["execution"] == "ELIGIBLE"
-    assert fus_b["blockers"] == []
+    assert fus_b["execution"] == "BLOCKED"
+    assert fus_b["blockers"] == leg_b["blockers"]  # Same sell-side qualified facts, no fabricated permission.
 
 
 # ── 2. 有效版本资格（未知/不兼容 → diagnostic）───────────────────────
@@ -295,7 +301,7 @@ def test_no_position_state_migration_is_explicit():
 
 def test_decision_table_version_is_v4():
     assert DECISION_TABLE_VERSION == "v4"
-    assert SHADOW_DERIVATION_VERSION == "shadow_v12"
+    assert SHADOW_DERIVATION_VERSION == "shadow_v15"
 
 
 # ── 4. 旧桶独立计数 + v9 分桶 + 去重回归 ─────────────────────────────
@@ -336,10 +342,10 @@ def test_v9_records_and_old_protocols_bucketed(tmp_path, monkeypatch):
               "delta_reasons": ["agree"]}
     store.write_text(json.dumps(old_v7, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == "shadow_v12"
+    assert rec.derivation_version == "shadow_v15"
     assert rec.append_status == "saved", "跨协议不互判重复"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v12"
+    assert report["protocol_version"] == "shadow_v15"
     assert report["cur_mid_effective"] == 1
     assert report["legacy_records"] == 1
     assert report["older_versions"]["shadow_v7"]["records"] == 1

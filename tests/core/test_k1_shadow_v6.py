@@ -37,11 +37,12 @@ from src.data.horizon_plans import HorizonPlanStore
 from src.data.models import (
     PositionAction, SignalType, StrategyDecision, StrategyState, TradeLifecycle,
 )
+from src.core.research_service import RESEARCH_SERVICE_VERSION
 from src.data.research_store import AssessmentStore
 
 AS_OF = datetime(2026, 9, 27, 8, 0, tzinfo=timezone.utc)
 QUOTE_OK = "2026-09-26"  # 最近已收盘交易日（日精度——live 正常形态）
-POLICY_VERSION = "r4.research_service_v1"
+POLICY_VERSION = RESEARCH_SERVICE_VERSION
 
 
 @pytest.fixture(autouse=True)
@@ -137,7 +138,7 @@ def test_k1_v6_record_registers_per_horizon_bindings(tmp_path):
     asm_store = AssessmentStore(tmp_path / "research")
     _seed_accepted_plan(tmp_path, plans, asm_store)
     rec = _capture(tmp_path, plans, asm_store)
-    assert rec.derivation_version == SHADOW_DERIVATION_VERSION == "shadow_v12"
+    assert rec.derivation_version == SHADOW_DERIVATION_VERSION == "shadow_v15"
     assert rec.mid_binding, "MID 已接受计划必须登记完整绑定"
     mb = rec.mid_binding
     for key in ("plan_id", "plan_revision", "content_hash", "accepted_ref",
@@ -176,7 +177,7 @@ def test_k1_v6_report_counts_only_v6_effective(tmp_path):
     asm_store = AssessmentStore(tmp_path / "research")
     _seed_accepted_plan(tmp_path, plans, asm_store)
     rec_v7 = _capture(tmp_path, plans, asm_store)
-    assert rec_v7.derivation_version == "shadow_v12"
+    assert rec_v7.derivation_version == "shadow_v15"
     report = build_shadow_report(store_path=tmp_path / "shadow.jsonl", days=7)
     assert report["effective_observations"] >= 1, "当期有效观察计入"
     assert report.get("cur_mid_effective", 0) >= 1, "MID 分母单独计数"
@@ -204,7 +205,7 @@ def test_k1_v6_old_records_kept_diagnostic(tmp_path):
     store_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
     # 新捕获：换账户版本 → 输入指纹变化 → 不被去重（与旧记录真实并存）
     rec_v7 = _capture(tmp_path, plans, asm_store, account_version="v_v6_next")
-    assert rec_v7.derivation_version == "shadow_v12"
+    assert rec_v7.derivation_version == "shadow_v15"
     assert rec_v7.append_status == "saved", "新旧记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store_path, days=7)
     _assert_files_in_tmp(tmp_path)
@@ -221,7 +222,7 @@ def test_k1_v6_old_records_kept_diagnostic(tmp_path):
             continue
         assert old_now.get(k) == v, f"旧记录字段 {k} 被改写"
     # 新记录排在旧记录之后（追加序）
-    assert json.loads(lines_now[1])["derivation_version"] == "shadow_v12"
+    assert json.loads(lines_now[1])["derivation_version"] == "shadow_v15"
 
 
 def test_k1_v6_dual_horizon_both_eligible_counted_separately(tmp_path):

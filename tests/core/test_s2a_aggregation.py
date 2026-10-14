@@ -38,6 +38,67 @@ B, S, H, W = SignalType.BUY, SignalType.SELL, SignalType.HOLD, SignalType.WATCH
 FOUR = {f"slot{i}": 1.0 for i in range(4)}
 
 
+def test_held_weak_buy_records_add_at_every_boundary(monkeypatch):
+    from src.core.strategy_layer import StrategyLayer
+    monkeypatch.setattr(StrategyLayer, "CONFIRMATION_MIN_CONSECUTIVE", 1)
+    engine = _offline_engine(monkeypatch, FOUR, [("slot0", B, 1.0)])
+    packet, dr, out, _, _ = engine.analyze_packet(_risk_on_sd(),
+        confirmed_ratio=.1, position_state="HELD", current_position_ratio=.1,
+        has_position=True, trade_plan=None, today="2026-10-09", ai_enabled=False,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD,
+            entry_price=10, current_position_ratio=.1))
+    assert dr.position_action.value == out.position_action.value == "ADD"
+    assert packet.legacy_trace.position_action == "ADD"
+    assert packet.desired_action == DesiredAction.ADD
+    assert out.new_state.current_position_ratio == pytest.approx(.2)
+
+
+def test_selected_stop_and_opinion_share_reach_real_evidence(monkeypatch, tmp_path):
+    import json
+    from src.cli import evidence
+    engine = _offline_engine(monkeypatch, FOUR, [])
+    signals = [SkillSignal(skill_name=name, skill_alias=name, signal=S,
+        confidence=confidence, skill_type="action")
+        for name, confidence in [("stop_loss", .9), ("take_profit", .95)]]
+    monkeypatch.setattr(engine.skill_engine, "execute_all", lambda data: signals)
+    packet, dr, out, _, _ = engine.analyze_packet(_risk_on_sd(),
+        confirmed_ratio=.2, position_state="HELD", current_position_ratio=.2,
+        has_position=True, trade_plan=None, today="2026-10-09", ai_enabled=False,
+        strategy_state=StrategyState(lifecycle=TradeLifecycle.HOLD,
+            entry_price=20, current_position_ratio=.2))
+    assert packet.desired_action == DesiredAction.EXIT
+    assert dr.action_override_signal_id == packet.legacy_trace.action_override_signal_id == "stop_loss"
+    assert dr.action_override_confidence == .9
+    for key, value in [("_STATE_DIR", tmp_path), ("_EVIDENCE_FILE", tmp_path / "e.jsonl"),
+                       ("_REPORT_DIR", tmp_path / "cards")]:
+        monkeypatch.setattr(evidence, key, value)
+    assert evidence.record_evidence(dr, out, source="test", packet=packet)
+    row = json.loads((tmp_path / "e.jsonl").read_text(encoding="utf-8"))
+    card = next((tmp_path / "cards").glob("*.md")).read_text(encoding="utf-8")
+    assert row["action_override_signal_id"] == "stop_loss"
+    assert row["action_override_confidence"] == .9
+    assert row["opinion_share"] == dr.opinion_share
+    assert "stop_loss" in card and "0.90" in card and "意见占比（仅展示）" in card
+
+
+def test_real_diff_command_preserves_price_delta_across_protocols(monkeypatch, tmp_path):
+    import json
+    from io import StringIO
+    from rich.console import Console
+    from src.cli import evidence, main
+    path = tmp_path / "e.jsonl"
+    rows = [{"code": "600000", "ts": "2026-10-08", "score": 1., "price": 10},
+            {"code": "600000", "ts": "2026-10-09", "score": .2, "price": 11,
+             "aggregation_protocol": "s2a-v1"}]
+    path.write_text("\n".join(json.dumps(row) for row in rows), encoding="utf-8")
+    monkeypatch.setattr(evidence, "_EVIDENCE_FILE", path)
+    output = StringIO()
+    monkeypatch.setattr(main, "console", Console(file=output, width=160, color_system=None))
+    main.diff_evidence_cmd("600000", use_ai=False)
+    assert "口径不同" in output.getvalue() and "Δ+1.00" in output.getvalue()
+    assert "Δ-0.80" not in output.getvalue()
+
+
 def _sd(**kw):
     return StockData(**(dict(stock_code="600000", stock_name="synthetic", price=10,
                              volume=1000, avg_volume_20=1000, change_pct=0,
@@ -782,16 +843,19 @@ def test_closeout_d_legacy_trace_carries_protocol_fields(monkeypatch):
 def test_closeout_d_shadow_version_buckets_old_v11_out():
     """shadow 协议升 v12：旧 v11 记录不再进当前有效分母（版本常量+分桶机制）。"""
     from src.core import shadow_diff
-    assert shadow_diff.SHADOW_DERIVATION_VERSION == "shadow_v12"
+    assert shadow_diff.SHADOW_DERIVATION_VERSION == "shadow_v15"
     records = [
         {"derivation_version": "shadow_v11", "observation_kind": "effective",
          "mid_effective": True},
-        {"derivation_version": "shadow_v12", "observation_kind": "effective",
+        {"derivation_version": "shadow_v14", "observation_kind": "effective",
+         "mid_effective": True},
+        {"derivation_version": "shadow_v15", "observation_kind": "effective",
          "mid_effective": True},
     ]
     cur = [r for r in records
            if r.get("derivation_version") == shadow_diff.SHADOW_DERIVATION_VERSION]
-    assert len(cur) == 1 and cur[0]["derivation_version"] == "shadow_v12"
+    assert len(cur) == 1 and cur[0]["derivation_version"] == "shadow_v15"
+    assert not any(r["derivation_version"] == "shadow_v14" for r in cur)
 
 
 # ── 补修 X 组：日期资格（固定反例 + 合法正例，S2AC_FINAL X 节） ──

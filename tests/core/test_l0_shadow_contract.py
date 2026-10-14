@@ -26,7 +26,7 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from src.core.analysis_service import build_decision_packet
-from src.core.research_service import ASSERTION_METHOD_VERSION
+from src.core.research_service import ASSERTION_METHOD_VERSION, RESEARCH_SERVICE_VERSION
 from src.core.shadow_diff import (
     SHADOW_DERIVATION_VERSION,
     ShadowDiffRecord,
@@ -43,7 +43,7 @@ from src.data.research_store import AssessmentStore
 
 AS_OF = datetime(2026, 9, 30, 8, 0, tzinfo=timezone.utc)
 QUOTE_OK = "2026-09-29"          # 最近已收盘交易日（日精度——live 正常形态）
-POLICY_VERSION = "r4.research_service_v1"
+POLICY_VERSION = RESEARCH_SERVICE_VERSION
 
 
 def _isolation_assert(tmp_path):
@@ -84,7 +84,8 @@ def _sd(decision="HOLD", pos_action="HOLD_POSITION", ratio=0.1, sell_path=None):
 def _dr():
     return SimpleNamespace(
         decision=SimpleNamespace(value="HOLD"), score=0.6,
-        stock=SimpleNamespace(stock_code="600519", stock_name="测试股"), warnings=[])
+        stock=SimpleNamespace(stock_code="600519", stock_name="测试股"), warnings=[],
+        data_gaps=[])  # 该正例显式声明技术资格齐备，不用无warning推断
 
 
 def _eval():
@@ -335,10 +336,10 @@ def test_v6_old_records_diagnostic_only(tmp_path):
     }
     store.write_text(json.dumps(old_v6, ensure_ascii=False) + "\n", encoding="utf-8")
     rec = _capture(tmp_path, plans, asm_store, account_version="v_l0_next")
-    assert rec.derivation_version == "shadow_v12"
+    assert rec.derivation_version == "shadow_v15"
     assert rec.append_status == "saved", "新旧协议记录必须并存（不被去重吞掉）"
     report = build_shadow_report(store_path=store, days=7)
-    assert report["protocol_version"] == "shadow_v12"
+    assert report["protocol_version"] == "shadow_v15"
     assert report["legacy_records"] == 1, "旧协议记录只诊断（单列计数）"
     assert report["cur_mid_effective"] == 1, "当期分母只数当期协议"
     assert report["older_versions"]["shadow_v6"]["mid_effective"] == 1, "v6 计数按记录原样（仅供过渡观察）"
