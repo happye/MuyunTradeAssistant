@@ -1,0 +1,183 @@
+"""T05 read-only count: concept timestamp 0 and an exactly expired disk miss.
+
+Concept memory holds 30 codes and the timestamp key stores 0. The clock
+is BASE+1800, so the memory age is far above the TTL and memory is not a
+hit. Disk holds a different list of 30 codes whose ts is BASE, so its
+age is exactly 1800s. The fresh check is strict less-than, so disk is
+not a hit either. Neither list is returned. The disk load runs once.
+The worker then finishes and returns a third list of 30 codes. It does
+not raise. join uses the production 15s argument but returns at once
+because the worker is already dead, so this is not the timeout path and
+the test does not wait 15s. Concept memory is replaced by the new 30
+codes, the timestamp becomes the current clock rather than 0 or the disk
+ts, and the disk file is overwritten with that new list. The fallback is
+not called. Industry memory is left alone. Production code is not
+changed, and the real ~/.muyun/market_cache is not used. This is not the
+industry count.
+"""
+import sys
+import threading
+import time
+import tracemalloc
+
+import pandas as pd
+
+import src.scanner.market_cache as market_cache
+from src.scanner.market_cache import MarketCache
+
+N = 30
+NAME = "t05czdxp"
+BASE = 1_700_000_000.0
+TTL = 1800
+
+
+class _Clock:
+    now = BASE + TTL
+
+    def time(self):
+        return self.now
+
+
+def _codes(start):
+    return [f"{start + i:06d}" for i in range(N)]
+
+
+def test_t05_concept_zero_ts_expired_disk_count(tmp_path, monkeypatch, capsys):
+    assert MarketCache.CONCEPT_STOCKS_TTL == TTL
+    cache_dir = tmp_path / "market_cache"
+    cache_dir.mkdir()
+    saved_rows = dict(MarketCache._shared_concept_stocks)
+    saved_ts = dict(MarketCache._shared_concept_stocks_ts)
+    saved_industry = dict(MarketCache._shared_industry_stocks)
+    saved_industry_ts = dict(MarketCache._shared_industry_stocks_ts)
+    clock = _Clock()
+    fetches = {"n": 0}
+    raised = {"n": 0}
+    disk_loads = {"n": 0, "keys": [], "value": "unset"}
+    fallback_calls = {"n": 0}
+    kinds = []
+    joins = {"n": 0, "timeout": None, "alive": None}
+    stale = _codes(230000)
+    disk_codes = _codes(430000)
+    fresh = _codes(630000)
+    real_join = threading.Thread.join
+    real_load = market_cache._disk_load
+    real_fallback = MarketCache._board_stocks_fallback
+    path = cache_dir / "concept_stocks_t05czdxp.pkl"
+    pd.to_pickle({"ts": BASE, "data": disk_codes}, path)
+    old_bytes = path.read_bytes()
+
+    def board(self, name, kind):
+        fetches["n"] += 1
+        kinds.append((name, kind))
+        return fresh
+
+    def counting_load(key):
+        disk_loads["n"] += 1
+        disk_loads["keys"].append(key)
+        disk_loads["value"] = real_load(key)
+        return disk_loads["value"]
+
+    def counting_fallback(self, kind, name):
+        fallback_calls["n"] += 1
+        return real_fallback(self, kind, name)
+
+    def recording_join(self, timeout=None):
+        joins["n"] += 1
+        joins["timeout"] = timeout
+        assert timeout == 15
+        real_join(self, timeout)
+        joins["alive"] = self.is_alive()
+        assert joins["alive"] is False
+        return None
+
+    monkeypatch.setattr(market_cache, "time", clock)
+    monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", cache_dir)
+    monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+    monkeypatch.setattr(market_cache, "_disk_load", counting_load)
+    monkeypatch.setattr(MarketCache, "_get_ths_board_stocks_by_name", board)
+    monkeypatch.setattr(MarketCache, "_board_stocks_fallback", counting_fallback)
+    MarketCache._shared_concept_stocks.clear()
+    MarketCache._shared_concept_stocks_ts.clear()
+    MarketCache._shared_concept_stocks[NAME] = stale
+    MarketCache._shared_concept_stocks_ts[NAME] = 0
+    threads_before = threading.active_count()
+    tracemalloc.start()
+    try:
+        cache = MarketCache()
+        ts_key_present = NAME in MarketCache._shared_concept_stocks_ts
+        stored_ts = MarketCache._shared_concept_stocks_ts[NAME]
+        memory_age = clock.now - stored_ts
+        memory_inside = memory_age < TTL
+        disk_age = clock.now - BASE
+        disk_inside = disk_age < TTL
+        threading.Thread.join = recording_join
+        started = time.perf_counter()
+        returned = cache.get_stocks_by_concept(NAME)
+        elapsed = time.perf_counter() - started
+        threads_during = threading.active_count()
+        memory_after = MarketCache._shared_concept_stocks.get(NAME)
+        ts_after = MarketCache._shared_concept_stocks_ts.get(NAME)
+        kept = path.read_bytes()
+        industry_same = (
+            MarketCache._shared_industry_stocks == saved_industry
+            and MarketCache._shared_industry_stocks_ts == saved_industry_ts
+        )
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        threading.Thread.join = real_join
+        tracemalloc.stop()
+        MarketCache._shared_concept_stocks.clear()
+        MarketCache._shared_concept_stocks.update(saved_rows)
+        MarketCache._shared_concept_stocks_ts.clear()
+        MarketCache._shared_concept_stocks_ts.update(saved_ts)
+    files = list(cache_dir.glob("*.pkl"))
+    threads_after = threading.active_count()
+    stored = pd.read_pickle(path)
+    loaded = disk_loads["value"]
+    assert ts_key_present and stored_ts == 0
+    assert memory_age == clock.now and memory_age > TTL and not memory_inside
+    assert disk_age == TTL and not disk_inside
+    assert len(stale) == N and len(disk_codes) == N and len(fresh) == N
+    assert stale != disk_codes and fresh != stale and fresh != disk_codes
+    assert loaded["ts"] == BASE and loaded["data"] == disk_codes
+    assert returned is fresh and returned is not stale and returned != stale
+    assert returned != disk_codes
+    assert memory_after is fresh and memory_after is not stale
+    assert memory_after != disk_codes
+    assert ts_after == clock.now and ts_after == BASE + TTL
+    assert ts_after != 0 and ts_after != BASE
+    assert stored["ts"] == clock.now and stored["data"] == fresh
+    assert stored["data"] != disk_codes and stored["data"] != stale
+    assert kept != old_bytes and len(old_bytes) > 0 and len(kept) > 0
+    assert disk_loads["n"] == 1 and disk_loads["keys"] == [f"concept_stocks_{NAME}"]
+    assert fetches["n"] == 1 and raised["n"] == 0
+    assert fallback_calls["n"] == 0
+    assert kinds == [(NAME, "concept")]
+    assert joins["n"] == 1 and joins["timeout"] == 15 and joins["alive"] is False
+    assert industry_same
+    assert elapsed < 5
+    assert len(files) == 1 and files[0].name == path.name
+    assert all(item.resolve().is_relative_to(tmp_path.resolve()) for item in files)
+    assert threads_during <= threads_before + 1
+    assert threads_after <= threads_before + 1
+    print(
+        f"T05_CONCEPT_ZERO_TS_EXPIRED_DISK rows={N} memory_rows={len(stale)} "
+        f"memory_hits=0 ts_key_present=1 stored_ts=0 "
+        f"memory_age_seconds={int(memory_age)} memory_inside_ttl=0 "
+        f"disk_rows={len(disk_codes)} disk_age_seconds={int(disk_age)} "
+        f"disk_inside_ttl=0 disk_loads=1 disk_hit=0 "
+        f"same_memory_returned=0 same_disk_returned=0 "
+        f"success_joins=1 join_timeout_arg=15 worker_alive_after_join=0 "
+        f"raised=0 fallback_calls=0 fetches=1 memory_replaced=1 "
+        f"timestamp_written=1 timestamp_is_zero=0 timestamp_is_disk_ts=0 "
+        f"disk_overwritten=1 old_bytes={len(old_bytes)} "
+        f"new_bytes={len(kept)} industry_memory_unchanged=1 "
+        f"call_seconds={elapsed:.4f} files={len(files)} peak_bytes={peak} "
+        f"threads_before={threads_before} threads_during={threads_during} "
+        f"threads_after={threads_after}",
+        flush=True,
+    )
+    captured = capsys.readouterr()
+    assert "T05_CONCEPT_ZERO_TS_EXPIRED_DISK" in captured.out
+    sys.stderr.write(captured.out)
