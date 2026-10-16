@@ -187,6 +187,60 @@ def test_delivered_manifest_itself_passes(ov):
     assert summary["total"] == 6 and summary["failed"] == 0 and summary["passed"] == 6
 
 
+def test_rebuild_keeps_hash_matched_source_url(tmp_path):
+    """download_log 无 000002_2024H1 时，显式路径重建仍保留哈希相符的已记录 URL。
+    不写交付清单，不把 supplier.raw、更正检索或 PIT 补成已完成。"""
+    delivered_path = K3 / "evidence_manifest.json"
+    before = delivered_path.read_bytes()
+    delivered = json.loads(before.decode("utf-8"))
+    log = json.loads((K3 / "download_log.json").read_text(encoding="utf-8"))
+    assert not any(row.get("code") == "000002" and row.get("label") == "2024H1"
+                   for row in log)
+    bm = _load("build_evidence_manifest")
+    out = tmp_path / "rebuilt.json"
+    bm.main(results_path=out)
+    assert delivered_path.read_bytes() == before
+    rebuilt = json.loads(out.read_text(encoding="utf-8"))
+    old_q2 = next(p for p in delivered["points"] if p["key"] == "000002_2024Q2")
+    new_q2 = next(p for p in rebuilt["points"] if p["key"] == "000002_2024Q2")
+    assert new_q2["source_url"] == old_q2["source_url"]
+    assert new_q2["source_url"] == (
+        "http://static.cninfo.com.cn/finalpage/2024-08-31/1221084198.PDF")
+    assert new_q2["file_hash"] == old_q2["file_hash"]
+    assert new_q2["source_url_status"] == "recorded"
+    assert new_q2["supplier"]["raw_recorded"] is None
+    assert new_q2["correction_search_status"] == "not_performed"
+    assert rebuilt["pit_availability"].startswith("not_assessed")
+    for key in ("000002_2024Q1", "000002_2024Q3", "600519_2024Q1",
+                "600519_2024Q2", "600519_2024Q3"):
+        old = next(p for p in delivered["points"] if p["key"] == key)
+        new = next(p for p in rebuilt["points"] if p["key"] == key)
+        assert new["source_url"] == old["source_url"]
+
+
+def test_rebuild_drops_url_when_prior_hash_differs(tmp_path):
+    """既有 URL 的 file_hash 与本次提取不一致时不得沿用，避免把来源套到另一份原件。"""
+    delivered_path = K3 / "evidence_manifest.json"
+    before = delivered_path.read_bytes()
+    bm = _load("build_evidence_manifest")
+    stale = bm.prior_points()
+    q2 = dict(stale["000002_2024Q2"])
+    q2["file_hash"] = "0" * 64
+    stale = dict(stale)
+    stale["000002_2024Q2"] = q2
+    bm.prior_points = lambda: stale
+    out = tmp_path / "rebuilt.json"
+    bm.main(results_path=out)
+    assert delivered_path.read_bytes() == before
+    rebuilt = json.loads(out.read_text(encoding="utf-8"))
+    point = next(p for p in rebuilt["points"] if p["key"] == "000002_2024Q2")
+    assert point["source_url"] is None
+    assert point["source_url_status"].startswith("not_recorded")
+    assert point["supplier"]["raw_recorded"] is None
+    assert point["correction_search_status"] == "not_performed"
+    assert rebuilt["pit_availability"].startswith("not_assessed")
+
+
 def test_offline_verifier_missing_pdf_fails_not_faked(tmp_path, manifest_path, ov):
     """缺 PDF → MISSING/FAIL 如实报告（失败不伪补），退出码非零。"""
     m = json.loads(manifest_path.read_text(encoding="utf-8"))

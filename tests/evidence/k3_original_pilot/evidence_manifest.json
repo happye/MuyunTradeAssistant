@@ -69,9 +69,9 @@
    "issuer_value": 0.729370215263095,
    "issuer_value_rounded4": 0.7294,
    "derived_formula": "liabilityToAsset = 负债合计 / 资产总计",
-   "source_url": null,
-   "source_url_status": "not_recorded（该批次下载未记录 URL——缺项明示，不编造）",
-   "disclosure_proof": "J1 批次下载（万科创世纪 2024 半年度报告）——URL 未随批次记录",
+   "source_url": "http://static.cninfo.com.cn/finalpage/2024-08-31/1221084198.PDF",
+   "source_url_status": "recorded",
+   "disclosure_proof": "巨潮资讯网 finalpage（万科A定期报告：2024年半年度报告）。2026-10-16 将该官方 PDF 下载到隔离目录，SHA256 与既有 file_hash 逐字节一致后补记 URL；未覆盖仓库原件。download_log 仍无 000002_2024H1 行。重建时仅当既有点位 file_hash 与本次提取一致才保留该 source_url；hash 不符则丢弃。不补 supplier.raw、更正检索或 PIT。",
    "supplier": {
     "mapped_recorded": null,
     "raw_recorded": null,

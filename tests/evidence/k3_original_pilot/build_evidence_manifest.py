@@ -19,6 +19,43 @@ EXTRACT = json.loads((DIR / "extract_results.json").read_text(encoding="utf-8"))
 DOWNLOAD = {e["code"] + "_" + e["label"]: e
             for e in json.loads((DIR / "download_log.json").read_text(encoding="utf-8"))}
 
+
+def prior_points():
+    """既有清单。重建时只用来保留哈希相符的已记录 URL，不覆盖调用方输出。"""
+    path = DIR / "evidence_manifest.json"
+    if not path.is_file():
+        return {}
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    points = data.get("points")
+    if not isinstance(points, list):
+        return {}
+    found = {}
+    for point in points:
+        if isinstance(point, dict) and isinstance(point.get("key"), str):
+            found[point["key"]] = point
+    return found
+
+
+def source_url_fields(dl, prior, file_hash):
+    """下载日志里的 URL 优先。日志没有时，仅保留 file_hash 一致且已记录的 URL。"""
+    logged = dl.get("pdf_url") if isinstance(dl, dict) else None
+    if isinstance(logged, str) and logged.strip():
+        return logged, "recorded", None
+    kept = prior.get("source_url") if isinstance(prior, dict) else None
+    status = prior.get("source_url_status") if isinstance(prior, dict) else None
+    same_hash = (isinstance(prior, dict) and isinstance(file_hash, str)
+                 and file_hash != "" and prior.get("file_hash") == file_hash)
+    if (isinstance(kept, str) and kept.strip() and status == "recorded" and same_hash):
+        proof = prior.get("disclosure_proof")
+        if not isinstance(proof, str) or not proof.strip():
+            proof = ("download_log 无该行；保留与本次 file_hash 一致的既有 source_url，"
+                     "不新编 URL，不补 supplier.raw、更正检索或 PIT")
+        return kept.strip(), "recorded", proof
+    return None, "not_recorded（该批次下载未记录 URL——缺项明示，不编造）", None
+
 # 六点位（000002 2024H1 = J1 批次下载，PDF 在 j1_original_pilot——相对路径随清单携带）
 POINTS = [
     ("000002_2024Q1", "000002", "万科A", "2024-03-31", "000002_2024Q1",
@@ -44,6 +81,7 @@ PRIOR_RESULTS = {r["key"]: r for r in json.loads(
 
 def main(results_path=None):
     points = []
+    previous = prior_points()
     for key, sec, name, period_end, file_key, pdf_path, label in POINTS:
         ex = EXTRACT.get(key) or {}
         if not ex.get("self_check_ok"):
@@ -58,6 +96,15 @@ def main(results_path=None):
             continue
         dl = DOWNLOAD.get(file_key) or {}
         prior = PRIOR_RESULTS.get(key) or {}
+        source_url, source_url_status, retained_proof = source_url_fields(
+            dl, previous.get(key) or {}, ex.get("file_hash"))
+        if retained_proof is not None:
+            disclosure_proof = retained_proof
+        elif dl:
+            disclosure_proof = (f"巨潮资讯网 finalpage（{name}定期报告："
+                                f"{dl.get('title', '')}）")
+        else:
+            disclosure_proof = "J1 批次下载（万科创世纪 2024 半年度报告）——URL 未随批次记录"
         points.append({
             "key": key, "security_id": sec, "security_name": name,
             "period_end": period_end, "field": "liabilityToAsset",
@@ -72,12 +119,9 @@ def main(results_path=None):
             "issuer_value": issuer_value,
             "issuer_value_rounded4": round(issuer_value, 4),
             "derived_formula": "liabilityToAsset = 负债合计 / 资产总计",
-            "source_url": dl.get("pdf_url"),
-            "source_url_status": ("recorded" if dl.get("pdf_url")
-                                  else "not_recorded（该批次下载未记录 URL——缺项明示，不编造）"),
-            "disclosure_proof": (f"巨潮资讯网 finalpage（{name}定期报告："
-                                 f"{dl.get('title', '')}）" if dl else
-                                 "J1 批次下载（万科创世纪 2024 半年度报告）——URL 未随批次记录"),
+            "source_url": source_url,
+            "source_url_status": source_url_status,
+            "disclosure_proof": disclosure_proof,
             "supplier": {
                 # 首批运行只记录了映射值（旧键语义）；raw 待新脚本重跑补记——如实缺项
                 "mapped_recorded": prior.get("baostock"),
