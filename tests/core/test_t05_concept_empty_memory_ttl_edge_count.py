@@ -1,0 +1,137 @@
+"""T05 read-only count: a concept empty list one second inside TTL still hits.
+
+The concept key is present. Its value is an empty list and its timestamp
+age is 1799s, still strictly inside the 1800s TTL. Key presence is enough,
+so the empty list is returned as the same object. The fetch, the disk
+load, the fallback, and join are not called. The timestamp stays at the
+original value and is not rewritten to the current clock. No disk file is
+created. Industry memory is left alone. Production code is not changed,
+and the real ~/.muyun/market_cache is not used. An age of exactly 1800s
+is a miss; this is the last second that still hits. This is not the
+industry edge count.
+"""
+import sys
+import threading
+import time
+import tracemalloc
+
+import src.scanner.market_cache as market_cache
+from src.scanner.market_cache import MarketCache
+
+NAME = "t05cem1799"
+BASE = 1_700_000_000.0
+TTL = 1800
+AGE = TTL - 1
+
+
+class _Clock:
+    now = BASE + AGE
+
+    def time(self):
+        return self.now
+
+
+class _Spy(dict):
+    def __init__(self):
+        super().__init__()
+        self.writes = []
+
+    def __setitem__(self, key, value):
+        self.writes.append((key, value))
+        super().__setitem__(key, value)
+
+
+def test_t05_concept_empty_memory_ttl_edge_count(tmp_path, monkeypatch, capsys):
+    assert MarketCache.CONCEPT_STOCKS_TTL == TTL
+    cache_dir = tmp_path / "market_cache"
+    cache_dir.mkdir()
+    saved_rows = MarketCache._shared_concept_stocks
+    saved_ts = MarketCache._shared_concept_stocks_ts
+    saved_industry = dict(MarketCache._shared_industry_stocks)
+    saved_industry_ts = dict(MarketCache._shared_industry_stocks_ts)
+    clock = _Clock()
+    fetches = {"n": 0}
+    disk_loads = {"n": 0}
+    fallback_calls = {"n": 0}
+    joins = {"n": 0}
+    empty = []
+    rows = _Spy()
+    ts = _Spy()
+    real_join = threading.Thread.join
+    rows[NAME] = empty
+    ts[NAME] = BASE
+    rows.writes.clear()
+    ts.writes.clear()
+
+    def board(self, name, kind):
+        fetches["n"] += 1
+        raise AssertionError("edge empty memory must not fetch")
+
+    def counting_load(key):
+        disk_loads["n"] += 1
+        raise AssertionError("edge empty memory must not read disk")
+
+    def counting_fallback(self, kind, name):
+        fallback_calls["n"] += 1
+        raise AssertionError("edge empty memory must not use fallback")
+
+    def recording_join(self, timeout=None):
+        joins["n"] += 1
+        raise AssertionError("edge empty memory must not join a worker")
+
+    monkeypatch.setattr(market_cache, "time", clock)
+    monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", cache_dir)
+    monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+    monkeypatch.setattr(market_cache, "_disk_load", counting_load)
+    monkeypatch.setattr(MarketCache, "_get_ths_board_stocks_by_name", board)
+    monkeypatch.setattr(MarketCache, "_board_stocks_fallback", counting_fallback)
+    MarketCache._shared_concept_stocks = rows
+    MarketCache._shared_concept_stocks_ts = ts
+    threads_before = threading.active_count()
+    tracemalloc.start()
+    try:
+        cache = MarketCache()
+        age = clock.now - ts[NAME]
+        inside_ttl = age < TTL
+        threading.Thread.join = recording_join
+        started = time.perf_counter()
+        returned = cache.get_stocks_by_concept(NAME)
+        elapsed = time.perf_counter() - started
+        threads_during = threading.active_count()
+        industry_same = (
+            MarketCache._shared_industry_stocks == saved_industry
+            and MarketCache._shared_industry_stocks_ts == saved_industry_ts
+        )
+        _, peak = tracemalloc.get_traced_memory()
+    finally:
+        threading.Thread.join = real_join
+        tracemalloc.stop()
+        MarketCache._shared_concept_stocks = saved_rows
+        MarketCache._shared_concept_stocks_ts = saved_ts
+    files = list(cache_dir.glob("*.pkl"))
+    threads_after = threading.active_count()
+    assert age == AGE and inside_ttl
+    assert empty == [] and returned is empty
+    assert rows[NAME] is empty and ts[NAME] == BASE
+    assert ts[NAME] != clock.now
+    assert rows.writes == [] and ts.writes == []
+    assert fetches["n"] == 0 and disk_loads["n"] == 0
+    assert fallback_calls["n"] == 0 and joins["n"] == 0
+    assert industry_same
+    assert elapsed < 5
+    assert files == []
+    assert threads_during == threads_before
+    assert threads_after == threads_before
+    print(
+        f"T05_CONCEPT_EMPTY_MEMORY_TTL_EDGE empty_rows=0 "
+        f"memory_hits=1 same_object=1 fetches=0 disk_loads=0 "
+        f"fallback_calls=0 joins=0 timestamp_writes=0 memory_writes=0 "
+        f"age_seconds={AGE} inside_ttl=1 files=0 "
+        f"industry_memory_unchanged=1 call_seconds={elapsed:.4f} "
+        f"peak_bytes={peak} threads_before={threads_before} "
+        f"threads_during={threads_during} threads_after={threads_after}",
+        flush=True,
+    )
+    captured = capsys.readouterr()
+    assert "T05_CONCEPT_EMPTY_MEMORY_TTL_EDGE" in captured.out
+    sys.stderr.write(captured.out)
