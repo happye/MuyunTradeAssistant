@@ -2580,6 +2580,7 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             # （账本 DUPLICATE + 投影补做）；否则新序号（逐笔部分成交）。
             # 派生逻辑本体在 account_service.pick_reusable_fill_id（可单测）。
             prefix = f"{target.proposal_id}#"
+            from datetime import datetime
             eff_date = trade_date or datetime.now().strftime("%Y-%m-%d")
             # 偏离判定（事实对建议）：建议清仓但本笔卖不完全部持仓 → 明确偏离
             deviation = (fill_action == "SELL" and target.position_action == "CLOSE_ALL"
