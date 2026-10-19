@@ -50,7 +50,7 @@ class TodayView(BaseModel):
 
 def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]] = None,
                      risk_profile: Optional[dict] = None,
-                     account=None) -> TodayView:
+                     account=None, account_facts=None) -> TodayView:
     """从持仓事实+待确认建议构建 today 视图（纯读取，零写入零网络）。
 
     watch_entries: 观察池在池明细 [{code, name, price, ts, source}]（ISS-104：
@@ -61,6 +61,23 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
     隔离冻结如实显示；None=无数量级账本（保留比例视图，不发明数字）。"""
     from datetime import datetime
     view = TodayView(as_of=datetime.now().strftime("%Y-%m-%d %H:%M"))
+    # G3/M0：account_facts=请求级账户事实（RequestAccountFacts）——today 与 l/la 消费
+    # 同一快照：账户事实区取其 snapshot（不再在 main 里二次读账本），持仓清单补入
+    # 账本独有持仓，读取失败/清单不全如实提示。显式 account 参数仍优先（旧调用兼容）。
+    ledger_only: list = []
+    if account_facts is not None:
+        if account is None:
+            account = getattr(account_facts, "snapshot", None)
+        if getattr(account_facts, "read_failed", False):
+            view.notices.append("账户事件账本读取失败——今日账户事实区跳过（不影响持仓/建议显示）")
+        try:
+            entries, incomplete = account_facts.holding_entries()
+            ledger_only = [e for e in entries if getattr(e, "from_ledger", False)]
+            if incomplete:
+                view.notices.append("⚠ 持仓清单可能不完整（账本读取失败/隔离事件/持仓文件异常）——"
+                                    "下方未列出不代表空仓，请先对账")
+        except Exception as e:  # 清单读取失败不阻断今日视图
+            view.notices.append(f"⚠ 持仓清单读取失败（{type(e).__name__}）——下方可能不完整，请先对账")
     positions = {p.stock_code: p for p in pm.list_positions()}
     pending = pm.pending_proposals()
     pending_by_code: dict[str, list] = {}
@@ -132,6 +149,20 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
                 over_cap.append(f"{code} {pos.stock_name} {pos.current_ratio:.0%}")
         card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
         view.holding.append(card)
+    # G3：账本独有持仓（无投影元数据）——只显示数量事实，不伪造成本/比例
+    for e in ledger_only:
+        code = str(e.stock_code)
+        if code in positions or code in pending_by_code:
+            continue
+        q = None
+        try:
+            q = account_facts._ledger_quantity(code)
+        except Exception:
+            pass
+        card = TodayCard(stock_code=code, stock_name=e.stock_name or "", bucket="holding")
+        card.lines.append(f"账本持仓 {q if q else '?'}股（无持仓记录投影——成本/比例未知，"
+                          "建议 pos confirm 或 pos openinglot 补齐）")
+        view.holding.append(card)
     if over_cap:
         view.notices.append(
             f"⚠ 单股额度超限（用户档 {cap:.0%}）：{'、'.join(over_cap)}"
@@ -180,6 +211,11 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
                 f"⚠ 账本存在 {len(isolated)} 条待核对事件（{'、'.join(e.get('event_id', '') for e in isolated[:3])}）"
                 "——精确新增冻结，先人工核对账户事件账本")
         deployable = account.cash_deployable
+        nav = getattr(account, "nav", None)
+        if nav is not None:
+            at = getattr(account, "nav_priced_at", None)
+            view.account.append(f"总资产(NAV) {nav:,.2f} 元（现金+持仓×同日行情"
+                                + (f"，定价 {at:%m-%d %H:%M}" if at else "") + "）")
         if deployable is not None:
             line = f"可用现金 {deployable:,.0f} 元"
             if account.cash_reserved:

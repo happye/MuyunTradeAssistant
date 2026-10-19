@@ -25,6 +25,9 @@ if os.environ.get("MUYUN_TESTS_REAL_HOME") != "1":
     os.environ["USERPROFILE"] = _TEST_HOME
     atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
 
+# NAV 联网估值默认关闭（零网络；需要的用例注入 quote_fn 或显式 setenv）
+os.environ.setdefault("MUYUN_NAV_QUOTES", "0")
+
 # ── 收集期排除（路径相对本文件所在 tests/ 目录）────────────────
 collect_ignore = ["artifacts", "rag_eval"]
 if os.environ.get("MUYUN_RUN_EXTERNAL") != "1":

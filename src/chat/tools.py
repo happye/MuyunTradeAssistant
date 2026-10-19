@@ -669,6 +669,7 @@ def analyze_industry(industry: str) -> str:
     positions = []
     notes = []
     try:
+        from src.data.portfolio import PortfolioManager
         pm = _portfolio_manager or PortfolioManager()
         positions, notes = _industry_account_view(pm)
     except Exception as e:

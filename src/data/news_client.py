@@ -39,7 +39,6 @@ class NewsClient:
         cls._cache_ttl = cache_ttl
         cls._debug = debug
 
-    @classmethod
     # ISS-091：个股新闻当日磁盘缓存（~/.muyun/news_cache/{code}_{date}.json）
     # 内存缓存跨进程即失效，REPL 重启后同日重复分析会重爬新闻——磁盘层补齐
     @classmethod

@@ -28,7 +28,7 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from datetime import datetime
-from typing import NamedTuple, Optional
+from typing import Any, NamedTuple, Optional
 
 import yaml
 
@@ -173,6 +173,8 @@ class PositionRecord:
         # （quantity_fact={quantity, as_of, avg_cost}，事实源=账户事件账本）
         self.ratio_stale = ratio_stale
         self.quantity_fact = quantity_fact
+        # G3：投影在 portfolio.yaml 中的原始键（运行期定位用，不持久化）
+        self.raw_storage_key: Optional[str] = None
 
     @property
     def quantity_held(self) -> int:
@@ -364,6 +366,9 @@ class AccountContext:
     confirmed_weight: Optional[float] = None
     weight_reason: str = ""                  # 资格/缺口原因（人话）
     account_version: str = ""                # 账本内容版本（同请求一致）
+    # G3/M0：独立核定的交易计划随账户事实同源下发（PlanGuard 消费 acct_ctx.trade_plan，
+    # 不再从 pos 字段二次读取——成本/状态字段损坏时计划不随之丢失）；无投影=None
+    trade_plan: Optional[Any] = None
 
 
 class RequestAccountFacts:
@@ -382,10 +387,16 @@ class RequestAccountFacts:
         self._ledger_present = False
         self._read_failed = False      # N0：读取失败≠明确空仓（UNKNOWN 待对账）
         self._ledger_partial = False   # N0：隔离事件/PARTIAL——冻结精确权重
+        self.snapshot = None           # J2/G3：同请求账户快照（today 账户事实区复用，不再二次读账本）
+        self._projection_cache: dict = {}
         try:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
             if Path(DEFAULT_LEDGER_PATH).exists():
                 snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
+                # NAV 估值：现金 + Σ数量×同日行情（缺任何一只则保持未知）
+                from src.data.account_valuation import priced_snapshot
+                snap = priced_snapshot(snap)
+                self.snapshot = snap
                 self._ledger_present = True
                 self.account_version = str(snap.account_version or "")
                 self.nav = snap.nav
@@ -399,6 +410,50 @@ class RequestAccountFacts:
         except Exception as e:
             self._read_failed = True
             logger.warning(f"请求级账户事实读取失败（本次按未对账处理，不当作空仓）: {e}")
+
+    @property
+    def read_failed(self) -> bool:
+        """账本快照读取失败（≠明确空仓；today 据此提示账户区跳过）。"""
+        return self._read_failed
+
+    def storage_key_for(self, stock_code: str) -> Optional[str]:
+        """持仓投影在 portfolio.yaml 中的**原始存储键**（G3）。
+
+        投影键可能是历史形态（sh600519 / 600519.SH 等）——观察量/建议回写必须
+        落到原记录键上，按归一代码另写会生成重复记录。按 _normalize_stock_code
+        同语义匹配；无投影返回 None（账本独有持仓不回写投影）。"""
+        target = _normalize_stock_code(stock_code)
+        if not target:
+            return None
+        try:
+            positions = self._pm._data.get("positions") or {}
+        except Exception:
+            return None
+        if stock_code in positions:
+            return stock_code
+        for key in positions:
+            if _normalize_stock_code(key) == target:
+                return str(key)
+        return None
+
+    def projection_for(self, stock_code: str) -> Optional["PositionRecord"]:
+        """单股投影记录（G3：l/la 显示元数据——开仓价/动作语义/冷却）。
+
+        有无仓与权重以 context_for 为准，本方法只提供元数据；代码形态归一匹配
+        （同 storage_key_for），返回记录带 raw_storage_key 供回写定位。读取失败
+        /无投影 → None（不伪造）。同请求内缓存（B2：请求内同版本）。"""
+        key = self.storage_key_for(stock_code) or stock_code
+        if key in self._projection_cache:
+            return self._projection_cache[key]
+        try:
+            pos = self._pm.get_position(key)
+        except Exception as e:
+            logger.debug(f"持仓投影读取失败 {stock_code}: {e}")
+            pos = None
+        if pos is not None and getattr(pos, "raw_storage_key", None) is None:
+            pos.raw_storage_key = key
+        self._projection_cache[key] = pos
+        return pos
 
     def _ledger_quantity(self, stock_code: str) -> int:
         """账本数量事实（代码形态归一：600519 / 600519.SZ / sh600519 都能命中）。"""
@@ -426,18 +481,28 @@ class RequestAccountFacts:
         pm = self._pm
         version = self.account_version
 
+        plan_holder: dict = {"plan": None}
+
         def _ctx(state, quantity=None, weight=None, reason="") -> AccountContext:
             return AccountContext(security_id=stock_code, position_state=state,
                                   quantity=quantity, confirmed_weight=weight,
-                                  weight_reason=reason, account_version=version)
+                                  weight_reason=reason, account_version=version,
+                                  trade_plan=plan_holder["plan"])
 
         if getattr(pm, "_corrupted", False):
             return _ctx(POSITION_UNKNOWN, reason="持仓文件读取异常——账户未对账")
         try:
-            pos = pm.get_position(stock_code)
+            # G3：按原始存储键读投影（代码形态归一）；读取异常照旧走未对账分支
+            _key = self.storage_key_for(stock_code)
+            pos = pm.get_position(_key if _key is not None else stock_code)
+            if pos is not None:
+                pos.raw_storage_key = _key
         except Exception as e:
             logger.debug(f"持仓读取失败 {stock_code}（按未对账处理）: {e}")
             return _ctx(POSITION_UNKNOWN, reason="持仓记录读取失败——账户未对账")
+
+        if pos is not None:
+            plan_holder["plan"] = getattr(pos, "trade_plan", None)
 
         if self._read_failed:
             # N0（X1）：账本快照读取失败——不能当作明确空仓（NONE/0）；
@@ -455,7 +520,13 @@ class RequestAccountFacts:
                 # 当空仓证据；未对账、不反推数量
                 return _ctx(POSITION_UNKNOWN,
                             reason="账本读取失败；旧数量投影为 0 不足以证明空仓——待对账")
-            # RATIO_ONLY 落到下方既有分支（投影比例语义不依赖账本）
+            # G3/ISS-116：账本文件存在但读不到——账户已是数量级，比例投影可能
+            # 过期：比例>0 仍判有仓但不借用旧比例当权重；比例 0 不足以证明空仓
+            if (pos.current_ratio or 0) > 0:
+                return _ctx(POSITION_HELD,
+                            reason="账本读取失败——旧比例不作权重（待对账）")
+            return _ctx(POSITION_UNKNOWN,
+                        reason="账本读取失败；比例 0 不足以证明空仓——待对账")
 
         ledger_q = self._ledger_quantity(stock_code)
         if pos is None:
@@ -767,7 +838,8 @@ class PortfolioManager:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
             if not DEFAULT_LEDGER_PATH.exists():
                 return None, None
-            snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
+            from src.data.account_valuation import priced_snapshot
+            snap = priced_snapshot(AccountService(DEFAULT_LEDGER_PATH).snapshot())
             nav = snap.nav
             # N2（X3）：NAV 原时点保留偏移传资格门（不先 strftime 丢时区）
             nav_day = (snap.nav_priced_at.isoformat(timespec="seconds")
