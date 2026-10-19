@@ -40,7 +40,8 @@ class AutoScoredResult:
 
     score: BenzhongScore                            # 最终 6 维总分（复用 v0.8.6.1）
     dimensions_meta: dict = field(default_factory=dict)   # 每维 {confidence, sources, reasoning, ...}
-    overall_confidence: float = 0.0                  # 6 维 confidence 的最低值
+    overall_confidence: float = 0.0                  # 6 维 confidence 均值（缺失维计 0）
+    min_confidence: float = 0.0                      # 6 维 confidence 的最低值（旧口径）
     warnings: list = field(default_factory=list)
     cache_hits: list = field(default_factory=list)
     fetch_status: dict = field(default_factory=dict)
@@ -280,7 +281,11 @@ def auto_score(
     )
 
     # Step 6: 整体置信度（最低维度的 conf）+ 警告汇总
-    overall_conf = min((r.get("confidence", 0.0) for r in dim_results.values()), default=0.0)
+    # 整体置信度=6 维 confidence 均值（缺数据维按 0 计入，按可用数据比例下降而非一维缺失即归零）；
+    # 最弱维另存 min_confidence 供需要「木桶」口径的调用方使用。
+    _confs = [float(r.get("confidence", 0.0) or 0.0) for r in dim_results.values()]
+    overall_conf = round(sum(_confs) / len(_confs), 3) if _confs else 0.0
+    min_conf = min(_confs, default=0.0)
     all_warnings = []
     for dn, r in dim_results.items():
         for w in r.get("warnings", []):
@@ -342,6 +347,7 @@ def auto_score(
         score=bs,
         dimensions_meta=dim_results,
         overall_confidence=overall_conf,
+        min_confidence=min_conf,
         warnings=all_warnings,
         cache_hits=cache_hits,
         fetch_status=fetch_status,

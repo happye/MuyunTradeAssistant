@@ -1102,5 +1102,7 @@ class DecisionEngine:
                 return PositionAction.HOLD_POSITION, 0.0
 
         else:  # WATCH
-            # 观望：空仓等待
+            # 观望：不新增风险。已持仓（含权重未知 None）→ 维持；确认空仓 → 空仓等待
+            if current_position_ratio is None or current_position_ratio > 0:
+                return PositionAction.HOLD_POSITION, 0.0
             return PositionAction.STAY_OUT, 0.0

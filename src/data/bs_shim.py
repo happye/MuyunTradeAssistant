@@ -181,12 +181,27 @@ def query_trade_dates(start_date=None, end_date=None, **_kw):
     fields = ["calendar_date", "is_trading_day"]
     end = end_date or datetime.now().strftime("%Y-%m-%d")
     start = start_date or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+    # 首选新浪交易日历（含当年未来交易日，与 baostock 语义一致）；失败时退回上证指数
+    # 日 K 线推断——但 K 线只能证明「已过去」的日子，故此时只返回到最后一根 K 线为止，
+    # 不把今天/未来误标为休市（旧行为：盘中构建会把当日及之后全标 0，基准日滞后）。
+    trading, last_known = None, None
     try:
-        trading = {r[0] for r in _tx_kline("sh000001", "d", "", start, end)}
+        import akshare as ak
+        cal = ak.tool_trade_date_hist_sina()
+        ds = sorted(str(d)[:10] for d in cal["trade_date"])
+        if ds:
+            trading, last_known = set(ds), ds[-1]
     except Exception as e:
-        return ShimResult(fields, [], error_code="10002007", error_msg=str(e))
+        logger.debug(f"[bs_shim] 新浪交易日历不可用，退回 K 线推断: {e}")
+    if trading is None:
+        try:
+            k = [r[0] for r in _tx_kline("sh000001", "d", "", start, end)]
+        except Exception as e:
+            return ShimResult(fields, [], error_code="10002007", error_msg=str(e))
+        trading, last_known = set(k), (max(k) if k else start)
+    stop = min(datetime.strptime(end, "%Y-%m-%d"), datetime.strptime(last_known, "%Y-%m-%d"))
     rows, cur = [], datetime.strptime(start, "%Y-%m-%d")
-    while cur <= datetime.strptime(end, "%Y-%m-%d"):
+    while cur <= stop:
         ds = cur.strftime("%Y-%m-%d")
         rows.append([ds, "1" if ds in trading else "0"])
         cur += timedelta(days=1)

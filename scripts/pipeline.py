@@ -46,6 +46,22 @@ def _ev(x):
     return getattr(x, "value", x)
 
 
+# 决策→动作口径（输出中展示）：「决策」列=策略层最终决策（strategy_decision），动作由它推导：
+#   BUY→建仓/加仓（权重未知或软上限加不动→维持）；HOLD→维持；SELL→减仓/清仓（空仓→观望）；
+#   WATCH→空仓=观望、持仓=维持。引擎原始信号与最终决策不同时以「引擎X→策略Y（原因）」标出。
+DECISION_RULE = ("决策列=策略层最终决策（引擎原始信号经稳定性/惯性/确认/冷却/软上限过滤）；"
+                 "动作由最终决策推导：BUY→建仓/加仓，HOLD→维持，SELL→减仓/清仓，"
+                 "WATCH→空仓观望、持仓维持；两者不同时标「引擎X→Y」。")
+
+
+def decision_label(c):
+    eng, fin = c.get("decision"), c.get("strategy_decision") or c.get("decision")
+    if eng and fin and eng != fin:
+        why = "；".join(c.get("downgrade_reasons") or [])[:40]
+        return f"引擎{eng}→{fin}" + (f"（{why}）" if why else "")
+    return fin
+
+
 class Stage:
     def __init__(self, log):
         self.log = log
@@ -105,6 +121,8 @@ def analyze_one(orch, pm, code, *, ai=True):
         "strategy_decision": _ev(sd.decision), "position_action": _ev(sd.position_action),
         "action_semantic": sd.action_semantic, "sell_path": sd.sell_path,
         "target_ratio": sd.position_ratio, "reasons": (dr.reason or [])[:6],
+        "downgrade_reasons": [r for r in (getattr(sd, "strategy_reasons", None) or [])
+                              if not str(r).startswith(("参数档", "⚠ 极端"))][:2],
         "warnings": (dr.warnings or [])[:4],
         "ai": ({"sentiment": air.sentiment, "confidence": air.confidence, "risk": air.risk_level,
                 "summary": air.summary} if air is not None else None),
@@ -274,7 +292,7 @@ def fmt_md(R):
           f"- 恐慌指数 {fear.get('score')}（{fear.get('tier')}，基准日 {fear.get('as_of')}，缺失成分 {fear.get('missing')}）", ""]
     s = R.get("sizing") or {}
     L += ["## 2. 持仓体检", f"总仓位 {s.get('exposure', 0):.1%}，现金 {s.get('cash_ratio', 0):.1%}，"
-          f"单股上限 {s.get('per_stock_max', 0):.0%}，账户净值（输入）{R['nav']:,.0f} 元", "",
+          f"单股上限 {s.get('per_stock_max', 0):.0%}，账户净值（输入）{R['nav']:,.0f} 元", DECISION_RULE, "",
           "| 代码 | 名称 | 现价 | 成本 | 浮盈% | 仓位 | 估算股数 | 决策 | 建议动作 | 卖出路径 | AI情绪 | 风险标记 |",
           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for h in R.get("holdings") or []:
@@ -286,20 +304,20 @@ def fmt_md(R):
         if h.get("suggest_shares_delta"):
             act += f"（{h['suggest_shares_delta']:+d} 股）"
         L.append(f"| {h['code']} | {h['name']} | {h['price']} | {h['entry_price']} | {h['pnl_pct']} | "
-                 f"{h['ratio']:.1%} | {h.get('est_shares')} | {h['decision']} | {act} | {h.get('sell_path') or '-'} | "
+                 f"{h['ratio']:.1%} | {h.get('est_shares')} | {decision_label(h)} | {act} | {h.get('sell_path') or '-'} | "
                  f"{ai.get('sentiment', '-')} | {'；'.join(h.get('flags') or []) or '-'} |")
     cm = R.get("cand_meta") or {}
     L += ["", "## 3. 选股候选", f"规则 `{cm.get('rule')}` 主题 `{cm.get('theme')}`，"
           f"初筛 {cm.get('scanned')} 只，深度分析前 {len(R.get('candidates') or [])} 只"
           + ("（⚠ 主题过滤失败，按全市场）" if cm.get('theme_filter_failed') else "")
-          + "。排序：建仓动作 > BUY > 笨总分+0.2×回测超额 > 规则评分；第一行=今日最佳候选，WATCH=只观察不买。", "",
+          + "。排序：建仓动作 > BUY > 笨总分+0.2×回测超额 > 规则评分；第一行=今日最佳候选，WATCH=只观察不买。" + DECISION_RULE, "",
           "| 代码 | 名称 | 现价 | 决策 | 动作 | 评分 | 回测收益% | 基准% | 超额% | 最大回撤% | 笨总 |",
           "|---|---|---|---|---|---|---|---|---|---|---|"]
     bt, bz = R.get("backtest") or {}, R.get("bz") or {}
     def _rank(c):
         z = (bz.get(c.get("code"), {}) or {}).get("total") or 0
         b = (bt.get(c.get("code"), {}) or {}).get("excess_pct") or 0
-        return (c.get("position_action") in ("OPEN", "ADD"), c.get("decision") == "BUY", z + b * 0.2, c.get("score") or 0)
+        return (c.get("position_action") in ("OPEN", "ADD"), (c.get("strategy_decision") or c.get("decision")) == "BUY", z + b * 0.2, c.get("score") or 0)
     for c in sorted([c for c in R.get("candidates") or [] if not c.get("error")], key=_rank, reverse=True) + \
             [c for c in R.get("candidates") or [] if c.get("error")]:
         if c.get("error"):
@@ -307,7 +325,7 @@ def fmt_md(R):
             continue
         b, z = bt.get(c["code"], {}), bz.get(c["code"], {})
         zt = f"{z.get('total')}/{z.get('grade')}" if z.get("total") is not None else "-"
-        L.append(f"| {c['code']} | {c['name']} | {c['price']} | {c['decision']} | "
+        L.append(f"| {c['code']} | {c['name']} | {c['price']} | {decision_label(c)} | "
                  f"{ACTION_CN.get(c['position_action'], c['position_action'])} | {c['score']} | "
                  f"{b.get('total_return_pct', '-')} | {b.get('benchmark_pct', '-')} | {b.get('excess_pct', '-')} | "
                  f"{b.get('max_dd_pct', '-')} | {zt} |")
