@@ -39,6 +39,22 @@ def _fix_curl_ssl_paths():
     fix_curl_ssl_paths()
 
 
+_BROKEN_SOURCES: set = set()
+
+
+def _fast_fail_enabled() -> bool:
+    return os.environ.get("MUYUN_FAST_FAIL", "").strip().lower() in ("1", "true", "on")
+
+
+def _skip_sources() -> set:
+    return {x.strip() for x in os.environ.get("MUYUN_SKIP_SOURCES", "").split(",") if x.strip()}
+
+
+def _breaker_key(func_name: str) -> str:
+    import re as _re
+    return _re.sub(r"_?\d{6,8}$", "", func_name)
+
+
 def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwargs):
     """统一的"失败返回 None + 日志"包装，带线程级硬超时。
 
@@ -48,11 +64,23 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
     """
     _fix_curl_ssl_paths()  # 确保 akshare curl_cffi 接口 SSL 可用
     to = timeout if timeout is not None else DATA_CALL_TIMEOUT
+    # 本地审查补丁（opt-in）：MUYUN_FAST_FAIL=1 时启用进程级熔断——同一数据源首次
+    # 超时/连接失败/非JSON响应后，本进程内后续调用直接降级（不再每只股票等 30s）；
+    # MUYUN_SKIP_SOURCES=a,b 直接跳过；MUYUN_DATA_CALL_TIMEOUT 覆盖默认超时。
+    _key = _breaker_key(func_name)
+    if _fast_fail_enabled():
+        if _key in _skip_sources() or _key in _BROKEN_SOURCES:
+            logger.debug(f"data_provider.{func_name} 已熔断/跳过，直接降级")
+            return None
+        if timeout is None and os.environ.get("MUYUN_DATA_CALL_TIMEOUT"):
+            to = float(os.environ["MUYUN_DATA_CALL_TIMEOUT"])
     ex = ThreadPoolExecutor(max_workers=1)
     fut = ex.submit(fn, *args, **kwargs)
     try:
         return fut.result(timeout=to)
     except FuturesTimeout:
+        if _fast_fail_enabled():
+            _BROKEN_SOURCES.add(_key)
         # v0.8.7.2 审查修复：不能用 with 块——__exit__ 的 shutdown(wait=True) 会 join
         # 卡死的线程，"硬超时"退化成等底层 requests OS级放弃（分钟级）。改为立即
         # 放弃等待（孤儿线程自行消亡，范本 source_check._probe_t）。
@@ -69,6 +97,8 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
             hint = " | 提示：连接被重置，可能反爬/代理，可稍后重试"
         elif "登录失败" in err_str:
             hint = " | 提示：BaoStock 临时故障"
+        if _fast_fail_enabled() and (hint or type(e).__name__ in ("JSONDecodeError", "ConnectionError", "ConnectTimeout", "ReadTimeout")):
+            _BROKEN_SOURCES.add(_key)
         logger.warning(f"data_provider.{func_name} 失败: {type(e).__name__}: {err_str[:80]}{hint}")
         return None
     finally:
