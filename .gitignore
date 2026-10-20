@@ -63,3 +63,6 @@ tests/backtest/_*.json
 # 用户自留备忘（文件名明确标注"无需commit"）
 勿删！自留备忘，无需commit.txt
 
+# Project agent-routing backups and local verification outputs
+/.cache/harness-agent-routing/
+

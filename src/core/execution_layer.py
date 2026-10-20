@@ -1,15 +1,13 @@
-"""执行层（Execution Layer） - v0.7.2 新增模块
+"""执行资格：实时核验事实与回测撮合假设分开。
 
-将"理想交易"转为"可执行交易"。
-
-核心约束：
-1. 波动率滑点：不再使用固定值，滑点与波动率（ATR）正相关
-2. 流动性过滤：低成交量禁止交易，避免"理论可买、实际买不到"
-3. 涨跌停限制：涨停无法买入，跌停无法卖出（A股特性）
-4. 冲击成本：大额交易影响价格，与成交量比例相关
+实时量比/近涨跌幅仅作估计；缺盘口、订单或可卖数量为UNKNOWN，保留动作意图。
+确认停牌/数量受限才BLOCKED。回测沿用保守模型并明确标模拟假设，不写成交事实。
 """
 
 import logging
+import math
+from src.core.decision_contract import ExecutionStatus
+from src.core.source_time import parse_source_time
 from typing import Optional
 
 from src.data.models import (
@@ -42,7 +40,7 @@ class ExecutionEvaluation:
         self.slippage_pct = slippage_pct
         self.impact_cost_pct = impact_cost_pct
         self.total_cost_pct = total_cost_pct
-        self.execution_status = execution_status
+        self.execution_status = execution_status or (ExecutionStatus.BLOCKED if blocked else ExecutionStatus.UNKNOWN)
         self.diagnostics = list(diagnostics or [])
         self.simulated = simulated
 
@@ -62,6 +60,7 @@ class ExecutionLayer:
         data: StockData,
         position_action: PositionAction,
         current_volume_ratio: Optional[float] = None,
+        *, simulated: bool = False, analysis_as_of: Optional[str] = None,
     ) -> ExecutionEvaluation:
         """评估交易可执行性
 
@@ -81,7 +80,10 @@ class ExecutionLayer:
         adjusted_slippage = self.constraint.slippage_pct
         impact_cost_pct = 0.0
 
-        # 1. 流动性过滤
+        if not simulated:
+            return self._evaluate_live(data, position_action, current_volume_ratio, analysis_as_of)
+
+        # 1. 流动性过滤（回测保守撮合假设，不是实时市场事实）
         if self.constraint.min_volume_ratio > 0:
             if current_volume_ratio is None:
                 current_volume_ratio = self._calc_volume_ratio(data)
@@ -94,12 +96,12 @@ class ExecutionLayer:
             if is_buy and self.constraint.limit_up_blocked:
                 if self._is_limit_up(data):
                     blocked = True
-                    block_reason = "涨停封板，无法买入"
+                    block_reason = "模拟成交假设：接近涨停阈值，本轮不撮合买入"
 
             if is_sell and self.constraint.limit_down_blocked:
                 if self._is_limit_down(data):
                     blocked = True
-                    block_reason = "跌停封板，无法卖出"
+                    block_reason = "模拟成交假设：接近跌停阈值，本轮不撮合卖出"
 
         # 3. 波动率滑点
         if not blocked and self.constraint.volatility_slippage:
@@ -126,7 +128,49 @@ class ExecutionLayer:
             slippage_pct=adjusted_slippage,
             impact_cost_pct=impact_cost_pct,
             total_cost_pct=adjusted_slippage + impact_cost_pct,
+            execution_status=ExecutionStatus.BLOCKED if blocked else ExecutionStatus.ELIGIBLE,
+            diagnostics=["模拟成交假设：量比/幅度阈值保守撮合"], simulated=True,
         )
+
+    def _evaluate_live(self, data, action, volume_ratio, analysis_as_of):
+        status, reason = ExecutionStatus.UNKNOWN, "盘口/订单数量/可卖数量待确认"
+        diagnostics = []
+        is_buy = action in (PositionAction.OPEN, PositionAction.ADD)
+        is_sell = action in (PositionAction.REDUCE, PositionAction.CLOSE_ALL)
+        if not is_buy and not is_sell:
+            status, reason = ExecutionStatus.NOT_NEEDED, ""
+        if volume_ratio is None and data.avg_volume_20 and data.avg_volume_20 > 0:
+            volume_ratio = data.volume / data.avg_volume_20
+        if volume_ratio is not None and math.isfinite(volume_ratio) and volume_ratio < self.constraint.min_volume_ratio:
+            diagnostics.append("量比偏低：流动性估计，需确认盘口；不代表无法成交")
+        if (is_buy and self._is_limit_up(data)) or (is_sell and self._is_limit_down(data)):
+            diagnostics.append("接近涨跌幅阈值：需确认盘口；不代表已封板")
+        facts = data.execution_facts or {}
+        quote, cutoff = parse_source_time(facts.get("as_of")), parse_source_time(analysis_as_of)
+        qualified = (facts.get("verified") is True and facts.get("source") in {"broker_snapshot", "exchange_status"}
+                     and facts.get("security") == data.stock_code and quote is not None and cutoff is not None
+                     and quote[0].date() == cutoff[0].date()
+                     and (not cutoff[1] or not quote[1] or quote[0] <= cutoff[0]))
+        if qualified and (is_buy or is_sell):
+            if facts.get("suspended") is True:
+                status, reason = ExecutionStatus.BLOCKED, "已核验停牌快照，当前订单受阻"
+            elif is_sell and facts.get("sellable_qty") == 0 and type(facts.get("sellable_qty")) is int:
+                status, reason = ExecutionStatus.BLOCKED, "已核验账户可卖数量为0"
+            else:
+                qty, available = facts.get("order_qty"), facts.get("executable_qty")
+                market_stamp = parse_source_time(data.quote_as_of)
+                if (facts.get("source") == "broker_snapshot" and facts.get("suspended") is False
+                        and type(qty) is int and qty > 0 and type(available) is int and available >= qty
+                        and (not is_sell or (type(facts.get("sellable_qty")) is int and facts["sellable_qty"] >= qty))
+                        and math.isfinite(data.price) and data.price > 0
+                        and market_stamp is not None and market_stamp[0].date() == cutoff[0].date()
+                        and (not cutoff[1] or not market_stamp[1] or market_stamp[0] <= cutoff[0])):
+                    status, reason = ExecutionStatus.ELIGIBLE, "核验快照具备订单资格；建议不等于已成交"
+        if status == ExecutionStatus.UNKNOWN:
+            diagnostics.append(reason)
+        return ExecutionEvaluation(action, action, status == ExecutionStatus.BLOCKED, reason,
+                                   self.constraint.slippage_pct, 0.0, self.constraint.slippage_pct,
+                                   execution_status=status, diagnostics=diagnostics, simulated=False)
 
     @staticmethod
     def _calc_volume_ratio(data: StockData) -> float:

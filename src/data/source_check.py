@@ -358,7 +358,7 @@ def check_all_sources(code: str = "600989") -> dict:
 
     # --- AI 接口（deepseek + kimi，轻量探针） ---
     def _ai_probe(provider: str):
-        from src.cli.main import load_config
+        from src.config import load_config
         cfg = load_config()
         ai_cfg = cfg.get("ai", {})
         prov_cfg = ai_cfg.get(provider, {})

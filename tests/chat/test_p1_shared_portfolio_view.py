@@ -81,6 +81,12 @@ def _code_occurrences(output: str, code: str) -> int:
     return len(re.findall(rf"(?<!\d){re.escape(code)}(?!\d)", output))
 
 
+def _holding_row_codes(output):
+    """Only real holding rows start with two spaces and a six-digit security id."""
+    import re
+    return re.findall(r'^  (\d{6})(?=\s|$)', output, flags=re.MULTILINE)
+
+
 # ── Z3①：get_portfolio 全路径共享清单 ────────────────────────────────
 
 def test_z3_chat_mixed_collection_complete(tmp_path, monkeypatch):
@@ -110,8 +116,46 @@ def test_z3_chat_all_paths_no_leak_no_dup(tmp_path, monkeypatch):
     for code in ("000001", CODE, "000688"):
         n = _code_occurrences(out, code)
         assert n == 1, f"{code} 应恰出现 1 次（不漏不重）: 实际 {n} 次"
+    entries, _ = pm.request_account_facts().holding_entries()
+    actual = _holding_row_codes(out)
+    assert set(actual) == {e.stock_code for e in entries} == {'000001', CODE, '000688'}
+    assert len(actual) == len(set(actual))
     # 投影细节保留（旧比例/动作语义照旧展示——正常输出不改变）
     assert "投影独有" in out and "重叠持仓" in out
+
+
+@pytest.mark.parametrize('case', ['projection', 'ledger', 'overlap', 'alias_bad', 'empty', 'bad_only'])
+def test_chat_holding_rows_exact_shared_set(tmp_path, monkeypatch, case):
+    _isolate(tmp_path, monkeypatch)
+    pm = PortfolioManager()
+    if case in {'projection', 'overlap', 'alias_bad'}:
+        pm.add_position(CODE, stock_name='数字 654321', entry_price=123456, ratio=.1)
+    if case in {'ledger', 'overlap', 'alias_bad'}:
+        _seed_ledger_only(quantity=345678)
+    if case == 'alias_bad':
+        pm._data['positions']['sh600519'] = dict(pm._data['positions'][CODE])
+        pm._data['positions']['000002'] = 42
+        pm.add_position('000001', stock_name='投影独有', entry_price=234567, ratio=.2)
+        _seed_ledger_only(code='000688', quantity=456789)
+    elif case == 'bad_only':
+        pm._data['positions']['000002'] = 42
+    pm._save()
+    facts = pm.request_account_facts()
+    entries, incomplete = facts.holding_entries()
+    monkeypatch.setattr(pm, 'request_account_facts', lambda: facts)
+    monkeypatch.setattr(chat_tools, '_portfolio_manager', pm)
+    out = chat_tools.get_portfolio()
+    actual = _holding_row_codes(out)
+    expected = {e.stock_code for e in entries}
+    assert set(actual) == expected
+    assert len(actual) == len(expected)
+    assert not set(actual) & {'123456', '234567', '345678', '456789', '654321', '000002'}
+    if case == 'alias_bad':
+        assert expected == {CODE, '000001', '000688'} and incomplete
+    if case == 'empty':
+        assert out == '当前无持仓记录'
+    if incomplete:
+        assert '当前无持仓记录' not in out
 
 
 def test_z3_chat_empty_and_incomplete_distinct(tmp_path, monkeypatch):

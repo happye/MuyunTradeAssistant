@@ -370,12 +370,12 @@ def test_tiered_rejects_contradictory_claim_with_quote():
 def test_tiered_title_never_counts_as_body():
     """SourceDocument 内容 hash 只对正文——标题不冒充已读全文；无正文时内容核验不可达。"""
     from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
-    body = "正文内容：与某客户签订 900 万元销售订单。"
+    body = "公司签订900万元订单。"
     doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
                          security_ids=["600519"], body=body,
                          published_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
     c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
-               quote_text="900 万元销售订单", value=900, unit="万元")
+               statement="公司签订900万元订单", quote_text="900万元订单", value=900, unit="万元")
     r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
     assert r.level is VerificationLevel.FACT_CHECKED
     # 空 body（doc 侧正文缺失）→ NEEDS_REVIEW（TASKS 暂停点：正文不可得保留人工通道）
@@ -385,17 +385,33 @@ def test_tiered_title_never_counts_as_body():
     assert any("无正文" in f for f in r2.failures)
 
 
+@pytest.mark.parametrize("statement,body", [
+    ("公司公告获得5亿元订单", "公司签订900万元订单。"),
+    ("订单公告", "公司签订900万元订单。"),
+    ("公司签订900万元订单", "正文内容：与某客户签订900万元销售订单。"),
+    ("公司签订900万元订单", "公司公告：与某客户签订销售订单，订单金额900万元。"),
+])
+def test_old_incomplete_or_conflicting_order_inputs_stay_unverified(statement, body):
+    from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+    doc = SourceDocument(canonical_uri="synthetic://old-order", body=body,
+                         content_hash=SourceDocument.body_hash(body), security_ids=["600519"],
+                         published_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
+    claim = _claim(statement=statement, value=900, unit="万元", quote_text=body,
+                   citation_uri=doc.canonical_uri, citation_hash=doc.content_hash)
+    assert verify_claim_tiered(claim, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc)).level is not VerificationLevel.FACT_CHECKED
+
+
 def test_tiered_replay_as_of_explicit():
     """验收3：核验必须显式 as_of（回放截止）——截止前后同一主张资格不同。"""
     from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
-    body = "正文：签订 900 万元订单。"
+    body = "公司签订900万元订单。"
     doc = SourceDocument(canonical_uri="cninfo://x",
                          content_hash=SourceDocument.body_hash(body),
                          security_ids=["600519"],
                          published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
                          body=body)
     c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
-               quote_text="900 万元订单", value=900, unit="万元",
+               statement="公司签订900万元订单", quote_text="900万元订单", value=900, unit="万元",
                published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc))
     before = verify_claim_tiered(c, [doc], as_of=datetime(2026, 8, 1, tzinfo=timezone.utc))
     after = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
@@ -407,8 +423,8 @@ def test_deterministic_claim_reaches_excerpt_grounded():
     """确定性通道产出带 quote_text 的 claim——配原文文档可达摘录级（无 AI 的核验阶梯可用）。
     池文档经 from_source_doc 构造（hash 约定与提取器一致——uri+hash 双匹配）。"""
     from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
-    content = "公司公告：与某客户签订销售订单，订单金额 900 万元。"
-    source = {"title": "订单公告", "content": content, "date": "2026-09-01",
+    content = "公司签订900万元订单。"
+    source = {"title": "公司签订900万元订单", "content": content, "date": "2026-09-01",
               "source": "cninfo://ann/x", "security_id": "600519",
               "event_type": "order", "value": 900.0, "unit": "万元"}
     ext = DeterministicExtractor()
@@ -499,14 +515,14 @@ def test_negation_boilerplate_in_body_does_not_kill_real_claim():
     """监督员 P1 回归：否定检查只在摘录内判定——正文其他部分的披露套话
     （「不存在应披露未披露事项」）不得误杀真实主张（REJECTED 是对用户的错误指控）。"""
     from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
-    body = ("公司公告：与某客户签订销售订单，订单金额 900 万元。"
+    body = ("公司签订900万元订单。"
             "本公司目前不存在应披露而未披露的重大事项。")
     doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
                          security_ids=["600519"],
                          published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
                          body=body)
     c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
-               quote_text="订单金额 900 万元", value=900, unit="万元")
+               statement="公司签订900万元订单", quote_text="900万元订单", value=900, unit="万元")
     r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
     assert r.level is VerificationLevel.FACT_CHECKED, f"套话误杀: {r.failures}"
 

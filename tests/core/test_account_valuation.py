@@ -76,11 +76,58 @@ def test_priced_snapshot_disabled_by_env_is_noop(ledger, monkeypatch):
 
 def test_request_facts_weights_from_nav(ledger, monkeypatch):
     real = val.priced_snapshot
-    monkeypatch.setattr(val, "priced_snapshot", lambda s, quote_fn=None, as_of=None: real(s, _quotes(), as_of=NOW))
-    facts = PortfolioManager().request_account_facts()
+    calls = {"snapshot": 0, "pricing": 0}
+    snapshot = AccountService.snapshot
+    def read(service):
+        calls["snapshot"] += 1
+        return snapshot(service)
+    def price(s):
+        calls["pricing"] += 1
+        return real(s, _quotes(), as_of=NOW)
+    monkeypatch.setattr(AccountService, "snapshot", read)
+    monkeypatch.setattr(val, "priced_snapshot", price)
+    facts = PortfolioManager().request_account_facts(estimate_nav=True)
     assert facts.nav == pytest.approx(NAV, abs=0.01)
     for c, (q, _, p) in LOTS.items():
         ctx = facts.context_for(c, price=p, price_as_of=T)
         assert ctx.position_state == POSITION_HELD and ctx.quantity == q
         assert ctx.confirmed_weight is not None, ctx.weight_reason
         assert ctx.confirmed_weight * 100 == pytest.approx(EXPECTED[c], abs=1e-6)
+    assert calls == {"snapshot": 1, "pricing": 1}
+    assert facts.snapshot is facts.account_snapshot
+
+
+@pytest.mark.parametrize("entry", ["request", "today", "portfolio", "industry", "account_nav"])
+def test_account_queries_do_not_attempt_nav_quotes(ledger, monkeypatch, entry):
+    from src.cli.today_service import build_today_view
+    from src.chat import tools
+    calls = []
+    monkeypatch.setenv("MUYUN_NAV_QUOTES", "1")
+    def priced(snapshot):
+        calls.append(snapshot.account_version)
+        return snapshot
+    monkeypatch.setattr(val, "priced_snapshot", priced)
+    pm = PortfolioManager()
+    monkeypatch.setattr(tools, "_portfolio_manager", pm)
+    if entry == "request":
+        facts = pm.request_account_facts()
+        assert facts.nav is None
+        facts.holding_entries()
+    elif entry == "today":
+        assert len(build_today_view(pm).holding) == len(LOTS)
+    elif entry == "portfolio":
+        assert "600519" in tools.get_portfolio()
+    elif entry == "industry":
+        tools._industry_account_view(pm)
+    else:
+        assert pm.account_nav() == (None, None)
+    assert calls == [], f"{entry} silently requested NAV pricing"
+
+
+def test_explicit_snapshot_never_estimates_nav(ledger, monkeypatch):
+    calls = []
+    monkeypatch.setattr(val, "priced_snapshot", lambda snap: calls.append(snap) or snap)
+    facts = PortfolioManager().request_account_facts(
+        account_snapshot=ledger.snapshot(), estimate_nav=True)
+    assert facts.nav is None and not facts.read_failed
+    assert calls == []

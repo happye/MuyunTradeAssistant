@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ISS-117 QR3 收口批验收测试（v0.8.29.4，架构师 QR3_ACCEPTANCE.md）。
+"""ISS-117 QR3 收口批验收测试（v0.8.29.4，冻结合同见 plan/fusion/signal_authority_review/S2_DESIGN.md）。
 
 把架构师 QR2/QR3 探针的合同语义落为正式回归（探针本身是架构师证据，不进产品测试树）：
 

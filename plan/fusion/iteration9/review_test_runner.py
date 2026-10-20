@@ -15,6 +15,26 @@ NAMES = ["j0_facts_assessment", "j1_mapping_boundary", "j2_account_service",
 NAMES += ["l0_shadow_contract", "l1_account_reading", "l2_public_checkpoint", "l3_evidence_pack", "m0_account_terminal", "analysis_service", "horizon_policy", "batch_quotes", "iss089_realtime_quote", "n0_ctx_source_of_truth", "n1_canonical_arms", "o0_exceptional_account", "o2_long_unknown_weight"]
 
 
+def _resolved_path(path):
+    resolved = Path(os.fsdecode(path)).resolve()
+    # Windows realpath may retain its extended prefix if a missing directory is
+    # created between GetFinalPathName calls. Normalize only resolved drive/UNC
+    # aliases; following symlinks/junctions must happen before this comparison.
+    value = str(resolved)
+    if os.name == "nt":
+        if value.startswith("\\\\?\\UNC\\"):
+            return Path("\\\\" + value[8:])
+        if (value.startswith("\\\\?\\") and len(value) >= 7
+                and value[4].isalpha() and value[5:7] == ":\\"):
+            return Path(value[4:])
+    return resolved
+
+
+def _require_writable(path, root):
+    if not _resolved_path(path).is_relative_to(root):
+        raise RuntimeError("Review test write outside temporary root blocked")
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -23,27 +43,42 @@ def main():
     # Python's Windows platform detection can invoke cmd /c ver. Warm this read-only
     # stdlib cache before blocking child processes; product code remains guarded.
     platform.uname()
-    real_state = (Path.home() / ".muyun").resolve()
+    real_state = _resolved_path(Path.home() / ".muyun")
     protected = [REPO / "portfolio.yaml", REPO / "portfolio.yaml.bak"]
     protected += list((REPO / "knowledge" / "index").glob("*"))
     protected = [p for p in protected if p.is_file()]
     before = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected if p.exists()}
+    protected_paths = {_resolved_path(p) for p in protected}
+    checking_protection = False
+    blocked_io = {"network": 0, "subprocess": 0, "real_state": 0}
     with tempfile.TemporaryDirectory(prefix="muyun_review_tests_") as temp:
-        root = Path(temp).resolve()
+        root = _resolved_path(temp)
         os.environ.update(HOME=str(root), USERPROFILE=str(root))
         os.environ.pop("MUYUN_TESTS_REAL_HOME", None)
         tempfile.tempdir = str(root)
 
         def writable(path):
-            if not Path(os.fsdecode(path)).resolve().is_relative_to(root):
-                raise RuntimeError("Review test write outside temporary root blocked")
+            _require_writable(path, root)
 
         def audit(event, args):
-            if event in ("socket.connect", "socket.getaddrinfo", "subprocess.Popen"):
+            if event == "socket.connect":
+                # Windows stdlib socketpair uses an ephemeral loopback connection for
+                # asyncio's own wakeup pipe. Allow only that exact internal caller.
+                caller = sys._getframe(1)
+                address = args[1]
+                internal_pair = (caller.f_code.co_name in ("socketpair", "_fallback_socketpair")
+                                 and Path(caller.f_code.co_filename).name == "socket.py"
+                                 and isinstance(address, tuple) and address[0] == "127.0.0.1")
+                if not internal_pair:
+                    blocked_io["network"] += 1
+                    raise RuntimeError("Review test external IO blocked")
+            elif event in ("socket.getaddrinfo", "subprocess.Popen"):
+                blocked_io["subprocess" if event == "subprocess.Popen" else "network"] += 1
                 raise RuntimeError("Review test external IO blocked")
             if event == "open" and isinstance(args[0], (str, bytes, os.PathLike)):
-                path = Path(os.fsdecode(args[0])).resolve()
-                if path.is_relative_to(real_state):
+                path = _resolved_path(args[0])
+                if path.is_relative_to(real_state) or (path in protected_paths and not checking_protection):
+                    blocked_io["real_state"] += 1
                     raise RuntimeError("Review test real account access blocked")
                 mode, flags = args[1:3]
                 if (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
@@ -57,6 +92,8 @@ def main():
             elif event in ("os.rename", "os.replace"):
                 for path in args[:2]:
                     writable(path)
+            elif event == "os.link":
+                writable(args[1])
 
         sys.addaudithook(audit)
         import pytest
@@ -89,7 +126,10 @@ def main():
                             "--log-file", str(root / "pytest.log")]
                            + (sys.argv[1:] or ([str(REPO / "tests" / "core" / f"test_{name}.py") for name in NAMES] + [str(REPO / "tests/data_sources/test_m1_quote_time.py"), str(REPO / "tests/data_sources/test_n2_time_gate.py"), str(REPO / "tests/data_sources/test_o1_time_gate_matrix.py")])),
                            plugins=[ArtifactIsolation()])
+        checking_protection = True
         after = {str(p): hashlib.sha256(p.read_bytes()).hexdigest() for p in protected if p.exists()}
+        checking_protection = False
+        print("BLOCKED_IO_ATTEMPTS", blocked_io)
         print("PROTECTED_PORTFOLIO_HASHES_UNCHANGED", before == after)
         print("PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES", len(protected))
         print("KNOWLEDGE_FILE_SET_UNCHANGED", set(p for p in (REPO / "knowledge" / "index").glob("*") if p.is_file()) == set(p for p in protected if p.parent == REPO / "knowledge" / "index"))

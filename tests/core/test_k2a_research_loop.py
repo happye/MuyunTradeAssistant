@@ -47,7 +47,7 @@ def _make_app(tmp_path, metrics=None):
 
 def _claim_doc(security_id="600519", statement="公司签订 900 万元订单",
                event_type="order", value=900, unit="万元",
-               body="公司与客户正式签订 900 万元订单，交付期为三个月。",
+               body="公司签订900万元订单。",
                quote=None, source_uri="cninfo://ann/fix-1", claim_id="c_fix_1", **kw):
     """合法主张+原文（公开解析器输入形态——uri 必填，原文落归档；
     claim_id 固定以便 checkpoint.evidence_refs 引用）。"""
@@ -83,6 +83,14 @@ def test_k2a_documents_channel_builds_verified_claims(tmp_path):
     assert mid["status"] in ("VALID", "UNESTABLISHED"), f"评估应产出: {mid}"
 
 
+def test_complex_delivery_sibling_remains_unverified(tmp_path):
+    app, _ = _make_app(tmp_path)
+    bundle = _claim_doc(body="公司与客户正式签订 900 万元订单，交付期为三个月。")
+    result = app.run("600519", as_of=AS_OF, horizons=("MID",), documents=[bundle])
+    assert result.verified_claims == 0
+    assert result.unverified_claims >= 1
+
+
 def test_k2a_checkpoint_requires_explicit_user_confirmation(tmp_path):
     """风险确认（K2a 审查 P2-1 真断言）：证据齐+用户确认 → 检查点支撑生效
     （window_and_refutation TRUE with 显式登记）；同样证据但未确认 → UNKNOWN
@@ -96,7 +104,9 @@ def test_k2a_checkpoint_requires_explicit_user_confirmation(tmp_path):
         security_id="600519", horizon="MID", proposition_type="window_and_refutation",
         description="2026-10-30 三季报核验订单转化",
         evidence_refs=["c_fix_1"], derived_from="user_confirmed_risk",
-        user_confirmed=True)
+        user_confirmed=True,
+        review_at=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+        refute_if="核实披露原件证实订单收入转化未发生", expiry_action="REVIEW_REQUIRED")
     r_ok = app.run("600519", as_of=AS_OF, horizons=("MID",),
                    documents=[doc_bundle], checkpoints=[cp_confirmed])
     asm = asm_store.load(r_ok.assessment_ids["MID"])

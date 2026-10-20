@@ -33,7 +33,7 @@ def _init_engines() -> bool:
             return True
         try:
             from src.chat.tools import _orchestrator as orch, _scanner_engine, init_engines
-            from src.cli.main import load_config
+            from src.config import load_config
             from src.data.portfolio import PortfolioManager
 
             config = load_config()
@@ -52,15 +52,21 @@ def _scan_work(rule="healthy_pullback", theme=None):
     if not _init_engines():
         return {"error": "引擎初始化失败"}
     exclude = set()
+    account_warnings = []
     try:
-        exclude = {p.stock_code for p in _portfolio.list_positions()}
+        facts = _portfolio.request_account_facts()
+        entries, incomplete = facts.holding_entries()
+        exclude = {p.stock_code for p in entries}
+        if incomplete:
+            account_warnings.append("账户清单可能不全，本次候选可能仍含已有持仓，请先对账。")
     except Exception as e:
-        # ISS-078：排除持仓失败留痕（此前静默 fail-open，已持仓股混入候选无感知）
         logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
+        account_warnings.append(f"账户清单读取失败，本次候选可能仍含已有持仓: {e}")
     candidates, info = _scanner.quick_scan(
         rule_name=rule, market_query=theme, exclude_codes=exclude
     )
-    return {"candidates": candidates, "info": info, "count": len(candidates)}
+    return {"candidates": candidates, "info": info, "count": len(candidates),
+            "account_warnings": account_warnings}
 
 
 def _analyze_work(code):
@@ -90,61 +96,59 @@ def _analyze_work(code):
             )
     if not stock_data:
         return {"error": f"无法获取 {code} 数据"}
-    pos = None
     strategy_state = None
-    acct_ctx = None
     try:
         # N0（R13 X1 同类点）：ctx 装配不以投影存在为前置——账本有仓无投影不按空仓
-        acct_facts = _portfolio.request_account_facts()
+        acct_facts = _portfolio.request_account_facts(estimate_nav=True)
         acct_ctx = acct_facts.context_for(
             code, price=getattr(stock_data, "price", None),
             price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
-        for p in _portfolio.list_positions():
-            if p.stock_code == code:
-                pos = p
-                strategy_state = _portfolio.to_strategy_state(
-                    code, price=getattr(stock_data, "price", None),
-                    price_as_of=getattr(stock_data, "quote_as_of", None),
-                    nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
-                    account_context=acct_ctx)
-                break
-        if strategy_state is None:
-            strategy_state = _portfolio.to_strategy_state(
-                code, price=getattr(stock_data, "price", None),
-                price_as_of=getattr(stock_data, "quote_as_of", None),
-                nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
-                account_context=acct_ctx)
     except Exception as e:
-        # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
-        logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
+        logger.warning(f"web 账户资格不可核({code})，本次不生成分析建议: {e}")
+        return {"error": f"账户资格不可核，{code} 本次不生成分析建议，请对账后重试: {e}"}
+    pos = acct_ctx.projection
+    _, incomplete = acct_facts.holding_entries()
+    account_warnings = [f"{key} {reason}" for key, reason in acct_facts.projection_gaps.items()]
+    if incomplete:
+        account_warnings.append("账户清单可能不全，请先对账；不能据此证明空仓。")
+    try:
+        strategy_state = _portfolio.to_strategy_state(
+            code, price=getattr(stock_data, "price", None),
+            price_as_of=getattr(stock_data, "quote_as_of", None),
+            nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+            account_context=acct_ctx)
+    except Exception as e:
+        # 独立账户事实/计划已核定，状态元数据失败不抹掉持仓方向或原计划。
+        logger.warning(f"web 策略状态元数据读取失败({code})，保留账户事实和独立计划: {e}")
+        account_warnings.append(f"策略状态元数据读取失败，保留账户事实和独立计划: {e}")
     # N0：有仓判定 ctx 三态（HELD/UNKNOWN 保守 True；无投影账本有仓不漏）
-    has_position = (acct_ctx.position_state in ("HELD", "UNKNOWN")
-                    if acct_ctx is not None else False)
+    has_position = acct_ctx.position_state in ("HELD", "UNKNOWN")
     dr, sd, ee, ai = _orchestrator.analyze(
         stock_data,
-        current_position_ratio=(strategy_state.current_position_ratio
-                                if strategy_state is not None else 0.0),
+        current_position_ratio=acct_ctx.confirmed_weight,
         strategy_state=strategy_state,
         ai_enabled=True,
         has_position=has_position,
         entry_price=pos.entry_price if pos else None,
         high_since_entry=pos.high_since_entry if pos else None,
-        trade_plan=pos.trade_plan if pos else None,
+        trade_plan=acct_ctx.trade_plan,
     )
     # v0.8.9.5（彻查批 A-4）：持仓股回写观察量（chat/CLI 同款行为平价）——
     # F1（plan/fusion ADR-F03）：不再把建议当持仓回写；只写观察量+建议入账，
     # 用户确认成交才改持仓事实
     if has_position and pos is not None:
+        storage_key = pos.raw_storage_key or pos.stock_code
         try:
             # M5：保存失败如实告警（record_analysis_observation 返回 bool）
             if not _portfolio.record_analysis_observation(
-                    pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data):
+                    storage_key, stock_data.stock_name or pos.stock_code, sd, stock_data):
                 logger.warning(f"web 观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
-            _portfolio.record_proposal(pos.stock_code,
+            _portfolio.record_proposal(storage_key,
                                        stock_data.stock_name or pos.stock_code, sd, source="web")
         except Exception as e:
             logger.warning(f"web 回写策略状态失败({pos.stock_code}): {e}")
-    return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai}
+    return {"stock_data": stock_data, "dr": dr, "sd": sd, "ee": ee, "ai": ai,
+            "account_context": acct_ctx, "account_warnings": account_warnings}
 
 
 def _backtest_work(code, start, end, capital):
@@ -152,7 +156,8 @@ def _backtest_work(code, start, end, capital):
     if not _init_engines():
         return {"error": "引擎初始化失败"}
     from src.core.backtest_engine import BacktestEngine
-    from src.cli.main import load_config, normalize_stock_code
+    from src.config import load_config
+    from src.cli.main import normalize_stock_code
 
     config = load_config()
     eng = BacktestEngine(
@@ -211,7 +216,8 @@ def scan_status(task_id):
         return render_template("fragments/progress.html", status="error",
                                action="scan", target="scan-panel", error=result["error"])
     candidates = result.get("candidates", [])
-    return render_template("fragments/scan_table.html", candidates=candidates)
+    return render_template("fragments/scan_table.html", candidates=candidates,
+                           account_warnings=result.get("account_warnings", []))
 
 
 @app.route("/analyze/<code>", methods=["POST"])
@@ -331,19 +337,25 @@ def calendar():
         from src.data.portfolio import PortfolioManager
         cal = EventCalendar()
         codes = None
+        account_warnings = []
         try:
             pm = PortfolioManager()
-            positions = pm.list_positions()
-            if positions:
-                codes = [p.stock_code for p in positions]
-        except Exception:
-            pass
+            facts = pm.request_account_facts()
+            entries, incomplete = facts.holding_entries()
+            if entries:
+                codes = sorted({p.stock_code for p in entries})
+            if incomplete:
+                account_warnings.append("账户过滤不完整，清单可能不全；日历不能覆盖全部持仓相关事件。")
+        except Exception as e:
+            account_warnings.append(f"账户过滤不完整，账户清单读取失败: {e}")
         events = cal.get_upcoming_events(days=30, codes=codes)
         stale = cal.check_stale_static_events()
         overdraw = ExpectationOverdrawCalculator().calculate()
-        return render_template("fragments/calendar.html", events=events, stale=stale, overdraw=overdraw)
+        return render_template("fragments/calendar.html", events=events, stale=stale,
+                               overdraw=overdraw, account_warnings=account_warnings,
+                               general_calendar=codes is None)
     except Exception as e:
-        return f'<div class="text-red-600 p-2">日历获取失败: {e}</div>'
+        return render_template("fragments/analysis_panel.html", error=f"日历获取失败: {e}")
 
 
 @app.route("/reports")

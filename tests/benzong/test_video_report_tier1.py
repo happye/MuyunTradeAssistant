@@ -75,10 +75,10 @@ def test_mode_self_reliance_gate():
     # A 级 + S2 上升期，正常 -> 气宗
     assert _mode_from_grade("A", 70, stage="S2", is_self_reliance=False) == "qizong"
     # A 级 + S2 上升期 + 自主可控 -> 强制剑宗（笨总教学九：不长持）
-    assert _mode_from_grade("A", 70, stage="S2", is_self_reliance=True) == "jianzong", \
-        "自主可控 A+S2 必须强制剑宗"
+    assert _mode_from_grade("A", 70, stage="S2", is_self_reliance=True) == "qizong", \
+        "产业研究标签不得覆盖模式"
     # A 级 + S1 筑底 + 自主可控 -> 剑宗
-    assert _mode_from_grade("A", 70, stage="S1", is_self_reliance=True) == "jianzong"
+    assert _mode_from_grade("A", 70, stage="S1", is_self_reliance=True) == "qizong"
     # 自主可控不影响大前提失效（景气<=0 仍 None）
     assert _mode_from_grade("A", 0, stage="S2", is_self_reliance=True) is None, \
         "大前提失效优先于自主可控闸门"

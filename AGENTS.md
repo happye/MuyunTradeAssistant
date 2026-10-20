@@ -7,6 +7,16 @@
 
 > **多 Agent 共用规则**：本文件只定义项目共同规范，不给阅读者自动分配架构师或实施者身份。角色以用户对当前会话的指派为准；Codex 专属约定见 `CODEX.md`，Claude Code 专属约定见 `CLAUDE.md`。共享交接文档中的作者职责不得覆盖当前 Agent 已获指派的任务。
 
+<!-- harness-project-init: model-routing -->
+### 主动按需分工
+
+用户明确要求主动使用subagent：每项实质任务开始时先判断能否拆出有价值的独立定位、文档整理、实施或复核；能减少主上下文或提供必要独立验证时，实际派发最少所需角色，不等用户再次提醒。简短、依赖紧密或低影响的单文件工作直接完成，不凑Agent数量。临时“不用agent”只适用于该项任务，新的指派优先。
+
+型号与执行证据见[docs/agent-routing.md](docs/agent-routing.md)。定位用Luna/high、整理用Luna/medium；开发/普通审查用Sol/medium，关键数据边界用Sol/high；仅复杂设计用Astra/low。主模型不改。型号覆盖必须用小范围fresh context；当前工具要求时设 `fork_turns="none"`。角色不可发现时用支持的default/worker显式型号，不静默继承主模型；不可用立即说明。
+
+派发前简述分工与型号，写任务须明确文件所有权并保留他人成果；不递归委派、不重复审查、不轮询无变化进度。实质里程碑先确定合同和验收条件，再按依赖实施与独立复核；主控可承担计划，不固定要求三或四个Agent。实际型号以运行元数据核实，无法读取时标未核实。聊天指令 `按需分工：<任务>` 明确触发此规则；配置存在不能当作任务已派出或节省已验证。 基线/探针任务必须限定矩阵和停止条件，完成即转实际缺陷或交付；不能因依赖受阻无限追加只读计数测试。现行为不等于正确合同，发现缺陷先红后修，生产改善须有对应代码和用户可见结果。
+<!-- /harness-project-init: model-routing -->
+
 ---
 
 ## 一、怎么跑
@@ -63,11 +73,9 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 >
 > v0.8.6.4「跳法A」**笨总升为中长期决策主驾**：建仓时笨总评分定气宗/剑宗 mode（笨总首次真正参与买卖决策，此前仅展示），技术层降级为持仓内择时。详见 `ISSUES.md` ISS-046。
 
-核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+自主可控强制剑宗**（v0.8.6.8）。
+核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+产业线索**（v0.8.6.8）。
 
-当前版本：**v0.8.29.9**（2026-10-12）。S2a 集中补修 X/Y/Z：**X 日期资格**——evaluation_as_of=独立分析截止（backtest=bar 日期/live=当天，不用待核 quote 自我背书）；评估截止与行情时点严格 parse_source_time（缺失/非法/垃圾尾巴→槽 UNKNOWN 拒因可见，先解析成功才用 source_time_in_future）；截止日精度按**日期比较**（同日带时刻的 live 实时行情合法——不虚构午夜精度全拒，guard P0）；base/regulator 共用 _eval_time_qualified；**Y HOLD 保仓位**——_update_lifecycle OPEN/EXIT 生命周期 HOLD_POSITION 占位 0 不再清策略记忆仓位（.60 仍 .60/None 仍 None，ADD/REDUCE/CLOSE_ALL 原语义）；**Z 保存依据**——evidence/LegacyTrace 补 opinion_share 与 action_override_confidence（独立止损通道回看可区分），人话卡渲染信号口径行，evidence 测试三路径隔离+文件生成断言，diff 渲染四元组落回归。固定反例+正例落 test_s2a_aggregation.py（62 项全绿）。上一版 **v0.8.29.8**（2026-10-11）。ISS-117 S2a 最新独立验收为**部分接收**，X 日期资格、Y 持仓状态/动作、Z 保存依据尚待补修；不以批次测试数或实施报告代替独立审批。
-
-当前及后续实施唯一入口：[S2AC_FINAL_CLOSEOUT_TASK.md](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)；已通过/未通过范围与证据：[S2AC_ACCEPTANCE.md](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)。S2b/S3尚未启动，ISS-117打开；K1未冻结、M2生产未放行（DESIGN_READY）、capture_only不变。长期目标与状态仍见根 MILESTONES.md、plan/fusion/STATUS.md。
+当前产品基线为 **v0.8.42 当次行业条件化现金观察限定接收**；真实 MID 仍 NO_VALID，G3/G4/G7/T04 及 V1 整体未完成。cv6/binding_v4/assertion_v2、v15、capture_only/default、笨总缓存和阈值保持。T01 仅登记业务读取范围通过，管理投影视图豁免。当前进度、待办与证据分别见 [MILESTONES](MILESTONES.md)、[RESUME](plan/fusion/RESUME.md) 和 [第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；历史测试数字不作为当前验收。
 
 版本变更见 [README 版本历史](README.md#版本历史)；较早叙事保存在现有 [截至v0.8.14归档](docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md) 与 [v0.8.15–v0.8.19归档](docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md)。归档与历史实施账本只作历史证据，不作为当前执行或通过保证。
 
@@ -75,15 +83,15 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 以下保留跨版本安全边界；具体实现是否过门，以独立审批为准。
 
-- **事实/评估唯一真值**：自由文本最高 EXCERPT_GROUNDED；类型化数值/否定事实须谓词一致、词元边界与来源公开时点齐备才 FACT_CHECKED。VALID 必须有实存可解析引用，无 evidence_resolver 不得判 VALID；AssessmentStore 按 assessment_id 提供草稿/影子同一状态，缺失/错配待复核，不以旧 facts+refs 重判。REFUTES/否定主张不得支撑正面结论，单主张单必需命题；checkpoint走合法建立渠道，因子须绑定合格快照，禁止裸 raw dict 旁路；财务映射须单位幂等及已核定证券×已观测报告期范围门，保留原件核对记录。latest-only财务不得入历史严格PIT快照；资格安全门不随策略回滚撤销。
-- **账户事实与建议分离**：分析只记录观察量和待确认建议，实际成交经 `pos confirm` 才改持仓；PARTIAL账本或不完整持仓枚举不能证明空仓，UNKNOWN/None与缺口原因须贯穿投影、共享清单、chat及l/la。旧shadow按版本独立分桶，不追认当前分母。多端范围以ISSUES的G2/G7/T01为准。
-- **检测与硬授权分离**：SignalFinding缺字段默认最严；硬动作消费端核signal_id白名单、策略绑定精确相等、证券、时点、质量，缓存重放走同门，PlanGuard P1只认top_signal_authorized。复算须有行情主体/时点，主体证券独立核对（代码后缀规范化），结果质量OK且signal_id/证券一致；不得用请求股回填自证。旧字符串exit_signal缓存不得复活；holder/margin缓存各按signal_id核验。非法价格不得判穿止损；子信号/层异常显式隔离，不吞独立保护；未知技能条件fail-closed。
+- **事实/评估唯一真值**：归档覆盖与可比/事实资格分开，留样及采集时点不自证核验或历史可得；自由文本最高 EXCERPT_GROUNDED；类型化数值/否定事实须谓词一致、词元边界与来源公开时点齐备才 FACT_CHECKED。VALID 必须有实存可解析引用，无 evidence_resolver 不得判 VALID；AssessmentStore 按 assessment_id 提供草稿/影子同一状态，缺失/错配待复核，不以旧 facts+refs 重判。REFUTES/否定主张不得支撑正面结论，单主张单必需命题；checkpoint走合法建立渠道，因子须绑定合格快照，禁止裸 raw dict 旁路；财务映射须单位幂等及已核定证券×已观测报告期范围门，保留原件核对记录。latest-only财务不得入历史严格PIT快照；资格安全门不随策略回滚撤销。
+- **账户事实与建议分离**：分析只记录观察量和待确认建议，实际成交经 `pos confirm` 才改持仓；PARTIAL账本或不完整持仓枚举不能证明空仓，UNKNOWN/None与缺口原因须贯穿投影、共享清单、chat及l/la。坏的非计划metadata逐项隔离后，同请求独立核定的 `ctx.trade_plan` 仍须传入l/la/chat/shadow；计划本身为None不授予退出资格。旧shadow按版本独立分桶，不追认当前分母。多端范围以ISSUES的G2/G7/T01为准。
+- **检测与硬授权分离**：SignalFinding缺字段默认最严；硬动作消费端核signal_id白名单、策略绑定精确相等、证券、时点、质量，缓存重放走同门，PlanGuard P1同时核已授权标记与同源结构化退出发现。复算须有行情主体/时点，主体证券独立核对（代码后缀规范化），结果质量OK且signal_id/证券一致；不得用请求股回填自证。旧字符串exit_signal缓存不得复活；holder/margin缓存各按signal_id核验。非法价格不得判穿止损；子信号/层异常显式隔离，不吞独立保护；未知技能条件fail-closed。
 - **弱证据不得清仓**：减持标题的否定/澄清/未实施、宏观10万亿、未经核定旗手关系均为research；缩量加速缺连续证据为UNKNOWN。板块30+仅研究提醒，旧标签同样受限，禁止把行业成熟换算30+；标注须允许不适用/证据不足，不新增冷静期或行业例外。AI invalidate仅红线候选，不硬invalidate/强制F；规则硬排除/ST纪律保留。AI black_swan不强制PANIC，软调节按置信度缩放，零置信度无调节；风险红线不做跨字段子串匹配。
 - **事件与软限仓**：scope缺省/非法为unknown，先拒unknown再核证券；stock须显式affected_codes含当前股，不以请求上下文重写事件主体。四要素缺失为UNKNOWN，confidence取真实性而非impact；无独立核验器不force_state/硬限仓，软限仓仅空头方向。增量cap为 `max(0,min(目标,上限)-当前)`，零增量转HOLD/HOLD_POSITION，REDUCE不参与，未知当前不伪造增量。
 - **数据与时点资格**：日期完整严格解析，不截断/回退洗白；证据不得晚于分析数据时点（live行情快照、回测bar），三倍价格须有限正值、quote_as_of；不恢复已撤销的live统一7天证据政策。预告缺失/非法/未来公开日期跳过，同日时序不明标注。sector行须在请求窗口、未来剔除、同日冲突放弃、qfq同口径、至少21收盘观测并核跨度，末观测距请求端点>12天拒绝；股东户数按统计日期倒序去重，显式本次/上次户数映射，无统计日期fail-closed、无公开时点UNKNOWN；融资as_of用实际两端日期，备用Baostock透传adjust。
 - **日历硬授权只读且拒绝不完整覆盖**：`trading_days(allow_refresh=False)`不得登录/建目录/刷新；缓存须版本正确、built_at在7天TTL内，覆盖日期与声明区间自然日全集精确相等、唯一、标志合法、查询正常结束。strict在原始JSON解析拦任意层级重复键；门内交易日限定核定区间，分析日须在覆盖内，行情快照不得早于独立最近交易日。缺失/过期/损坏/旧schema/覆盖不足一律UNKNOWN，不猜星期、12天范围或借未来日期补证明。旧缓存可继续服务fear展示，TTL内不重建，不承诺跑一次fear立即恢复或要求手工删缓存；三倍纪律降提醒，价格止损/ST/期限保护保留。
 - **冻结投票合同**：启用base集合E由目标名单/目录预先确定，加载/执行失败仍占W；坏权重显式拒绝/降级，缺E不从成功票缩分母，普通票不产方向。槽=(skill_id,证券,evaluation_as_of,rule_version)，版本为YAML内容sha1；注册时点/版本不得由票自报补齐，缺失/错股/错时点/错版本/冲突槽UNKNOWN保留W、不投不计覆盖、不入组，同槽同票合一。regulator同注册同校验，重复不能放大；confidence=0计覆盖但贡献0，非法confidence拒绝不clamp。A=clip(M·U/W)、P仅展示、C独立；调节幅度 `1+c(m_legacy−1)`，零/坏置信度不贡献不稀释，不创造U=0方向。
-- **动作出口与记录合同**：仓位/强卖/强止损用具名A，不抓中文trace名；独立override触发即携带，同向不清，_gate_score取独立与普通通道较大值，AI/事件加分不得绕基础资格。BUY/HOLD→ADD须过当前状态buy_gate，目标≤已知当前转HOLD_POSITION/终态HOLD；无roster降级不妨碍独立止损/止盈/PlanGuard。协议/A/P/C与独立action依据按冻结合同贯穿记录；旧缺字段标当时未记录，不补假0。score跨协议不算数值Δ（标双方协议），价格Δ照常；shadow旧v11不进v12当前分母。decision score语义以协议分桶，笨总输入不变不改CACHE_VERSION、不迁磁盘缓存；展示动作强度/覆盖率不得称胜率。
+- **动作出口与记录合同**：仓位/强卖/强止损用具名A，不抓中文trace名；独立override触发即携带，同向不清，_gate_score取独立与普通通道较大值，AI/事件加分不得绕基础资格。BUY/HOLD→ADD须过当前状态buy_gate，目标≤已知当前转HOLD_POSITION/终态HOLD；无roster降级不妨碍独立止损/止盈/PlanGuard。协议/A/P/C与独立action依据按冻结合同贯穿记录；旧缺字段标当时未记录，不补假0。score跨协议不算数值Δ（标双方协议），价格Δ照常；shadow旧v12及更早版本不进v13当前分母。decision score语义以协议分桶，笨总输入不变不改CACHE_VERSION、不迁磁盘缓存；展示动作强度/覆盖率不得称胜率。
 
 融合命令速查：`today` 今日工作台（待确认建议/继续持有/等待条件）；`shadow` 影子对照（`fusion.shadow_capture`，记录 `~/.muyun/shadow_diff.jsonl`）；`plan2 <代码> mid|long <意图> --facts 事实` 与 `plan2 accept <代码>`（每股每周期计划存 `~/.muyun/horizon_plans.json`，事实不自动使逻辑VALID）；`diff` 无参数列清单，`diff <代码> --ai` 为可选AI解读。
 
@@ -183,7 +191,7 @@ docs/               # 详细文档
 - **curl_cffi SSL 证书路径修复**（v0.8.6.3，ISS-045）：项目路径含中文「暮云思辨投资助手」致 curl_cffi 的 libcurl 找不到 CA 证书（curl 77）。修复在 `src/data/source_check.py:fix_curl_ssl_paths`（公共函数），data_provider/news_client 共用，启动时把 certifi 证书复制到 ASCII 路径 `~/.muyun_cacert.pem`
 - **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py`）：新增策略文档放子目录也会被扫到
 - **AI 评分 JSON 截断容错**（v0.8.6.5）：`_call_ai_for_score(max_tokens=)` 按维度可调（业务纯度 2000，其余 1500）+ finish_reason==length 自动重试 + `_parse_score_json` 容错截断。截断退化 confidence=0.3（不再假装 0.5）。维度 prompt 须显式限 reasoning 长度防超 max_tokens
-- **网络超时三层硬保护**（ISS-047，根治 WinError 10060/10054）：akshare/baostock 底层 requests 无 timeout 会挂起。`data_provider._safe_call`(30s) + `akshare_client._retry_with_backoff`(30s) + baostock `bs.next()` 读取(30s) 全用 `ThreadPoolExecutor` 线程级硬超时，超时即放弃走降级不冻结。新增网络调用必须包超时；且**不能用 with 块包 ThreadPoolExecutor**——__exit__ 的 shutdown(wait=True) 会 join 卡死线程使超时失效，须显式 shutdown(wait=False)（2026-08-24 ISS-066 审查发现 _safe_call/_call_with_timeout 两处中招已修，范本 source_check._probe_t）
+- **网络超时与退出边界**（ISS-047）：akshare/baostock底层requests无timeout会挂起，现有调用点使用线程超时并提供降级。新增网络调用须核总期限与进程退出行为。`shutdown(wait=False)`只表示调用方不等待executor关闭，不能证明解释器退出时不会join仍运行线程；v41专用source-check用daemon线程、结果队列和monotonic总截止修复CLI退出等待，不代表可强杀DNS/socket，旧调用点也未一并证明修复。不要用with块包`ThreadPoolExecutor`，其`__exit__`的`shutdown(wait=True)`会等待工作线程。
 - **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（一票否决判F/景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷(正权和×当期流动性系数) 归一化到100，B16 修复后满分恒=100 不随成交额漂移）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
 - **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
 - **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout
@@ -195,7 +203,7 @@ docs/               # 详细文档
 - **scan market [参数] 第一个参数当 rule_name**（2026-07-23 修复）：parse_input（start.py）之前把 `scan market <参数>` 的参数全当 market_query（主题词），rule 固定 healthy_pullback。现第一个参数当 rule_name（resolve_rule_name 模糊匹配，失败才当主题词）。`scan market oversold_watch` 现走 oversold_watch 规则
 - **pandas replace(0, pd.NA) 会变 object dtype 致 .round() 崩**（rsi_6_series bug，2026-07-23）：`_loss.replace(0, pd.NA)` 在 float Series 上变 object，`.round(2)` 对 NAType 报 `TypeError`。用 `_loss.replace(0, float('nan'))` + `.astype(float).round(2)` 保 float NaN。**测试 oversold_confirm 必须跑真实 calculate_indicators**（mock StockData 不暴露此 bug）
 - **akshare 股东户数/融资余额 API 参数反直觉**（v0.8.6.8，LRN-20260812-001）：`stock_zh_a_gdhs(symbol)` 参数是**日期**(YYYYMMDD)非代码，传代码会 hang（em 端点反爬）。取单股股东户数用 `stock_zh_a_gdhs_detail_em(symbol=代码)`（列"股东户数-本次/上次"）。`stock_margin_detail_sse/szse` 参数是**单日期**返回全市场（无 start_date/stock_code），取单股需查日期+过滤代码。`AKShareClient._ensure_baostock_login` 不存在--是模块级函数 `from src.data.akshare_client import _ensure_baostock_login`；代码前缀用 `AKShareClient._normalize_stock_code` 类方法。新增 akshare 调用前先 `inspect.signature` 查参数，别按函数名猜
-- **exit_signal 日缓存 + live 门控**（v0.8.6.8）：股东户数/融资余额信号 `stock.py:_check_holder_count_surge/_check_margin_surge` 用日缓存（`~/.muyun/exit_signal_cache/{code}_{date}_{signal}.json`，`_MISS` 哨兵区分未命中vs缓存None）。`check_stock_top_signal(live=...)`：回测 `is_backtest=True` 传 `live=False` 跳过 akshare（point-in-time+网络），orchestrator 传 `live=not is_backtest`。**回测路径不可触发 akshare 网络调用**。**宏观层同款门控（ISS-063，2026-08-23）**：`check_top_signals` 里 macro 层 `live=False` 且未显式传入成交额时必须跳过——`getattr(data,'market_turnover_trillion',None)` 恒为 None 会触发实时拉取全市场快照，拉取失败拖垮回测速度、拉取成功=未来信息注入。新增信号层先问'回测路径会不会碰网络'。`ThreadPoolExecutor` 超时后 `shutdown(wait=False)`（`wait=True` 会阻塞等孤儿线程）
+- **exit_signal 日缓存 + live 门控**（v0.8.6.8）：股东户数/融资余额信号 `stock.py:_check_holder_count_surge/_check_margin_surge` 用日缓存（`~/.muyun/exit_signal_cache/{code}_{date}_{signal}.json`，`_MISS` 哨兵区分未命中vs缓存None）。`check_stock_top_signal(live=...)`：回测 `is_backtest=True` 传 `live=False` 跳过 akshare（point-in-time+网络），orchestrator 传 `live=not is_backtest`。**回测路径不可触发 akshare 网络调用**。**宏观层同款门控（ISS-063，2026-08-23）**：`check_top_signals` 里 macro 层 `live=False` 且未显式传入成交额时必须跳过——`getattr(data,'market_turnover_trillion',None)` 恒为 None 会触发实时拉取全市场快照，拉取失败拖垮回测速度、拉取成功=未来信息注入。新增信号层先问'回测路径会不会碰网络'。`shutdown(wait=False)`只保证当前调用不等待关闭；不能据此声称解释器退出不join运行线程。v41 source-check的daemon/monotonic修复及其限度见上条；旧调用仍需逐点核验。
 - **告警人话化三处同步（v0.8.7.3，硬纪律）**：任何 logger.warning 新增/改动，**必须同一 commit 同步三处**--① `src/cli/plain_errors.py` 的 `WARNING_PATTERNS` 映射表（命中才翻译，未命中只透传不崩）② `docs/报错速查手册.md`（人话字典唯一详版）③ 触发该告警的代码本身。人话话术必须留余地（写"数据源慢或不可用"而非押单一成因），影响级别只准用"终止/缺失"两档。**过滤器改写须幂等（2026-09-11）**：`PlainLanguageFilter.filter` 开头有 `if raw.startswith("⚠ "): return True` 守卫——filter 直接改写 `record.msg`，同一 record 若流经**多个挂本 filter 的 handler**（或同 handler 挂多个 filter）会被二次翻译，嵌套成「⚠ …｜原始：⚠ …｜原始：…」且 `_recent` 重复记账致末尾汇总结论数字虚高。生产 REPL 只有 1 个 root handler 故不触发，但**新增 handler/在子进程里 install() 前要先想这条**
 - **三倍定律气宗跳过**（v0.8.6.8 回测发现）：`_check_triple_up_rule`（price/low_60d≥3+破MA5）是 force-exit top_signal，气宗牛股被过早离场。`check_stock_top_signal(mode=...)`：气宗(`qizong`)跳过三倍定律（同 take_profit_trim 可压，气宗靠换手/减持/渗透率/旗手等真见顶信号逃顶），剑宗/非气宗(`mode!=qizong`，含None)照常触发
 
@@ -222,9 +230,10 @@ docs/               # 详细文档
 
 ### Git
 
-- **Git 操作需用 `cmd /c` 前缀**：PowerShell 直接执行 git 可能因中文路径出错
+- **Git与中文路径**：使用当前Shell及正确引用的绝对路径，输出显式UTF8；本轮PowerShell直接执行Git正常，不强制再套cmd。
 - **提交备注用中文详细描述**：每个 commit 写清楚改了什么、为什么改
-- **推送前检查代理**：代理在线时 GitHub 推送会 Connection reset
+- **里程碑提交与推送**（用户2026-10-20明确要求）：本项目单人维护，默认直接在main开发、验收、集中commit+push，不自动创建命名分支或PR，不把合并留给用户。远端领先时由集成方处理冲突并验证，可用临时detached检出，不强推覆盖。DSH合同写明git_owner=Codex；只读任务不提交。禁止git add -A或夹带账户、知识库与私人配置；各项目只提交各自仓库。
+- **推送前核连通性**：GitHub路由按实测选择命令级代理/TLS后端；不把旧Connection reset归因当永久禁用代理规则，不改全局代理或关闭证书核验。金融接口另按数据源规则。
 
 ---
 
@@ -335,7 +344,7 @@ docs/               # 详细文档
 
 当前交付与阻断见 §二的独立审批指针及 plan/fusion/STATUS.md，历史已完成清单见 README 版本历史与现有归档，不在此重复维护。
 
-持仓计划命令：`pos plan <code|all> [--update]` 生成/更新/批量计划；`pos overweight` 超配须守三铁律（见使用手册）。自主可控标的强制剑宗；宏观流动性/市场宽度为advisory展示，MarketState不替代气宗固定持有纪律。金字塔仓位管理已移除，禁止重新引用已删配置/兼容壳。
+持仓计划命令：`pos plan <code|all> [--update]` 生成/更新/批量计划；`pos overweight` 超配须守三铁律（见使用手册）。产业关键词只作研究线索，不强制切换持有模式；宏观流动性/市场宽度为advisory展示，MarketState不替代气宗固定持有纪律。金字塔仓位管理已移除，禁止重新引用已删配置/兼容壳。
 ### 待办（优先级排序）
 
 待办以 `ISSUES.md` 顶部和当前独立审批为准，不从旧版本清单推定仍待实施。行业景气度客观数据源的可得性及用户待决策项见 `docs/2026-08-24_景气度客观数据源评估.md` 与 ISSUES 对应记录。
@@ -367,19 +376,12 @@ docs/               # 详细文档
 | `docs/选股与持仓规划实战工作流.md` | **v0.8.6.5 新增**：端到端用法主线（选股→评分→建仓→持有→离场），含不同市况用法 |
 | `docs/2026-08-23_美债风险文档评估+量化拥挤监测思路.md` | **v0.8.7 新增**：美债监测面板评估（拍板不做 ISS-062）+ 监测信号先过历史迷你回测纪律 + 拥挤度代理候选清单 |
 | `docs/实盘操作指南.md` | 回测验证框架、参数调优方法论 |
-| `ISSUES.md` | 所有问题追踪（ISS-001 ~ ISS-098）+ 顶部当前待办汇总 |
+| `ISSUES.md` | 所有问题追踪+ 顶部当前待办汇总 |
 | `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史M/C与F接手记录；当前状态见 `plan/fusion/STATUS.md`，不从归档推定完成状态 |
 | `docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接（已归档）：scan review/观察池交付明细 |
-| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；ISS-117当前及后续执行唯一入口为 §二的 S2AC_FINAL_CLOSEOUT_TASK.md，审批为 S2AC_ACCEPTANCE.md；iteration历史只作证据。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
+| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；当前实施唯一入口为第九轮DELIVERY_PLAN.md，审批为同目录R15_ACCEPTANCE.md；S2AC文件只保留专项原范围与证据；iteration历史只作证据。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
 | `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
 | `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |
 | `src/scanner/scan_rules.yaml` | 扫描规则定义（healthy_pullback/steady_advance/shrink_pullback/value_pick/theme_members/oversold_watch超跌错杀观察） |
 | `configs/settings.yaml` | 全局配置（API key 不在此，见 `configs/settings.local.yaml.example`） |
-
-
-<!-- harness-project-init: model-routing -->
-## Capability-based agent routing
-
-Read `docs/agent-routing.md` before delegating. Use the selected tool's actual model IDs, bounded fresh context, explicit file ownership and no recursive delegation. Use Planner -> Generator -> independent Evaluator for substantive milestones; simple work stays in the parent with separate planning and checking passes, recorded as single-agent work. Configuration alone does not prove execution or savings.
-<!-- /harness-project-init: model-routing -->

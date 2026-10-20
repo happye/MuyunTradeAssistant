@@ -135,7 +135,7 @@ def test_pipeline_runs(env, monkeypatch, tmp_path):
     assert "错误" not in md.split("## 3")[0], md[:1500]
 
 
-# ── NAV 估值接线：数量账户 + 假行情 → l / today 显示已算权重，不再"权重待核" ──
+# ── NAV 估值接线：分析显式估值，today 仍为纯查询 ──
 
 @pytest.fixture
 def qty_env(env, monkeypatch):
@@ -151,15 +151,33 @@ def qty_env(env, monkeypatch):
     return env
 
 
-def test_l_shows_computed_weight_with_nav(qty_env):
-    out = _repl(f"l {CODE}")
+@pytest.mark.parametrize("command", [f"l {CODE}", "la"])
+def test_l_shows_computed_weight_with_nav(qty_env, monkeypatch, command):
+    import src.data.account_valuation as val
+    calls = []
+    quote = val.default_quote_fn
+    def counted(codes):
+        calls.append(list(codes))
+        return quote(codes)
+    monkeypatch.setattr(val, "default_quote_fn", counted)
+    out = _repl(command)
     assert not any(b in out for b in BROKEN), out[-1500:]
     assert "权重待核" not in out, out[-2500:]
     # 100×11 / (10000+1100) ≈ 9.9% → 显示 10%
     assert "当前仓位: 10%" in out, out[-2500:]
+    assert calls == [[CODE]]
 
 
-def test_today_with_nav_runs(qty_env):
+def test_today_with_nav_runs(qty_env, monkeypatch):
+    import src.data.account_valuation as val
+    calls = []
+    quote = val.default_quote_fn
+    def counted(codes):
+        calls.append(list(codes))
+        return quote(codes)
+    monkeypatch.setattr(val, "default_quote_fn", counted)
     out = _repl("today")
     assert not any(b in out for b in BROKEN), out[-1500:]
     assert CODE in out
+
+    assert calls == []

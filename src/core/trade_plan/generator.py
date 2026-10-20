@@ -91,9 +91,7 @@ def _mode_from_grade(grade: Optional[str], industry_prosperity: Optional[float],
         # ISS-051 个股级趋势闸门：顶部/下跌的 A 级降剑宗，不死扛下跌
         if stage in ("S3", "S4"):
             return "jianzong"
-        # 报告1.3 笨总教学九：自主可控标的波动大、炒短期情绪，强制剑宗不长持
-        if is_self_reliance:
-            return "jianzong"
+        # 产业关键词只作研究线索，不改变已定义的持有政策。
         return "qizong"
     if grade == "B":
         return "jianzong"
@@ -247,7 +245,7 @@ def generate_plan_draft(
         benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
         industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
         market_state: 保留参数，当前不参与判定（阶段4 MarketState 牛市闸门已回退，见 _mode_from_grade 注）；个股级趋势由内部 _detect_weinstein_stage 算 stage 传入（ISS-051）
-        is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；True 时 A 级也强制剑宗不长持
+        is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；仅作研究标签，不授予模式覆盖权限
 
     Returns:
         TradePlan: 完整的计划草稿，用户可逐字段编辑
@@ -380,7 +378,7 @@ class TradePlanGenerator:
             benzong_grade: 笨总评分等级 A/B/C/D/F；用于定 mode（跳法A 阶段1）
             industry_prosperity: 笨总行业景气度维分；=0 时气宗大前提失效
             market_state: 保留参数，当前不参与判定（阶段4 MarketState 闸门已回退）；个股级趋势由内部 stage 判定（ISS-051）
-            is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；True 时 A 级强制剑宗
+            is_self_reliance: 自主可控概念（笨总教学九/报告1.3）；仅作研究标签，不改变 mode
 
         Returns:
             (plan, meta)

@@ -70,6 +70,15 @@ def _dec_with(extra: dict) -> StrategyDecision:
         position_action=PositionAction.CLOSE_ALL, position_ratio=0.0,
         lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.HOLD,
     )
+    from src.data.models import SignalFinding
+    if extra.get("fundamental_alert"):
+        base["signal_findings"] = [SignalFinding(signal_id="exit.policy.st", source="qualified ST fixture",
+            securities=["600000"], as_of="2024-02-01", verified=True, data_quality="OK", action_scope="exit",
+            strategy_binding="accepted-st-policy-v1")]
+    if extra.get("top_signal_authorized"):
+        base["signal_findings"] = [SignalFinding(signal_id="exit.stock.triple_up", source="qualified fixture",
+            securities=["600000"], as_of="2024-02-01", verified=True, data_quality="OK", action_scope="exit",
+            strategy_binding="jiaoxue6-8/mode-rule（既有周期策略纪律）")]
     base.update(extra)
     return StrategyDecision(**base)
 
@@ -95,7 +104,7 @@ def test_fundamental_alert_exit_writes_cooldown():
 def test_top_signal_exit_writes_cooldown():
     """v0.8.29.1 Q1：仅「通过消费边界资格门」的 top_signal 触发 P1 强制清仓。"""
     out = PlanGuard().evaluate(
-        _dec_with({"top_signal": "宏观:成交额破1.5万亿", "top_signal_authorized": True}),
+        _dec_with({"top_signal": "三倍定律核定", "top_signal_authorized": True}),
         _plan(), _data(), today="2024-02-01")
     assert out.sell_path == "top_signal"
     _assert_cooldown(out)
@@ -104,7 +113,7 @@ def test_top_signal_exit_writes_cooldown():
 def test_top_signal_unauthorized_no_p1():
     """ISS-117 Q1：未通过资格门的 top_signal 字符串（旧格式/缓存自授）不触发 P1。"""
     out = PlanGuard().evaluate(
-        _dec_with({"top_signal": "宏观:成交额破1.5万亿"}),
+        _dec_with({"top_signal": "三倍定律核定"}),
         _plan(), _data(), today="2024-02-01")
     assert out.sell_path != "top_signal"
     assert not any("高位止盈" in r for r in (out.strategy_reasons or [])),         "未授权 top_signal 不得触发 P1 规则"

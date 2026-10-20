@@ -164,7 +164,10 @@ def test_q1_plan_guard_authorized_still_closes():
         decision=SignalType.SELL, state=MarketState.TRANSITION, new_state=st,
         position_action=PositionAction.CLOSE_ALL, position_ratio=0.0,
         lifecycle_before=TradeLifecycle.HOLD, lifecycle_after=TradeLifecycle.HOLD,
-        top_signal="个股:三倍定律+破5日线", top_signal_authorized=True)
+        top_signal="个股:三倍定律+破5日线", top_signal_authorized=True,
+        signal_findings=[SignalFinding(signal_id="exit.stock.triple_up", source="qualified fixture",
+            securities=[_mk_sd().stock_code], as_of="2026-10-10", data_quality="OK", verified=True,
+            action_scope="exit", strategy_binding="jiaoxue6-8/mode-rule（既有周期策略纪律）")])
     out = PlanGuard().evaluate(dec, _mk_plan(), _mk_sd(), today="2026-10-10")
     assert out.sell_path == "top_signal"
     assert out.position_action == PositionAction.CLOSE_ALL

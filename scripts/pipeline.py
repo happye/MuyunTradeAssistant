@@ -4,11 +4,11 @@
 阶段：
   1 大盘  ：沪深300 趋势 + 恐慌指数（fear）
   2 持仓  ：逐只 规则引擎+策略层+AI情绪（orchestrator.analyze，带持仓上下文）
-            + 交易计划止损/持有期核对 + 单股额度 + 股数换算
+            + 交易计划止损/持有期核对 + 单股额度观察
   3 选股  ：全市场规则/主题初筛（排除持仓）→ 前 N 只深度分析
   4 验证  ：候选（有建仓动作/BUY）与可选持仓的回测（framework_strict，T+1/涨跌停/费用滑点由引擎负责）
   5 评分  ：(可选 --bz) 笨总 6 维 AI 评分（候选 + 持仓）
-  6 仓位  ：按 risk_profile.per_stock_max / 剩余现金 / 2×ATR 止损风险 换算建议股数（100 股整手）
+  6 仓位  ：展示研究目标；未接入账户数量/可用现金核验，不提供下单数量
   7 报告  ：Markdown + JSON；(可选) DeepSeek 中文晨报；存 AI笔记/pipeline/ 供 chat read_file 读取
 
 用法：
@@ -18,7 +18,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import math
 import os
 import sys
 import time
@@ -40,6 +39,7 @@ from src.cli.main import load_config  # noqa: E402
 
 ACTION_CN = {"OPEN": "试探建仓", "ADD": "加仓", "REDUCE": "减仓", "CLOSE_ALL": "清仓",
              "HOLD_POSITION": "维持", "STAY_OUT": "观望"}
+QUANTITY_PENDING = "股数/可用现金待核，不提供下单数量"
 
 
 def _ev(x):
@@ -123,12 +123,13 @@ def stage_holdings(orch, pm, nav, risk_profile, ai):
             out.append({"code": code, "name": pos.stock_name, "error": str(e)})
             continue
         price = a["price"]
-        ratio = pos.current_ratio or 0.0
+        ratio = None if getattr(pos, "ratio_stale", False) else pos.current_ratio
         a.update({
             "entry_price": pos.entry_price, "ratio": ratio,
             "pnl_pct": round((price / pos.entry_price - 1) * 100, 2) if pos.entry_price else None,
-            "est_shares": (int(round(ratio * nav / price / 100.0)) * 100) if nav and price else None,
-            "over_cap": ratio > cap,
+            "est_shares": None, "suggest_shares_delta": None,
+            "quantity_status": "UNKNOWN", "quantity_note": QUANTITY_PENDING,
+            "over_cap": ratio > cap if ratio is not None else None,
         })
         flags = []
         tp = pos.trade_plan
@@ -150,11 +151,6 @@ def stage_holdings(orch, pm, nav, risk_profile, ai):
             flags.append(f"浮亏{a['pnl_pct']}%")
         if a["over_cap"]:
             flags.append(f"超单股上限{cap:.0%}")
-        tr = a.get("target_ratio")
-        if a["position_action"] in ("REDUCE", "CLOSE_ALL") and a["est_shares"]:
-            tgt_sh = 0 if a["position_action"] == "CLOSE_ALL" or not tr else \
-                int(math.floor(tr * nav / price / 100.0)) * 100
-            a["suggest_shares_delta"] = tgt_sh - a["est_shares"]
         a["flags"] = flags
         out.append(a)
     return out
@@ -221,28 +217,21 @@ def stage_bz(codes_names):
 
 
 def stage_sizing(cands, holdings, nav, risk_profile):
+    """Research targets only: ratios and a NAV estimate do not establish cash/shares."""
     cap = (risk_profile or {}).get("per_stock_max", 0.2)
-    pressure = (risk_profile or {}).get("default_pressure_loss_rate", 0.4)
-    exposure = sum(h.get("ratio") or 0 for h in holdings)
-    cash_ratio = max(0.0, 1 - exposure)
     plans = []
     for c in cands:
         if c.get("error") or c.get("position_action") not in ("OPEN", "ADD"):
             continue
-        tr = min(c.get("target_ratio") or 0.1, cap, cash_ratio)
-        price = c["price"]
-        shares = int(math.floor(tr * nav / price / 100.0)) * 100 if nav else 0
-        atr = c.get("atr")
-        stop = round(price - 2 * atr, 2) if atr else None
-        risk_amt = round(shares * (price - stop), 0) if stop else None
-        plans.append({"code": c["code"], "name": c["name"], "target_ratio": round(tr, 3),
-                      "shares": shares, "cost": round(shares * price, 0), "stop_2atr": stop,
-                      "risk_at_stop": risk_amt,
-                      "risk_pct_nav": round(risk_amt / nav * 100, 2) if (risk_amt and nav) else None,
-                      "note": ("资金不足 1 手" if shares == 0 else
-                               f"压力亏损线 {pressure:.0%} 下最大亏损约 {round(shares * price * pressure):,} 元")})
-    return {"exposure": round(exposure, 3), "cash_ratio": round(cash_ratio, 3), "per_stock_max": cap,
-            "plans": plans}
+        plans.append({"code": c["code"], "name": c["name"],
+                      "target_ratio": c.get("target_ratio"),
+                      "shares": None, "cost": None, "stop_2atr": None,
+                      "risk_at_stop": None, "risk_pct_nav": None,
+                      "status": "UNKNOWN", "note": QUANTITY_PENDING})
+    # list_positions may be incomplete; even an empty list cannot establish cash.
+    # This prototype has no independent quantity/cash allocator wired in.
+    return {"exposure": None, "cash_ratio": None, "per_stock_max": cap,
+            "status": "UNKNOWN", "note": QUANTITY_PENDING, "plans": plans}
 
 
 def ai_summary(cfg, payload):
@@ -265,6 +254,9 @@ def ai_summary(cfg, payload):
 
 
 def fmt_md(R):
+    def pct(value, digits=1):
+        return "UNKNOWN" if value is None else f"{value:.{digits}%}"
+
     L = [f"# 暮云每日流水线报告 {R['generated_at']}", "",
          "> 只读原型输出：建议≠成交，未修改持仓、未记录建议。数据源：" + R["data_source"], ""]
     m = R.get("market") or {}
@@ -273,9 +265,10 @@ def fmt_md(R):
           f"MA20={idx.get('ma20')} MA60={idx.get('ma60')}",
           f"- 恐慌指数 {fear.get('score')}（{fear.get('tier')}，基准日 {fear.get('as_of')}，缺失成分 {fear.get('missing')}）", ""]
     s = R.get("sizing") or {}
-    L += ["## 2. 持仓体检", f"总仓位 {s.get('exposure', 0):.1%}，现金 {s.get('cash_ratio', 0):.1%}，"
-          f"单股上限 {s.get('per_stock_max', 0):.0%}，账户净值（输入）{R['nav']:,.0f} 元", "",
-          "| 代码 | 名称 | 现价 | 成本 | 浮盈% | 仓位 | 估算股数 | 决策 | 建议动作 | 卖出路径 | AI情绪 | 风险标记 |",
+    L += ["## 2. 持仓体检", f"总仓位 {pct(s.get('exposure'))}，可用现金 UNKNOWN，"
+          f"单股上限 {pct(s.get('per_stock_max'), 0)}，NAV（用户估计/默认，非账户事实）{R['nav']:,.0f} 元",
+          QUANTITY_PENDING, "",
+          "| 代码 | 名称 | 现价 | 成本 | 浮盈% | 仓位 | 股数核验 | 决策 | 建议动作 | 卖出路径 | AI情绪 | 风险标记 |",
           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for h in R.get("holdings") or []:
         if h.get("error"):
@@ -283,10 +276,8 @@ def fmt_md(R):
             continue
         ai = h.get("ai") or {}
         act = ACTION_CN.get(h["position_action"], h["position_action"])
-        if h.get("suggest_shares_delta"):
-            act += f"（{h['suggest_shares_delta']:+d} 股）"
         L.append(f"| {h['code']} | {h['name']} | {h['price']} | {h['entry_price']} | {h['pnl_pct']} | "
-                 f"{h['ratio']:.1%} | {h.get('est_shares')} | {h['decision']} | {act} | {h.get('sell_path') or '-'} | "
+                 f"{pct(h.get('ratio'))} | UNKNOWN | {h['decision']} | {act} | {h.get('sell_path') or '-'} | "
                  f"{ai.get('sentiment', '-')} | {'；'.join(h.get('flags') or []) or '-'} |")
     cm = R.get("cand_meta") or {}
     L += ["", "## 3. 选股候选", f"规则 `{cm.get('rule')}` 主题 `{cm.get('theme')}`，"
@@ -311,11 +302,10 @@ def fmt_md(R):
                  f"{ACTION_CN.get(c['position_action'], c['position_action'])} | {c['score']} | "
                  f"{b.get('total_return_pct', '-')} | {b.get('benchmark_pct', '-')} | {b.get('excess_pct', '-')} | "
                  f"{b.get('max_dd_pct', '-')} | {zt} |")
-    L += ["", "## 4. 仓位建议（整手，T+1）"]
+    L += ["", "## 4. 仓位研究目标（数量待核）", "- " + QUANTITY_PENDING]
     if s.get("plans"):
         for p in s["plans"]:
-            L.append(f"- {p['code']} {p['name']}：目标 {p['target_ratio']:.1%} → {p['shares']} 股（约{p['cost']:,.0f} 元），"
-                     f"2×ATR 止损 {p['stop_2atr']}，止损亏损约 {p['risk_at_stop']} 元（{p['risk_pct_nav']}% 净值）；{p['note']}")
+            L.append(f"- {p['code']} {p['name']}：研究目标 {pct(p.get('target_ratio'))}；{p['note']}")
     else:
         L.append("- 无满足建仓动作的候选（无操作是合法结果）")
     hcodes = {h['code'] for h in R.get('holdings') or []}
@@ -337,7 +327,7 @@ def fmt_md(R):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--nav", type=float, default=100000, help="账户总资产（元），用于股数换算")
+    ap.add_argument("--nav", type=float, default=100000, help="NAV 用户估计值（默认10万元），仅作研究/回测输入，不证明账户现金或授权下单数量")
     ap.add_argument("--rule", default="healthy_pullback")
     ap.add_argument("--theme", default=None)
     ap.add_argument("--top", type=int, default=5)
@@ -363,6 +353,7 @@ def main():
     ai = not a.no_ai
     print("暮云每日流水线（只读）", flush=True)
     R = {"generated_at": datetime.now().strftime("%Y-%m-%d %H:%M"), "nav": a.nav,
+         "nav_source": "USER_ESTIMATE_OR_DEFAULT", "account_nav": None,
          "data_source": ("腾讯/新浪垫片(MUYUN_DATA_SHIM)" if os.environ.get("MUYUN_DATA_SHIM") else "Baostock/AKShare 原生"),
          "stages": log}
     R["market"] = st.run("1 大盘与情绪", stage_market)

@@ -10,26 +10,28 @@
 
 适用范围：用户当前指派 Codex 承担暮云融合项目总架构师的会话；不约束 Claude Code 或其他实施 Agent，用户后续明确改派任务时以新指派为准。
 
-- 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡；由 Claude Code 实施产品代码。未经用户改派，不直接修改产品代码、测试、配置和真实账户。
+- 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡。用户已于2026-10-17指定由DSH实施、Codex管理审批；实施方以用户最新指派为准。未经用户改派，不直接修改产品代码、测试、配置和真实账户。
+- 当前DSH协作入口为个人`codex-dsh-collab` Skill及`G:/Tools/ChatGPTRepo/codex-dsh-双端联通/bin/codex-dsh.mjs`；先读个人Skill同目录`local-settings.json`及工具`docs/manuals/codex-guide.md`，所有命令复用配置中的共享绝对`--state-dir`，不因换工作区重新询问或另建账本。当前Codex聊天管理审批，原生DSH执行；旧`G:/Tools/DeepseekHarness/codex-dsh/`仅作历史证据，不是当前入口。接续身份与验收见`plan/fusion/iteration9/DELIVERY_PLAN.md`末节；未知提交先resume，不盲目重发，DSH报告不能自证通过。工具不提供文件沙箱、事务合入、费用硬上限或聊天结束后的常驻主控；未获迭代指派不启动G7/v43。
 - 恢复顺序：根 `MILESTONES.md` → `plan/fusion/STATUS.md` → `plan/fusion/RESUME.md` → 最新独立验收与任务卡；每次先查 HEAD/工作树，按源码指纹复核受影响模块。
 - 持续维护长期里程碑：用户要求先固定目标/架构/完成标准，再按依赖验证小步设计；每批任务须映射G/T，审批后同步MILESTONES、STATUS与RESUME。必要迭代/优化/重构未完成前不宣称整体结项，不一次铺开未经验证的远期细节。
 - `AGENTS.md` 是共同规范，只能放工具中立规则与指针；Codex 身份和续接指令写在本文件，跨会话进度写入明确标注范围的 RESUME。
 - 新会话交接固定复用 `plan/fusion/RESUME.md`，不另建重复的逐会话交接文档。读取后先用简短摘要核对职责、最新独立审批、当前阻断和下一动作，再继续任务；以磁盘现状及用户最新指派为准，不假定上个聊天的上下文已自动继承。
+- DSH按受委派的实施subagent协作：Codex下发目标、文件所有权、基线branch/HEAD、验收条件与禁止范围，DSH交付实际改动/验证/限制，Codex独立审批和Git集成。此为职责分工，不宣称DSH已变成原生嵌套子Agent；默认不递归派发。
+- 同一项目和目录默认续用RESUME登记的task/session，新Codex聊天先resume，不因换聊天新建DSH会话。用户指定session时先核目录、活动和已有task映射；已绑定则复用原task。当前CLI附加旧session不核cwd，不能靠换填`--cwd`切目录；须独立核原生header。临时副本与正式Git树分别记账；实际写任务前补读与范围相关的AGENTS约束。
 - 收尾维护：更新长期里程碑、当前状态、RESUME中的工作区交接提示及最新证据指针；保留历史受审结果。新会话若已有实施方新交付，先做增量验收；若无新交付，不重复跑已知反例或擅自代替实施方改产品。
 
 ### 环境与操作
 
-1. **Shell 环境**：Codex 默认 shell 下执行 git 前确认中文路径编码；遇到 git 因路径报错时，
-   用完整 POSIX 路径（`/g/Tools/...`）而非反斜杠 Windows 路径。
+1. **Shell 环境**：使用当前PowerShell和正确引用的绝对路径；中文输出显式UTF8。不要为已正常的Git调用强制叠加cmd或改写POSIX路径。
 2. **Python 入口**：统一用 `./.venv/Scripts/python.exe`（Windows 路径）或
    `uv run python`；不要用系统 Python。离线全量以 `pytest.ini` 和 `tests/README.md` 为准：
    `.\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider`；脚本式场景按各文件头说明单独执行。
 3. **任务范围**：按用户当前指派自主完成可逆工作；不要用过期的工具能力描述或不存在的确认流程阻塞已经授权的审查/设计。产品代码实施仍遵守上面的 Codex 架构师分工。
-4. **网络纪律**：金融数据接口必须带超时与降级（见 AGENTS.md §五）；本机系统代理
-   `127.0.0.1:7890` 会干扰东方财富 API 与 GitHub，git 推送用 `git -c http.proxy= push`。
+4. **网络纪律**：金融数据接口必须带超时与降级（见 AGENTS.md §五）。GitHub路由按实际连通性判断，URL级代理优先于通用`http.proxy`；2026-10-20收尾直连失败、现有`127.0.0.1:7890`代理可达，Git命令同时临时指定两项代理后成功。不要据旧结论固定禁用代理，也不改用户全局配置；金融数据的绕代理规则另按AGENTS执行。
 5. **提交纪律**：commit message 用中文详细描述（AGENTS.md §六）；**禁止 `git add -A`**——
    `portfolio.yaml`、`knowledge/index/*`、`.claude/`、`项目记忆资产备份/` 是本地状态文件，
    只 add 与本次改动相关的文件。
+   用户明确本项目单人维护，默认直接在`main`完成开发、验收与推送，不自动创建功能分支或PR，不把合并留给用户。重大改动验收后集中commit+push，由Codex负责Git，DSH合同明确git_owner。远端领先时先核差异并处理冲突，可用临时detached检出验证，但不另建命名分支；不强推、不覆盖未提交账户/知识库。协作工具代码只交付其独立仓库。
 
 ## 最高优先级红线（速查，详见 AGENTS.md）
 

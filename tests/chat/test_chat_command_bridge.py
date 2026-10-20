@@ -260,9 +260,11 @@ def test_manage_portfolio_hash_n_resolve():
 
     with _tmp_portfolio(), _swap(session_state, "resolve_index", _fake_resolve):
         r, _ = _quiet(manage_portfolio, action="add", stock_code="#1", confirm=True)
+        pos = PortfolioManager().get_position("002192")
+        assert pos is not None and pos.stock_name == "融捷股份", "#N 的 name 应带入建仓"
     assert "已添加持仓" in r
-    pos = PortfolioManager().get_position("002192")
-    assert pos is not None and pos.stock_name == "融捷股份", "#N 的 name 应带入建仓"
+    # Assert while the fixture portfolio still exists; never inspect the real fallback.
+
 
 
 def test_reload_after_write():

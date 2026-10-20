@@ -212,7 +212,7 @@ def test_l_no_projection_hard_exit_same_call_exit(tmp_path, monkeypatch):
 
 def test_ledger_read_failure_is_unknown_not_none(tmp_path, monkeypatch):
     """快照读取失败：无投影 → UNKNOWN 待对账（不当作 NONE/0）；数量投影在账本
-    读不到时同样保守未对账。RATIO_ONLY 投影比例独立成立（不依赖账本——回归锚）。"""
+    读不到时同样保守未对账。异常账本下RATIO_ONLY只保留持仓方向，不确认精确权重。"""
     _isolate(tmp_path, monkeypatch)
     pm = PortfolioManager()
     pm.add_position(CODE, stock_name="测试股", entry_price=10, ratio=0.1)
@@ -230,10 +230,10 @@ def test_ledger_read_failure_is_unknown_not_none(tmp_path, monkeypatch):
             "quantity": 50, "as_of": "2026-09-20", "avg_cost": 5.0}
         ctx3 = facts.context_for("000002")
         assert ctx3.position_state == "UNKNOWN" and ctx3.confirmed_weight is None
-    # RATIO_ONLY 投影比例语义独立成立（账本缺席/失败不影响比例直通——既有语义）
+    # 有异常账本与正常账本缺席不同：旧正比例只保留方向，不洗成已确认权重。
     facts2 = RequestAccountFacts(pm)
     ctx1 = facts2.context_for(CODE)
-    assert ctx1.position_state == "HELD" and ctx1.confirmed_weight == pytest.approx(0.1)
+    assert ctx1.position_state == "HELD" and ctx1.confirmed_weight is None
 
 
 # ── X1-4：隔离事件 / 冲突 / 损坏分别验证 ─────────────────────────────
@@ -263,7 +263,7 @@ def test_isolated_events_freeze_weight_with_reason(tmp_path, monkeypatch):
 
 
 def test_projection_conflict_and_corrupted_portfolio_regression(tmp_path, monkeypatch):
-    """数量投影冲突→HELD+权重None；损坏持仓→UNKNOWN（M0 回归锚定不回退）。"""
+    """数量投影冲突和文件损坏不能吞独立账本事实；精确权重保留待核。"""
     _isolate(tmp_path, monkeypatch)
     pm = PortfolioManager()
     pm.add_position(CODE, stock_name="测试股", entry_price=10, ratio=0.1)
@@ -277,11 +277,13 @@ def test_projection_conflict_and_corrupted_portfolio_regression(tmp_path, monkey
     ctx = facts.context_for(CODE)
     assert ctx.position_state == "HELD" and ctx.confirmed_weight is None
     assert "不一致" in ctx.weight_reason or "对账" in ctx.weight_reason
-    # 损坏持仓文件 → UNKNOWN
+    # 损坏投影元数据，账本900股仍是可独立确认的持仓事实。
     (tmp_path / "portfolio.yaml").write_text("{ 损坏", encoding="utf-8")
     pm2 = PortfolioManager()
     facts2 = RequestAccountFacts(pm2)
-    assert facts2.context_for(CODE).position_state == "UNKNOWN"
+    ctx2 = facts2.context_for(CODE)
+    assert ctx2.position_state == "HELD" and ctx2.quantity == 900
+    assert ctx2.confirmed_weight is None
 
 
 # ── 消费面：影子/建议/摘要以 ctx 为判据 ──────────────────────────────

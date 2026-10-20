@@ -125,8 +125,8 @@ def test_english_unimplemented_is_honestly_capped():
 
 
 def test_scope_rule_and_verification_protocol_are_new_semantics():
-    assert TYPED_RULE_VERSION == "g3.binding_v3"
-    assert CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv5"
+    assert TYPED_RULE_VERSION == "g3.binding_v4"
+    assert CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv6"
 
 
 @pytest.mark.parametrize("body,statement,event_type,value,unit", [
@@ -222,3 +222,131 @@ def test_same_scope_does_not_bypass_hash_gate():
                         value=100, unit="万元", quote_text=BODY,
                         citation_uri=doc.canonical_uri, citation_hash="wrong-version")
     assert verify_claim_tiered(claim, [doc], as_of=NOW).level is VerificationLevel.REJECTED
+
+
+@pytest.mark.parametrize("reference,expected", [
+    ("该净利润", VerificationLevel.EXCERPT_GROUNDED),
+    ("该营收", VerificationLevel.FACT_CHECKED),
+])
+def test_later_anaphora_binds_target_amount_metric_in_multi_fact_sentence(reference, expected):
+    body = ("公司实现营收1000万元、净利润100万元。"
+            + reference + "仅为2024年公司境外业务" + reference.removeprefix("该") + "。")
+    result = verify(body, "公司净利润100万元", event_type="earnings",
+                    quote_text="净利润100万元")
+    assert result.level is expected, result.failures
+    assert ("source_fact_scope_bound" in result.checks) is (expected is VerificationLevel.FACT_CHECKED)
+
+
+@pytest.mark.parametrize("body,statement,quote", [
+    ("公司收入2,100万元。", "公司收入100万元", "收入2,100万元"),
+    ("公司收入2,100万元。", "公司收入100万元", "100万元"),
+    ("公司收入100万元。", "公司收入100万股", "收入100万元"),
+    ("公司收入100万元。", "公司收入100%", "收入100万元"),
+])
+def test_complete_quantity_required_on_each_side(body, statement, quote):
+    result = verify(body, statement, "earnings", quote_text=quote)
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+    assert "source_fact_scope_bound" not in result.checks
+
+
+@pytest.mark.parametrize("relation", ["仅包含", "包括", "系指", "对应", "源自", "仅为"])
+def test_same_metric_anaphora_requires_supported_binding(relation):
+    body = "公司收入100万元。该收入" + relation + "2024年公司境外磷酸铁锂业务收入。"
+    result = verify(body, "公司收入100万元", "earnings", quote_text="收入100万元")
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+
+
+@pytest.mark.parametrize("reference", ["该项收入", "该 收入", "上述相关业务收入", "此处所称收入", "前述\t收入"])
+def test_nonadjacent_same_metric_reference_is_not_scope_absence(reference):
+    body = "公司收入100万元。" + reference + "仅为2024年公司境外磷酸铁锂业务收入。"
+    result = verify(body, "公司收入100万元", "earnings", quote_text="收入100万元")
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+    assert "source_fact_scope_bound" not in result.checks
+
+
+@pytest.mark.parametrize("later", [
+    "该项订单仅为2024年公司境外磷酸铁锂业务订单。",
+    "该项净利润仅为2024年公司境外磷酸铁锂业务净利润。",
+    "该项合同另行公告。公司营业收入有所增长。",
+    "该项合同参考公司收入安排履行。",
+])
+def test_different_metric_reference_does_not_qualify_current_income(later):
+    result = verify("公司收入100万元。" + later, "公司收入100万元", "earnings",
+                    quote_text="收入100万元")
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
+
+
+def test_order_metric_nonadjacent_reference_also_requires_binding():
+    result = verify("公司签订100万元订单。该项订单仅包含境外业务。",
+                    "公司签订100万元订单", "order", quote_text="100万元订单")
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+
+
+@pytest.mark.parametrize("body,statement,value,unit", [
+    ("公司收入0.5亿元。", "公司收入5000万元", 5000, "万元"),
+    ("公司净利润-0.5亿元。", "公司净利润-5000万元", -5000, "万元"),
+])
+def test_fractional_unit_conversion_remains_supported(body, statement, value, unit):
+    result = verify(body, statement, "earnings", value=value, unit=unit)
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
+
+
+@pytest.mark.parametrize("body,statement", [
+    ("公司收入50-100万元。", "公司收入100万元"),
+    ("公司收入50–100万元。", "公司收入100万元"),
+])
+def test_range_upper_endpoint_is_not_a_realized_point(body, statement):
+    assert verify(body, statement, "earnings").level is not VerificationLevel.FACT_CHECKED
+
+
+@pytest.mark.parametrize("literal,value,unit", [
+    ("17,421.56万元", 17421.56, "万元"),
+    ("17421.5600万元", 17421.56, "万元"),
+    ("100.00万元", 100, "万元"),
+    ("100.0000 万元", 100, "万元"),
+    ("- 17,421.56 万元", -17421.56, "万元"),
+    ("123456789012345元", 123456789012345, "元"),
+    ("0.01742156亿元", 174.2156, "万元"),
+])
+def test_complete_numeric_token_formats_are_quantity_equivalent(literal, value, unit):
+    result = verify("公司收入" + literal + "。", "公司收入" + str(value) + unit,
+                    "earnings", value=value, unit=unit)
+    assert result.level is VerificationLevel.FACT_CHECKED, result.failures
+
+
+@pytest.mark.parametrize("literal,value,unit", [
+    ("17,421.56万元", 421.56, "万元"),
+    ("17,421.56万元", 17421.6, "万元"),
+    ("123456789012346元", 123456789012345, "元"),
+    ("17,421.56万股", 17421.56, "万元"),
+    ("17,42.56万元", 1742.56, "万元"),
+    ("17,,421.56万元", 17421.56, "万元"),
+    ("1.2.100万元", 100, "万元"),
+    ("50-100.00万元", 100, "万元"),
+])
+def test_invalid_or_unequal_numeric_tokens_cannot_check_fact(literal, value, unit):
+    result = verify("公司收入" + literal + "。", "公司收入" + str(value) + unit,
+                    "earnings", value=value, unit=unit)
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures
+
+
+def test_numeric_parser_preserves_original_offsets_and_negative_sign():
+    from src.core.claim_extraction import _find_value_occurrences
+    text = "公司净利润- 17,421.5600 万元。"
+    found = _find_value_occurrences(text, -17421.56, "万元")
+    assert len(found) == 1
+    occurrence = found[0]
+    assert text[occurrence["start"]:occurrence["end"]] == "- 17,421.5600 万元"
+    assert occurrence["text_negative"] is True
+
+
+def test_exact_amount_parser_does_not_grant_unparsed_fragment_qualification():
+    result = verify("合计17,421.56万元。", "公司收入17421.56万元", "earnings",
+                    value=17421.56)
+    assert result.level is not VerificationLevel.FACT_CHECKED
+
+
+def test_large_statement_difference_is_not_hidden_by_relative_float_tolerance():
+    result = verify("公司收入123456789012345元。", "公司收入123456789012346元",
+                    "earnings", value=123456789012345, unit="元")
+    assert result.level is not VerificationLevel.FACT_CHECKED, result.failures

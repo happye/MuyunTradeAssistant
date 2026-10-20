@@ -254,7 +254,10 @@ def _with_auto_graph(name="军工测试链"):
     """在临时自举图谱文件环境下执行 fn（用完恢复）。"""
     import src.data.industry_data as mod
     orig_path = mod.AUTO_GRAPH_PATH
-    mod.AUTO_GRAPH_PATH = "./configs/_test_auto_graph.yaml"
+    import tempfile
+    import os
+    temp_graph = tempfile.TemporaryDirectory(prefix="muyun-graph-test-")
+    mod.AUTO_GRAPH_PATH = os.path.join(temp_graph.name, "auto_graph.yaml")
     mod._graph_cache, mod._graph_sources = None, {}
     try:
         import yaml
@@ -265,6 +268,7 @@ def _with_auto_graph(name="军工测试链"):
         import os
         if os.path.exists(mod.AUTO_GRAPH_PATH):
             os.remove(mod.AUTO_GRAPH_PATH)
+        temp_graph.cleanup()
         mod.AUTO_GRAPH_PATH = orig_path
         mod._graph_cache, mod._graph_sources = None, {}
         mod.load_chains()
@@ -390,13 +394,13 @@ def test_board_section_temperature_stats():
 
 # ── chat 落盘 ─────────────────────────────────────────────
 
-def test_persist_turn_writes_daily_file(tmp_path=None):
+def test_persist_turn_writes_daily_file(tmp_path):
     """chat落盘：追加写 分析报告/chat/YYYY-MM-DD.md，失败不抛异常。"""
     from src.chat.agent import ChatAgent
     agent = object.__new__(ChatAgent)
     import src.chat.agent as agent_mod
     orig_dir = agent_mod.CHAT_REPORT_DIR
-    agent_mod.CHAT_REPORT_DIR = "./分析报告/chat_test_tmp"
+    agent_mod.CHAT_REPORT_DIR = str(tmp_path / "chat")
     try:
         agent._persist_turn("测试问题", "测试回答")
         agent._persist_turn("第二个问题", "第二个回答")

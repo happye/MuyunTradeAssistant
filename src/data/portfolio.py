@@ -25,10 +25,11 @@ import math
 import os
 import logging
 import uuid
-from dataclasses import dataclass
+from copy import deepcopy
+from dataclasses import dataclass, field
 from pathlib import Path
 from datetime import datetime
-from typing import Any, NamedTuple, Optional
+from typing import NamedTuple, Optional
 
 import yaml
 
@@ -151,6 +152,8 @@ class PositionRecord:
         quantity_fact: Optional[dict] = None,
     ):
         self.stock_code = stock_code
+        # 仅内存：规范显示代码与原投影键分开，不迁移或写入账户文件。
+        self.raw_storage_key = stock_code
         self.stock_name = stock_name
         self.entry_date = entry_date
         self.entry_price = entry_price
@@ -173,8 +176,6 @@ class PositionRecord:
         # （quantity_fact={quantity, as_of, avg_cost}，事实源=账户事件账本）
         self.ratio_stale = ratio_stale
         self.quantity_fact = quantity_fact
-        # G3：投影在 portfolio.yaml 中的原始键（运行期定位用，不持久化）
-        self.raw_storage_key: Optional[str] = None
 
     @property
     def quantity_held(self) -> int:
@@ -266,6 +267,68 @@ class PositionRecord:
 POSITION_HELD = "HELD"
 POSITION_NONE = "NONE"
 POSITION_UNKNOWN = "UNKNOWN"
+
+
+def _validate_projection_metadata(pos: PositionRecord, raw: dict) -> None:
+    """在请求边界验证消费者实际使用的元数据；失败整条隔离，原件不变。"""
+    if pos.stock_name is not None and not isinstance(pos.stock_name, str):
+        raise ValueError("stock_name must be text")
+    for name in ("entry_price", "high_since_entry"):
+        value = getattr(pos, name)
+        if value is not None:
+            _validate_price(value, name)
+    for name, value in (("entry_date", pos.entry_date),
+                        ("last_action_date", pos.last_action_date),
+                        ("last_tick_date", pos.strategy_state.get("last_tick_date"))):
+        if value is not None and value != "":
+            parsed = _source_time_parse(value)
+            if not isinstance(value, str) or parsed is None or parsed[1]:
+                raise ValueError(f"{name} must be a valid calendar date")
+    # 与实际装配消费同一个模型，防止外层 dict 合法而计数/信号等内层坏值
+    # 直到分析阶段才抛错。只验证，不把模型默认值回填成账户事实。
+    state_values = dict(pos.strategy_state)
+    state_values.update(lifecycle=pos.lifecycle, entry_price=pos.entry_price,
+                        entry_date=pos.entry_date, current_position_ratio=pos.current_ratio)
+    state = StrategyState.model_validate(state_values)
+    if any(isinstance(value, float) and not math.isfinite(value)
+           for value in state.model_dump().values()):
+        raise ValueError("strategy_state numeric values must be finite")
+    if pos.quantity_fact is not None:
+        quantity = pos.quantity_fact.get("quantity")
+        if (isinstance(quantity, bool) or quantity is None or int(quantity) < 0
+                or float(quantity) != int(quantity)):
+            raise ValueError("quantity_fact.quantity must be a nonnegative integer")
+        cost = pos.quantity_fact.get("avg_cost")
+        if cost is not None and (isinstance(cost, bool) or not isinstance(cost, (int, float))
+                                 or not math.isfinite(cost) or cost < 0):
+            raise ValueError("quantity_fact.avg_cost must be finite and nonnegative")
+        as_of = pos.quantity_fact.get("as_of")
+        if as_of is not None and _source_time_parse(as_of) is None:
+            raise ValueError("quantity_fact.as_of must be a valid source time")
+    if raw.get("trade_plan") and pos.trade_plan is None:
+        raise ValueError("trade_plan metadata cannot be decoded")
+    plan = pos.trade_plan
+    if plan is not None:
+        _validate_trade_plan_metadata(plan)
+
+
+def _validate_trade_plan_metadata(plan: TradePlan) -> None:
+    """计划子对象独立核定；其它投影字段坏值不能吞已核定的保护。"""
+    _validate_ratio(plan.how_much, "trade_plan.how_much")
+    for name in ("opened_at", "overweight_expiry"):
+        value = getattr(plan, name)
+        if value is not None:
+            parsed = _source_time_parse(value)
+            if parsed is None or parsed[1]:
+                raise ValueError(f"trade_plan.{name} must be a valid calendar date")
+    for name in ("locked_initial_stop", "current_stop"):
+        value = getattr(plan, name)
+        if not math.isfinite(value) or value < 0:
+            raise ValueError(f"trade_plan.{name} must be finite and nonnegative")
+    if plan.entry_price is not None:
+        _validate_price(plan.entry_price, "trade_plan.entry_price")
+    for price in plan.when_sell_targets:
+        _validate_price(price, "trade_plan.when_sell_targets")
 
 
 def _parse_source_time(raw):
@@ -366,9 +429,9 @@ class AccountContext:
     confirmed_weight: Optional[float] = None
     weight_reason: str = ""                  # 资格/缺口原因（人话）
     account_version: str = ""                # 账本内容版本（同请求一致）
-    # G3/M0：独立核定的交易计划随账户事实同源下发（PlanGuard 消费 acct_ctx.trade_plan，
-    # 不再从 pos 字段二次读取——成本/状态字段损坏时计划不随之丢失）；无投影=None
-    trade_plan: Optional[Any] = None
+    projection: Optional[PositionRecord] = field(default=None, repr=False, compare=False)
+    projection_loaded: bool = False          # True: None 也是请求已确认的元数据缺口
+    trade_plan: Optional[TradePlan] = field(default=None, repr=False, compare=False)
 
 
 class RequestAccountFacts:
@@ -378,9 +441,49 @@ class RequestAccountFacts:
     同一账户版本；下一命令新建本实例重新读——**禁止全局长寿命缓存**（B2：
     请求内 30 次消费同版本，下一请求才刷新）。"""
 
-    def __init__(self, pm: "PortfolioManager"):
+    def __init__(self, pm: "PortfolioManager", *, account_snapshot=None, estimate_nav: bool = False):
         self._pm = pm
+        self._projection_corrupted = bool(getattr(pm, "_corrupted", False))
+        self._projections: dict[str, PositionRecord] = {}
+        self._trade_plans: dict[str, TradePlan] = {}
+        self.projection_gaps: dict[str, str] = {}
+        # 投影仅在请求建立时逐条解码。坏条目隔离，不拖垮其它投影或独立账本。
+        raw_positions = deepcopy(getattr(pm, "_data", {}).get("positions", {}))
+        if not isinstance(raw_positions, dict):
+            self._projection_corrupted = True
+            raw_positions = {}
+        for raw_code, data in raw_positions.items():
+            key = _normalize_stock_code(raw_code)
+            if not key:
+                self._projection_corrupted = True
+                continue
+            # 计划保护与无关成本/状态解码独立：只缓存原条目中自身合格的计划。
+            if isinstance(data, dict) and data.get("trade_plan"):
+                try:
+                    plan = TradePlan.model_validate(data["trade_plan"])
+                    _validate_trade_plan_metadata(plan)
+                    if key not in self._trade_plans:
+                        self._trade_plans[key] = plan
+                except Exception as e:
+                    self.projection_gaps[key] = f"交易计划读取失败——保护资格待核: {e}"
+            try:
+                pos = PositionRecord.from_dict(key, data)
+                pos.raw_storage_key = raw_code
+                if not isinstance(pos.strategy_state, dict):
+                    raise ValueError("strategy_state must be a mapping")
+                if pos.quantity_fact is not None and not isinstance(pos.quantity_fact, dict):
+                    raise ValueError("quantity_fact must be a mapping")
+                _validate_ratio(pos.current_ratio)
+                _validate_projection_metadata(pos, data)
+                if key not in self._projections:
+                    self._projections[key] = pos
+            except Exception as e:
+                self.projection_gaps[key] = f"持仓记录读取失败——账户未对账: {e}"
+        if self.projection_gaps:
+            logger.warning("投影持仓清单读取失败（清单可能不全——待对账）: "
+                           + "; ".join(self.projection_gaps))
         self.account_version = ""
+        self.account_snapshot = None  # 同请求的账户事实展示；缺失不另读账本补证明
         self.nav: Optional[float] = None
         self.nav_day: Optional[str] = None
         self._quantities: dict[str, int] = {}
@@ -388,25 +491,50 @@ class RequestAccountFacts:
         self._read_failed = False      # N0：读取失败≠明确空仓（UNKNOWN 待对账）
         self._ledger_partial = False   # N0：隔离事件/PARTIAL——冻结精确权重
         self.snapshot = None           # J2/G3：同请求账户快照（today 账户事实区复用，不再二次读账本）
-        self._projection_cache: dict = {}
         try:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
-            if Path(DEFAULT_LEDGER_PATH).exists():
-                snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
-                # NAV 估值：现金 + Σ数量×同日行情（缺任何一只则保持未知）
-                from src.data.account_valuation import priced_snapshot
-                snap = priced_snapshot(snap)
-                self.snapshot = snap
+            if account_snapshot is not None:
+                from src.data.account_snapshot import AccountSnapshot
+                if not isinstance(account_snapshot, AccountSnapshot):
+                    raise TypeError("explicit account must be an AccountSnapshot")
+                # Copy before consuming any field; revalidate mutable/model_construct inputs.
+                snap = deepcopy(account_snapshot)
+                snap = AccountSnapshot.model_validate(snap.model_dump(warnings=False))
+                # Schema validation alone permits duplicate aliases, negative quantities
+                # and nonfinite cash. Reject the whole explicit request before publication.
+                seen = set()
+                for holding in snap.holdings:
+                    key = _normalize_stock_code(holding.security_id)
+                    if not key or key in seen:
+                        raise ValueError("explicit account requires unique normalized securities")
+                    seen.add(key)
+                    if holding.quantity < 0:
+                        raise ValueError("explicit account quantities must be nonnegative")
+                for name in ("cash_available", "cash_reserved"):
+                    value = getattr(snap, name)
+                    if value is not None and not math.isfinite(value):
+                        raise ValueError(f"explicit account {name} must be finite or unknown")
+            elif Path(DEFAULT_LEDGER_PATH).exists():
+                snap = deepcopy(AccountService(DEFAULT_LEDGER_PATH).snapshot())
+                if estimate_nav:
+                    # Analysis explicitly opts in; pure account queries never fetch quotes.
+                    from src.data.account_valuation import priced_snapshot
+                    snap = priced_snapshot(snap)
+            else:
+                snap = None
+            if snap is not None:
                 self._ledger_present = True
                 self.account_version = str(snap.account_version or "")
                 self.nav = snap.nav
                 # N2：NAV 原时点保留偏移传资格门（不先 strftime 丢时区）
                 self.nav_day = (snap.nav_priced_at.isoformat(timespec="seconds")
                                 if snap.nav_priced_at else None)
-                self._quantities = {h.security_id: int(h.quantity or 0)
+                self._quantities = {_normalize_stock_code(h.security_id): int(h.quantity or 0)
                                     for h in snap.holdings}
                 if snap.isolated_events or snap.data_completeness == "PARTIAL":
                     self._ledger_partial = True
+                self.account_snapshot = snap
+                self.snapshot = snap
         except Exception as e:
             self._read_failed = True
             logger.warning(f"请求级账户事实读取失败（本次按未对账处理，不当作空仓）: {e}")
@@ -416,56 +544,22 @@ class RequestAccountFacts:
         """账本快照读取失败（≠明确空仓；today 据此提示账户区跳过）。"""
         return self._read_failed
 
-    def storage_key_for(self, stock_code: str) -> Optional[str]:
-        """持仓投影在 portfolio.yaml 中的**原始存储键**（G3）。
-
-        投影键可能是历史形态（sh600519 / 600519.SH 等）——观察量/建议回写必须
-        落到原记录键上，按归一代码另写会生成重复记录。按 _normalize_stock_code
-        同语义匹配；无投影返回 None（账本独有持仓不回写投影）。"""
-        target = _normalize_stock_code(stock_code)
-        if not target:
-            return None
-        try:
-            positions = self._pm._data.get("positions") or {}
-        except Exception:
-            return None
-        if stock_code in positions:
-            return stock_code
-        for key in positions:
-            if _normalize_stock_code(key) == target:
-                return str(key)
-        return None
-
-    def projection_for(self, stock_code: str) -> Optional["PositionRecord"]:
-        """单股投影记录（G3：l/la 显示元数据——开仓价/动作语义/冷却）。
-
-        有无仓与权重以 context_for 为准，本方法只提供元数据；代码形态归一匹配
-        （同 storage_key_for），返回记录带 raw_storage_key 供回写定位。读取失败
-        /无投影 → None（不伪造）。同请求内缓存（B2：请求内同版本）。"""
-        key = self.storage_key_for(stock_code) or stock_code
-        if key in self._projection_cache:
-            return self._projection_cache[key]
-        try:
-            pos = self._pm.get_position(key)
-        except Exception as e:
-            logger.debug(f"持仓投影读取失败 {stock_code}: {e}")
-            pos = None
-        if pos is not None and getattr(pos, "raw_storage_key", None) is None:
-            pos.raw_storage_key = key
-        self._projection_cache[key] = pos
-        return pos
-
     def _ledger_quantity(self, stock_code: str) -> int:
         """账本数量事实（代码形态归一：600519 / 600519.SZ / sh600519 都能命中）。"""
-        raw = str(stock_code or "").strip()
-        candidates = [raw, raw.split(".")[0]]
-        digits = "".join(ch for ch in raw if ch.isdigit())
-        if len(digits) >= 6:
-            candidates.append(digits[-6:])
-        for c in candidates:
-            if c in self._quantities:
-                return self._quantities[c]
-        return 0
+        return self._quantities.get(_normalize_stock_code(stock_code), 0)
+
+    def projection_for(self, stock_code: str) -> Optional[PositionRecord]:
+        """同请求已解码、按代码归一的投影元数据；缺失/坏记录返回 None。"""
+        return self._projections.get(_normalize_stock_code(stock_code))
+
+    def storage_key_for(self, stock_code: str) -> Optional[str]:
+        """请求内元数据对应的原投影键，供观察量写回；不把规范代码迁入原件。"""
+        pos = self.projection_for(stock_code)
+        return pos.raw_storage_key if pos is not None else None
+
+    def trade_plan_for(self, stock_code: str) -> Optional[TradePlan]:
+        """同请求独立核定的原计划；坏计划为 None，不由其它元数据补造。"""
+        return self._trade_plans.get(_normalize_stock_code(stock_code))
 
     def _weight_for(self, quantity: int, price, price_as_of) -> tuple[Optional[float], str]:
         w, reason = _qualified_weight(quantity, price, price_as_of, self.nav, self.nav_day)
@@ -478,35 +572,21 @@ class RequestAccountFacts:
                     price_as_of: Optional[str] = None) -> AccountContext:
         """装配单股上下文（数量事实决定持仓；RATIO_ONLY 保留比例判持仓；
         冲突/未对账明确 UNKNOWN——不编造数量；账本读取失败≠明确空仓）。"""
-        pm = self._pm
         version = self.account_version
-
-        plan_holder: dict = {"plan": None}
+        key = _normalize_stock_code(stock_code)
+        pos = self.projection_for(stock_code)
+        projection_failed = key in self.projection_gaps or self._projection_corrupted
 
         def _ctx(state, quantity=None, weight=None, reason="") -> AccountContext:
             return AccountContext(security_id=stock_code, position_state=state,
                                   quantity=quantity, confirmed_weight=weight,
                                   weight_reason=reason, account_version=version,
-                                  trade_plan=plan_holder["plan"])
-
-        if getattr(pm, "_corrupted", False):
-            return _ctx(POSITION_UNKNOWN, reason="持仓文件读取异常——账户未对账")
-        try:
-            # G3：按原始存储键读投影（代码形态归一）；读取异常照旧走未对账分支
-            _key = self.storage_key_for(stock_code)
-            pos = pm.get_position(_key if _key is not None else stock_code)
-            if pos is not None:
-                pos.raw_storage_key = _key
-        except Exception as e:
-            logger.debug(f"持仓读取失败 {stock_code}（按未对账处理）: {e}")
-            return _ctx(POSITION_UNKNOWN, reason="持仓记录读取失败——账户未对账")
-
-        if pos is not None:
-            plan_holder["plan"] = getattr(pos, "trade_plan", None)
+                                  projection=pos, projection_loaded=True,
+                                  trade_plan=self.trade_plan_for(stock_code))
 
         if self._read_failed:
             # N0（X1）：账本快照读取失败——不能当作明确空仓（NONE/0）；
-            # 投影记录独立成立的比例语义仍有效（下方分支处理）
+            # 旧正比例仅保留持仓方向，不再确认当前精确权重。
             if pos is None:
                 return _ctx(POSITION_UNKNOWN,
                             reason="账户账本读取失败——未对账（不当作空仓）")
@@ -520,13 +600,11 @@ class RequestAccountFacts:
                 # 当空仓证据；未对账、不反推数量
                 return _ctx(POSITION_UNKNOWN,
                             reason="账本读取失败；旧数量投影为 0 不足以证明空仓——待对账")
-            # G3/ISS-116：账本文件存在但读不到——账户已是数量级，比例投影可能
-            # 过期：比例>0 仍判有仓但不借用旧比例当权重；比例 0 不足以证明空仓
             if (pos.current_ratio or 0) > 0:
                 return _ctx(POSITION_HELD,
-                            reason="账本读取失败——旧比例不作权重（待对账）")
+                            reason="账本读取失败；旧比例仅保留持仓方向——权重待对账")
             return _ctx(POSITION_UNKNOWN,
-                        reason="账本读取失败；比例 0 不足以证明空仓——待对账")
+                        reason="账本读取失败；旧比例 0 不足以证明空仓——待对账")
 
         ledger_q = self._ledger_quantity(stock_code)
         if pos is None:
@@ -535,6 +613,8 @@ class RequestAccountFacts:
                 if w is None:
                     reason += "（账本数量事实；比例视图待重估）"
                 return _ctx(POSITION_HELD, quantity=ledger_q, weight=w, reason=reason)
+            if projection_failed:
+                return _ctx(POSITION_UNKNOWN, reason="持仓记录读取失败——账户未对账")
             if self._ledger_partial:
                 # Y1（O0/R14）：账本存在隔离事件/PARTIAL 且无幸存 lot——无剩余
                 # 持仓记录不足以证明空仓（可能丢失持仓事件）；待对账、不编造数量
@@ -552,10 +632,13 @@ class RequestAccountFacts:
                             reason="数量投影与账本不一致——待对账（不编造数量）")
             w, reason = self._weight_for(ledger_q, price, price_as_of)
             return _ctx(POSITION_HELD, quantity=ledger_q, weight=w, reason=reason)
-        if self._ledger_present and proj_q is not None and proj_q > 0:
+        if key in self._quantities and proj_q is not None and proj_q > 0:
             # 记录说有仓、账本说无仓——持仓事实本身矛盾 → 保守未对账
             return _ctx(POSITION_UNKNOWN, quantity=proj_q,
                         reason="数量记录与账本冲突（记录有仓/账本无仓）——待对账")
+        if self._ledger_partial and proj_q is not None and proj_q > 0:
+            return _ctx(POSITION_UNKNOWN, quantity=proj_q,
+                        reason="账本存在隔离事件；旧数量投影尚未核定——待对账")
         if proj_q is not None:
             # 数量账户投影事实（账本缺席或无该股事件时以投影为准）
             if proj_q > 0:
@@ -570,8 +653,14 @@ class RequestAccountFacts:
                                    "旧零数量投影不足以证明空仓，待对账")
             return _ctx(POSITION_NONE, quantity=0, weight=0.0, reason="记录与账本均无持仓")
 
-        # RATIO_ONLY：比例判持仓（既有语义零变化）
+        # RATIO_ONLY：健康、无该股数量账本的比例账户保留兼容语义。
         if (pos.current_ratio or 0) > 0:
+            if key in self._quantities and self._quantities[key] == 0:
+                return _ctx(POSITION_UNKNOWN,
+                            reason="旧比例与账本明确零数量冲突——待对账")
+            if self._ledger_partial:
+                return _ctx(POSITION_HELD,
+                            reason="账本存在隔离事件；旧比例仅保留持仓方向——权重待对账")
             return _ctx(POSITION_HELD, weight=pos.current_ratio,
                         reason="RATIO_ONLY 比例直通")
         if self._ledger_partial:
@@ -600,35 +689,29 @@ class RequestAccountFacts:
               可能丢失持仓事件），清单可能不全——调用方不得输出"当前无
               持仓"，须报告不完整/待对账"""
         entries: dict[str, HoldingEntry] = {}
-        projection_failed = False
-        try:
-            for pos in self._pm.list_positions():
-                key = _normalize_stock_code(pos.stock_code) or str(pos.stock_code)
-                if key not in entries:
-                    entries[key] = HoldingEntry(
-                        stock_code=pos.stock_code,
-                        stock_name=pos.stock_name or "",
-                        entry_price=pos.entry_price,
-                        high_since_entry=pos.high_since_entry,
-                        trade_plan=pos.trade_plan,
-                        current_ratio=pos.current_ratio,
-                        from_ledger=False)
-        except Exception as e:
-            # Z2（R15）：投影枚举失败必须传播 incomplete——合法 YAML 但记录解码
-            # 失败时 _corrupted=False，只打日志会让返回值声称完整（日志说待对账、
-            # 调用方却输出"当前无持仓"）。可独立列出的账本持仓下方照列不吞。
-            projection_failed = True
-            logger.warning(f"投影持仓清单读取失败（清单可能不全——待对账）: {e}")
+        projection_failed = bool(self.projection_gaps)
+        for pos in self._projections.values():
+            key = _normalize_stock_code(pos.stock_code) or str(pos.stock_code)
+            if key not in entries:
+                entries[key] = HoldingEntry(
+                    stock_code=pos.stock_code,
+                    stock_name=pos.stock_name or "",
+                    entry_price=pos.entry_price,
+                    high_since_entry=pos.high_since_entry,
+                    trade_plan=pos.trade_plan,
+                    current_ratio=pos.current_ratio,
+                    from_ledger=False)
         # 账本侧：确定有仓（数量>0）而投影无记录 → 临时显示条目（不伪造元数据）
         for sec, q in self._quantities.items():
             if int(q or 0) > 0:
                 key = _normalize_stock_code(sec) or str(sec)
                 if key and key not in entries:
-                    entries[key] = HoldingEntry(stock_code=str(sec), from_ledger=True)
+                    entries[key] = HoldingEntry(stock_code=str(sec), from_ledger=True,
+                                                trade_plan=self.trade_plan_for(sec))
         # incomplete 含 PARTIAL（guard O批 P1）与投影枚举失败（Z2）：隔离事件=
         # 可能丢失持仓事件——调用方不得输出"当前无持仓"
         incomplete = (self._read_failed or self._ledger_partial or projection_failed
-                      or bool(getattr(self._pm, "_corrupted", False)))
+                      or self._projection_corrupted)
         return list(entries.values()), incomplete
 
 
@@ -838,8 +921,7 @@ class PortfolioManager:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
             if not DEFAULT_LEDGER_PATH.exists():
                 return None, None
-            from src.data.account_valuation import priced_snapshot
-            snap = priced_snapshot(AccountService(DEFAULT_LEDGER_PATH).snapshot())
+            snap = AccountService(DEFAULT_LEDGER_PATH).snapshot()
             nav = snap.nav
             # N2（X3）：NAV 原时点保留偏移传资格门（不先 strftime 丢时区）
             nav_day = (snap.nav_priced_at.isoformat(timespec="seconds")
@@ -867,10 +949,11 @@ class PortfolioManager:
         return self.to_strategy_state(stock_code, price=price, price_as_of=price_as_of,
                                       nav=nav, nav_as_of=nav_day)
 
-    def request_account_facts(self) -> RequestAccountFacts:
+    def request_account_facts(self, *, account_snapshot=None, estimate_nav: bool = False) -> RequestAccountFacts:
         """请求级账户事实装配器（M0）：l/la/chat 每次命令开头调用一次，
-        逐股 `context_for` 共享同一账户版本；下一命令重新调用刷新。"""
-        return RequestAccountFacts(self)
+        逐股 `context_for` 共享同一账户版本；下一命令重新调用刷新。
+        默认纯读取；分析入口可显式 estimate_nav=True 估值一次。显式快照不再取行情。"""
+        return RequestAccountFacts(self, account_snapshot=account_snapshot, estimate_nav=estimate_nav)
 
     def to_strategy_state(self, stock_code: str, *, price: Optional[float] = None,
                           price_as_of: Optional[str] = None,
@@ -894,7 +977,15 @@ class PortfolioManager:
         ctx 合格权重）；账本有仓而无投影不生成 FLAT/0（重建仓语义、成本未知
         不伪造）。生命周期/保护期等元数据仍来自投影（缺失时按 ctx 派生）。
         """
-        pos = self.get_position(stock_code)
+        if account_context is not None and account_context.projection_loaded:
+            pos = account_context.projection
+        else:
+            try:
+                pos = self.get_position(stock_code)
+            except Exception:
+                if account_context is None:
+                    raise
+                pos = None
         if pos is None and account_context is None:
             return StrategyState()  # 默认FLAT（旧调用方无上下文——既有语义）
 
@@ -921,6 +1012,11 @@ class PortfolioManager:
             lifecycle = TradeLifecycle(pos.lifecycle)
         except ValueError:
             lifecycle = TradeLifecycle.FLAT
+        if account_context is not None:
+            if account_context.position_state == POSITION_HELD and lifecycle == TradeLifecycle.FLAT:
+                lifecycle = TradeLifecycle.OPEN
+            elif account_context.position_state == POSITION_NONE:
+                lifecycle = TradeLifecycle.FLAT
 
         # 从strategy_state字典恢复
         ss = pos.strategy_state or {}
@@ -1245,6 +1341,10 @@ class PortfolioManager:
         """
         pos_action = strategy_decision.position_action.value
         if pos_action not in ("ADD", "REDUCE", "CLOSE_ALL"):
+            self._proposals.refresh()
+            if self._proposals.expire_pending(stock_code, "最新分析无仓位变更建议；历史成交保持"):
+                if not self._proposals._save():
+                    logger.warning("最新分析无操作建议，旧待办过期写入失败；请重跑分析复核待办")
             return None
         existing = self.get_position(stock_code)
         # L1（V3）：非持仓判定数量感知——重建仓（旧比例 0、数量>0）已持股，
@@ -1262,6 +1362,7 @@ class PortfolioManager:
             target_ratio = strategy_decision.new_state.current_position_ratio
         reasons = getattr(strategy_decision, "strategy_reasons", None) or []
         prop = Proposal(
+            authority_protocol="iss117-v1",
             stock_code=stock_code,
             stock_name=existing.stock_name if existing and existing.stock_name else (stock_name or stock_code),
             source=source,
@@ -1671,7 +1772,9 @@ class PortfolioManager:
         """按 proposal_id 精确匹配，否则取该股最新 PROPOSED 同向建议（无则 None）。"""
         if proposal_id:
             for p in self._proposals._proposals:
-                if p.proposal_id == proposal_id:
+                if (p.proposal_id == proposal_id and p.stock_code == stock_code
+                        and p.status.value in ("PROPOSED", "PARTIAL")
+                        and ((action == "SELL") == (p.position_action in ("REDUCE", "CLOSE_ALL")))):
                     return p
             return None
         for p in reversed(self._proposals._proposals):

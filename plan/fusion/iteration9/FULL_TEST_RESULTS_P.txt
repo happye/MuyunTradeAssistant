@@ -1,0 +1,1833 @@
+
+=== P V0.8.31 GUARDED FULL OFFLINE 2026-10-14 ===
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+..................F..................................................... [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 51%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+.......................F.................F..F........................... [ 87%]
+.................................ss..................................... [ 91%]
+........................................................................ [ 95%]
+........................................................................ [ 98%]
+....................                                                     [100%]
+================================== FAILURES ===================================
+____________________ test_real_cli_version_is_synchronized ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000182A3E75C10>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000182A3E74550>
+
+    def test_real_cli_version_is_synchronized(monkeypatch, capsys):
+        from src.cli import main
+        monkeypatch.setattr("sys.argv", ["muyun", "--version"])
+        with pytest.raises(SystemExit) as exited:
+            main.main()
+>       assert exited.value.code == 0 and "v0.8.30" in capsys.readouterr().out
+E       AssertionError: assert (0 == 0 and 'v0.8.30' in 'muyun v0.8.31 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)\n')
+E        +  where 0 = SystemExit(0).code
+E        +    where SystemExit(0) = <ExceptionInfo SystemExit(0) tblen=9>.value
+E        +  and   'muyun v0.8.31 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)\n' = CaptureResult(out='muyun v0.8.31 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)\n', err='').out
+E        +    where CaptureResult(out='muyun v0.8.31 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+today工作台+影子对照+资格止血)\n', err='') = readouterr()
+E        +      where readouterr = <_pytest.capture.CaptureFixture object at 0x00000182A3E74550>.readouterr
+
+tests\core\test_iss117_completion.py:336: AssertionError
+________________________ test_top_signal_is_hard_exit _________________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_wqhblzdp/pytest/test_top_signal_is_hard_exit0')
+
+    def test_top_signal_is_hard_exit(tmp_path):
+        rec = _capture(tmp_path, sd=_sd("SELL", "CLOSE_ALL", sell_path="top_signal"))
+        assert rec.hard_exit is True
+        assert rec.execution_status == "UNKNOWN"  # No verified order facts, never action-name-as-permission.
+        # legacy 已是退出族 → 无硬退出分歧；动作一致
+        assert rec.fusion_mid_action == "EXIT"
+>       assert rec.delta_reasons == [REASON_AGREE]
+E       AssertionError: assert ['research_gap'] == ['agree']
+E         
+E         At index 0 diff: 'research_gap' != 'agree'
+E         Use -v to get more diff
+
+tests\core\test_shadow_diff.py:148: AssertionError
+____________ test_accepted_plan_with_assessment_gives_real_verdict ____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_wqhblzdp/pytest/test_accepted_plan_with_assess0')
+
+    def test_accepted_plan_with_assessment_gives_real_verdict(tmp_path):
+        """J0b v4 合法真判断路径：计划带 assessment_id 且评估已落 AssessmentStore
+        → shadow 消费同一 status（MID VALID → 技术退出落行5 REDUCE）。"""
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+        asm_store = AssessmentStore(tmp_path / "research")
+        store = HorizonPlanStore(tmp_path / "plans.json")
+        plan, _asm = _mk_assessed_plan(tmp_path, asm_store, facts=["6月订单环比+30%"])
+        _save_accepted(store, plan)
+        rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                       plans_store=store, assessment_store=asm_store)
+        assert rec.mid_thesis_status == "VALID"
+>       assert rec.fusion_mid_action == "REDUCE"  # 行5：MID VALID+技术退出 → REDUCE
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'REVIEW' == 'REDUCE'
+E         
+E         - REDUCE
+E         + REVIEW
+
+tests\core\test_shadow_diff.py:413: AssertionError
+_______ test_accepted_plan_long_side_stays_simulated_and_unestablished ________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_wqhblzdp/pytest/test_accepted_plan_long_side_s0')
+
+    def test_accepted_plan_long_side_stays_simulated_and_unestablished(tmp_path):
+        """R0 验收2：同股仅 MID 接受时——LONG 影子明确模拟（long_plan_source=simulated、
+        thesis UNESTABLISHED），不计真计划样本；MID 真判断不受累（J0b v4：MID VALID
+        经 AssessmentStore 合法路径）。"""
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+        asm_store = AssessmentStore(tmp_path / "research")
+        store = HorizonPlanStore(tmp_path / "plans.json")
+        plan, _asm = _mk_assessed_plan(tmp_path, asm_store, horizon="MID",
+                                       facts=["6月订单环比+30%"])
+        _save_accepted(store, plan)
+        rec = _capture(tmp_path, sd=_sd("HOLD", "HOLD_POSITION", sell_path="trend_exit"),
+                       plans_store=store, assessment_store=asm_store)
+        assert rec.mid_plan_source == "user_plan_accepted" and rec.mid_thesis_status == "VALID"
+        assert rec.long_plan_source == "simulated" and rec.long_thesis_status == "UNESTABLISHED"
+>       assert rec.fusion_mid_action == "REDUCE"   # MID 真判断（行5）
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'REVIEW' == 'REDUCE'
+E         
+E         - REDUCE
+E         + REVIEW
+
+tests\core\test_shadow_diff.py:461: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_iss117_completion.py::test_real_cli_version_is_synchronized
+FAILED tests/core/test_shadow_diff.py::test_top_signal_is_hard_exit - Asserti...
+FAILED tests/core/test_shadow_diff.py::test_accepted_plan_with_assessment_gives_real_verdict
+FAILED tests/core/test_shadow_diff.py::test_accepted_plan_long_side_stays_simulated_and_unestablished
+4 failed, 1958 passed, 2 skipped, 1 deselected in 309.52s (0:05:09)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== P V0.8.31 FINAL GUARDED FULL OFFLINE 2026-10-14 ===
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 47%]
+........................................................................ [ 51%]
+........................................................................ [ 54%]
+........................................................................ [ 58%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 80%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+.................................ss..................................... [ 91%]
+........................................................................ [ 95%]
+........................................................................ [ 98%]
+....................                                                     [100%]
+1962 passed, 2 skipped, 1 deselected in 338.26s (0:05:38)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== M2 V0.8.32 GUARDED FULL OFFLINE 2026-10-14 ===
+COMMAND: guarded runner tests
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 14%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 43%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 64%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 86%]
+....................................................................ss.. [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 97%]
+.......................................................                  [100%]
+1997 passed, 2 skipped, 1 deselected in 334.44s (0:05:34)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== T01 V0.8.33 GUARDED FULL OFFLINE 2026-10-14 ===
+COMMAND: guarded runner tests
+........................................................................ [  3%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 14%]
+........................................................................ [ 17%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+....................................................................ss.. [ 89%]
+........................................................................ [ 92%]
+........................................................................ [ 96%]
+.......................................................................  [100%]
+2013 passed, 2 skipped, 1 deselected in 315.85s (0:05:15)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== CODEX INDEPENDENT GROK ACCEPTANCE 2026-10-15 FULL ===
+STARTED_UTC 2026-10-14T23:56:39.627453+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+.............................FFF...F............FFF..................... [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+.FF..................................................................... [ 57%]
+........................................................................ [ 61%]
+........................................................................ [ 64%]
+........................................................F............... [ 67%]
+........................................................................ [ 71%]
+.......FFFF............................................................. [ 74%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+......................F................................................. [ 88%]
+................................ss...................................... [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 98%]
+...................................                                      [100%]
+================================== FAILURES ===================================
+___________________ test_tiered_title_never_counts_as_body ____________________
+
+    def test_tiered_title_never_counts_as_body():
+        """SourceDocument 内容 hash 只对正文——标题不冒充已读全文；无正文时内容核验不可达。"""
+        from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+        body = "正文内容：与某客户签订 900 万元销售订单。"
+        doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
+                             security_ids=["600519"], body=body,
+                             published_at=datetime(2026, 9, 1, tzinfo=timezone.utc))
+        c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+                   quote_text="900 万元销售订单", value=900, unit="万元")
+        r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+>       assert r.level is VerificationLevel.FACT_CHECKED
+E       AssertionError: assert <VerificationLevel.REJECTED: 'REJECTED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.REJECTED: 'REJECTED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='7ea94f40860a4a3d8d0dc7982356c735', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = <enum 'VerificationLevel'>.FACT_CHECKED
+
+tests\core\test_claim_extraction.py:380: AssertionError
+______________________ test_tiered_replay_as_of_explicit ______________________
+
+    def test_tiered_replay_as_of_explicit():
+        """验收3：核验必须显式 as_of（回放截止）——截止前后同一主张资格不同。"""
+        from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+        body = "正文：签订 900 万元订单。"
+        doc = SourceDocument(canonical_uri="cninfo://x",
+                             content_hash=SourceDocument.body_hash(body),
+                             security_ids=["600519"],
+                             published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
+                             body=body)
+        c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+                   quote_text="900 万元订单", value=900, unit="万元",
+                   published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc))
+        before = verify_claim_tiered(c, [doc], as_of=datetime(2026, 8, 1, tzinfo=timezone.utc))
+        after = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+        assert before.level is VerificationLevel.PARSED
+>       assert after.level is VerificationLevel.FACT_CHECKED
+E       AssertionError: assert <VerificationLevel.REJECTED: 'REJECTED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.REJECTED: 'REJECTED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='237092e16edd4018a41419903c60add3', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = <enum 'VerificationLevel'>.FACT_CHECKED
+
+tests\core\test_claim_extraction.py:403: AssertionError
+______________ test_deterministic_claim_reaches_excerpt_grounded ______________
+
+    def test_deterministic_claim_reaches_excerpt_grounded():
+        """确定性通道产出带 quote_text 的 claim——配原文文档可达摘录级（无 AI 的核验阶梯可用）。
+        池文档经 from_source_doc 构造（hash 约定与提取器一致——uri+hash 双匹配）。"""
+        from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+        content = "公司公告：与某客户签订销售订单，订单金额 900 万元。"
+        source = {"title": "订单公告", "content": content, "date": "2026-09-01",
+                  "source": "cninfo://ann/x", "security_id": "600519",
+                  "event_type": "order", "value": 900.0, "unit": "万元"}
+        ext = DeterministicExtractor()
+        claims = ext.extract(source)
+        doc = SourceDocument.from_source_doc(source)
+        r = verify_claim_tiered(claims[0], [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+>       assert r.level is VerificationLevel.FACT_CHECKED, \
+            f"确定性转写（数值可定位）应走完全阶梯: {r.failures}"
+E       AssertionError: 确定性转写（数值可定位）应走完全阶梯: ['报告期/地域/业务对象含未支持修饰或多解句式，范围未能唯一解析——需人工核对']
+E       assert <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='16b43805641c4544a35d03e910f582cb', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = <enum 'VerificationLevel'>.FACT_CHECKED
+
+tests\core\test_claim_extraction.py:418: AssertionError
+_________ test_negation_boilerplate_in_body_does_not_kill_real_claim __________
+
+    def test_negation_boilerplate_in_body_does_not_kill_real_claim():
+        """监督员 P1 回归：否定检查只在摘录内判定——正文其他部分的披露套话
+        （「不存在应披露未披露事项」）不得误杀真实主张（REJECTED 是对用户的错误指控）。"""
+        from src.core.claim_extraction import SourceDocument, VerificationLevel, verify_claim_tiered
+        body = ("公司公告：与某客户签订销售订单，订单金额 900 万元。"
+                "本公司目前不存在应披露而未披露的重大事项。")
+        doc = SourceDocument(canonical_uri="cninfo://x", content_hash=SourceDocument.body_hash(body),
+                             security_ids=["600519"],
+                             published_at=datetime(2026, 9, 1, 23, 59, tzinfo=timezone.utc),
+                             body=body)
+        c = _claim(citation_uri="cninfo://x", citation_hash=doc.content_hash,
+                   quote_text="订单金额 900 万元", value=900, unit="万元")
+        r = verify_claim_tiered(c, [doc], as_of=datetime(2026, 9, 15, tzinfo=timezone.utc))
+>       assert r.level is VerificationLevel.FACT_CHECKED, f"套话误杀: {r.failures}"
+E       AssertionError: 套话误杀: ['主张文字中的金额与结构化数值不一致']
+E       assert <VerificationLevel.REJECTED: 'REJECTED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.REJECTED: 'REJECTED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='dcb83180bb844215825e22ad7351c0dd', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 0, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = <enum 'VerificationLevel'>.FACT_CHECKED
+
+tests\core\test_claim_extraction.py:511: AssertionError
+_____________________ test_frozen_corpus_all_cases_agree ______________________
+
+    def test_frozen_corpus_all_cases_agree():
+        """冻结语料全用例按期望等级与原因通过；报告先落盘再断言（失败也有 artifact 留档）。"""
+        corpus = _load_corpus()
+        results = []
+        all_ok = True
+        for case in corpus["cases"]:
+            claim = _build_claim(case)
+            docs = _build_documents(corpus, case)
+            as_of = datetime.fromisoformat(case["as_of"])
+            result = verify_claim_tiered(claim, docs, as_of=as_of)
+            expect = case["expect"]
+            ok = result.level.value == expect["level"]
+            frag_ok = all(any(frag in f for f in result.failures)
+                          for frag in expect.get("failures_contain", [])) \
+                and all(chk in result.checks for chk in expect.get("checks_contain", []))
+            all_ok = all_ok and ok and frag_ok
+            results.append({
+                "case_id": case["id"], "expected": expect["level"],
+                "actual": result.level.value, "agree": ok and frag_ok,
+                "failures": result.failures,
+                "checks": result.checks,
+            })
+    
+        # 报告：等级覆盖 + 失败原因分布 + 一致率 + 成本口径（验收5：不只一个通过数）
+        by_level = {}
+        for r in results:
+            by_level[r["actual"]] = by_level.get(r["actual"], 0) + 1
+        all_failures = [f for r in results for f in r["failures"]]
+        rejected_ids = [r["case_id"] for r in results if r["actual"] == "REJECTED"]
+        report = {
+            "protocol": corpus["_meta"]["protocol"],
+            "corpus_frozen_at": corpus["_meta"]["frozen_at"],
+            "total_cases": len(results),
+            "agree_count": sum(1 for r in results if r["agree"]),
+            "agreement": (sum(1 for r in results if r["agree"]) / len(results)) if results else 0.0,
+            "level_coverage": by_level,
+            "failure_reasons": sorted({f.split("（")[0] for f in all_failures}),
+            "rejected_cases": rejected_ids,
+            "content_rejected_non_structural": [c for c in rejected_ids if "CV-02" not in c],
+            "cost": {"deterministic_verify_calls": len(results), "deterministic_cost": 0,
+                     "llm_calls": 0, "llm_tokens": 0, "llm_status": "NOT_RUN（AI opt-in，R7 承接）"},
+            "cases": results,
+        }
+        ARTIFACT.parent.mkdir(parents=True, exist_ok=True)
+        ARTIFACT.write_text(json.dumps(report, ensure_ascii=False, indent=1), encoding="utf-8")
+>       assert report["agree_count"] == report["total_cases"]
+E       assert 13 == 16
+
+tests\core\test_claim_verification_corpus.py:112: AssertionError
+_______________ test_as_of_replay_independent_of_machine_clock ________________
+
+    def test_as_of_replay_independent_of_machine_clock():
+        """验收3：同一主张资格随显式 as_of 翻转，不依赖机器当前日期——
+        把机器时钟概念排除：两次调用只差 as_of 参数，结论必须确定。"""
+        corpus = _load_corpus()
+        case = next(c for c in corpus["cases"] if c["id"] == "CV-11a-截止前主张不可得")
+        claim = _build_claim(case)
+        docs = _build_documents(corpus, case)
+        early = verify_claim_tiered(claim, docs, as_of=datetime.fromisoformat(case["as_of"]))
+        late = verify_claim_tiered(
+            _build_claim(next(c for c in corpus["cases"] if c["id"] == "CV-11b-截止后同一主张可核验")),
+            docs, as_of=datetime.fromisoformat("2026-09-15T08:00:00+00:00"))
+        assert early.level is VerificationLevel.PARSED
+>       assert late.level is VerificationLevel.FACT_CHECKED
+E       AssertionError: assert <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='173e64c6eeb748dd843b2979fdf3ecdc', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 8, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = VerificationLevel.FACT_CHECKED
+
+tests\core\test_claim_verification_corpus.py:130: AssertionError
+___________________ test_injection_is_data_not_instruction ____________________
+
+    def test_injection_is_data_not_instruction():
+        """验收2 注入项：正文指令不改变任何核验结果（确定性检查不做文本解释/执行）。"""
+        corpus = _load_corpus()
+        case = next(c for c in corpus["cases"] if c["id"] == "CV-08-注入指令不影响核验")
+        claim = _build_claim(case)
+        result = verify_claim_tiered(claim, _build_documents(corpus, case),
+                                     as_of=datetime.fromisoformat(case["as_of"]))
+>       assert result.level is VerificationLevel.FACT_CHECKED
+E       AssertionError: assert <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> is <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'>
+E        +  where <VerificationLevel.EXCERPT_GROUNDED: 'EXCERPT_GROUNDED'> = ClaimVerificationResult(claim=ClaimRecord(claim_id='08c93ef5cdb74dfeacae396db9b8aa9a', schema_version='f6.v1', event_i...e.datetime(2026, 9, 15, 8, 0, tzinfo=datetime.timezone.utc), fact_status=<FactStatus.MODEL_INFERRED: 'MODEL_INFERRED'>).level
+E        +  and   <VerificationLevel.FACT_CHECKED: 'FACT_CHECKED'> = VerificationLevel.FACT_CHECKED
+
+tests\core\test_claim_verification_corpus.py:140: AssertionError
+______________ test_k2a_documents_channel_builds_verified_claims ______________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_k2a_documents_channel_bui0')
+
+    def test_k2a_documents_channel_builds_verified_claims(tmp_path):
+        """合法 MID fixture（订单主张+原文）经公开入口 → verified_claims≥1、
+        source_uris 非空（不再来自一直为空的参数）、MID change_to_profit 命题 TRUE。"""
+        _isolation_assert(tmp_path)
+        app, store = _make_app(tmp_path)
+        doc_bundle = _claim_doc()
+        result = app.run("600519", as_of=AS_OF, horizons=("MID",),
+                         documents=[doc_bundle])
+>       assert result.verified_claims >= 1, "合法主张经公开入口应核验通过"
+E       AssertionError: 合法主张经公开入口应核验通过
+E       assert 0 >= 1
+E        +  where 0 = ResearchRunResult(security_id='600519', as_of=datetime.datetime(2026, 9, 27, 8, 0, tzinfo=datetime.timezone.utc), run_...=0, unverified_claims=1, verified_claim_ids=[], source_count=1, source_uris=['cninfo://ann/fix-1'], account_version='').verified_claims
+
+tests\core\test_k2a_research_loop.py:80: AssertionError
+___________ test_k2a_checkpoint_requires_explicit_user_confirmation ___________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_k2a_checkpoint_requires_e0')
+
+    def test_k2a_checkpoint_requires_explicit_user_confirmation(tmp_path):
+        """风险确认（K2a 审查 P2-1 真断言）：证据齐+用户确认 → 检查点支撑生效
+        （window_and_refutation TRUE with 显式登记）；同样证据但未确认 → UNKNOWN
+        ——接受计划不自动替代风险确认，AI 不能自行确认。"""
+        from src.core.research import CheckpointCondition
+        _isolation_assert(tmp_path)
+        app, _ = _make_app(tmp_path)
+        doc_bundle = _claim_doc()
+        asm_store = AssessmentStore(tmp_path / "research")
+        cp_confirmed = CheckpointCondition(
+            security_id="600519", horizon="MID", proposition_type="window_and_refutation",
+            description="2026-10-30 三季报核验订单转化",
+            evidence_refs=["c_fix_1"], derived_from="user_confirmed_risk",
+            user_confirmed=True,
+            review_at=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+            refute_if="核实披露原件证实订单收入转化未发生", expiry_action="REVIEW_REQUIRED")
+        r_ok = app.run("600519", as_of=AS_OF, horizons=("MID",),
+                       documents=[doc_bundle], checkpoints=[cp_confirmed])
+        asm = asm_store.load(r_ok.assessment_ids["MID"])
+        w_ok = next(a for a in asm.required_assertions
+                    if a.proposition_type == "window_and_refutation")
+>       assert w_ok.evaluation.value == "TRUE", \
+            f"确认+证据齐 → 检查点支撑生效: {w_ok.evaluation_note or w_ok.evaluation}"
+E       AssertionError: 确认+证据齐 → 检查点支撑生效: evidence_refs 引用未全部核实
+E       assert 'UNKNOWN' == 'TRUE'
+E         
+E         - TRUE
+E         + UNKNOWN
+
+tests\core\test_k2a_research_loop.py:107: AssertionError
+______________ test_failed_request_shadow_never_retries_version _______________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_failed_request_shadow_nev0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025122048C50>
+
+    def test_failed_request_shadow_never_retries_version(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        o0._seed_ledger_only(quantity=100)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=.1)
+        with patch.object(o0.AccountService, "snapshot", side_effect=OSError("fixture")):
+            facts = pm.request_account_facts()
+        ctx = facts.context_for(o0.CODE)
+        plans, assessments = m0._seed_accepted_mid_plan(tmp_path)
+        sd, ee, dr = m0._sd("HOLD_POSITION", .1), m0._eval(), m0._dr()
+        packet = build_decision_packet(dr, sd, ee, confirmed_ratio=ctx.confirmed_weight,
+            position_state=ctx.position_state, account_version=ctx.account_version)
+        with patch.object(o0.AccountService, "account_version", return_value="retry_success") as retry:
+            rec = o0.shadow_module.capture_shadow(dr, sd, ee, pm.get_position(o0.CODE),
+                packet=packet, account_context=ctx, account_version="unrelated_version",
+                plans_store=plans, assessment_store=assessments, quote_as_of=m0.PRICE_DAY,
+                store_path=tmp_path / "shadow.jsonl",
+                config={"fusion": {"mode": "capture_only", "shadow_capture": True}})
+        assert retry.call_count == 0
+        assert packet.portfolio_revision is None
+>       assert rec.account_version == "" and not rec.mid_effective
+E       AssertionError: assert ('unrelated_version' == ''
+E         
+E         + unrelated_version)
+
+tests\core\test_p_account_closeout.py:114: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-10-15 07:59:33,487 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.portfolio:portfolio.py:510 ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+_ test_real_protection_pipeline_records_and_displays_same_terminal[live_unknown_execution-plan_price_stop] _
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_real_protection_pipeline_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000251232D9E50>
+protection = 'plan_price_stop', is_backtest = False
+
+    @pytest.mark.parametrize("protection", ["plan_price_stop", "take_profit_suppression"])
+    @pytest.mark.parametrize("is_backtest", [False, True], ids=["live_unknown_execution", "simulated_bar_execution"])
+    def test_real_protection_pipeline_records_and_displays_same_terminal(tmp_path, monkeypatch, protection, is_backtest):
+        """Real engine/guard/execution; fixed skills and unavailable external feeds, no broker fills."""
+        import json
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        from src.cli import evidence
+        from src.cli.action_view import render_action_card, terminal_verdict
+        from src.core.orchestrator import Orchestrator
+        from src.core.plan_guard import PlanGuard
+        from src.core.shadow_diff import capture_shadow
+        from src.core.benzong import data_provider
+        from src.core.exit_signals import fundamental, stock as stock_signals
+        from src.core.fear_index import history
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+    
+        as_of = datetime.now().strftime("%Y-%m-%d")
+        opened = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        data = s2a._sd(quote_as_of=as_of)
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        if protection == "take_profit_suppression":
+            votes.append(_signal("take_profit", .8))
+        engine = Orchestrator(enabled_skills=[], ai_config=None, event_config=None, entry_exit_config=None)
+        calls = []
+        def fixed_skills(stock):
+            calls.append(("skills", stock.stock_code))
+            return votes
+        monkeypatch.setattr(engine.skill_engine, "execute_all", fixed_skills)
+        monkeypatch.setattr(engine.skill_engine, "base_roster", lambda weights: (dict(s2a.FOUR), {name: "rv0" for name in s2a.FOUR}))
+        # Only unrelated external feeds are unavailable. Tested price/skill protection stays real.
+        monkeypatch.setattr(fundamental, "check_fundamental_findings", lambda *args, **kwargs: (None, []))
+        monkeypatch.setattr(data_provider, "get_market_turnover", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_holder_count_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_margin_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(history, "trading_days", lambda *args, **kwargs: [])
+    
+        # Wrap, rather than replace, each production boundary to prove this path was exercised.
+        for owner, method in [(engine.decision_engine, "make_decision"), (engine.strategy_layer, "process"),
+                              (engine.execution_layer, "evaluate")]:
+            original = getattr(owner, method)
+            def observed(*args, _original=original, _method=method, **kwargs):
+                calls.append((_method, data.stock_code))
+                return _original(*args, **kwargs)
+            monkeypatch.setattr(owner, method, observed)
+        original_guard = PlanGuard.evaluate
+        def observed_guard(self, *args, **kwargs):
+            calls.append(("plan_guard", data.stock_code))
+            return original_guard(self, *args, **kwargs)
+        monkeypatch.setattr(PlanGuard, "evaluate", observed_guard)
+        plan = s2a._plan(plan_id="accepted_synthetic_plan", stock_code=data.stock_code, opened_at=opened,
+                        current_stop=11. if protection == "plan_price_stop" else 8., locked_initial_stop=8.)
+        state = StrategyState(current_position_ratio=.1, lifecycle=TradeLifecycle.HOLD,
+                              entry_price=data.price, entry_date=opened)
+        packet, dr, sd, execution, ai = engine.analyze_packet(data, force_state="TRANSITION",
+            confirmed_ratio=.1, position_state="HELD", account_version="synthetic_account_v1",
+            current_position_ratio=.1, strategy_state=state, has_position=True, trade_plan=plan,
+            today=as_of, ai_enabled=False, is_backtest=is_backtest, source="p2_protection_e2e")
+        assert [call[0] for call in calls] == ["skills", "make_decision", "process", "plan_guard", "evaluate"]
+        assert ai is None and execution.simulated is is_backtest
+        expected = "EXIT" if protection == "plan_price_stop" else "HOLD"
+        assert packet.desired_action.value == expected
+        if protection == "plan_price_stop":
+            assert dr.decision == SignalType.BUY  # PlanGuard protection must override real ordinary BUY.
+            assert sd.position_action == PositionAction.CLOSE_ALL and sd.position_ratio == 0.
+            assert any(f.signal_id == "exit.plan.price_stop" and f.strategy_binding == "plan:" + plan.plan_id for f in sd.signal_findings)
+            assert any("exit.plan.price_stop" in reason for reason in packet.decision_basis)
+            assert packet.execution_status.value == ("ELIGIBLE" if is_backtest else "UNKNOWN")
+        else:
+            assert dr.decision == SignalType.HOLD and dr.action_override_signal_id == "take_profit"
+            assert sd.position_action == PositionAction.HOLD_POSITION and sd.position_ratio == pytest.approx(.1)
+            assert any("take_profit" in reason for reason in packet.decision_basis)
+    
+        for attr, value in [("_STATE_DIR", tmp_path), ("_EVIDENCE_FILE", tmp_path / "evidence.jsonl"), ("_REPORT_DIR", tmp_path / "cards")]:
+            monkeypatch.setattr(evidence, attr, value)
+        saved = evidence.record_evidence(dr, sd, source="p2_protection_e2e", packet=packet,
+                                        position_state="HELD", account_version="synthetic_account_v1")
+        assert saved is not None
+        row = json.loads((tmp_path / "evidence.jsonl").read_text(encoding="utf-8"))
+        assert row["desired_action"] == expected and row["position_action"] == sd.position_action.value
+        assert row["decision_basis"] == packet.decision_basis
+        assert row["execution_status"] == packet.execution_status.value
+        assert row["execution_simulated"] is is_backtest
+        if protection == "plan_price_stop":
+            assert any(f["signal_id"] == "exit.plan.price_stop" for f in row["signal_findings"])
+        else:
+            assert row["action_override_signal_id"] == "take_profit"
+    
+        context = SimpleNamespace(confirmed_weight=.1, position_state="HELD", account_version="synthetic_account_v1")
+        pos = SimpleNamespace(stock_code=data.stock_code, current_ratio=.1, trade_plan=plan)
+        shadow = capture_shadow(dr, sd, execution, pos, packet=packet, source="p2_protection_e2e",
+            config={"fusion": {"mode": "capture_only"}}, store_path=tmp_path / "shadow.jsonl",
+            plans_store=HorizonPlanStore(tmp_path / "plans.json"), assessment_store=AssessmentStore(tmp_path / "research"),
+            account_context=context, quote_as_of=as_of)
+        assert shadow is not None and shadow.append_status == "saved"
+        shadow_row = json.loads((tmp_path / "shadow.jsonl").read_text(encoding="utf-8"))
+        assert shadow_row["legacy_desired"] == expected and shadow_row["legacy_action"] == sd.position_action.value
+>       assert shadow_row["execution_status"] == packet.execution_status.value
+E       AssertionError: assert 'CLOSE_ALL' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + CLOSE_ALL
+
+tests\core\test_p_action_protection.py:210: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-10-15 07:59:35,313 - src.core.plan_guard - WARNING - PlanGuard force STOP(CLOSE_ALL): price=10.0 <= stop=11.0
+
+------------------------------ Captured log call ------------------------------
+WARNING  src.core.plan_guard:plan_guard.py:211 PlanGuard force STOP(CLOSE_ALL): price=10.0 <= stop=11.0
+_ test_real_protection_pipeline_records_and_displays_same_terminal[live_unknown_execution-take_profit_suppression] _
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_real_protection_pipeline_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000251232D8190>
+protection = 'take_profit_suppression', is_backtest = False
+
+    @pytest.mark.parametrize("protection", ["plan_price_stop", "take_profit_suppression"])
+    @pytest.mark.parametrize("is_backtest", [False, True], ids=["live_unknown_execution", "simulated_bar_execution"])
+    def test_real_protection_pipeline_records_and_displays_same_terminal(tmp_path, monkeypatch, protection, is_backtest):
+        """Real engine/guard/execution; fixed skills and unavailable external feeds, no broker fills."""
+        import json
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        from src.cli import evidence
+        from src.cli.action_view import render_action_card, terminal_verdict
+        from src.core.orchestrator import Orchestrator
+        from src.core.plan_guard import PlanGuard
+        from src.core.shadow_diff import capture_shadow
+        from src.core.benzong import data_provider
+        from src.core.exit_signals import fundamental, stock as stock_signals
+        from src.core.fear_index import history
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+    
+        as_of = datetime.now().strftime("%Y-%m-%d")
+        opened = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        data = s2a._sd(quote_as_of=as_of)
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        if protection == "take_profit_suppression":
+            votes.append(_signal("take_profit", .8))
+        engine = Orchestrator(enabled_skills=[], ai_config=None, event_config=None, entry_exit_config=None)
+        calls = []
+        def fixed_skills(stock):
+            calls.append(("skills", stock.stock_code))
+            return votes
+        monkeypatch.setattr(engine.skill_engine, "execute_all", fixed_skills)
+        monkeypatch.setattr(engine.skill_engine, "base_roster", lambda weights: (dict(s2a.FOUR), {name: "rv0" for name in s2a.FOUR}))
+        # Only unrelated external feeds are unavailable. Tested price/skill protection stays real.
+        monkeypatch.setattr(fundamental, "check_fundamental_findings", lambda *args, **kwargs: (None, []))
+        monkeypatch.setattr(data_provider, "get_market_turnover", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_holder_count_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_margin_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(history, "trading_days", lambda *args, **kwargs: [])
+    
+        # Wrap, rather than replace, each production boundary to prove this path was exercised.
+        for owner, method in [(engine.decision_engine, "make_decision"), (engine.strategy_layer, "process"),
+                              (engine.execution_layer, "evaluate")]:
+            original = getattr(owner, method)
+            def observed(*args, _original=original, _method=method, **kwargs):
+                calls.append((_method, data.stock_code))
+                return _original(*args, **kwargs)
+            monkeypatch.setattr(owner, method, observed)
+        original_guard = PlanGuard.evaluate
+        def observed_guard(self, *args, **kwargs):
+            calls.append(("plan_guard", data.stock_code))
+            return original_guard(self, *args, **kwargs)
+        monkeypatch.setattr(PlanGuard, "evaluate", observed_guard)
+        plan = s2a._plan(plan_id="accepted_synthetic_plan", stock_code=data.stock_code, opened_at=opened,
+                        current_stop=11. if protection == "plan_price_stop" else 8., locked_initial_stop=8.)
+        state = StrategyState(current_position_ratio=.1, lifecycle=TradeLifecycle.HOLD,
+                              entry_price=data.price, entry_date=opened)
+        packet, dr, sd, execution, ai = engine.analyze_packet(data, force_state="TRANSITION",
+            confirmed_ratio=.1, position_state="HELD", account_version="synthetic_account_v1",
+            current_position_ratio=.1, strategy_state=state, has_position=True, trade_plan=plan,
+            today=as_of, ai_enabled=False, is_backtest=is_backtest, source="p2_protection_e2e")
+        assert [call[0] for call in calls] == ["skills", "make_decision", "process", "plan_guard", "evaluate"]
+        assert ai is None and execution.simulated is is_backtest
+        expected = "EXIT" if protection == "plan_price_stop" else "HOLD"
+        assert packet.desired_action.value == expected
+        if protection == "plan_price_stop":
+            assert dr.decision == SignalType.BUY  # PlanGuard protection must override real ordinary BUY.
+            assert sd.position_action == PositionAction.CLOSE_ALL and sd.position_ratio == 0.
+            assert any(f.signal_id == "exit.plan.price_stop" and f.strategy_binding == "plan:" + plan.plan_id for f in sd.signal_findings)
+            assert any("exit.plan.price_stop" in reason for reason in packet.decision_basis)
+            assert packet.execution_status.value == ("ELIGIBLE" if is_backtest else "UNKNOWN")
+        else:
+            assert dr.decision == SignalType.HOLD and dr.action_override_signal_id == "take_profit"
+            assert sd.position_action == PositionAction.HOLD_POSITION and sd.position_ratio == pytest.approx(.1)
+            assert any("take_profit" in reason for reason in packet.decision_basis)
+    
+        for attr, value in [("_STATE_DIR", tmp_path), ("_EVIDENCE_FILE", tmp_path / "evidence.jsonl"), ("_REPORT_DIR", tmp_path / "cards")]:
+            monkeypatch.setattr(evidence, attr, value)
+        saved = evidence.record_evidence(dr, sd, source="p2_protection_e2e", packet=packet,
+                                        position_state="HELD", account_version="synthetic_account_v1")
+        assert saved is not None
+        row = json.loads((tmp_path / "evidence.jsonl").read_text(encoding="utf-8"))
+        assert row["desired_action"] == expected and row["position_action"] == sd.position_action.value
+        assert row["decision_basis"] == packet.decision_basis
+        assert row["execution_status"] == packet.execution_status.value
+        assert row["execution_simulated"] is is_backtest
+        if protection == "plan_price_stop":
+            assert any(f["signal_id"] == "exit.plan.price_stop" for f in row["signal_findings"])
+        else:
+            assert row["action_override_signal_id"] == "take_profit"
+    
+        context = SimpleNamespace(confirmed_weight=.1, position_state="HELD", account_version="synthetic_account_v1")
+        pos = SimpleNamespace(stock_code=data.stock_code, current_ratio=.1, trade_plan=plan)
+        shadow = capture_shadow(dr, sd, execution, pos, packet=packet, source="p2_protection_e2e",
+            config={"fusion": {"mode": "capture_only"}}, store_path=tmp_path / "shadow.jsonl",
+            plans_store=HorizonPlanStore(tmp_path / "plans.json"), assessment_store=AssessmentStore(tmp_path / "research"),
+            account_context=context, quote_as_of=as_of)
+        assert shadow is not None and shadow.append_status == "saved"
+        shadow_row = json.loads((tmp_path / "shadow.jsonl").read_text(encoding="utf-8"))
+        assert shadow_row["legacy_desired"] == expected and shadow_row["legacy_action"] == sd.position_action.value
+>       assert shadow_row["execution_status"] == packet.execution_status.value
+E       AssertionError: assert 'HOLD_POSITION' == 'NOT_NEEDED'
+E         
+E         - NOT_NEEDED
+E         + HOLD_POSITION
+
+tests\core\test_p_action_protection.py:210: AssertionError
+_ test_real_protection_pipeline_records_and_displays_same_terminal[simulated_bar_execution-plan_price_stop] _
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_real_protection_pipeline_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000251220AFE90>
+protection = 'plan_price_stop', is_backtest = True
+
+    @pytest.mark.parametrize("protection", ["plan_price_stop", "take_profit_suppression"])
+    @pytest.mark.parametrize("is_backtest", [False, True], ids=["live_unknown_execution", "simulated_bar_execution"])
+    def test_real_protection_pipeline_records_and_displays_same_terminal(tmp_path, monkeypatch, protection, is_backtest):
+        """Real engine/guard/execution; fixed skills and unavailable external feeds, no broker fills."""
+        import json
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        from src.cli import evidence
+        from src.cli.action_view import render_action_card, terminal_verdict
+        from src.core.orchestrator import Orchestrator
+        from src.core.plan_guard import PlanGuard
+        from src.core.shadow_diff import capture_shadow
+        from src.core.benzong import data_provider
+        from src.core.exit_signals import fundamental, stock as stock_signals
+        from src.core.fear_index import history
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+    
+        as_of = datetime.now().strftime("%Y-%m-%d")
+        opened = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        data = s2a._sd(quote_as_of=as_of)
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        if protection == "take_profit_suppression":
+            votes.append(_signal("take_profit", .8))
+        engine = Orchestrator(enabled_skills=[], ai_config=None, event_config=None, entry_exit_config=None)
+        calls = []
+        def fixed_skills(stock):
+            calls.append(("skills", stock.stock_code))
+            return votes
+        monkeypatch.setattr(engine.skill_engine, "execute_all", fixed_skills)
+        monkeypatch.setattr(engine.skill_engine, "base_roster", lambda weights: (dict(s2a.FOUR), {name: "rv0" for name in s2a.FOUR}))
+        # Only unrelated external feeds are unavailable. Tested price/skill protection stays real.
+        monkeypatch.setattr(fundamental, "check_fundamental_findings", lambda *args, **kwargs: (None, []))
+        monkeypatch.setattr(data_provider, "get_market_turnover", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_holder_count_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_margin_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(history, "trading_days", lambda *args, **kwargs: [])
+    
+        # Wrap, rather than replace, each production boundary to prove this path was exercised.
+        for owner, method in [(engine.decision_engine, "make_decision"), (engine.strategy_layer, "process"),
+                              (engine.execution_layer, "evaluate")]:
+            original = getattr(owner, method)
+            def observed(*args, _original=original, _method=method, **kwargs):
+                calls.append((_method, data.stock_code))
+                return _original(*args, **kwargs)
+            monkeypatch.setattr(owner, method, observed)
+        original_guard = PlanGuard.evaluate
+        def observed_guard(self, *args, **kwargs):
+            calls.append(("plan_guard", data.stock_code))
+            return original_guard(self, *args, **kwargs)
+        monkeypatch.setattr(PlanGuard, "evaluate", observed_guard)
+        plan = s2a._plan(plan_id="accepted_synthetic_plan", stock_code=data.stock_code, opened_at=opened,
+                        current_stop=11. if protection == "plan_price_stop" else 8., locked_initial_stop=8.)
+        state = StrategyState(current_position_ratio=.1, lifecycle=TradeLifecycle.HOLD,
+                              entry_price=data.price, entry_date=opened)
+        packet, dr, sd, execution, ai = engine.analyze_packet(data, force_state="TRANSITION",
+            confirmed_ratio=.1, position_state="HELD", account_version="synthetic_account_v1",
+            current_position_ratio=.1, strategy_state=state, has_position=True, trade_plan=plan,
+            today=as_of, ai_enabled=False, is_backtest=is_backtest, source="p2_protection_e2e")
+        assert [call[0] for call in calls] == ["skills", "make_decision", "process", "plan_guard", "evaluate"]
+        assert ai is None and execution.simulated is is_backtest
+        expected = "EXIT" if protection == "plan_price_stop" else "HOLD"
+        assert packet.desired_action.value == expected
+        if protection == "plan_price_stop":
+            assert dr.decision == SignalType.BUY  # PlanGuard protection must override real ordinary BUY.
+            assert sd.position_action == PositionAction.CLOSE_ALL and sd.position_ratio == 0.
+            assert any(f.signal_id == "exit.plan.price_stop" and f.strategy_binding == "plan:" + plan.plan_id for f in sd.signal_findings)
+            assert any("exit.plan.price_stop" in reason for reason in packet.decision_basis)
+            assert packet.execution_status.value == ("ELIGIBLE" if is_backtest else "UNKNOWN")
+        else:
+            assert dr.decision == SignalType.HOLD and dr.action_override_signal_id == "take_profit"
+            assert sd.position_action == PositionAction.HOLD_POSITION and sd.position_ratio == pytest.approx(.1)
+            assert any("take_profit" in reason for reason in packet.decision_basis)
+    
+        for attr, value in [("_STATE_DIR", tmp_path), ("_EVIDENCE_FILE", tmp_path / "evidence.jsonl"), ("_REPORT_DIR", tmp_path / "cards")]:
+            monkeypatch.setattr(evidence, attr, value)
+        saved = evidence.record_evidence(dr, sd, source="p2_protection_e2e", packet=packet,
+                                        position_state="HELD", account_version="synthetic_account_v1")
+        assert saved is not None
+        row = json.loads((tmp_path / "evidence.jsonl").read_text(encoding="utf-8"))
+        assert row["desired_action"] == expected and row["position_action"] == sd.position_action.value
+        assert row["decision_basis"] == packet.decision_basis
+        assert row["execution_status"] == packet.execution_status.value
+        assert row["execution_simulated"] is is_backtest
+        if protection == "plan_price_stop":
+            assert any(f["signal_id"] == "exit.plan.price_stop" for f in row["signal_findings"])
+        else:
+            assert row["action_override_signal_id"] == "take_profit"
+    
+        context = SimpleNamespace(confirmed_weight=.1, position_state="HELD", account_version="synthetic_account_v1")
+        pos = SimpleNamespace(stock_code=data.stock_code, current_ratio=.1, trade_plan=plan)
+        shadow = capture_shadow(dr, sd, execution, pos, packet=packet, source="p2_protection_e2e",
+            config={"fusion": {"mode": "capture_only"}}, store_path=tmp_path / "shadow.jsonl",
+            plans_store=HorizonPlanStore(tmp_path / "plans.json"), assessment_store=AssessmentStore(tmp_path / "research"),
+            account_context=context, quote_as_of=as_of)
+        assert shadow is not None and shadow.append_status == "saved"
+        shadow_row = json.loads((tmp_path / "shadow.jsonl").read_text(encoding="utf-8"))
+        assert shadow_row["legacy_desired"] == expected and shadow_row["legacy_action"] == sd.position_action.value
+>       assert shadow_row["execution_status"] == packet.execution_status.value
+E       AssertionError: assert 'CLOSE_ALL' == 'ELIGIBLE'
+E         
+E         - ELIGIBLE
+E         + CLOSE_ALL
+
+tests\core\test_p_action_protection.py:210: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-10-15 07:59:35,453 - src.core.plan_guard - WARNING - PlanGuard force STOP(CLOSE_ALL): price=10.0 <= stop=11.0
+
+------------------------------ Captured log call ------------------------------
+WARNING  src.core.plan_guard:plan_guard.py:211 PlanGuard force STOP(CLOSE_ALL): price=10.0 <= stop=11.0
+_ test_real_protection_pipeline_records_and_displays_same_terminal[simulated_bar_execution-take_profit_suppression] _
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_real_protection_pipeline_3')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000251223471D0>
+protection = 'take_profit_suppression', is_backtest = True
+
+    @pytest.mark.parametrize("protection", ["plan_price_stop", "take_profit_suppression"])
+    @pytest.mark.parametrize("is_backtest", [False, True], ids=["live_unknown_execution", "simulated_bar_execution"])
+    def test_real_protection_pipeline_records_and_displays_same_terminal(tmp_path, monkeypatch, protection, is_backtest):
+        """Real engine/guard/execution; fixed skills and unavailable external feeds, no broker fills."""
+        import json
+        from datetime import datetime, timedelta
+        from types import SimpleNamespace
+        from src.cli import evidence
+        from src.cli.action_view import render_action_card, terminal_verdict
+        from src.core.orchestrator import Orchestrator
+        from src.core.plan_guard import PlanGuard
+        from src.core.shadow_diff import capture_shadow
+        from src.core.benzong import data_provider
+        from src.core.exit_signals import fundamental, stock as stock_signals
+        from src.core.fear_index import history
+        from src.data.horizon_plans import HorizonPlanStore
+        from src.data.research_store import AssessmentStore
+    
+        as_of = datetime.now().strftime("%Y-%m-%d")
+        opened = (datetime.now() - timedelta(days=2)).strftime("%Y-%m-%d")
+        data = s2a._sd(quote_as_of=as_of)
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        if protection == "take_profit_suppression":
+            votes.append(_signal("take_profit", .8))
+        engine = Orchestrator(enabled_skills=[], ai_config=None, event_config=None, entry_exit_config=None)
+        calls = []
+        def fixed_skills(stock):
+            calls.append(("skills", stock.stock_code))
+            return votes
+        monkeypatch.setattr(engine.skill_engine, "execute_all", fixed_skills)
+        monkeypatch.setattr(engine.skill_engine, "base_roster", lambda weights: (dict(s2a.FOUR), {name: "rv0" for name in s2a.FOUR}))
+        # Only unrelated external feeds are unavailable. Tested price/skill protection stays real.
+        monkeypatch.setattr(fundamental, "check_fundamental_findings", lambda *args, **kwargs: (None, []))
+        monkeypatch.setattr(data_provider, "get_market_turnover", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_holder_count_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(stock_signals, "_check_margin_surge", lambda *args, **kwargs: None)
+        monkeypatch.setattr(history, "trading_days", lambda *args, **kwargs: [])
+    
+        # Wrap, rather than replace, each production boundary to prove this path was exercised.
+        for owner, method in [(engine.decision_engine, "make_decision"), (engine.strategy_layer, "process"),
+                              (engine.execution_layer, "evaluate")]:
+            original = getattr(owner, method)
+            def observed(*args, _original=original, _method=method, **kwargs):
+                calls.append((_method, data.stock_code))
+                return _original(*args, **kwargs)
+            monkeypatch.setattr(owner, method, observed)
+        original_guard = PlanGuard.evaluate
+        def observed_guard(self, *args, **kwargs):
+            calls.append(("plan_guard", data.stock_code))
+            return original_guard(self, *args, **kwargs)
+        monkeypatch.setattr(PlanGuard, "evaluate", observed_guard)
+        plan = s2a._plan(plan_id="accepted_synthetic_plan", stock_code=data.stock_code, opened_at=opened,
+                        current_stop=11. if protection == "plan_price_stop" else 8., locked_initial_stop=8.)
+        state = StrategyState(current_position_ratio=.1, lifecycle=TradeLifecycle.HOLD,
+                              entry_price=data.price, entry_date=opened)
+        packet, dr, sd, execution, ai = engine.analyze_packet(data, force_state="TRANSITION",
+            confirmed_ratio=.1, position_state="HELD", account_version="synthetic_account_v1",
+            current_position_ratio=.1, strategy_state=state, has_position=True, trade_plan=plan,
+            today=as_of, ai_enabled=False, is_backtest=is_backtest, source="p2_protection_e2e")
+        assert [call[0] for call in calls] == ["skills", "make_decision", "process", "plan_guard", "evaluate"]
+        assert ai is None and execution.simulated is is_backtest
+        expected = "EXIT" if protection == "plan_price_stop" else "HOLD"
+        assert packet.desired_action.value == expected
+        if protection == "plan_price_stop":
+            assert dr.decision == SignalType.BUY  # PlanGuard protection must override real ordinary BUY.
+            assert sd.position_action == PositionAction.CLOSE_ALL and sd.position_ratio == 0.
+            assert any(f.signal_id == "exit.plan.price_stop" and f.strategy_binding == "plan:" + plan.plan_id for f in sd.signal_findings)
+            assert any("exit.plan.price_stop" in reason for reason in packet.decision_basis)
+            assert packet.execution_status.value == ("ELIGIBLE" if is_backtest else "UNKNOWN")
+        else:
+            assert dr.decision == SignalType.HOLD and dr.action_override_signal_id == "take_profit"
+            assert sd.position_action == PositionAction.HOLD_POSITION and sd.position_ratio == pytest.approx(.1)
+            assert any("take_profit" in reason for reason in packet.decision_basis)
+    
+        for attr, value in [("_STATE_DIR", tmp_path), ("_EVIDENCE_FILE", tmp_path / "evidence.jsonl"), ("_REPORT_DIR", tmp_path / "cards")]:
+            monkeypatch.setattr(evidence, attr, value)
+        saved = evidence.record_evidence(dr, sd, source="p2_protection_e2e", packet=packet,
+                                        position_state="HELD", account_version="synthetic_account_v1")
+        assert saved is not None
+        row = json.loads((tmp_path / "evidence.jsonl").read_text(encoding="utf-8"))
+        assert row["desired_action"] == expected and row["position_action"] == sd.position_action.value
+        assert row["decision_basis"] == packet.decision_basis
+        assert row["execution_status"] == packet.execution_status.value
+        assert row["execution_simulated"] is is_backtest
+        if protection == "plan_price_stop":
+            assert any(f["signal_id"] == "exit.plan.price_stop" for f in row["signal_findings"])
+        else:
+            assert row["action_override_signal_id"] == "take_profit"
+    
+        context = SimpleNamespace(confirmed_weight=.1, position_state="HELD", account_version="synthetic_account_v1")
+        pos = SimpleNamespace(stock_code=data.stock_code, current_ratio=.1, trade_plan=plan)
+        shadow = capture_shadow(dr, sd, execution, pos, packet=packet, source="p2_protection_e2e",
+            config={"fusion": {"mode": "capture_only"}}, store_path=tmp_path / "shadow.jsonl",
+            plans_store=HorizonPlanStore(tmp_path / "plans.json"), assessment_store=AssessmentStore(tmp_path / "research"),
+            account_context=context, quote_as_of=as_of)
+        assert shadow is not None and shadow.append_status == "saved"
+        shadow_row = json.loads((tmp_path / "shadow.jsonl").read_text(encoding="utf-8"))
+        assert shadow_row["legacy_desired"] == expected and shadow_row["legacy_action"] == sd.position_action.value
+>       assert shadow_row["execution_status"] == packet.execution_status.value
+E       AssertionError: assert 'HOLD_POSITION' == 'NOT_NEEDED'
+E         
+E         - NOT_NEEDED
+E         + HOLD_POSITION
+
+tests\core\test_p_action_protection.py:210: AssertionError
+________________________ test_top_signal_is_hard_exit _________________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_f6a56g6e/pytest/test_top_signal_is_hard_exit0')
+
+    def test_top_signal_is_hard_exit(tmp_path):
+        rec = _capture(tmp_path, sd=_sd("SELL", "CLOSE_ALL", sell_path="top_signal"))
+        assert rec.hard_exit is True
+>       assert rec.execution_status == "UNKNOWN"  # No verified order facts, never action-name-as-permission.
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert 'HOLD_POSITION' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + HOLD_POSITION
+
+tests\core\test_shadow_diff.py:146: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_claim_extraction.py::test_tiered_title_never_counts_as_body
+FAILED tests/core/test_claim_extraction.py::test_tiered_replay_as_of_explicit
+FAILED tests/core/test_claim_extraction.py::test_deterministic_claim_reaches_excerpt_grounded
+FAILED tests/core/test_claim_extraction.py::test_negation_boilerplate_in_body_does_not_kill_real_claim
+FAILED tests/core/test_claim_verification_corpus.py::test_frozen_corpus_all_cases_agree
+FAILED tests/core/test_claim_verification_corpus.py::test_as_of_replay_independent_of_machine_clock
+FAILED tests/core/test_claim_verification_corpus.py::test_injection_is_data_not_instruction
+FAILED tests/core/test_k2a_research_loop.py::test_k2a_documents_channel_builds_verified_claims
+FAILED tests/core/test_k2a_research_loop.py::test_k2a_checkpoint_requires_explicit_user_confirmation
+FAILED tests/core/test_p_account_closeout.py::test_failed_request_shadow_never_retries_version
+FAILED tests/core/test_p_action_protection.py::test_real_protection_pipeline_records_and_displays_same_terminal[live_unknown_execution-plan_price_stop]
+FAILED tests/core/test_p_action_protection.py::test_real_protection_pipeline_records_and_displays_same_terminal[live_unknown_execution-take_profit_suppression]
+FAILED tests/core/test_p_action_protection.py::test_real_protection_pipeline_records_and_displays_same_terminal[simulated_bar_execution-plan_price_stop]
+FAILED tests/core/test_p_action_protection.py::test_real_protection_pipeline_records_and_displays_same_terminal[simulated_bar_execution-take_profit_suppression]
+FAILED tests/core/test_shadow_diff.py::test_top_signal_is_hard_exit - Asserti...
+15 failed, 2106 passed, 2 skipped, 1 deselected in 196.85s (0:03:16)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_AND_TEST_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.34 IMPLEMENTATION VALIDATION 2026-10-15 FULL ===
+STARTED_UTC 2026-10-15T11:12:33.051624+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 26%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 45%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 59%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 72%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+...............................ss....................................... [ 91%]
+........................................................................ [ 95%]
+........................................................................ [ 98%]
+..................................                                       [100%]
+2192 passed, 2 skipped, 1 deselected in 205.59s (0:03:25)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.34 IMPLEMENTATION VALIDATION 2026-10-15 FULL_T01 ===
+STARTED_UTC 2026-10-15T11:41:22.531264+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py
+........................................................................ [ 15%]
+........................................................................ [ 30%]
+........................................................................ [ 45%]
+........................................................................ [ 61%]
+........................................................................ [ 76%]
+........................................................................ [ 91%]
+.......................................                                  [100%]
+471 passed in 117.96s (0:01:57)
+BLOCKED_IO_ATTEMPTS {'network': 537, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== LABEL CORRECTION 2026-10-15 FULL_T01 IS DEFAULT TARGET SET ===
+The FULL_T01 command omitted the explicit tests root. Its 471 passed are a default targeted run, not a full suite. Actual full-suite command is FULL_T01_FINAL with explicit tests; both original outputs remain.
+
+=== CODEX v0.8.34 IMPLEMENTATION VALIDATION 2026-10-15 FULL_T01_FINAL ===
+STARTED_UTC 2026-10-15T15:51:43.171388+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 38%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 69%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 85%]
+.................................................ss..................... [ 89%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 98%]
+...............................                                          [100%]
+2261 passed, 2 skipped, 1 deselected in 201.01s (0:03:21)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.35 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V35 ===
+STARTED_UTC 2026-10-15T16:40:48.903276+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  3%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 46%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 59%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 71%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+................................................................ss...... [ 87%]
+........................................................................ [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 96%]
+.......................................................................  [100%]
+2301 passed, 2 skipped, 1 deselected in 342.60s (0:05:42)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.36 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V36 ===
+STARTED_UTC 2026-10-16T10:11:38.142296+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+.............................................................ss......... [ 89%]
+........................................................................ [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 97%]
+....................................................................     [100%]
+2730 passed, 2 skipped, 1 deselected in 224.53s (0:03:44)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.37 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V37 ===
+STARTED_UTC 2026-10-16T10:54:44.207107+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+........ss.............................................................. [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+2749 passed, 2 skipped, 1 deselected in 328.43s (0:05:28)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.37 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V37_FINAL ===
+STARTED_UTC 2026-10-16T11:04:46.348847+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 13%]
+........................................................................ [ 15%]
+........................................................................ [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+........ss.............................................................. [ 91%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+...............                                                          [100%]
+2749 passed, 2 skipped, 1 deselected in 361.44s (0:06:01)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.38 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V38 ===
+STARTED_UTC 2026-10-16T15:21:56.279947+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  5%]
+........................................................................ [  7%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 15%]
+........................................................................ [ 17%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+...............................ss....................................... [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 96%]
+........................................................................ [ 98%]
+......................................                                   [100%]
+2844 passed, 2 skipped, 1 deselected in 362.64s (0:06:02)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.39 IMPLEMENTATION VALIDATION 2026-10-16 FULL_V39 ===
+STARTED_UTC 2026-10-16T16:04:59.384409+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 17%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 27%]
+........................................................................ [ 29%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 52%]
+........................................................................ [ 54%]
+........................................................................ [ 57%]
+........................................................................ [ 59%]
+........................................................................ [ 62%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 77%]
+........................................................................ [ 79%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+....ss.................................................................. [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 97%]
+........................................................................ [ 99%]
+...........                                                              [100%]
+2889 passed, 2 skipped, 1 deselected in 489.80s (0:08:09)
+BLOCKED_IO_ATTEMPTS {'network': 1005, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.40 IMPLEMENTATION VALIDATION 2026-10-17 FULL_V40 ===
+STARTED_UTC 2026-10-17T03:48:03.876924+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 17%]
+........................................................................ [ 19%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 29%]
+........................................................................ [ 31%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 78%]
+........................................................................ [ 80%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+........................................................................ [ 88%]
+.........................................................ss............. [ 90%]
+........................................................................ [ 92%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+................................................................         [100%]
+2942 passed, 2 skipped, 1 deselected in 396.40s (0:06:36)
+BLOCKED_IO_ATTEMPTS {'network': 1005, 'subprocess': 2, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+2026-10-17 11:54:37,260 - src.web.app - WARNING - ⚠ 持仓名单没读到（文件占用/权限/损坏）——扫描候选可能仍含已有持仓，请先核对；读取失败不能证明空仓｜原始：持仓读取失败，本次扫描无法排除已持仓股: '_FakePM' object has no attribute 'request_account_facts'
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.41 IMPLEMENTATION VALIDATION 2026-10-17 FULL_V41 ===
+STARTED_UTC 2026-10-17T08:41:28.811078+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+....................s................................................... [ 19%]
+........................................................................ [ 21%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 31%]
+........................................................................ [ 33%]
+........................................................................ [ 36%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 43%]
+........................................................................ [ 45%]
+........................................................................ [ 48%]
+........................................................................ [ 50%]
+........................................................................ [ 52%]
+........................................................................ [ 55%]
+........................................................................ [ 57%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 64%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 84%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+......................................ss................................ [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 96%]
+........................................................................ [ 98%]
+.............................................                            [100%]
+2994 passed, 3 skipped, 1 deselected in 379.53s (0:06:19)
+BLOCKED_IO_ATTEMPTS {'network': 1005, 'subprocess': 12, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== CODEX v0.8.42 IMPLEMENTATION VALIDATION 2026-10-17 FULL_V42 ===
+STARTED_UTC 2026-10-17T09:07:07.676133+00:00
+COMMAND: G:\Tools\暮云思辨投资助手\.venv\Scripts\python.exe -B G:\Tools\暮云思辨投资助手\plan\fusion\iteration9\review_test_runner.py tests
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  7%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+...s.................................................................... [ 21%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 33%]
+........................................................................ [ 35%]
+........................................................................ [ 37%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 47%]
+........................................................................ [ 49%]
+........................................................................ [ 51%]
+........................................................................ [ 54%]
+........................................................................ [ 56%]
+........................................................................ [ 58%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 66%]
+........................................................................ [ 68%]
+........................................................................ [ 70%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 77%]
+........................................................................ [ 80%]
+........................................................................ [ 82%]
+........................................................................ [ 84%]
+........................................................................ [ 87%]
+........................................................................ [ 89%]
+.....................ss................................................. [ 92%]
+........................................................................ [ 94%]
+........................................................................ [ 96%]
+........................................................................ [ 99%]
+............................                                             [100%]
+3049 passed, 3 skipped, 1 deselected in 229.65s (0:03:49)
+BLOCKED_IO_ATTEMPTS {'network': 785, 'subprocess': 12, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+SOURCE_TEST_FIXTURE_SNAPSHOT_UNCHANGED True
+CHANGED_DURING_RUN []
+
+=== 2026-10-20 MAIN_INTEGRATION_CLOSEOUT: raw rounds kept separately ===
+Interpreter: project .venv/Scripts/python.exe -B; PYTHONIOENCODING=utf-8; PYTHONUTF8=1
+Full command: python -B plan/fusion/iteration9/review_test_runner.py tests
+
+--- main-full.log ---
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+.................................................F...................... [ 16%]
+........................................................................ [ 18%]
+....................s................................................... [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+.............................FF......................................... [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+.........................................................ss............. [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+................................................................         [100%]
+================================== FAILURES ===================================
+______ test_parallel_first_write_does_not_replace_and_no_temporary_left _______
+
+self = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_g0ncburd/pytest/test_parallel_first_write_does0/store/cash_materials/blobs')
+mode = 511, parents = True, exist_ok = True
+
+    def mkdir(self, mode=0o777, parents=False, exist_ok=False):
+        """
+        Create a new directory at this given path.
+        """
+        try:
+>           os.mkdir(self, mode)
+E           FileNotFoundError: [WinError 3] 系统找不到指定的路径。: 'C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun_review_tests_g0ncburd\\pytest\\test_parallel_first_write_does0\\store\\cash_materials\\blobs'
+
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\pathlib.py:1116: FileNotFoundError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_g0ncburd/pytest/test_parallel_first_write_does0')
+
+    def test_parallel_first_write_does_not_replace_and_no_temporary_left(tmp_path):
+        from concurrent.futures import ThreadPoolExecutor
+        store = ResearchStore(tmp_path / "store")
+        with ThreadPoolExecutor(max_workers=2) as pool:
+>           ids = list(pool.map(lambda _: store.save_cash_material_bytes("blobs", b"same-original"), range(2)))
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\core\test_cash_material_intake.py:294: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\concurrent\futures\_base.py:619: in result_iterator
+    yield _result_or_cancel(fs.pop())
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\concurrent\futures\_base.py:317: in _result_or_cancel
+    return fut.result(timeout)
+           ^^^^^^^^^^^^^^^^^^^
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\concurrent\futures\_base.py:456: in result
+    return self.__get_result()
+           ^^^^^^^^^^^^^^^^^^^
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\concurrent\futures\_base.py:401: in __get_result
+    raise self._exception
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\concurrent\futures\thread.py:58: in run
+    result = self.fn(*self.args, **self.kwargs)
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+tests\core\test_cash_material_intake.py:294: in <lambda>
+    ids = list(pool.map(lambda _: store.save_cash_material_bytes("blobs", b"same-original"), range(2)))
+                                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\data\research_store.py:74: in save_cash_material_bytes
+    folder.mkdir(parents=True, exist_ok=True)
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\pathlib.py:1120: in mkdir
+    self.parent.mkdir(parents=True, exist_ok=True)
+..\..\..\..\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\pathlib.py:1116: in mkdir
+    os.mkdir(self, mode)
+plan\fusion\iteration9\review_test_runner.py:72: in audit
+    writable(args[0])
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path = 'C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun_review_tests_g0ncburd\\pytest\\test_parallel_first_write_does0\\store\\cash_materials'
+
+    def writable(path):
+        if not Path(os.fsdecode(path)).resolve().is_relative_to(root):
+>           raise RuntimeError("Review test write outside temporary root blocked")
+E           RuntimeError: Review test write outside temporary root blocked
+
+plan\fusion\iteration9\review_test_runner.py:42: RuntimeError
+_______________________ test_offline_verifier_all_pass ________________________
+
+manifest_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_g0ncburd/pytest/manifest0/evidence_manifest.json')
+ov = <module 'k3_verify_manifest_offline' from 'C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-main-integrate-1fa_exgr\\checkout\\tests\\evidence\\k3_original_pilot\\verify_manifest_offline.py'>
+
+    def test_offline_verifier_all_pass(manifest_path, ov):
+        """六点离线复验：PDF 在/hash 合/重提取/算式复算全过。"""
+        summary = ov.main(manifest=manifest_path, pdf_root=REPO,
+                          results_path=None)
+        assert summary["total"] == 6
+>       assert summary["failed"] == 0, f"离线复验失败点: {summary['points']}"
+E       AssertionError: 离线复验失败点: [{'key': '000002_2024Q1', 'status': 'MISSING', 'pdf_path': 'tests/artifacts/k3_original_pilot/000002_2024Q1.pdf', 'note': 'PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）'}, {'key': '000002_2024Q2', 'status': 'MISSING', 'pdf_path': 'tests/artifacts/j1_original_pilot/000002_2024H1.pdf', 'note': 'PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）'}, {'key': '000002_2024Q3', 'status': 'MISSING', 'pdf_path': 'tests/artifacts/k3_original_pilot/000002_2024Q3.pdf', 'note': 'PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）'}, {'key': '600519_2024Q1', 'status': 'PASS', 'file_hash': 'b706e237e25ff54a0bde7070a13b019a5e1eec7f412eb9d0baf33e750a7c32e2', 'recomputed_value': 0.12954324099236256, 'supplier': 'recorded_only（离线不可重算——不复算不冒充）'}, {'key': '600519_2024Q2', 'status': 'MISSING', 'pdf_path': 'tests/artifacts/k3_original_pilot/600519_2024H1.pdf', 'note': 'PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）'}, {'key': '600519_2024Q3', 'status': 'MISSING', 'pdf_path': 'tests/artifacts/k3_original_pilot/600519_2024Q3.pdf', 'note': 'PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）'}]
+E       assert 5 == 0
+
+tests\core\test_l3_evidence_pack.py:178: AssertionError
+---------------------------- Captured stdout call -----------------------------
+000002_2024Q1: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+000002_2024Q2: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+000002_2024Q3: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+600519_2024Q1: PASS
+600519_2024Q2: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+600519_2024Q3: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+离线复验：1/6 PASS，5 FAIL
+____________________ test_delivered_manifest_itself_passes ____________________
+
+ov = <module 'k3_verify_manifest_offline' from 'C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-main-integrate-1fa_exgr\\checkout\\tests\\evidence\\k3_original_pilot\\verify_manifest_offline.py'>
+
+    def test_delivered_manifest_itself_passes(ov):
+        """守卫 P2-1：随交付的 evidence_manifest.json 本体必须过离线复验（本机 PDF 齐
+        → 6/6 PASS）——手工篡改/损坏交付清单会被回归拦住。"""
+        summary = ov.main(manifest=K3 / "evidence_manifest.json", pdf_root=REPO,
+                          results_path=None)
+>       assert summary["total"] == 6 and summary["failed"] == 0 and summary["passed"] == 6
+E       assert (6 == 6 and 5 == 0)
+
+tests\core\test_l3_evidence_pack.py:187: AssertionError
+---------------------------- Captured stdout call -----------------------------
+000002_2024Q1: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+000002_2024Q2: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+000002_2024Q3: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+600519_2024Q1: PASS
+600519_2024Q2: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+600519_2024Q3: MISSING — PDF 缺失——如实失败，不伪补（按清单 source_url 重新获取后重验）
+离线复验：1/6 PASS，5 FAIL
+============================== warnings summary ===============================
+tests\core\test_experiment_replay.py:184
+  C:\Users\Crux\AppData\Local\Temp\muyun-main-integrate-1fa_exgr\checkout\tests\core\test_experiment_replay.py:184: DeprecationWarning: invalid escape sequence '\+'
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+
+tests\core\test_experiment_replay.py:192
+  C:\Users\Crux\AppData\Local\Temp\muyun-main-integrate-1fa_exgr\checkout\tests\core\test_experiment_replay.py:192: DeprecationWarning: invalid escape sequence '\+'
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+=========================== short test summary info ===========================
+FAILED tests/core/test_cash_material_intake.py::test_parallel_first_write_does_not_replace_and_no_temporary_left
+FAILED tests/core/test_l3_evidence_pack.py::test_offline_verifier_all_pass - ...
+FAILED tests/core/test_l3_evidence_pack.py::test_delivered_manifest_itself_passes
+3 failed, 3082 passed, 3 skipped, 1 deselected, 2 warnings in 327.37s (0:05:27)
+BLOCKED_IO_ATTEMPTS {'network': 791, 'subprocess': 12, 'real_state': 2}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+--- main-final-full.log ---
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  6%]
+........................................................................ [  9%]
+........................................................................ [ 11%]
+........................................................................ [ 13%]
+........................................................................ [ 16%]
+........................................................................ [ 18%]
+....................s................................................... [ 20%]
+........................................................................ [ 23%]
+........................................................................ [ 25%]
+........................................................................ [ 27%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 37%]
+........................................................................ [ 39%]
+........................................................................ [ 41%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 58%]
+........................................................................ [ 60%]
+........................................................................ [ 62%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+........................................................................ [ 72%]
+........................................................................ [ 74%]
+........................................................................ [ 76%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 86%]
+........................................................................ [ 88%]
+...............................................................ss....... [ 90%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+........................................................................ [ 97%]
+......................................................................   [100%]
+============================== warnings summary ===============================
+tests\core\test_experiment_replay.py:184
+  C:\Users\Crux\AppData\Local\Temp\muyun-main-integrate-1fa_exgr\checkout\tests\core\test_experiment_replay.py:184: DeprecationWarning: invalid escape sequence '\+'
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+
+tests\core\test_experiment_replay.py:192
+  C:\Users\Crux\AppData\Local\Temp\muyun-main-integrate-1fa_exgr\checkout\tests\core\test_experiment_replay.py:192: DeprecationWarning: invalid escape sequence '\+'
+    with pytest.raises(ValueError, match="T\+1 批次限制"):
+
+-- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
+3091 passed, 3 skipped, 1 deselected, 2 warnings in 399.29s (0:06:39)
+BLOCKED_IO_ATTEMPTS {'network': 1011, 'subprocess': 12, 'real_state': 2}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+

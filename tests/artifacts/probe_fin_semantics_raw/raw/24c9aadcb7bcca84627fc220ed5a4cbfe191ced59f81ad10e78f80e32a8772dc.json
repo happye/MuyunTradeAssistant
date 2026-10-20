@@ -1,0 +1,33 @@
+{
+ "schema_version": 1,
+ "sha256": "24c9aadcb7bcca84627fc220ed5a4cbfe191ced59f81ad10e78f80e32a8772dc",
+ "archived_at": "2026-09-27T00:39:02+08:00",
+ "content": {
+  "metric": "netProfit",
+  "value": 24882347326.74,
+  "unit": "元",
+  "period_kind": "cumulative",
+  "period_basis": "YTD",
+  "value_kind": "FLOW",
+  "underlying_period_basis": null,
+  "metric_definition_version": "baostock_field_registry_v1",
+  "period_end": "2024-03-31",
+  "published_at": "2024-04-27",
+  "source_uri": "baostock.query_profit_data(code=sh.600519,year=2024,quarter=1)",
+  "source_version": "baostock_financial_v1"
+ },
+ "metadata": {
+  "kind": "baostock_financial_quarterly",
+  "stock_code": "600519",
+  "bs_code": "sh.600519",
+  "year": 2024,
+  "quarter": 1,
+  "queried_at": "2026-09-27T00:39:02+08:00",
+  "source_version": "baostock_financial_v1",
+  "field_registry_version": "baostock_field_registry_v1",
+  "interface": "baostock.query_profit_data(code=sh.600519,year=2024,quarter=1)",
+  "metric": "netProfit",
+  "period_end": "2024-03-31",
+  "published_at": "2024-04-27"
+ }
+}

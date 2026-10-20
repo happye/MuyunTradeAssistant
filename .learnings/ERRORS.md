@@ -1,5 +1,17 @@
 # Errors
 
+## [ERR-20261010-ARCH16] Q审查先猜测路径导致无效搜索
+
+**Logged**: 2026-10-10 | **Status**: resolved | **Area**: review tooling
+
+读取时间/行情助手时猜测quote_context.py、batch_quotes.py及PowerShell路径通配，rg报路径不存在。已先用rg --files发现现有source_time.py，按真实位置复核；无产品改动、无验收结论基于失败搜索。延续既有教训：文件枚举先于猜测路径。
+
+## [ERR-20261010-ARCH14] 恢复入口补丁使用截断的标题上下文
+
+**Logged**: 2026-10-10 | **Status**: resolved | **Area**: review tooling
+
+补丁锚点须来自未截断的原文；链接检查须在目标产物生成后执行。旧专项结果数字与临时索引生成过程已过期，不保留在记忆中。
+
 ## [ERR-20261001-ARCH05] R12 probe fixture missing required model fields
 
 **Logged**: 2026-10-01 | **Status**: resolved | **Area**: review tooling
@@ -489,3 +501,87 @@ R13准备时functions JavaScript字符串引号构造失败；目标runner误写
 **Priority**: low
 
 R14新增LONG探针初版误从decision_contract导入HorizonPlan、继而遗漏plan_id/intent。已按decision_policy定义纠正；最终日志5个失败均为业务断言，构造错误不计产品缺陷。新探针先核对真实类定义/必填字段，不能仅靠子Agent给出的概念输入直接构造。
+
+---
+
+## [ERR-20261009-AUTHORITY] 弱证据越权与跨层资格失守（已关闭）
+
+**Status**: resolved（ISS-117于2026-10-13完成原计划S2a/S2b/S3并经独立只读复核） | **Priority**: high
+
+原专项发现否定公告、缺失数据、零置信度AI及未核验身份可能跨层获得动作权限。此前只读复核未覆盖后续行动说明/独立止盈抑制反例；2026-10-14限定P0/P1/P2补修通过，父Agent全量1962通过且独立Sol/high核对源码与实际日志后PASS，见[R15](../plan/fusion/iteration9/R15_ACCEPTANCE.md)。K1 shadow_v14冻结，后续M2有限只读接线另有1997全量/68定向及独立核7指纹通过；capture_only及G3真实研究/外源/投资效果边界保留。原范围证据见[S2AC验收](../plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)。
+## [ERR-20261015-G3] G3增量审查（分项状态见当前第九轮清单）
+
+复现快照HEAD `28b02e1`：原两个裁剪quote漏洞已独立关闭，但数值文本200/结构100/原文100、利润冒充净利润、后置“上述收入仅为”范围三项仍FACT_CHECKED；父隔离临时反例3/3业务断言失败。另独立临时根确认同一时刻不同offset改变摘要/asm/candidate、同捕获跨期限多次now导致状态与binding分裂；Astra确认综合方法/报告旧effective隔离缺口。六项P1集中在[当前计划](../plan/fusion/iteration9/DELIVERY_PLAN.md)G3-R01–R06，不以本记录代替修复。
+
+父10文件联合206 passed/2 failed；两失败是公开完整链正例缺新条件参数，按G3-R07显式补齐，保留旧文字UNKNOWN反例。原始证据在现有TARGETED_TEST_RESULTS_P.txt。初次Temp外部探针收集遇到不存在的其他临时路径报1 error，未归因，不计业务失败；明确rootdir/confcutdir后成功复现三项。所有父运行外源/子进程/真实状态尝试0，7保护hash与知识库集合不变。实施未验收、全量未跑，旧已验范围不重批。
+
+cc31524增量：父62项目标通过、原三例转绿；独立复验仍发现R01词元/符号/非元单位缺口、R03未知子句回退丢限定/条件/否定及“该收入仅为”绕过。残留合回原两组，不新增问题编号；R02指定反例限定关闭，不能把局部修复升为整批接收。
+
+3b4f07e审批更新：原点名反例已修，但父独立复现2,100→100、万元→万股/%、后置“仅包含”仍FACT_CHECKED；真实旧rule捕获记录不改即进新报告分母。全量2106/15中6红是shadow版本/执行状态产品问题，9红需补当前合法fixture前提。行业真实工具→ChatAgent13334→3918字丢全局不完整提示。输入/修法统一收口原R01/R03/R06和第九轮联验段，未批准整批。TEMP父复跑首次stderr为GBK导致解码错误，统一子进程stdout/stderr及PYTHONIOENCODING后成功；工具错误不计业务红例。
+
+2026-10-16最终更新：上述本批工程缺口已修并限定接收，2261全量/547定向分别通过，受验SHA与独立证据见R15，不重写旧失败快照。真实年报数值格式问题另以完整Decimal词元修复；剩余未支持范围语法保持摘录，MID未建立，不把输入不足登记成交易bug。
+
+## [ERR-20261016-VALIDATION-ENTRY] 测试集合和探针前提必须核实
+
+**Status**: resolved | **Priority**: medium
+
+临时整合脚本把未传tests的guard运行命名FULL_T01，实际是runner默认目标集471项。保留原日志并追加勘误；真正全量显式传tests，FULL_T01_FINAL为2261/0/2skip/1external。临时脚本已加full标签必须显式tests检查，恢复文档也给出完整入口，防止误报计数。
+
+真实原件探针初次用早于CLI实际评估的查询时点，重启只读合理地显示待复核；改为使用实际公开返回的同as_of后，assessment身份与UNESTABLISHED一致。探针错误的嵌套claims格式、缺TradePlan必填/信号槽和Windows平台/NUL启动前提均先修构造再判业务失败；零外联/真实状态守卫不撤销。UI复核者已回传最终PASS与证据，结束turn随后因额度失败，据实记录而不冒称正常完成另一轮全量。
+
+## [ERR-20261016-T01-T04] 本轮原型前提与测试注入（已纠正）
+
+**Status**: resolved | **Priority**: medium
+
+T01首轮83绿1红是fixture把NAV设为当天尚未来到的10:00；固定历史估值时点后84绿，未放宽资格门。独立新增归一别名覆盖/负数量/NaN现金为真实入口问题，边界11红集中修复后五文件101绿，再经17正式边界+10独立格及父全量2301/目标290通过。三类错误不混称投资策略缺陷。
+
+T04首129绿1红是新shared配置stub漏接wrapper转发config_path=None，异常被业务吞掉；修签名并锁实际查询/下游次数后130绿，未弱化expected。执行者将日志误放仓库Temp，两份原件保留并精确复制到系统Temp供既有日志归档；可选移动/清理操作被自动策略拒绝后改为只复制，未绕过拒绝删文件，也不影响产品验证。保护账户/知识库不变。
+
+## [ERR-20261016-GROK-AUDIT] 测量不能代替修复，验证资产也要核前提
+
+**Status**: resolved | **Priority**: medium
+
+Grok102份T05正式测试未改生产，还将future-cache行为锁正例；本轮以真实未来时点与部分写失败先红后修，独立审查/2730全量通过。G4原型漏期末相对截止门，4正式反例先红、修后49正式/2独立反例通过。独立混Temp与仓库目标收集曾报FileNotFoundError，拆轮复跑通过，原日志保留，不充业务红。主控一次只回显运行工具output漏报后台session_id，改以唯一receipt监视，没有重复开全量。逐文件HEAD实核T05为16332行，纠正定位估数14634；Windows rg路径glob及git ls-tree通配无结果已改为明确目录枚举，不把空结果当验证通过。
+
+## [ERR-20261016-G4-SIDEBAR] 文本出处遗漏与测试定位前提
+
+**Status**: resolved | **Priority**: medium
+
+首轮新命令测试错以为datetime为CLI模块属性，实际函数局部import；按真实命令时钟修fixture后通过，未放宽期限。独立审发现JSON有引用但文本只写“核对所列原件”，真实合同1红落正式，补≤2份留样编号、剩余入口及中文隔离原因后20独立增量/2749全量通过。第一全量2749不覆盖该尾项，第二全量绑定补后SHA，原日志均保留。一次读取误指scripts/review_test_runner.py已改为现有iteration9入口，不计产品失败。
+
+
+### ERR-20261016-FIN-IDENTITY｜响应行借请求代码自证主体
+
+Status: resolved_new_capture_only。请求600519/指定季度，替身返回别股或错期，旧get_financial_quarterly仍产生请求股证据；正式修前93红。统一核返回证券/交易所和完整精确季末后，raw/索引/记录同源；父审补规范别名skip，防修后重复请求。最终272定向、独立122及2844全量过门，7保护hash稳定。旧raw不补证，供应商版本/单位映射/评估/接受态不变，详见现有R15及ISS-119。
+
+
+### ERR-20261017-CASH-INTAKE｜公开入口与不可变回执尾项
+
+Status: resolved_v39_intake_only。公开导入分支修前2红（误入旧研究并产生4次被阻断网络尝试）；路径引号/反斜杠、多空格及Decimal超过28位的冲突指纹均落正式反例。独立静态发现as_of派生supplier状态污染材料ID、回读未重判未来、撞同名文件无界读和提取失败无具体原因，正式8红后集中修复，最终79目标通过；父9文件262及2889全量通过。坏原件不授资格、旧接受态/默认保持。
+
+验证资产问题另列：Temp与仓库混合目标导致收集FileNotFoundError，不算产品红；Windows CPython subprocess审计实际是executable=None和list2cmdline字符串，按list比较的临时白名单阻断合法worker，6项已验、2项未验，须按本机代码修正紧控入口再补两项。不能将注入提取器/worker未启动称为真实PDF通过。首次无效append patch无文件变化，已改为明确有标记的幂等追加。原始日志都保留在现有TARGETED，不回填假绿。
+
+补核完成：临时Windows白名单核精确venv默认None/完整list2cmdline及SHA，08真worker通过；01只读断言误含普通research原评估/草稿写，按既有合同改为getter和cash子树后仅补01通过。分轮6+1+1关闭8独立项，真实worker共5次；未改产品或原guard来迎合探针，证据见原R15/index。
+
+
+### ERR-20261017-CASH-NUMERIC｜真实表头、并发与短上下文先红后修
+
+Status: resolved_v40_local_numeric_only。首入口1红；真实PDF单位上下文1红/93绿，修“编制单位”误匹配后通过；并发barrier首轮缺追溯字段、确定性两线程再次复现同proof双展示，各1红；context资源组1红/11绿/41未选，增加存前200词元/系数及400指数预算。最终98正式、3次实际worker、父172/独立8及2942全量通过，旧资格不晋级。
+
+实施者未将5个红执行即时写独立文件，只有原runtime工具输出。主控从真实session恢复5个原custom_tool_call_output事件逐字归档到既有TARGETED（恢复件SHA e007acd3…），没有重跑或补造红日志；本轮v41派发已明确红绿执行开始就保存完整日志。PDF skill旧缓存路径已迁新版本，限定目录定位到26.1015.12040后用现有Poppler只读渲染；原PDF未改。视觉页号前两张需08/09补零，按实际文件名修读取，不把工具文件定位错误当数据问题。
+
+### ERR-20261017-DSH-SDK-RESUME｜跨进程同会话实测失败
+
+Status: investigating。现有Python SDK在同一运行实例内可续接，但关闭运行时后直接以同一home/session_id调用run，SDKserver仍执行agents.create，抛session already exists。第一轮真实开发成功、父7项通过，第二轮在模型请求前失败；不能以Fake回执仅核session_id相等冒称恢复通过。原始红证据保留在G:/Tools/DeepseekHarness/codex-dsh/tasks/d4175bb5d27a4545b7d4030da948087b/worker.log及round-2记录；原session与首轮receipt未删除。当前裁决是评估默认关闭、显式启用的公开agents.resume路径，未将新会话+文本回放冒充续接。
+
+### ERR-20261020-LOCAL-AUTH-HELPER｜脚本生成与启动先后校验
+
+Status: resolved_helper_ui_only。JS String.raw内嵌PowerShell的反引号换行符导致模板提前结束，脚本未生成而后续Start-Process仍执行；未发生原生认证或模型请求。改为直接补丁写独立脚本、UTF8 BOM、PowerShell AST零错后再启动，不再嵌套模板。Start-Process Hidden连首次WinForms对话框也隐藏，PID存活不证明用户可见；已用user32按本次PID和精确标题仅显示自有认证窗口，IsWindowVisible实际为true。后续此类用户交互助手用正常窗口启动，不套后台服务Hidden规则；仅语法/窗口通过，不证明已认证或DSH协作通过。
+
+### ERR-20261020-DSH-CWD-SPELLING｜工作区注册与session路径字面值冲突
+
+Status: current_binding_resolved_tool_gap_open。CLI以G:/创建session，workspace/create返回fs.realpath规范G:\路径，随后session/create(workspaceId)在ensureSession的原始cwd相等门拒绝RPC；控制器只暴露RPC_REJECTED。该空task未发送模型请求，保留不删除。新建规范cwd的task后正常API绑定与成员回读成功，未修改部署、旧session头或绕门。拒绝后的Node25进程还出现UV_HANDLE_CLOSING断言，单次观察不足定根因；工具长期待办分别跟踪路径封装和错误诊断，不写成已修源码。
+
+### ERR-20261020-CLEAN-INTEGRATION｜公开夹具缺失与Windows隔离路径误拒
+
+Status: resolved_in_integration_final_full_3091_passed。临时detached合并树全量3082通过/3失败：两例因5份公开PDF只存在原工作区ignored目录，一例为同临时根并发mkdir被路径判断拒绝。5份PDF已逐个核既有manifest的SHA后精确补齐，63项相关测试通过；同根被拒的Windows扩展前缀机制通过真实ntpath分支替身复现，1红→51绿。原一次失败未记录resolved值，不能追溯证明其具体前缀。最终全量及停止指纹见本轮R15/REVIEW_INDEX与既有日志；不删失败证据、不开放真实状态写入。

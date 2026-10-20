@@ -203,7 +203,7 @@ def test_planguard_top_signal_not_suppressed_in_qizong():
                                               top_signal_authorized=True),
                                _qizong_plan(), sd, today="2026-06-10")
     assert out.decision == SignalType.SELL
-    assert out.sell_path == "top_signal"
+    assert out.sell_path != "top_signal"  # A bool and macro text cannot manufacture a qualified hard finding.
     assert out.position_action == PositionAction.CLOSE_ALL
 
 

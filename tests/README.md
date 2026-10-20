@@ -17,6 +17,8 @@
 | `tests/evidence/` | 随交付入库的证据包脚本与机器可读清单（如 k3_original_pilot：清单/离线复验入口/登记工具；PDF 大文件单独存 artifacts，获取方式见清单 source_url） | 收集 |
 | `tests/rag_eval/` | RAG 检索质量评估工具 | 收集期排除 |
 
+便携性例外：`test_cash_numeric_verification.py::test_real_fixture_pdf_pages_and_four_complete_supplier_payloads`离线正式用例依赖固定公开原件`tests/artifacts/k3_original_pilot/600519_2024Q1.pdf`及`tests/artifacts/probe_fin_semantics_raw/raw/`中的4份指定净利润/现金比率JSON。这5项随里程碑精确入库，不能只在本机ignored目录存在；另有 L3 六点离线复算依赖同一清单中的其余5份公开PDF（000002的Q1/H1/Q3及600519的H1/Q3），一并精确入库；路径和SHA以`tests/evidence/k3_original_pilot/evidence_manifest.json`为准。其他artifacts仍为本地历史产物，不整目录上传。PDF固定SHA及JSON匹配规则由正式用例核对。
+
 ## 常用命令
 
 ```bash

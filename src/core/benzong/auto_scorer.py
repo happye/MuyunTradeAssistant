@@ -45,7 +45,7 @@ class AutoScoredResult:
     cache_hits: list = field(default_factory=list)
     fetch_status: dict = field(default_factory=dict)
     invalidate: bool = False                         # 风险维度触发的一票否决
-    is_self_reliance: bool = False                    # 自主可控概念（教学九，建仓强制剑宗的依据）
+    is_self_reliance: bool = False                    # 自主可控概念（教学九，仅作研究标签）
     market_turnover: Optional[float] = None          # 全市场成交额(万亿)，供流动性状态展示
     # 报告2.1 笨总教学八板块层信号建仓标注（一次轻量 AI 标注）
     flagbearer_code: Optional[str] = None              # 板块旗手代码（持有期检查旗手滞涨）
@@ -60,7 +60,7 @@ def _build_ai_client(config: Optional[dict] = None):
     """
     try:
         if config is None:
-            from src.cli.main import load_config
+            from src.config import load_config
             config = load_config()
         ai_cfg = config.get("ai", {})
         provider = ai_cfg.get("provider", "deepseek")
@@ -106,7 +106,7 @@ def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
         # v0.8.28.1（架构师裁决 2026-10-08）：prompt 加「不适用/证据不足」出口——
         # 渗透率只适用于有明确渗透对象的新兴产品，银行/基建等成熟行业此前被迫
         # 四选一（AI 挑了语义最近的 30+），导致板块层 P1 对无渗透率语义行业
-        # 永久触发强制清仓（docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md）。
+        # 永久触发强制清仓（plan/fusion/signal_authority_review/IMPLEMENTATION_REPORT.md）。
         prompt = (
             f"判断股票 {name or code} (行业: {industry_name or '未知'}) 的板块属性:\n"
             "1. flagbearer_code: 该行业最核心的旗手股票代码(6位数字, 不带前缀), "
@@ -255,7 +255,7 @@ def auto_score(
         market_turnover = 1.0  # 中性默认
         logger.debug("市场成交额未获取，流动性系数用 1.0")
 
-    # 自主可控概念检测（笨总教学九 / 视频理念优化报告 1.3）--建仓 mode 判定时强制剑宗的依据
+    # 自主可控概念检测（笨总教学九 / 视频理念优化报告 1.3）--不授权模式改变
     # 仅计算，警告在 Step 6 all_warnings 汇总处追加
     from src.core.benzong.self_reliance import detect_self_reliance_from_summary
     is_self_reliance = detect_self_reliance_from_summary(data_summary)
@@ -290,11 +290,11 @@ def auto_score(
     if invalidate_flag:
         all_warnings.insert(0, "🚨 一票否决：风险维度发现红线（叛国/违禁/造假），强烈建议放弃本标的")
 
-    # 自主可控概念警告（笨总教学九 / 报告 1.3）--建仓 mode 强制剑宗，不长持
+    # 自主可控概念警告（笨总教学九 / 报告 1.3）--产业研究提示，不改变持有政策
     if is_self_reliance:
         all_warnings.append(
             "⚠ 自主可控概念（教学九）：笨总提示此类标的波动大、炒短期情绪，"
-            "不宜长期持有，建仓 mode 强制剑宗（不长持）。如不认可可手动改 portfolio.yaml 的 mode"
+            "产业标签尚需核实，仅作研究提醒；持有模式和期限按已接受计划执行"
         )
 
     # 大前提警告（行业景气度=0）

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ISS-117 QR5 日历完整性验收测试（v0.8.29.6，架构师 QR5_ACCEPTANCE.md）。
+"""ISS-117 QR5 日历完整性验收测试（v0.8.29.6，冻结合同见 plan/fusion/signal_authority_review/S2_DESIGN.md）。
 
 三个红反例语义落正式回归（架构师探针 qr5_coverage_probes 的业务语义，自包含实现）：
 

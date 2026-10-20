@@ -184,18 +184,27 @@ def test_diff_change_text_compact():
 
 def test_ai_diff_interpretation_no_key_returns_empty(monkeypatch, tmp_path):
     import src.cli.main as M
-    monkeypatch.setattr(M, "load_config", lambda: {"ai": {"provider": "deepseek",
-                                                          "deepseek": {"api_key": ""}}})
+    import src.config as config_module
+    calls = []
+    def load_config(config_path=None):
+        calls.append("config")
+        return {"ai": {"provider": "deepseek", "deepseek": {"api_key": ""}}}
+    monkeypatch.setattr(config_module, "load_config", load_config)
     # 环境变量兜底也要清掉（本机有 DEEPSEEK_API_KEY——否则测试会发真实 API 调用）
     monkeypatch.delenv("DEEPSEEK_API_KEY", raising=False)
     d = {"changes": {"decision": ("HOLD", "SELL")}, "signal_changes": [], "new_warnings": []}
     assert M._ai_diff_interpretation(d) == ""  # 无 key 静默空串，事实对比不受影响
+    assert calls == ["config"]
 
 
 def test_ai_diff_interpretation_empty_changes_skips_call(monkeypatch):
     import src.cli.main as M
+    import src.config as config_module
     calls = []
-    monkeypatch.setattr(M, "load_config", lambda: {"ai": {"provider": "deepseek",
-                                                          "deepseek": {"api_key": "sk-x"}}})
+    def load_config(config_path=None):
+        calls.append("config")
+        return {"ai": {"provider": "deepseek", "deepseek": {"api_key": "sk-x"}}}
+    monkeypatch.setattr(config_module, "load_config", load_config)
     d = {"changes": {}, "signal_changes": [], "new_warnings": []}
     assert M._ai_diff_interpretation(d) == ""  # 无变化不发请求
+    assert calls == []

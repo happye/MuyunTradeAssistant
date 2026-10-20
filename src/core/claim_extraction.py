@@ -28,6 +28,7 @@ import logging
 import math
 import re
 from datetime import datetime, timezone
+from decimal import Decimal
 from enum import Enum
 from typing import Optional
 
@@ -41,10 +42,10 @@ CLAIM_SCHEMA_VERSION = "f6.v1"
 # R2 分级核验协议（DATA_TRUST §4）——历史 f6.v1/v2/cv2 标签和结果保留，新协议单独命名。
 # G3: cv4 adds source-local reporting period, geography and business-object binding.
 # Historical verification labels remain historical; revalidation uses the new rules.
-CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv5"
+CLAIM_VERIFICATION_PROTOCOL_VERSION = "cv6"
 # J0/K0b 类型化事实核验范围规则版本（DELIVERY_PLAN J0a/K0b-1：只有支持该类型的确定性
 # 规则完整验证才进 FACT_CHECKED；改动关键词表/绑定规则必须 bump——旧核验结果不冒充新语义）
-TYPED_RULE_VERSION = "g3.binding_v3"
+TYPED_RULE_VERSION = "g3.binding_v4"
 
 # 核验范围闭集（verification_scope；""=自由文本——最高只能 EXCERPT_GROUNDED）
 SCOPE_NUMERIC_EVENT = "typed_numeric_event"
@@ -431,10 +432,12 @@ _QUANTITY_SCALES = (
     ("%", "percent", 1.0),
     ("倍", "multiple", 1.0),
 )
+_NUMBER_TOKEN = r"(?:[0-9]{1,3}(?:,[0-9]{3})+|[0-9]+)(?:\.[0-9]+)?"
 _AMOUNT_TOKEN_RE = re.compile(
-    r"(?<![0-9.．])(?P<sign>[-－−])?(?P<number>[0-9][0-9,]*(?:\.[0-9]+)?)"
-    r"(?P<range>[-~～至–—][0-9]+(?:\.[0-9]+)?)?"
-    r"(?P<unit>亿元|万元|亿股|万股|元|股|%|倍)"
+    r"(?<![0-9.．,，eE+＋\-－−])(?P<sign>[-－−+＋])?[ \t　]*"
+    + r"(?P<number>" + _NUMBER_TOKEN + r")"
+    + r"(?P<range>[ \t　]*[-~～至–—][ \t　]*" + _NUMBER_TOKEN + r")?"
+    + r"[ \t　]*(?P<unit>亿元|万元|亿股|万股|元|股|%|倍)"
 )
 
 
@@ -447,49 +450,17 @@ def _quantity_family(unit: str):
 
 def _canonical_quantity(value: float, unit: str):
     found = _quantity_family(unit)
-    if found is None or not math.isfinite(value):
+    if (found is None or not isinstance(value, (int, float, Decimal))
+            or isinstance(value, bool) or not math.isfinite(value)):
         return None
     family, scale = found
-    return family, float(value) * scale
-
-
-def _numeric_text_variants(value: float, unit: str) -> list[str]:
-    """(value, unit) 在原文中的候选文本形态（同族单位换算 + 千分位）。
-    非有限值（NaN/inf——JSON 非标扩展可产生）返回空（不做数值检查，审查 P2）。"""
-    if not isinstance(value, (int, float)) or isinstance(value, bool) \
-            or not math.isfinite(value):
-        return []
-    out: list[str] = []
-    base_forms = [f"{value:g}"]
-    if value == int(value):
-        base_forms.append(f"{int(value):,}")
-    found = _quantity_family(unit)
-    if found is not None:
-        family, scale = found
-        base = float(value) * scale
-        for other, other_family, other_scale in _QUANTITY_SCALES:
-            if other_family != family:
-                continue
-            v = base / other_scale
-            if v == int(v) and v > 0:
-                out.append(f"{int(v):,}{other}")
-                out.append(f"{int(v)}{other}")
-                if v < 1:  # 小数元值（0.5亿）
-                    out.append(f"{v:g}{other}")
-    for f in base_forms:
-        out.append(f"{f}{unit}" if unit else f)
-        if unit:
-            out.append(f"{f} {unit}")
-    return [s for s in out if s.strip()]
+    return family, Decimal(str(value)) * Decimal(str(scale))
 
 
 # K0b/D1：绑定元组核验的原文局部（子句）切分——数值/谓词/否定对象必须在同一子句内
 _CLAUSE_SPLIT_RE = re.compile(r"[。！？；;!?，,、\n\r]")
 # G3 范围绑定用句子，不用逗号。逗号留在句内，调用方裁短的 quote 不能把期间/地域/产品切掉。
 _SENTENCE_SPLIT_RE = re.compile(r"[。！？；;!?\n\r]")
-# 词元边界补充（K0b/D1c）：前一字符为小数点（半角/全角）= 小数尾部，不是独立数值
-_DECIMAL_BOUNDARY_CHARS = ".．"
-_NEGATIVE_SIGNS = "-－−"
 
 
 def _clauses_with_spans(text: str) -> list[tuple[str, int, int]]:
@@ -518,47 +489,27 @@ def _clauses_with_spans(text: str) -> list[tuple[str, int, int]]:
     return merged
 
 
-def _find_value_occurrences(quote: str, variants: list[str]) -> list[dict]:
-    """在摘录中定位 (value, unit) 的文本形态（K0b/D1 绑定核验的定位层）。
+def _find_value_occurrences(quote: str, value: float, unit: str) -> list[dict]:
+    """Locate complete amount tokens by family and exact decimal magnitude.
 
-    每个命中返回 {variant, start, end, text_negative}：
-    - 词元边界（J0 继承+K0b 收紧）：前一字符不得是数字或小数点（「0.900 万元」
-      不得命中「900 万元」；「1900 万元」不得命中「900 万元」）；token 以数字结尾
-      时后一字符不得是数字（「900」不得命中「9000」）
-    - 符号绑定（K0b/D1b）：token 自带负号，或跳过空白后前一字符是负号（-／－／−）
-      → text_negative=True
+    Formatting does not determine equality: grouped decimals, trailing zeroes
+    and same-family units share one parser. Preserve original offsets and sign
+    for the independent predicate, source-scope and sign checks. Ranges cannot
+    supply a realized point, including when an endpoint equals the target.
     """
-    out: list[dict] = []
-    for token in variants:
-        if not token:
+    target = _canonical_quantity(value, unit)
+    if target is None:
+        return []
+    out = []
+    for match in _AMOUNT_TOKEN_RE.finditer(quote):
+        if match.group("range"):
             continue
-        token_negative = token.lstrip().startswith(tuple(_NEGATIVE_SIGNS))
-        start = 0
-        while True:
-            i = quote.find(token, start)
-            if i < 0:
-                break
-            j = i + len(token)
-            prev = quote[i - 1] if i > 0 else ""
-            nxt = quote[j] if j < len(quote) else ""
-            # 注意：prev 为空串时 `prev in X` 恒真（空串是任何串的子串）——
-            # 边界字符判定必须带非空前置
-            if prev.isdigit() or (prev and prev in _DECIMAL_BOUNDARY_CHARS) or \
-                    (nxt.isdigit() and token[-1].isdigit()):
-                start = i + 1
-                continue
-            k = i - 1
-            while k >= 0 and quote[k] in " 　":
-                k -= 1
-            text_negative = token_negative or (
-                k >= 0 and quote[k] in _NEGATIVE_SIGNS
-                # K0b 审查 P2-5：负号自身前后都是数字（"100-200万"）= 区间连接符，
-                # 不是负值——不得把合法区间上界误判成负数
-                and not (k > 0 and quote[k - 1].isdigit()
-                         and k + 1 < len(quote) and quote[k + 1].isdigit()))
-            out.append({"variant": token, "start": i, "end": j,
-                        "text_negative": text_negative})
-            start = j
+        parsed = _canonical_quantity(
+            Decimal(match.group("number").replace(",", "")), match.group("unit"))
+        if parsed is None or parsed[0] != target[0] or parsed[1] != abs(target[1]):
+            continue
+        out.append({"variant": match.group(), "start": match.start(), "end": match.end(),
+                    "text_negative": match.group("sign") in ("-", "－", "−")})
     return out
 
 
@@ -633,10 +584,10 @@ def _iter_amount_tokens(text: str):
         if found is None:
             continue
         family, scale = found
-        number = float(match.group("number").replace(",", ""))
-        if match.group("sign"):
+        number = Decimal(match.group("number").replace(",", ""))
+        if match.group("sign") in ("-", "－", "−"):
             number = -number
-        yield family, number * scale
+        yield family, number * Decimal(str(scale))
 
 
 def _statement_quantity_status(statement: str, value: float, unit: str, event_type: str) -> str:
@@ -660,9 +611,9 @@ def _statement_quantity_status(statement: str, value: float, unit: str, event_ty
         return "range"
     same = [item for item in amounts if item[0] == target[0]]
     if not same:
-        return "absent"
+        return "conflict"
     matched = [item for item in same
-               if math.isclose(item[1], target[1], rel_tol=1e-9, abs_tol=1e-6)]
+               if item[1] == target[1]]
     pattern = _FACT_ORDER_RE if event_type == "order" else _FACT_FINANCIAL_RE
     if pattern.fullmatch(compact):
         return "match" if len(same) == 1 and matched else "conflict"
@@ -689,9 +640,15 @@ def _siblings_keep_value_clause(clauses, event_type: str, value_fields: dict) ->
 
 
 # Demonstrative restrictions the current grammar cannot bind back to the value.
+_REFERENCE_METRIC = (
+    r"营业收入|业务收入|收入占比|净利润|收入|利润|净利|营收|订单|合同|占比|份额"
+)
 _UNBOUND_ANAPHORA_RE = re.compile(
-    r"(?:上述|前述|该|此).{0,12}(?:收入|利润|净利|营收|订单|占比)"
-    r".{0,8}(?:仅为|只为|仅指|仅是)"
+    # Bind to the first recognized metric after the demonstrative in this
+    # sentence. Unknown modifiers/whitespace cannot prove the reference absent;
+    # a different first metric must not capture every later metric in the text.
+    r"(?:上述|前述|该|此)[^。！？；;!?\n\r]*?"
+    + r"(?P<metric>" + _REFERENCE_METRIC + r")"
 )
 
 
@@ -737,9 +694,7 @@ def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]]
     earlier = source_text[:start]
     if re.search(_FACT_PERIOD + "|" + _FACT_REGION + r"|业务|产品|项目", earlier):
         return "unknown", "数值前文存在跨句范围限定，有限语法不推断其继承关系"
-    rest = source_text[end:]
-    if _UNBOUND_ANAPHORA_RE.search(rest):
-        return "unknown", "数值后文存在未能绑定的指代限定，有限语法不把它当成无范围"
+    bound_text = sentence_text
     source = _parse_fact_scope(sentence_text, claim.event_type)
     if source is None and occurrences:
         rel = occurrences[0]["start"] - start
@@ -753,9 +708,24 @@ def _source_fact_scope(claim: ClaimRecord, sentences: list[tuple[str, int, int]]
         value_fields = _parse_fact_scope(value_clause, claim.event_type) if value_clause else None
         if value_fields and _siblings_keep_value_clause(others, claim.event_type, value_fields):
             source = value_fields
+            bound_text = value_clause
     statement = _parse_fact_scope(claim.statement, claim.event_type)
     if source is None or statement is None:
         return "unknown", "报告期/地域/业务对象含未支持修饰或多解句式，范围未能唯一解析"
+    # References qualify the metric attached to this amount, not the first
+    # unrelated metric in a supported multi-fact sentence.
+    order_metric = re.search(r"订单|合同", bound_text) if claim.event_type == "order" else None
+    source_metric = source.get("metric") or (order_metric.group() if order_metric else "")
+    if source_metric and any(
+            m.group("metric") in source_metric or source_metric in m.group("metric")
+            for m in _UNBOUND_ANAPHORA_RE.finditer(source_text[end:])):
+        return "unknown", "数值后文存在未能绑定的指代限定，有限语法不把它当成无范围"
+    # All four representations must bind the same complete quantity. Parsing
+    # the scope grammar alone does not compare its amount to structured input.
+    for text in (sentence_text, claim.statement):
+        quantity = _statement_quantity_status(text, claim.value, claim.unit, claim.event_type)
+        if quantity != "match":
+            return "unknown", "完整原文局部与主张的数值/符号/单位未能唯一绑定"
     fields = (("period", "报告期"), ("region", "地域"),
               ("business", "业务对象"), ("object_kind", "业务对象类别"))
     for field, label in fields:
@@ -942,11 +912,10 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
         # K0b/D1：数值定位带符号与边界——返回出现点列表（含 text_negative），
         # 供数值一致、符号绑定与同子句谓词绑定共用
         direct_occ = _find_value_occurrences(
-            claim.quote_text, _numeric_text_variants(claim.value, claim.unit))
-        scaled_occ = _find_value_occurrences(
-            claim.quote_text,
-            _numeric_text_variants(claim.value * 100, claim.unit)
-            + _numeric_text_variants(claim.value / 100, claim.unit))
+            claim.quote_text, claim.value, claim.unit)
+        scaled_occ = (
+            _find_value_occurrences(claim.quote_text, Decimal(str(claim.value)) * 100, claim.unit)
+            + _find_value_occurrences(claim.quote_text, Decimal(str(claim.value)) / 100, claim.unit))
         if not direct_occ and scaled_occ:
             return _reject("数值与摘录相差 100 倍（单位错位）——按摘录应为 "
                            f"{scaled_occ[0]['variant']!r}（若非同一事项请人工修正摘录）")
@@ -1009,11 +978,13 @@ def verify_claim_tiered(claim: ClaimRecord, documents: Optional[list],
             return _reject("主张文字中的金额与结构化数值不一致")
         if quantity == "range":
             return _cap_excerpt_grounded("主张文字是区间，不能核成已实现单点——需人工核对")
+        if quantity != "match":
+            return _cap_excerpt_grounded("主张文字缺少可绑定的完整数值与单位——需人工核对")
         if any(m in claim.quote_text for m in _OTHER_SUBJECT_MARKERS):
             return _review("摘录含同行/竞对表述——数值可能属于其他主体，需人工核对归属")
         # 期间/地域/业务对象绑定正文里包含该数值的那一句，不绑定调用方裁短的 quote。
         body_occurrences = _find_value_occurrences(
-            matched.body, _numeric_text_variants(claim.value, claim.unit))
+            matched.body, claim.value, claim.unit)
         body_sign = [o for o in body_occurrences if o["text_negative"] == claim_negative]
         if any(_amount_is_range_bound(matched.body, o["start"]) for o in body_sign):
             return _cap_excerpt_grounded("区间端点不能核成已实现单点——需人工核对")

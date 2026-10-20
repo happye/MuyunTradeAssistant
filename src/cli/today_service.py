@@ -5,7 +5,7 @@
 推荐新票。
 
 数据源（全部 F1 已落地的事实/建议分离语义）：
-- PortfolioManager.list_positions()——已确认持仓（事实）
+- PortfolioManager.request_account_facts()——已确认持仓（事实）
 - PortfolioManager.pending_proposals()——待确认建议（"这是建议，尚未记为成交"）
 - session_state 观察池——等待条件组
 - holding_verification——LEGACY_UNVERIFIED 核对提示
@@ -19,7 +19,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field
 
-from src.data.portfolio import PortfolioManager
+from src.data.portfolio import PortfolioManager, _normalize_stock_code
 
 _ACTION_CN = {"OPEN": "建仓", "ADD": "加仓", "REDUCE": "减仓", "CLOSE_ALL": "清仓"}
 
@@ -31,6 +31,11 @@ class TodayCard(BaseModel):
     stock_name: str = ""
     bucket: str = Field(description="needs_action / waiting / holding")
     lines: list[str] = Field(default_factory=list)
+    position_state: str = ""
+    quantity: Optional[int] = None
+    confirmed_weight: Optional[float] = None
+    weight_reason: str = ""
+    account_version: str = ""
 
 
 class TodayView(BaseModel):
@@ -42,6 +47,8 @@ class TodayView(BaseModel):
     notices: list[str] = Field(default_factory=list, description="全组提示（LEGACY 核对等）")
     account: list[str] = Field(default_factory=list, description="账户事实区（J2：同一账户服务——现金/股数/隔离冻结；空=无数量级账本）")
     as_of: str = ""
+    account_version: str = ""
+    holdings_incomplete: bool = False
 
     @property
     def needs_action_count(self) -> int:
@@ -57,32 +64,56 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
     用户走查——只给数量用户不知道「在等什么」，需逐只列出）。
     risk_profile: 用户风险档（settings.yaml fusion.risk_profile，ISS-108）——
     逐只显示单股额度占用；行业映射未接线，industry_max 暂不核对（如实标注）。
-    account: AccountSnapshot（J2——today 调同一账户服务的读模型）：现金/股数/
-    隔离冻结如实显示；None=无数量级账本（保留比例视图，不发明数字）。"""
+    account_facts: 同请求 RequestAccountFacts，清单/上下文/账户区共享快照与版本。
+    account: 旧直调兼容 AccountSnapshot（J2——today 调同一账户服务的读模型）：现金/股数/
+    隔离冻结、卡片与版本共用显式快照；None=缺省读取，account_facts 优先。"""
     from datetime import datetime
     view = TodayView(as_of=datetime.now().strftime("%Y-%m-%d %H:%M"))
-    # G3/M0：account_facts=请求级账户事实（RequestAccountFacts）——today 与 l/la 消费
-    # 同一快照：账户事实区取其 snapshot（不再在 main 里二次读账本），持仓清单补入
-    # 账本独有持仓，读取失败/清单不全如实提示。显式 account 参数仍优先（旧调用兼容）。
-    ledger_only: list = []
     if account_facts is not None:
-        if account is None:
-            account = getattr(account_facts, "snapshot", None)
-        if getattr(account_facts, "read_failed", False):
-            view.notices.append("账户事件账本读取失败——今日账户事实区跳过（不影响持仓/建议显示）")
-        try:
-            entries, incomplete = account_facts.holding_entries()
-            ledger_only = [e for e in entries if getattr(e, "from_ledger", False)]
-            if incomplete:
-                view.notices.append("⚠ 持仓清单可能不完整（账本读取失败/隔离事件/持仓文件异常）——"
-                                    "下方未列出不代表空仓，请先对账")
-        except Exception as e:  # 清单读取失败不阻断今日视图
-            view.notices.append(f"⚠ 持仓清单读取失败（{type(e).__name__}）——下方可能不完整，请先对账")
-    positions = {p.stock_code: p for p in pm.list_positions()}
+        facts = account_facts
+    elif account is not None:
+        facts = pm.request_account_facts(account_snapshot=account)
+    else:
+        facts = pm.request_account_facts()
+    entries, incomplete = facts.holding_entries()
+    positions = {p.stock_code: p for p in entries}
+    contexts = {code: facts.context_for(code) for code in positions}
+    view.account_version = facts.account_version
+    view.holdings_incomplete = incomplete
+    account = getattr(facts, "account_snapshot", None)
+    if incomplete:
+        view.notices.append("持仓清单可能不全——账户未对账，不能据此证明空仓")
+    for code, reason in facts.projection_gaps.items():
+        view.notices.append(f"{code} {reason}")
+    if getattr(facts, "_read_failed", False):
+        view.account.append("账户账本读取失败——账户事实未知，不能证明空仓；下一次命令重新读取")
+    if view.account_version:
+        view.account.append(f"账户版本 {view.account_version}")
+
+    def holding_detail(card, code):
+        ctx = contexts[code]
+        card.position_state = ctx.position_state
+        card.quantity = ctx.quantity
+        card.confirmed_weight = ctx.confirmed_weight
+        card.weight_reason = ctx.weight_reason
+        card.account_version = ctx.account_version
+        state = {"HELD": "持有", "NONE": "无持仓", "UNKNOWN": "持仓待核"}.get(ctx.position_state, "持仓待核")
+        snapshot = getattr(facts, "account_snapshot", None)
+        ledger_codes = {_normalize_stock_code(h.security_id) for h in snapshot.holdings
+                        if h.quantity > 0} if snapshot is not None else set()
+        source = "事件账本" if code in ledger_codes else "数量投影"
+        if ctx.position_state == "UNKNOWN":
+            source = "旧数量投影，待核"
+        quantity = (f"持仓 {ctx.quantity}股（{source}）" if ctx.quantity is not None
+                    else "股数未记录/待核")
+        weight = (f"仓位 {ctx.confirmed_weight:.0%}" if ctx.confirmed_weight is not None
+                  else "权重待对账/待重估")
+        return f"{state} ｜ {quantity} ｜ {weight} ｜ {ctx.weight_reason}"
+
     pending = pm.pending_proposals()
     pending_by_code: dict[str, list] = {}
     for prop in pending:
-        pending_by_code.setdefault(prop.stock_code, []).append(prop)
+        pending_by_code.setdefault(_normalize_stock_code(prop.stock_code) or prop.stock_code, []).append(prop)
 
     # 需要处理：有未确认建议的持仓（建议≠成交——用户可见主线）
     for code in sorted(pending_by_code):
@@ -102,13 +133,7 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
                 f" ｜ {prop.created_at[:10]} 来自 {prop.source or '?'}"
                 f" ｜ 实际成交后: pos confirm {code}")
         if pos is not None:
-            # L1（V3）：数量账户权重待重估——如实显示数量事实，不冒充已知比例
-            if pos.weight_unknown:
-                card.lines.append(
-                    f"持仓 {pos.quantity_held}股（[权重待重估]——数量账户比例视图过期，"
-                    "估值与NAV齐后自动锁定）")
-            else:
-                card.lines.append(f"当前持仓 {pos.current_ratio:.0%}（记录未变——建议尚未记为成交）")
+            card.lines.append(holding_detail(card, code) + "（记录未变——建议尚未记为成交）")
         view.needs_action.append(card)
 
     # 继续持有：无待办的持仓
@@ -124,44 +149,27 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
         if code in pending_by_code:
             continue
         pos = positions[code]
-        if pos.holding_verification == "LEGACY_UNVERIFIED":
+        ctx = contexts[code]
+        metadata = ctx.projection
+        if metadata is not None and metadata.holding_verification == "LEGACY_UNVERIFIED":
             legacy_count += 1
         card = TodayCard(stock_code=code, stock_name=pos.stock_name, bucket="holding")
-        # L1（V3）：数量账户权重待重估——显示数量事实，不用过期比例做超限判断
-        # （T01：过期比例不得给风险预算）
-        if pos.weight_unknown:
-            detail = f"持仓 {pos.quantity_held}股（[权重待重估]——比例视图过期）"
-            if pos.entry_price and pos.entry_price > 0:
-                detail += f" ｜ 成本 {pos.entry_price}"
-            if pos.lifecycle:
-                detail += f" ｜ {pos.lifecycle}"
-            card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
-            view.holding.append(card)
-            continue
-        detail = f"仓位 {pos.current_ratio:.0%}"
-        if pos.entry_price and pos.entry_price > 0:
-            detail += f" ｜ 成本 {pos.entry_price}"
-        if pos.lifecycle:
-            detail += f" ｜ {pos.lifecycle}"
-        if cap is not None and cap > 0:
-            detail += f" ｜ 单股额度 {pos.current_ratio:.0%}/{cap:.0%}"
-            if pos.current_ratio > cap + 1e-9:
-                over_cap.append(f"{code} {pos.stock_name} {pos.current_ratio:.0%}")
-        card.lines.append(f"{detail} ｜ 无待办——今天不用操作")
-        view.holding.append(card)
-    # G3：账本独有持仓（无投影元数据）——只显示数量事实，不伪造成本/比例
-    for e in ledger_only:
-        code = str(e.stock_code)
-        if code in positions or code in pending_by_code:
-            continue
-        q = None
-        try:
-            q = account_facts._ledger_quantity(code)
-        except Exception:
-            pass
-        card = TodayCard(stock_code=code, stock_name=e.stock_name or "", bucket="holding")
-        card.lines.append(f"账本持仓 {q if q else '?'}股（无持仓记录投影——成本/比例未知，"
-                          "建议 pos confirm 或 pos openinglot 补齐）")
+        detail = holding_detail(card, code)
+        if metadata is not None:
+            if (metadata.quantity_fact is not None and metadata.quantity_held != ctx.quantity
+                    and ctx.quantity is not None):
+                detail += f" ｜ 旧数量投影 {metadata.quantity_held}股，待对账"
+            if metadata.entry_price and metadata.entry_price > 0:
+                detail += f" ｜ 投影成本 {metadata.entry_price}"
+            if metadata.lifecycle and ctx.position_state == "HELD" and metadata.lifecycle != "FLAT":
+                detail += f" ｜ {metadata.lifecycle}"
+        weight = ctx.confirmed_weight
+        if weight is not None and cap is not None and cap > 0:
+            detail += f" ｜ 单股额度 {weight:.0%}/{cap:.0%}"
+            if weight > cap + 1e-9:
+                over_cap.append(f"{code} {pos.stock_name} {weight:.0%}")
+        suffix = "无待办——今天不用操作" if ctx.position_state != "UNKNOWN" else "无待确认建议——先核对持仓事实"
+        card.lines.append(f"{detail} ｜ {suffix}")
         view.holding.append(card)
     if over_cap:
         view.notices.append(
@@ -208,7 +216,7 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
         isolated = list(getattr(account, "isolated_events", []) or [])
         if isolated:
             view.notices.append(
-                f"⚠ 账本存在 {len(isolated)} 条待核对事件（{'、'.join(e.get('event_id', '') for e in isolated[:3])}）"
+                f"⚠ 账本存在 {len(isolated)} 条待核对事件（{'、'.join(e.get('event_id', '') for e in isolated)}）"
                 "——精确新增冻结，先人工核对账户事件账本")
         deployable = account.cash_deployable
         nav = getattr(account, "nav", None)
@@ -230,12 +238,14 @@ def build_today_view(pm: PortfolioManager, *, watch_entries: Optional[list[dict]
             for h in qty_holdings:
                 cost = f"，平均成本 {h.avg_cost:.2f}" if h.avg_cost else ""
                 view.account.append(f"{h.security_id} 持有 {h.quantity} 股{cost}")
+        elif incomplete:
+            view.account.append("数量级持仓清单不完整——待对账，不能证明空仓")
         elif deployable is None:
             view.account.append("数量级持仓/现金未建立——当前仅比例视图"
                                 "（pos opening 锚定期初现金、pos openinglot 导入持仓批次、"
                                 "pos confirm --qty 记成交后此处显示股数/现金）")
         else:
-            view.account.append("当前无持仓（账本已清仓——重新建仓后此处显示股数）")
+            view.account.append("事件账本无正数量持仓（比例投影兼容持仓另见卡片，不据此认定整个账户空仓）")
     return view
 
 

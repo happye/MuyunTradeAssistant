@@ -657,9 +657,9 @@ class BacktestEngine:
                     today=date,
                     is_backtest=True,  # ISS-053 审查修复: 禁用 fundamental_alert（baostock 当前数据非 point-in-time，回测会前瞻）
                 )
-                # PlanGuard 压制统计：strategy_reasons 含 "PlanGuard: 计划未失效"
+                # PlanGuard 压制统计：strategy_reasons 含 "压制弱卖出"
                 if strategy_decision and strategy_decision.strategy_reasons:
-                    if any("PlanGuard: 计划未失效" in r for r in strategy_decision.strategy_reasons):
+                    if any("压制弱卖出" in r for r in strategy_decision.strategy_reasons):
                         self._plan_stats["weak_sells_suppressed_by_guard"] += 1
             except Exception as e:
                 logger.warning(f"分析异常 {date}: {e}")
@@ -967,7 +967,7 @@ class BacktestEngine:
         volume_ratio: Optional[float],
     ) -> ExecutionEvaluation:
         if self._uses_execution_layer():
-            return self.orchestrator.execution_layer.evaluate(stock_data, pos_action, volume_ratio)
+            return self.orchestrator.execution_layer.evaluate(stock_data, pos_action, volume_ratio, simulated=True)
         return ExecutionEvaluation(
             original_action=pos_action,
             effective_action=pos_action,

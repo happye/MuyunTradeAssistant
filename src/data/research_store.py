@@ -64,6 +64,62 @@ class ResearchStore:
     def __init__(self, research_dir: Optional[Path] = None):
         self.dir = Path(research_dir) if research_dir else RESEARCH_DIR
 
+    def save_cash_material_bytes(self, kind: str, content: bytes) -> str:
+        """Immutable, content addressed intake only; concurrent first writers cannot replace."""
+        import tempfile
+        if kind not in ("blobs", "receipts", "proofs", "source_checks"):
+            raise ValueError("invalid cash material namespace")
+        digest = hashlib.sha256(content).hexdigest()
+        folder = self.dir / "cash_materials" / kind
+        folder.mkdir(parents=True, exist_ok=True)
+        destination = folder / digest
+        fd, temporary = tempfile.mkstemp(prefix=".cash-", dir=folder)
+        try:
+            with os.fdopen(fd, "wb") as handle:
+                handle.write(content)
+                handle.flush()
+                os.fsync(handle.fileno())
+            try:
+                os.link(temporary, destination)
+            except FileExistsError:
+                if self.load_cash_material_bytes(kind, digest) != content:
+                    raise ValueError("cash material existing content damaged")
+        finally:
+            os.unlink(temporary)
+        return digest
+
+    def load_cash_material_bytes(self, kind: str, digest: str) -> bytes:
+        import re
+        import stat
+        if kind not in ("blobs", "receipts", "proofs", "source_checks") or not re.fullmatch(r"[0-9a-f]{64}", digest):
+            raise ValueError("invalid cash material reference")
+        path = self.dir / "cash_materials" / kind / digest
+        limit = 20 * 1024 * 1024 if kind == "blobs" else 65536
+        with path.open("rb") as handle:
+            if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+                raise ValueError("cash material must be regular file")
+            content = handle.read(limit + 1)
+        if len(content) > limit:
+            raise ValueError("cash material resource limit")
+        if hashlib.sha256(content).hexdigest() != digest:
+            raise ValueError("cash material hash mismatch")
+        return content
+
+    def list_cash_material_receipts(self) -> list[str]:
+        """An absent namespace is not proof of complete historical coverage."""
+        folder = self.dir / "cash_materials" / "receipts"
+        return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+    def list_cash_numeric_proofs(self) -> list[str]:
+        """Independent numeric records; never a legacy original-verification key."""
+        folder = self.dir / "cash_materials" / "proofs"
+        return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
+    def list_cash_source_checks(self) -> list[str]:
+        """Independent historical receipts; never a current qualification ticket."""
+        folder = self.dir / "cash_materials" / "source_checks"
+        return sorted(p.name for p in folder.iterdir()) if folder.exists() else []
+
     # ── raw 原始留样（写一次不可覆盖，DATA_TRUST §2 链路1）──
 
     def archive_raw(self, content, metadata: Optional[dict] = None) -> tuple[str, bool]:

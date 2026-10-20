@@ -111,7 +111,7 @@ class LLMClaimExtractor(ClaimExtractor):
     def _build_client(config: Optional[dict]):
         try:
             if config is None:
-                from src.cli.main import load_config
+                from src.config import load_config
                 config = load_config()
             ai_cfg = config.get("ai", {})
             provider = ai_cfg.get("provider", "deepseek")

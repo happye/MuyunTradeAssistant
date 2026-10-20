@@ -68,10 +68,13 @@ def _check_trailing(
     high_since_entry: Optional[float],
 ) -> Optional[dict]:
     """检查是否需要上移止损（trailing stop）"""
-    if high_since_entry is None or high_since_entry <= 0:
+    from src.core.trade_plan.conditions import positive
+    if not positive(data.price) or not positive(plan.current_stop):
+        return None
+    if not positive(high_since_entry):
         # 兜底：用当前价当 high
         high_since_entry = data.high or data.price
-    if not data.atr_14 or data.atr_14 <= 0:
+    if not positive(data.atr_14) or not positive(high_since_entry):
         return None  # 无 ATR 不做建议
 
     # 浮盈门槛
@@ -112,10 +115,11 @@ def _check_trailing(
 
 def _check_target_reached(plan: TradePlan, data: StockData) -> Optional[dict]:
     """检查是否到了止盈分档目标价"""
-    if not plan.when_sell_targets:
+    from src.core.trade_plan.conditions import positive
+    if not positive(data.price) or not plan.when_sell_targets:
         return None
     for i, target in enumerate(plan.when_sell_targets):
-        if data.price >= target:
+        if positive(target) and data.price >= target:
             return {
                 "trigger": "target_reached",
                 "field": "_alert",
@@ -152,36 +156,20 @@ def _check_max_hold_warning(plan: TradePlan, today: Optional[str] = None) -> Opt
     return None
 
 
-def _check_invalidate_triggered(plan: TradePlan, data: StockData) -> Optional[dict]:
-    """检查规则版可判定的失效条件是否触发（与 plan_guard 对齐）"""
-    if not plan.when_sell_invalidate:
+def _check_invalidate_triggered(plan, data, today=None):
+    from src.core.trade_plan.conditions import evaluate_conditions
+    result = evaluate_conditions(plan, data, today)
+    if result["value"] == "FALSE":
         return None
-    for cond in plan.when_sell_invalidate:
-        if "MA60" in cond and "跌破" in cond:
-            if data.ma60 is not None and data.price < data.ma60:
-                return {
-                    "trigger": "invalidate_triggered",
-                    "field": "_alert",
-                    "old": None,
-                    "new": cond,
-                    "reason": f"失效条件「{cond}」已触发：价格 ¥{data.price:.2f} 跌破 MA60 ¥{data.ma60:.2f}。建议立即评估卖出",
-                    "source": "rule_based",
-                    "confidence": 1.0,
-                    "actionable": False,
-                }
-        if "MA20" in cond and ("死叉" in cond or "下穿" in cond):
-            if data.ma20 is not None and data.ma60 is not None and data.ma20 < data.ma60:
-                return {
-                    "trigger": "invalidate_triggered",
-                    "field": "_alert",
-                    "old": None,
-                    "new": cond,
-                    "reason": f"失效条件「{cond}」已触发：MA20({data.ma20:.2f}) 死叉 MA60({data.ma60:.2f})",
-                    "source": "rule_based",
-                    "confidence": 1.0,
-                    "actionable": False,
-                }
-    return None
+    unknown = result["value"] == "UNKNOWN"
+    return {
+        "trigger": "invalidate_unknown" if unknown else "invalidate_triggered",
+        "field": "_alert", "old": None, "new": result,
+        "reason": ("失效条件待复核：" + "；".join(result["gaps"]) if unknown
+                   else "完整失效条件已触发，按已接受条件评估卖出；不自动清仓"),
+        "source": "rule_based", "confidence": 0.0 if unknown else 1.0,
+        "actionable": False,
+    }
 
 
 class TradePlanAdjuster:
@@ -210,7 +198,7 @@ class TradePlanAdjuster:
         suggestions = []
 
         # 优先级 1：失效条件触发（最高警觉）
-        sug = _check_invalidate_triggered(plan, data)
+        sug = _check_invalidate_triggered(plan, data, today)
         if sug:
             suggestions.append(sug)
 
@@ -249,7 +237,11 @@ class TradePlanAdjuster:
         field = suggestion.get("field")
 
         if field == "current_stop":
-            new_plan.current_stop = suggestion["new"]
+            from src.core.trade_plan.conditions import positive
+            value = suggestion.get("new")
+            if not positive(value) or not positive(plan.current_stop) or value < plan.current_stop:
+                raise ValueError("止损调整须为有限正值且只上移；原计划保持")
+            new_plan.current_stop = value
         elif field == "max_hold_days":
             new_plan.max_hold_days = suggestion["new"]
         elif field == "fundamental_outlook":

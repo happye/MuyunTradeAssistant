@@ -232,7 +232,7 @@ def test_shadow_mismatched_assessment_is_review(tmp_path):
 def _typed_claims_bundle(service, store=None, checkpoints=()):
     """exposure + order 两类已核验主张的合成资料包（带正文可定位摘录）。"""
     exp_c, exp_d = _make_claim("公司公告：氮化镓快充业务收入占比 40%。",
-                               "公司氮化镓业务真实暴露（业务收入占比 40%）",
+                               "公司氮化镓快充业务收入占比 40%",
                                event_type="exposure", value=40, unit="%")
     ord_c, ord_d = _make_claim("公司公告：签订 900 万元销售订单。",
                                "公司获得 900 万元订单", value=900, unit="万元")
@@ -266,7 +266,7 @@ def test_checkpoint_with_verified_material_and_confirmation_true():
     """经核实材料（evidence_refs 全部已核验）+ 用户已确认风险意愿 → checkpoint 命题
     可合法 TRUE（条件不是已发生公司事实，不进 facts_observed）。"""
     exp_c, exp_d = _make_claim("公司公告：氮化镓快充业务收入占比 40%。",
-                               "公司氮化镓业务真实暴露（业务收入占比 40%）",
+                               "公司氮化镓快充业务收入占比 40%",
                                event_type="exposure", value=40, unit="%")
     ord_c, ord_d = _make_claim("公司公告：签订 900 万元销售订单。",
                                "公司获得 900 万元订单", value=900, unit="万元")
@@ -274,7 +274,9 @@ def test_checkpoint_with_verified_material_and_confirmation_true():
         security_id="600000", horizon="MID", proposition_type="window_and_refutation",
         description="2026-10-30 三季报披露核验订单转化",
         evidence_refs=[exp_c.claim_id, ord_c.claim_id],
-        derived_from="disclosure_schedule", user_confirmed=True)
+        derived_from="disclosure_schedule", user_confirmed=True,
+        review_at=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+        refute_if="已核实原件确认合同取消或订单收入未兑现", expiry_action="REVIEW_REQUIRED")
     bundle = ResearchService().run("600000", as_of=AS_OF, evidence_records=[],
                                    documents=[{"claim": exp_c, "documents": [exp_d]},
                                               {"claim": ord_c, "documents": [ord_d]}],
@@ -291,7 +293,7 @@ def test_mid_fully_legal_pack_reaches_valid_and_downgrades_when_missing():
     """充分且合法的 MID 合成资料包（exposure 暴露 + order 变化 + 已确认检查点）
     → VALID；去掉任一必需命题依据 → 降级（不为让 VALID 出现而降门槛）。"""
     exp_c, exp_d = _make_claim("公司公告：氮化镓快充业务收入占比 40%。",
-                               "公司氮化镓业务真实暴露（业务收入占比 40%）",
+                               "公司氮化镓快充业务收入占比 40%",
                                event_type="exposure", value=40, unit="%")
     ord_c, ord_d = _make_claim("公司公告：签订 900 万元销售订单。",
                                "公司获得 900 万元订单", value=900, unit="万元")
@@ -299,7 +301,9 @@ def test_mid_fully_legal_pack_reaches_valid_and_downgrades_when_missing():
         security_id="600000", horizon="MID", proposition_type="window_and_refutation",
         description="2026-10-30 三季报披露核验订单转化",
         evidence_refs=[exp_c.claim_id, ord_c.claim_id],
-        derived_from="disclosure_schedule", user_confirmed=True)
+        derived_from="disclosure_schedule", user_confirmed=True,
+        review_at=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+        refute_if="已核实原件确认合同取消或订单收入未兑现", expiry_action="REVIEW_REQUIRED")
     documents = [{"claim": exp_c, "documents": [exp_d]},
                  {"claim": ord_c, "documents": [ord_d]}]
     bundle = ResearchService().run("600000", as_of=AS_OF, evidence_records=[],
@@ -466,7 +470,7 @@ def test_declared_scope_without_components_capped():
 def test_checkpoint_of_other_security_does_not_establish():
     """P2：异证券的 checkpoint 不得建立本证券命题（实体错配不通过）。"""
     exp_c, exp_d = _make_claim("公司公告：氮化镓快充业务收入占比 40%。",
-                               "公司氮化镓业务真实暴露（业务收入占比 40%）",
+                               "公司氮化镓快充业务收入占比 40%",
                                event_type="exposure", value=40, unit="%")
     ord_c, ord_d = _make_claim("公司公告：签订 900 万元销售订单。",
                                "公司获得 900 万元订单", value=900, unit="万元")
@@ -475,14 +479,18 @@ def test_checkpoint_of_other_security_does_not_establish():
         horizon="MID", proposition_type="window_and_refutation",
         description="2026-10-30 三季报披露核验订单转化",
         evidence_refs=[exp_c.claim_id, ord_c.claim_id],
-        derived_from="disclosure_schedule", user_confirmed=True)
+        derived_from="disclosure_schedule", user_confirmed=True,
+        review_at=datetime(2026, 10, 30, 8, tzinfo=timezone.utc),
+        refute_if="原件确认订单未转化收入", expiry_action="REVIEW_REQUIRED")
     bundle = ResearchService().run("600000", as_of=AS_OF, evidence_records=[],
                                    documents=[{"claim": exp_c, "documents": [exp_d]},
                                               {"claim": ord_c, "documents": [ord_d]}],
                                    checkpoints=[cp])
     w = next(a for a in bundle.assessments["MID"]["required_assertions"]
              if a["proposition_type"] == "window_and_refutation")
+    assert len(bundle.verified_claims) == 2, "错证券应是唯一拒绝原因，不借未核实材料假绿"
     assert w["evaluation"] == "UNKNOWN", "异证券检查点不得建立本证券命题"
+    assert "证券" in w["evaluation_note"]
 
 
 def test_shadow_rejects_empty_security_or_wrong_method_version(tmp_path):

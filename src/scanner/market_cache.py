@@ -17,10 +17,13 @@
 """
 
 import logging
+import math
 import os
+import tempfile
 import time
 from datetime import datetime, timedelta, time as dtime
 from pathlib import Path
+from numbers import Real
 from typing import Optional
 
 import pandas as pd
@@ -62,6 +65,28 @@ def _disk_enabled() -> bool:
     return "PYTEST_CURRENT_TEST" not in os.environ
 
 
+def _cache_age(timestamp) -> Optional[float]:
+    """Return a finite nonnegative age; malformed/future clocks are not cache data."""
+    try:
+        now = time.time()
+        if (isinstance(timestamp, bool) or not isinstance(timestamp, Real)
+                or not math.isfinite(timestamp) or timestamp <= 0
+                or not math.isfinite(now) or timestamp > now):
+            raise ValueError("invalid cache clock")
+        age = now - timestamp
+        if not math.isfinite(age) or age < 0:
+            raise ValueError("invalid cache age")
+        return age
+    except (TypeError, ValueError, OverflowError):
+        logger.warning("MarketCache: 缓存时间异常，已忽略该缓存")
+        return None
+
+
+def _within_ttl(timestamp, ttl) -> bool:
+    age = _cache_age(timestamp)
+    return age is not None and age < ttl
+
+
 def _disk_load(key: str) -> Optional[dict]:
     """读磁盘缓存文件 {"ts": float, "data": ...}。不存在/损坏返回 None，绝不抛异常。"""
     if not _disk_enabled():
@@ -71,7 +96,8 @@ def _disk_load(key: str) -> Optional[dict]:
         if not p.exists():
             return None
         data = pd.read_pickle(p)
-        return data if isinstance(data, dict) and "ts" in data else None
+        return data if (isinstance(data, dict) and "ts" in data
+                        and _cache_age(data["ts"]) is not None) else None
     except Exception as e:
         logger.debug(f"MarketCache: 磁盘缓存读取失败({key}): {e}")
         return None
@@ -81,14 +107,26 @@ def _disk_save(key: str, data) -> bool:
     """写磁盘缓存。IO 失败只 debug 不抛（缓存永远不许阻塞主流程）。"""
     if not _disk_enabled() or data is None:
         return False
+    temporary = None
     try:
         _DISK_CACHE_DIR.mkdir(parents=True, exist_ok=True)
         p = _DISK_CACHE_DIR / (_disk_key(key) + ".pkl")
-        pd.to_pickle({"ts": time.time(), "data": data}, p)
+        # Close the unique same-directory file before pandas opens it on Windows.
+        with tempfile.NamedTemporaryFile(dir=_DISK_CACHE_DIR, prefix=p.name + ".",
+                                         suffix=".tmp", delete=False) as handle:
+            temporary = Path(handle.name)
+        pd.to_pickle({"ts": time.time(), "data": data}, temporary)
+        os.replace(temporary, p)
         return True
     except Exception as e:
         logger.debug(f"MarketCache: 磁盘缓存写入失败({key}): {e}")
         return False
+    finally:
+        if temporary is not None:
+            try:
+                temporary.unlink(missing_ok=True)
+            except OSError as exc:
+                logger.debug(f"MarketCache: 临时缓存清理失败({key}): {exc}")
 
 
 def _get_sina_market_url() -> str:
@@ -332,7 +370,8 @@ class MarketCache:
 
         # 失败冷却：刚经历过双源全失败（且当时无旧缓存兜底），短暂歇手再试，
         # 防止被限流状态下继续高频全量拉取延长封禁
-        if not force_refresh and (time.time() - MarketCache._shared_fail_ts) < MarketCache.FAIL_COOLDOWN_SECONDS:
+        if (not force_refresh and MarketCache._shared_fail_ts
+                and _within_ttl(MarketCache._shared_fail_ts, MarketCache.FAIL_COOLDOWN_SECONDS)):
             logger.warning("MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取")
             return pd.DataFrame()
         # 主数据源：新浪财经API（偶发返回空，重试2次；连续3次空才判源失效）
@@ -355,7 +394,8 @@ class MarketCache:
                 return df
 
         # 全部失败：返回过期缓存兜底，不标记锁死（下次命令仍可重试，因新浪是间歇性失效）
-        if MarketCache._shared_stock_df is not None:
+        if (MarketCache._shared_stock_df is not None
+                and _cache_age(MarketCache._shared_stock_ts) is not None):
             logger.info("MarketCache: 新浪+东财均失败，用过期缓存兜底(新浪间歇性失效，下次可重试)")
             return MarketCache._shared_stock_df
         # 内存也无 → 磁盘有过期快照同样兜底（v0.8.7.9，比直接空手而归强）
@@ -609,7 +649,8 @@ class MarketCache:
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: ETF行情获取失败: {e}")
-            if MarketCache._shared_etf_df is not None:
+            if (MarketCache._shared_etf_df is not None
+                    and _cache_age(MarketCache._shared_etf_ts) is not None):
                 return MarketCache._shared_etf_df
             return pd.DataFrame()
 
@@ -735,7 +776,7 @@ class MarketCache:
         ttl = 600  # 行业板块10分钟TTL
         if (not force_refresh
                 and MarketCache._shared_industry_df is not None
-                and (time.time() - MarketCache._shared_industry_ts) < ttl):
+                and _within_ttl(MarketCache._shared_industry_ts, ttl)):
             logger.info("MarketCache: 行业板块缓存命中")
             return MarketCache._shared_industry_df
 
@@ -753,7 +794,8 @@ class MarketCache:
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: 行业板块获取失败: {e}")
-            if MarketCache._shared_industry_df is not None:
+            if (MarketCache._shared_industry_df is not None
+                    and _cache_age(MarketCache._shared_industry_ts) is not None):
                 return MarketCache._shared_industry_df
             return pd.DataFrame()
 
@@ -765,7 +807,9 @@ class MarketCache:
         """
         mem = (MarketCache._shared_industry_stocks if kind == "industry"
                else MarketCache._shared_concept_stocks).get(name)
-        if mem:
+        timestamps = (MarketCache._shared_industry_stocks_ts if kind == "industry"
+                      else MarketCache._shared_concept_stocks_ts)
+        if mem and _cache_age(timestamps.get(name)) is not None:
             return mem
         _d = _disk_load(f"{kind}_stocks_{name}")
         if _d and _d.get("data"):
@@ -788,13 +832,13 @@ class MarketCache:
         # 缓存命中检查
         if industry_name in MarketCache._shared_industry_stocks:
             ts = MarketCache._shared_industry_stocks_ts.get(industry_name, 0)
-            if (time.time() - ts) < MarketCache.INDUSTRY_STOCKS_TTL:
+            if _within_ttl(ts, MarketCache.INDUSTRY_STOCKS_TTL):
                 logger.info(f"MarketCache: 行业成分股缓存命中({industry_name})")
                 return MarketCache._shared_industry_stocks[industry_name]
 
         # 磁盘 L2 命中（v0.8.7.9）：THS 翻页是全库最贵端点，跨进程复用，30分钟口径
         _d = _disk_load(f"industry_stocks_{industry_name}")
-        if _d and _d.get("data") and (time.time() - _d.get("ts", 0)) < MarketCache.INDUSTRY_STOCKS_TTL:
+        if _d and _d.get("data") and _within_ttl(_d.get("ts"), MarketCache.INDUSTRY_STOCKS_TTL):
             MarketCache._shared_industry_stocks[industry_name] = _d["data"]
             MarketCache._shared_industry_stocks_ts[industry_name] = _d["ts"]
             logger.info(f"MarketCache: 行业成分股磁盘缓存命中({industry_name}, {len(_d['data'])}只)")
@@ -835,7 +879,7 @@ class MarketCache:
         ttl = 600  # 概念板块10分钟TTL
         if (not force_refresh
                 and MarketCache._shared_concept_df is not None
-                and (time.time() - MarketCache._shared_concept_ts) < ttl):
+                and _within_ttl(MarketCache._shared_concept_ts, ttl)):
             logger.info("MarketCache: 概念板块缓存命中")
             return MarketCache._shared_concept_df
 
@@ -853,7 +897,8 @@ class MarketCache:
             return pd.DataFrame()
         except Exception as e:
             logger.error(f"MarketCache: 概念板块获取失败: {e}")
-            if MarketCache._shared_concept_df is not None:
+            if (MarketCache._shared_concept_df is not None
+                    and _cache_age(MarketCache._shared_concept_ts) is not None):
                 return MarketCache._shared_concept_df
             return pd.DataFrame()
 
@@ -864,13 +909,13 @@ class MarketCache:
         """
         if concept_name in MarketCache._shared_concept_stocks:
             ts = MarketCache._shared_concept_stocks_ts.get(concept_name, 0)
-            if (time.time() - ts) < MarketCache.CONCEPT_STOCKS_TTL:
+            if _within_ttl(ts, MarketCache.CONCEPT_STOCKS_TTL):
                 logger.info(f"MarketCache: 概念成分股缓存命中({concept_name})")
                 return MarketCache._shared_concept_stocks[concept_name]
 
         # 磁盘 L2 命中（v0.8.7.9）：同行业成分股，30分钟口径
         _d = _disk_load(f"concept_stocks_{concept_name}")
-        if _d and _d.get("data") and (time.time() - _d.get("ts", 0)) < MarketCache.CONCEPT_STOCKS_TTL:
+        if _d and _d.get("data") and _within_ttl(_d.get("ts"), MarketCache.CONCEPT_STOCKS_TTL):
             MarketCache._shared_concept_stocks[concept_name] = _d["data"]
             MarketCache._shared_concept_stocks_ts[concept_name] = _d["ts"]
             logger.info(f"MarketCache: 概念成分股磁盘缓存命中({concept_name}, {len(_d['data'])}只)")
@@ -932,9 +977,15 @@ class MarketCache:
         Returns:
             True表示已过期
         """
+        age = _cache_age(timestamp)
+        if age is None:
+            return True
         if not self.is_trading_hours():
             # 非交易时段
-            cache_time = datetime.fromtimestamp(timestamp)
+            try:
+                cache_time = datetime.fromtimestamp(timestamp)
+            except (OverflowError, OSError, ValueError):
+                return True
             now = datetime.now()
             t = now.time()
 
@@ -960,7 +1011,7 @@ class MarketCache:
                 return cache_time < last_close
 
         # 盘中/午休：TTL过期
-        return (time.time() - timestamp) > self._ttl
+        return age > self._ttl
 
     def refresh(self):
         """强制刷新所有缓存"""
@@ -986,18 +1037,20 @@ class MarketCache:
         Returns:
             缓存状态字典
         """
+        stock_age = _cache_age(MarketCache._shared_stock_ts) if MarketCache._shared_stock_df is not None else None
+        etf_age = _cache_age(MarketCache._shared_etf_ts) if MarketCache._shared_etf_df is not None else None
         status = {
             "trading_hours": self.is_trading_hours(),
             "stocks": {
                 "cached": MarketCache._shared_stock_df is not None,
                 "count": MarketCache._shared_stock_count if MarketCache._shared_stock_df is not None else 0,
-                "age_seconds": round(time.time() - MarketCache._shared_stock_ts) if MarketCache._shared_stock_ts else 0,
+                "age_seconds": round(stock_age) if stock_age is not None else None,
                 "expired": self._is_expired(MarketCache._shared_stock_ts) if MarketCache._shared_stock_ts else True,
             },
             "etfs": {
                 "cached": MarketCache._shared_etf_df is not None,
                 "count": MarketCache._shared_etf_count if MarketCache._shared_etf_df is not None else 0,
-                "age_seconds": round(time.time() - MarketCache._shared_etf_ts) if MarketCache._shared_etf_ts else 0,
+                "age_seconds": round(etf_age) if etf_age is not None else None,
                 "expired": self._is_expired(MarketCache._shared_etf_ts) if MarketCache._shared_etf_ts else True,
             },
             "industries": {
