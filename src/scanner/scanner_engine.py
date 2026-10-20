@@ -178,13 +178,26 @@ class ScannerEngine:
         after_exclude = len(df)
 
         theme_info = None
+        # 过滤状态：none（无主题）/ theme_ok / alt_source / market_fallback
+        self.last_theme_filter_status = "none"
+        self.last_alt_boards = []
+        self.last_theme_filter_failed = False
+        self._theme_query = market_query
         if market_query:
             theme_info = self.resolve_market_theme(market_query)
+            _alt_df = None
             if not theme_info["industries"] and not theme_info["concepts"]:
+                _alt_df = self._alt_theme_filter(df, [market_query])
+            if _alt_df is not None:
+                df = _alt_df
+                after_theme = after_industry = after_concept = len(df)
+            elif not theme_info["industries"] and not theme_info["concepts"]:
                 logger.warning(
                     f"ScannerEngine: 主题词 '{market_query}' 未匹配到行业/概念，回退为全市场规则扫描"
                 )
                 theme_info["fallback_unfiltered"] = True
+                self.last_theme_filter_failed = True
+                self.last_theme_filter_status = "market_fallback"
                 after_theme = after_exclude
                 after_industry = after_exclude
                 after_concept = after_exclude
@@ -195,6 +208,7 @@ class ScannerEngine:
                     theme_info["concepts"],
                 )
                 if getattr(self, "last_theme_filter_failed", False):
+                    self.last_theme_filter_status = "market_fallback"
                     # v0.8.7.5 审计修复 A13：成分股拉取失败→主题过滤失效，归入 fallback_unfiltered
                     # 让 UI 显示"主题匹配失败，已回退为全市场规则扫描"，不再假装主题匹配成功
                     theme_info["fallback_unfiltered"] = True
@@ -205,6 +219,9 @@ class ScannerEngine:
                     after_theme = len(df)
                     after_industry = after_theme
                     after_concept = after_theme
+            if theme_info is not None:
+                theme_info["filter_status"] = self.last_theme_filter_status
+                theme_info["alt_boards"] = list(self.last_alt_boards)
         else:
             after_industry = after_exclude
             after_theme = after_exclude
@@ -874,6 +891,10 @@ class ScannerEngine:
             all_codes.update(self.market_cache.get_stocks_by_concept(concept_name))
 
         if not all_codes:
+            kws = [getattr(self, "_theme_query", None)] + list(industries or []) + list(concepts or [])
+            alt = self._alt_theme_filter(df, [k for k in kws if k])
+            if alt is not None:
+                return alt
             logger.warning(
                 f"ScannerEngine: 统一主题过滤无结果(板块接口可能超时/失效)，行业={industries}，概念={concepts}，"
                 f"fail-open 放行全市场并置失败标记供 UI 诚实提示"
@@ -881,6 +902,7 @@ class ScannerEngine:
             self.last_theme_filter_failed = True
             return df
 
+        self.last_theme_filter_status = "theme_ok"
         if "代码" in df.columns:
             result = df[df["代码"].astype(str).isin(all_codes)]
             logger.info(
@@ -890,6 +912,28 @@ class ScannerEngine:
             return result
 
         return df
+
+    def _alt_theme_filter(self, df: pd.DataFrame, keywords: list[str]):
+        """主题成分股接口失败时的替代源（新浪申万行业成分股，真实数据+磁盘缓存兜底）。
+
+        成功返回过滤后的 df 并置 last_theme_filter_status='alt_source'；失败返回 None。
+        """
+        try:
+            from src.data.board_members_alt import alt_theme_members
+            codes, used = alt_theme_members(list(dict.fromkeys(keywords)))
+        except Exception as e:  # noqa: BLE001
+            logger.warning(f"ScannerEngine: 替代成分股源异常: {e}")
+            return None
+        if not codes or "代码" not in df.columns:
+            return None
+        result = df[df["代码"].astype(str).isin(codes)]
+        if result.empty:
+            return None
+        self.last_theme_filter_status = "alt_source"
+        self.last_theme_filter_failed = False
+        self.last_alt_boards = used
+        logger.warning(f"ScannerEngine: 主题接口失败，改用替代源 {used} -> {len(codes)}只 -> 匹配{len(result)}只")
+        return result
 
     def _resolve_industry_names(self, industries: list[str]) -> list[str]:
         """将行业过滤词解析为准确行业名，支持模糊匹配。"""
