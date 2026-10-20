@@ -8398,7 +8398,7 @@
     }
   },
   "milestone_git_release_20261020": {
-    "status": "READY_FOR_ACCEPTED_MILESTONE_COMMIT",
+    "status": "PUSHED_ACCEPTED_SNAPSHOT_BRANCH_ONLY",
     "base_commit": "ec94bfcd4b9a9a7c2e7af993e3279cb73697d59d",
     "branch": "codex/v42-native-collab",
     "remote_main_observed": "84fc530b2aa261f7d15ad65cc327a9ca22165bac",
@@ -8465,6 +8465,78 @@
       "Temp/",
       "项目记忆资产备份/"
     ],
-    "remote_main_integration_deferred": true
+    "remote_main_integration_deferred": true,
+    "commit": "8ba7571b326cf643d90c0b12c6245d729f9cc369",
+    "push_verified": true,
+    "remote_branch_sha": "8ba7571b326cf643d90c0b12c6245d729f9cc369"
+  },
+  "native_dsh_workspace_onboarding_20261020": {
+    "status": "ACCEPTED_REAL_GIT_ROOT_AND_WORKSPACE_BINDING_ONLY",
+    "task": "muyun-dev-native-20261020",
+    "session_id": "codex-1de974ba-34f0-4de8-a092-6fdfa43e822c",
+    "native_cwd": "G:\\Tools\\暮云思辨投资助手",
+    "workspace_id": "c2168aee-0263-45c8-8dd3-2595db031930",
+    "workspace_title": "暮云思辨投资助手",
+    "workspace_membership_readback": true,
+    "native_operations": [
+      "CLI start with canonical absolute cwd",
+      "native workspace/create for target path",
+      "native session/create with existing matching sessionId and workspaceId",
+      "native workspace/create idempotent membership readback"
+    ],
+    "external_deployment_modified": false,
+    "existing_session_header_mutated": false,
+    "browser_visual_check": false,
+    "cli_workspace_feature_implemented": false,
+    "request_id": "2dd80fc1-21f1-4431-b993-1a50878fe252",
+    "terminal_seq": 29,
+    "tool_calls": 3,
+    "tool_results": 3,
+    "usage_records": 2,
+    "native_usage": {
+      "inputTokens": 275529,
+      "outputTokens": 885,
+      "cacheReadTokens": 288256,
+      "cacheWriteTokens": 0,
+      "totalTokens": 564670
+    },
+    "observed_git": {
+      "root": "G:/Tools/暮云思辨投资助手",
+      "branch": "codex/v42-native-collab",
+      "head": "8ba7571b326cf643d90c0b12c6245d729f9cc369"
+    },
+    "contract_limits": [
+      "AGENTS read covered first 60 lines, not entire manual; relevant remaining constraints must be read before writes",
+      "pwsh used cmd and echo wrappers; narrow three-git-command contract not strictly met",
+      "No product edits or tests; does not qualify G7 or v43"
+    ],
+    "git_owner": "Codex integrator",
+    "dsh_role": "Delegated implementation subagent as work responsibility, native session remains ordinary session",
+    "older_tasks_retained": {
+      "muyun-g7-readonly-20261020": "Historical Temp-copy trial only",
+      "muyun-dev-20261020": "Zero-prompt setup stub; cwd slash spelling rejected during workspace attachment"
+    },
+    "setup_error": {
+      "native_workspace_attachment": "RPC_REJECTED for G:/ versus G:\\ cwd string equality",
+      "node_exit": "UV_HANDLE_CLOSING assertion observed after rejected RPC; root cause and reproduction not established",
+      "model_requested_for_failed_stub": false,
+      "resolved_for_current_binding": "New canonical-cwd task; no rewrite of old header or integrity bypass"
+    },
+    "long_term_tool_backlog": "G:/Tools/ChatGPTRepo/codex-dsh-双端联通/docs/validation.md#known-issues",
+    "business_sources_or_tests_differ_from_accepted_commit": false,
+    "session_title": "暮云正式工作区｜Codex委派DSH实施",
+    "session_title_readback": {
+      "method": "session/list",
+      "field": "items[matching sessionId].projections.values.title",
+      "running": false,
+      "model_requests_added": 0
+    },
+    "human_name_selection": "Codex resolves a user-supplied title to ID after cwd and ambiguity checks; CLI has no title selector",
+    "handoff_split": {
+      "business": "plan/fusion/RESUME.md and iteration9/DELIVERY_PLAN.md",
+      "tool": "Tool repository AGENTS.md/CODEX.md/manuals and docs/validation.md C01-C09",
+      "tool_docs_pending_uncommitted": 4,
+      "no_tool_source_changes": true
+    }
   }
 }

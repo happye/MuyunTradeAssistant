@@ -1,6 +1,6 @@
 # 融合项目当前实施与审批状态
 
-更新：2026-10-17。v0.8.42当次行业条件化现金观察限定接收，裁决`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未commit/tag/push。父12文件328 passed/1 skipped（29.05s）；最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组分轮7 passed+临时夹具错1（4.04s）→仅重跑受影响组1 passed（2.19s），实际worker共2次；原guard两正式文件107 passed/1 skipped（6.03s）；产品退出专用case最终SHA复核1 passed。真实PDF/SSE各请求一次，形成1个当次条件化可比组、2期。审批见[R15](iteration9/R15_ACCEPTANCE.md)，原实施合同见[第九轮计划](iteration9/DELIVERY_PLAN.md)，v39-v41历史验收保留。
+更新：2026-10-20。v0.8.42当次行业条件化现金观察限定接收，裁决`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`；已在里程碑分支以`8ba7571`提交推送，未合main/打tag。以下原批验证未在本轮重跑。父12文件328 passed/1 skipped（29.05s）；最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组分轮7 passed+临时夹具错1（4.04s）→仅重跑受影响组1 passed（2.19s），实际worker共2次；原guard两正式文件107 passed/1 skipped（6.03s）；产品退出专用case最终SHA复核1 passed。真实PDF/SSE各请求一次，形成1个当次条件化可比组、2期。审批见[R15](iteration9/R15_ACCEPTANCE.md)，原实施合同见[第九轮计划](iteration9/DELIVERY_PLAN.md)，v39-v41历史验收保留。
 
 v0.8.42唯一完整命令为`research <代码> --cash-verify <material_id> --source-check --industry-check [--json]`，单次PDF和SSE请求；普通research、getter和离线核对不后台联网。当前仅取得当次SSE转述C15非金融适用性，形成1个条件化组2期；支持映射边界仍限C15与J金融，其他未知。历史行业/PIT、ROE、现金持续性UNKNOWN；不形成长期TRUE/MID，不修改旧factor、评估/接受态、capture_only/default、缓存或阈值。G4整体及V1未完成。
 
@@ -8,7 +8,7 @@ v0.8.41历史范围保持：官方PDF当次字段核验、NP/CFO独立资格、�
 
 ## 本轮关闭与下一步
 
-产品本批已完成并按限定范围接收，继续暂停。2026-10-20新版个人Skill/通用CLI已真实完成分析、同会话追问和用户追加量化自评；具体身份、usage及主控纠偏见DELIVERY_PLAN末节。重大里程碑一次commit+push由Codex负责，使用`codex/v42-native-collab`保留本地受验树；远端main `84fc530`的G3/NAV等7新增提交尚未整合，不覆盖。G7/T05的3个helper仍只有源码定位与方案，无专用反例，不称修复或v43，不存在后台业务执行。
+产品本批已完成并按限定范围接收，继续暂停。2026-10-20新版个人Skill/通用CLI已真实完成分析、同会话追问和用户追加量化自评；具体身份、usage及主控纠偏见DELIVERY_PLAN末节。当前正式协作task=`muyun-dev-native-20261020`已绑定真实Git根及原生工作区，接入确认已完成；DSH按实施subagent协作，Codex负责验收与Git，身份与工具唯一待办见RESUME。重大里程碑一次commit+push由Codex负责，`codex/v42-native-collab`的`8ba7571`已推送；远端main `84fc530`的G3/NAV等7新增提交尚未整合，不覆盖。G7/T05的3个helper仍只有源码定位与方案，无专用反例，不称修复或v43，不存在后台业务执行。
 
 显式快照整页同源，坏数量/重复证券/非有限现金不洗成空仓或零元，默认请求仍一次读取；chat精确集合防御回归已补。九处配置消费者迁到src.config，配置反依赖0，四处管理/观察池/代码规范化桥有意保留。数据结构重验不代表真实成交授权；管理投影豁免，G1/G2/G7整体仍按长期里程碑推进。
 

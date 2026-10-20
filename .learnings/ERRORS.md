@@ -577,3 +577,7 @@ Status: investigating。现有Python SDK在同一运行实例内可续接，但�
 ### ERR-20261020-LOCAL-AUTH-HELPER｜脚本生成与启动先后校验
 
 Status: resolved_helper_ui_only。JS String.raw内嵌PowerShell的反引号换行符导致模板提前结束，脚本未生成而后续Start-Process仍执行；未发生原生认证或模型请求。改为直接补丁写独立脚本、UTF8 BOM、PowerShell AST零错后再启动，不再嵌套模板。Start-Process Hidden连首次WinForms对话框也隐藏，PID存活不证明用户可见；已用user32按本次PID和精确标题仅显示自有认证窗口，IsWindowVisible实际为true。后续此类用户交互助手用正常窗口启动，不套后台服务Hidden规则；仅语法/窗口通过，不证明已认证或DSH协作通过。
+
+### ERR-20261020-DSH-CWD-SPELLING｜工作区注册与session路径字面值冲突
+
+Status: current_binding_resolved_tool_gap_open。CLI以G:/创建session，workspace/create返回fs.realpath规范G:\路径，随后session/create(workspaceId)在ensureSession的原始cwd相等门拒绝RPC；控制器只暴露RPC_REJECTED。该空task未发送模型请求，保留不删除。新建规范cwd的task后正常API绑定与成员回读成功，未修改部署、旧session头或绕门。拒绝后的Node25进程还出现UV_HANDLE_CLOSING断言，单次观察不足定根因；工具长期待办分别跟踪路径封装和错误诊断，不写成已修源码。

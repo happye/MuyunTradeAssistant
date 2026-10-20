@@ -2633,4 +2633,8 @@ Status: applied（真实分析/追问/追加自评三请求已匹配完成，初
 
 ### LRN-20261020-MILESTONE-GIT｜验收后收口Git，发布树也要有必需夹具
 
-Status: applied_to_release_preparation。未commit/tag/push是历史状态，不是永久禁止；用户要求重大改动验收后集中一次提交推送，集成方须明确git_owner。先fetch看远端，已合入他人成果且与本地受验树重叠时用独立codex分支保存快照，不强推main。不能只核本机460 pins就认定新克隆可重现：正式cash用例需要ignored公开PDF与4份raw，必须按精确清单收入并在导出提交树复验；不整包上传artifacts，更不夹带portfolio、knowledge或个人配置。
+Status: applied（8ba7571已推送里程碑分支）。未commit/tag/push是历史状态，不是永久禁止；用户要求重大改动验收后集中一次提交推送，集成方须明确git_owner。先fetch看远端，已合入他人成果且与本地受验树重叠时用独立codex分支保存快照，不强推main。不能只核本机460 pins就认定新克隆可重现：正式cash用例需要ignored公开PDF与4份raw，必须按精确清单收入并在导出提交树复验；不整包上传artifacts，更不夹带portfolio、knowledge或个人配置。
+
+### LRN-20261020-DSH-WORKSPACE｜session目录、UI工作区与Git身份分别核对
+
+Status: applied_to_current_binding_only。临时只读副本不是无cwd，但不能承担真实Git开发；新聊天用共享账本恢复固定task，不自动另建session。原生UI工作区还须登记成员，当前CLI未封装；附加旧session也未核cwd，不以本地--cwd改写自证已迁移。实际绑定需规范路径，G:/与G:\虽指同目录但原生ensureSession作字符串比较；用正常API及回读，不改旧header绕门。DSH按职责subagent工作，Codex掌验收/Git；部分AGENTS读取和额外shell包装如实记，不能把接入确认扩成开发合同全过。

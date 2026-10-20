@@ -292,10 +292,16 @@ $env:PYTHONUTF8 = '1'
 
 **DSH自评与主控纠偏**：DSH确认只读合同与副本无原Git，因此未提交，不是工具禁止。首轮提出无限Event夹具违背有限阻塞合同，追问后修为有限sleep；追问又混写subprocess.run与proc句柄，仍是设计草案。自评把缓存分母误用含输出总量，并称首请求以缓存为主；主控按输入口径独立纠正以上表，原自评不改写为“模型已算对”。通信完成率不能代替交付正确率，本样本不能认证可直接实施的修复代码。工具反馈优先项：机器计算并脱敏导出usage；显示观察超时/运行/完成阶段；绑定任务/请求/产物与验收项；合同固定git_owner及里程碑提交；建立同任务/版本/配置的配对基准。此轮不直接修改工具部署。
 
-**接续资料**：`C:/Users/Crux/AppData/Local/Temp/muyun-native-collab-20261020-aPua6A/`保存`task-round1.txt`、`baseline.json`、`trial.json`及`workspace/`六份选定文件副本。基线为HEAD `ec94bfc`、468源码/测试和7保护hash；准备后复核均未变，Git状态同为98修改/29删除/47未跟踪。所有CLI显式使用个人配置的`C:/Users/Crux/.codex/codex-dsh-state`及连接`native`，拟任务ID `muyun-g7-readonly-20261020`；原先工具根`.codex-dsh`仅为未采用建议，没有创建。先查是否已有同任务，再start；send后按匹配请求的resultFile及真实工具事件验收，观察超时只续follow，通信不明先resume，不盲目重投。副本与提示词不是OS沙箱，CLI无事务合入或总费用硬限，不杀共享Host、不删除锁或旧失败记录；聊天结束后不承诺后台主控。
+**历史试用资料**：`C:/Users/Crux/AppData/Local/Temp/muyun-native-collab-20261020-aPua6A/`保留六文件副本、提示和基线。旧task `muyun-g7-readonly-20261020`及其3轮请求只作只读试用证据，原基线ec94bfc/468源码测试/7保护hash保持，不充当当前开发工作树；不删除旧会话、失败记录或锁。
+
+**当前正式Git工作区（2026-10-20用户要求后配置）**：task=`muyun-dev-native-20261020`，session=`codex-1de974ba-34f0-4de8-a092-6fdfa43e822c`，cwd=`G:\Tools\暮云思辨投资助手`。正常原生workspace/create与session/create(workspaceId)绑定到workspace `c2168aee-0263-45c8-8dd3-2595db031930`、标题“暮云思辨投资助手”，随后幂等回读确认成员。CLI尚无workspace封装，本次为API配置，不改部署或原生session头，也不冒称浏览器视觉验收。首个零prompt task `muyun-dev-20261020`因G:/与G:\原始字符串不同被原生cwd门拒绝，保留作设置记录；规范路径新task绑定成功，不绕完整性门。拒绝时还观察到Node25的UV_HANDLE_CLOSING退出断言，尚无稳定复现，列为工具诊断待办。
+
+**接入确认范围与职责**：真实请求`2dd80fc1-21f1-4431-b993-1a50878fe252`完成（seq29）；2次read、1次pwsh及3结果，查到Git根/分支codex/v42-native-collab/HEAD 8ba7571。其2条assistant usage累计非缓存275529、缓存288256、输出885，独立于上表原3轮，不能混算样本。DSH按实施subagent接受具体合同，Codex负责设计/验收/追修/Git；原生仍是普通session，不声称嵌套Agent身份。DSH只读AGENTS前60行，写任务前须补读相关约束；pwsh含cmd/echo包装，不能声称严格仅3个Git命令合同完全符合。无业务修改或测试，不计G7/v43通过。
+
+**跨对话恢复与唯一工具待办**：新Codex聊天读个人Skill/local-settings与本项目RESUME，在同一共享账本先resume当前正式task，核实际cwd、分支/HEAD及未完成请求；后续send默认继续同session。用户可指定其他session，先核目录、活动及task映射，已绑定则复用原task；换Codex聊天不会自动迁移上下文或改DSH目录。当前CLI对附加旧session不核cwd，不能用换填--cwd伪迁移。协作工具的长期问题/完成判据集中在其既有`docs/validation.md`“已知问题与迭代记录”，本机progress只导航；不再在业务计划复制工具TODO。
 
 **2026-10-17旧桥历史**：原`G:/Tools/DeepseekHarness/codex-dsh/`任务d4175bb5d27a4545b7d4030da948087b的round1/round3在Temp样例完成并显式接收，父7/9项通过；原round2续接失败保留。SDKserver限定补丁53项、两独立PythonSDK进程mock及独立增量复核通过。旧自动run6e435382833347e9a7c573937b7873fe未获全自动闭环验收；这些历史不计为新通用CLI或暮云产品通过，不继续旧收费循环。
 
 **里程碑Git收口（用户2026-10-20授权）**：重大改动验收后由Codex一次commit+push，DSH当前只读任务不提交；不再把“未提交”状态当永久禁令。独立Sol/high只读复核最新v42 460项、最终10 pins、7保护hash及12原日志均一致，pending为空，历史3049/0/3 skipped/1 external不重跑冒新验收。本次快照承接v31–v35前置和v36–v42既有接收范围，不全归为v42新增。18镜像测试删除及11历史资料清理有R15/S2AC索引依据；可移植.codex路由与必要新cash源码/测试随允许清单收入。发现正式财报测试依赖ignored原件，精确补入公开PDF和4份raw JSON，其余artifacts与私人状态排除；提交树已用Git archive导出且不带.git/未跟踪文件，正式原件用例1 passed/0 failed（9.66s），网络/子进程/真实状态尝试均0；导出树6保护项及知识库集合不变，原工作区7保护hash另核。实际原始日志追加既有TARGETED，不冒称新全量。
 
-远端main已到`84fc530`，相对本地`ec94bfc`新增7提交、13文件，含另一Agent的G3/NAV/可选垫片/pipeline；本次没有审核/整合该增量。里程碑使用`codex/v42-native-collab`分支保留本地已受验快照，推送结果以该远端分支为准，不强推或冒称main已同步。账户/knowledge、私人配置、Temp、无关教程/评估产物均不暂存；保护原有脏改，G7修复、v43、真实MID/G4/V1整体仍未推进。
+远端main已到`84fc530`，相对原本地`ec94bfc`新增7提交、13文件，含另一Agent的G3/NAV/可选垫片/pipeline；本次没有审核/整合该增量。里程碑已在`codex/v42-native-collab`提交推送`8ba7571b326cf643d90c0b12c6245d729f9cc369`，远端SHA核同，不强推或冒称main已同步。账户/knowledge、私人配置、Temp、无关教程/评估产物均未收录。当前接入和文档增量随下次实质工具修复收口，不为每条反馈碎提交；保护原有脏改，G7修复、v43、真实MID/G4/V1整体仍未推进。

@@ -1,10 +1,10 @@
 # 暮云长期路线与持续里程碑
 
-**唯一长期路线入口｜更新：2026-10-17｜当前工作树限定接收：v0.8.42（未提交发布）｜已发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
+**唯一长期路线入口｜更新：2026-10-20｜当前限定接收：v0.8.42（里程碑分支8ba7571已推送，未合main/打tag）｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
 
 **当前执行入口**：[第九轮交付计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
 
-**当前优先工作**：v0.8.42当次行业条件化现金观察限定接收，裁决`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未提交发布。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）。460项源码/测试/材料指纹起止稳定，7保护hash与知识库集合不变；network 785、child 12均阻断、real_state 0。独立8组分轮7 passed+1临时夹具错误（4.04s）后，仅修复并重跑受影响组1 passed（2.19s）；实际worker共2次。原guard两正式文件107 passed/1 skipped（6.03s），真实产品进程退出专用case最终SHA复核1 passed。真实链为PDF一次+SSE一次，得到1个当前条件化可比组、2期；行业为当次SSE转述C15非金融。历史行业/PIT、ROE、现金持续性仍UNKNOWN；真实MID NO_VALID、G4整体/V1未完成。当前批次完成后暂停，等待用户新的Codex管理审批与DSH开发协作方案指派。
+**当前优先工作**：v0.8.42当次行业条件化现金观察限定接收，裁决`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`；Git已在2026-10-20以`8ba7571`推送里程碑分支。以下为原批验证，未在本轮重跑。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）。460项源码/测试/材料指纹起止稳定，7保护hash与知识库集合不变；network 785、child 12均阻断、real_state 0。独立8组分轮7 passed+1临时夹具错误（4.04s）后，仅修复并重跑受影响组1 passed（2.19s）；实际worker共2次。原guard两正式文件107 passed/1 skipped（6.03s），真实产品进程退出专用case最终SHA复核1 passed。真实链为PDF一次+SSE一次，得到1个当前条件化可比组、2期；行业为当次SSE转述C15非金融。历史行业/PIT、ROE、现金持续性仍UNKNOWN；真实MID NO_VALID、G4整体/V1未完成。产品批次完成后暂停；用户指定Codex管理/DSH实施的协作已接通真实Git工作区，当前task/session见RESUME，后续仍先核远端增量再定产品任务。
 
 本文件回答“最终做成什么、现在在哪、还差什么、什么时候算完成”。每批实现与审批状态见 [STATUS](plan/fusion/STATUS.md)，当前审批见 [R15](plan/fusion/iteration9/R15_ACCEPTANCE.md)，下一执行窗口见 [第九轮](plan/fusion/iteration9/DELIVERY_PLAN.md)。F/R/J/K/L/M/N/O/P 是实施批次，下面 G0–G8 是稳定的产品里程碑，两者不可混用。
 
