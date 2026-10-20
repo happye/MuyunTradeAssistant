@@ -19,6 +19,7 @@ import random
 
 from src.data.models import StockData
 from src.data.net_guard import circuit_breaker, rate_limiter
+from src.data.timeout_call import call_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,8 @@ logger = logging.getLogger(__name__)
 _bs_login_status = None
 
 # v0.8.6.4：baostock socket 读取可能卡住，统一用线程级超时保护
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
+# T05-B：TimeoutError 仍是内建别名，供既有 except FuturesTimeout 站点继续使用
+from concurrent.futures import TimeoutError as FuturesTimeout
 
 DEFAULT_TIMEOUT = 30.0
 
@@ -49,15 +51,12 @@ def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
     """线程级硬超时包装：fn 卡住超过 timeout 秒则放弃，抛 TimeoutError。
     akshare/baostock 底层无 timeout，靠这个防 WinError 10060 冻结。
 
-    v0.8.7.5 审计修复（ISS-066 回归）：不能用 with 块——__exit__ 的 shutdown(wait=True)
-    会 join 超时后的孤儿线程，分钟级冻结使超时保护失效（范本：benzong/data_provider）。
+    T05-B：改为独立 daemon 线程 + 单槽队列，不再使用 ThreadPoolExecutor。
+    调用方按时返回且超时后不 join worker；worker 不能被强杀，底层请求可能仍在
+    运行，迟到结果只进本次调用的队列并被丢弃，不跨调用复用。本函数只负责
+    "调用方等待上限"，不承诺底层 fn 无晚到副作用。
     """
-    ex = ThreadPoolExecutor(max_workers=1)
-    try:
-        fut = ex.submit(fn, *args, **kwargs)
-        return fut.result(timeout=timeout)
-    finally:
-        ex.shutdown(wait=False)
+    return call_with_timeout(fn, *args, timeout=timeout, **kwargs)
 
 
 def _ensure_baostock_login():
@@ -162,7 +161,7 @@ class AKShareClient:
 
         v0.8.6.4（ISS-047）：加 timeout 线程级硬超时。akshare 底层 requests 默认
         无 timeout，接口卡住会挂起到 OS 报 WinError 10060/10054 冻结整个命令。
-        用 ThreadPoolExecutor 包住单次调用，超时放弃走重试/降级。
+        用共享超时包装器包住单次调用，超时放弃走重试/降级。
 
         Args:
             func: 要重试的函数

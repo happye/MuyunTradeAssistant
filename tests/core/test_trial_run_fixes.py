@@ -64,7 +64,9 @@ def test_decision_label_shows_engine_to_strategy_downgrade():
 
 def test_kline_metrics_from_rows():
     from src.scanner.scanner_engine import ScannerEngine
-    rows = [(f"d{i}", 10.0, 100.0) for i in range(60)] + [("d60", 12.0, 50.0)]
+    start = datetime(2026, 1, 1)
+    rows = [((start + timedelta(days=i)).strftime("%Y-%m-%d"), 10.0, 100.0) for i in range(60)]
+    rows.append(((start + timedelta(days=60)).strftime("%Y-%m-%d"), 12.0, 50.0))
     m = ScannerEngine.kline_metrics_from_rows(rows)
     assert m["量比"] == 0.5
     assert m["60日涨跌幅"] == 20.0
@@ -127,14 +129,26 @@ def test_shim_calendar_prefers_sina_and_never_marks_unknown_days_closed(monkeypa
                     "2026-10-19": "1", "2026-10-20": "1"}
 
 
-def test_trading_days_rebuilds_calendar_without_future_days(monkeypatch, tmp_path):
+def test_trading_days_ttl_display_without_rebuild_and_strict_rejects_incomplete(monkeypatch, tmp_path):
     from src.core.fear_index import history as h
     monkeypatch.setattr(h, "BASE_DIR", tmp_path)
     today = datetime.now()
+    dates = [(today - timedelta(days=3)).strftime("%Y-%m-%d")]
     (tmp_path / "trade_dates.json").write_text(json.dumps({
         "version": h.FEAR_VERSION, "built_at": today.isoformat(timespec="seconds"),
-        "dates": [(today - timedelta(days=3)).strftime("%Y-%m-%d")]}), encoding="utf-8")
+        "dates": dates}), encoding="utf-8")
+
     import src.data.akshare_client as ac
-    monkeypatch.setattr(ac, "_ensure_baostock_login", lambda: False)
-    with pytest.raises(RuntimeError):   # 旧坏缓存不再被直接信任 → 走重建
-        h.trading_days()
+    monkeypatch.setattr(ac, "_ensure_baostock_login",
+                        lambda: (_ for _ in ()).throw(AssertionError("TTL display must not refresh")))
+    assert h.trading_days() == dates
+    strict = h.trading_days(allow_refresh=False)
+    assert strict["qualified"] is False and strict["legacy_dates"] == dates
+
+    coverage = {"schema": 1, "start": "2026-10-01", "end": "2026-10-03",
+                "days": {"2026-10-01": 1, "2026-10-02": 0}}
+    (tmp_path / "trade_dates.json").write_text(json.dumps({
+        "version": h.FEAR_VERSION, "built_at": today.isoformat(timespec="seconds"),
+        "dates": dates, "coverage": coverage}), encoding="utf-8")
+    with pytest.raises(RuntimeError):
+        h.trading_days(allow_refresh=False)

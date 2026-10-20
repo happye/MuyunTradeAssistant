@@ -2647,3 +2647,17 @@ Status: applied_to_integration_policy。用户明确暮云不需默认分支/PR�
 ### LRN-20261020-INTEGRATION-BOUNDARIES｜整合要核副作用与干净检出依赖
 
 Status: applied_to_current_integration。NAV_QUOTES默认值会让“只读账户事实”暗取行情，测试全局关开关会掩盖；应默认纯读、分析显式估值并断言调用次数。权重和用户估计NAV不能证明现金、份额或下单数量。正式测试依赖ignored原件时按已有清单SHA精确补入，不能用本机通过代替干净检出验证。Windows并发目录创建下Path.resolve可能保留扩展前缀，隔离器在解析链接后统一drive/UNC别名；不能跳resolve、放宽根外路径或称Python审计钩子是OS沙箱。反例与分轮日志留在现有验收资产。
+
+
+### LRN-20261021-T05-EXIT｜返回超时、退出等待和底层副作用分别验
+
+Status: applied / G7/T05本批限定接收。三个共享helper旧实现均已实际返回但子进程仍不退出；独立daemon与单槽只消除包装器自身join，不消除fn内部缓存写、会话竞争或派生线程池。单槽不等于线程/总内存上限，剩余4个executor站点留ISS-120，不按“同类”无限扩修。
+
+Future.result换Queue.get须比较边界预算：NaN能让Queue的剩余时间比较失效，负预算异常也会变化；正式3红后以立即预算语义补回。退出夹具须同时核调用耗时和父实际观察时刻，不能只比较旧child marker；有限worker自然完成前须留足退出窗口。原实例BaseException、合法None、迟到结果隔离、retry/breaker一起保留。
+
+历史486指纹在main重检出后317项只变LF/CRLF，先对照文本与Git再判漂移；本轮另冻实际字节489项，不改写历史hash。独立Windows父守卫需只放行真实NUL设备，以及与list2cmdline精确相等的三条命令；普通全量守卫不改。夹具误拒分轮记录，不充作产品红灯；原始pytest日志尾空白保真，不为diff --check清洗原始证据。
+
+
+### LRN-20261021-INTEGRATION-TYPED-BOUNDARIES
+
+Status: applied。本地补丁已过全量仍须fetch核远端；新增源会绕开原已修helper，缓存、日期、主体与必需字段门须沿新可达消费者重验。D/E/F只追已证实缺口：worker内新建deadline会在迟启动后续发请求；非法as_of退不过滤会洗白时点；re.search六位能接受超串；按模块名豁免shim缺code则让请求自证复活。统一调用方截止、严格窗口及完整词元，所有来源同门；fixture兼容不能覆盖合同。主控可中止自己的过期测试，保留原始日志，不把中止称失败/通过。

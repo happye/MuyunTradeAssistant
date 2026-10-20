@@ -14,13 +14,16 @@ from __future__ import annotations
 
 import hashlib
 import logging
+import math
 import os
 import pickle
 import re
+import tempfile
 import time
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from pathlib import Path
 from typing import Any, Callable, Optional
+
+from src.data.timeout_call import call_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -47,20 +50,42 @@ def _load(name, key):
         return None
     try:
         with open(p, "rb") as f:
-            return pickle.load(f)          # {"ts": float, "value": Any}
+            rec = pickle.load(f)
     except Exception:
         return None
+    if not isinstance(rec, dict) or "value" not in rec:
+        return None
+    ts = rec.get("ts")
+    if isinstance(ts, bool) or not isinstance(ts, (int, float)):
+        return None
+    ts = float(ts)
+    if not math.isfinite(ts) or ts <= 0:
+        return None
+    if time.time() - ts < 0:
+        return None
+    return rec
 
 
 def _save(name, key, value):
+    tmp_path = None
     try:
         p = _path(name, key)
-        tmp = p.with_suffix(".tmp")
-        with open(tmp, "wb") as f:
+        fd, tmp_name = tempfile.mkstemp(prefix=f".{p.stem}.", suffix=".tmp", dir=str(p.parent))
+        tmp_path = Path(tmp_name)
+        with os.fdopen(fd, "wb") as f:
             pickle.dump({"ts": time.time(), "value": value}, f)
-        os.replace(tmp, p)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp_path, p)
+        tmp_path = None
     except Exception as e:
         logger.debug(f"robust_fetch 写缓存失败 {name}/{key}: {e}")
+    finally:
+        if tmp_path is not None:
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
 
 
 def _is_empty(v) -> bool:
@@ -76,12 +101,7 @@ def _is_empty(v) -> bool:
 
 
 def _call_timeout(fn, timeout):
-    ex = ThreadPoolExecutor(max_workers=1)
-    fut = ex.submit(fn)
-    try:
-        return fut.result(timeout=timeout)
-    finally:
-        ex.shutdown(wait=False)   # 不 join 卡死线程
+    return call_with_timeout(fn, timeout=timeout)
 
 
 def robust_call(name: str, key: str, fn: Callable[[], Any], *, ttl: float = 86400,
@@ -90,7 +110,8 @@ def robust_call(name: str, key: str, fn: Callable[[], Any], *, ttl: float = 8640
     """见模块说明。返回值或 None；状态写入 LAST_STATUS[(name, key)]。"""
     now = time.time()
     rec = _load(name, key) if use_cache else None
-    if rec is not None and now - rec.get("ts", 0) <= ttl and not _is_empty(rec.get("value")):
+    age = (now - float(rec["ts"])) if rec is not None else None
+    if rec is not None and 0 <= age <= ttl and not _is_empty(rec.get("value")):
         LAST_STATUS[(name, key)] = "fresh_cache"
         return rec["value"]
     last_err = None
@@ -103,14 +124,14 @@ def robust_call(name: str, key: str, fn: Callable[[], Any], *, ttl: float = 8640
                 LAST_STATUS[(name, key)] = "live"
                 return v
             last_err = "empty"
-        except FuturesTimeout:
+        except TimeoutError:
             last_err = f"timeout>{timeout:.0f}s"
         except Exception as e:  # noqa: BLE001
             last_err = f"{type(e).__name__}: {str(e)[:60]}"
         if attempt < retries:
             time.sleep(backoff * (2 ** attempt))
-    if rec is not None and now - rec.get("ts", 0) <= stale_max and not _is_empty(rec.get("value")):
-        age_h = (now - rec["ts"]) / 3600
+    if rec is not None and 0 <= age <= stale_max and not _is_empty(rec.get("value")):
+        age_h = age / 3600
         logger.warning(f"robust_fetch {name}({key}) 失败({last_err})，使用 {age_h:.1f}h 前的缓存（stale）")
         LAST_STATUS[(name, key)] = "stale_cache"
         return rec["value"]

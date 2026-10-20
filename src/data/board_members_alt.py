@@ -70,7 +70,7 @@ def resolve_nodes(keywords: list[str], node_fetcher: Optional[Callable] = None) 
         kw = str(kw or "").strip()
         if not kw:
             continue
-        hit = THEME_TO_SW.get(kw) or next((v for k, v in THEME_TO_SW.items() if k in kw), None)
+        hit = THEME_TO_SW.get(kw)
         if hit:
             found += hit
         else:
@@ -79,7 +79,7 @@ def resolve_nodes(keywords: list[str], node_fetcher: Optional[Callable] = None) 
         nodes = rf.robust_call("sina_sw_nodes", "all", node_fetcher or _fetch_nodes,
                                ttl=7 * 86400, stale_max=90 * 86400, quiet=True) or []
         for kw in rest:
-            m = [(c, n) for c, n in nodes if kw in n or n.rstrip("ⅡⅢ") in kw]
+            m = [(c, n) for c, n in nodes if kw in n]
             m.sort(key=lambda x: x[0])  # sw1 < sw2 < sw3：优先粗粒度
             found += m[:2]
     return list(dict.fromkeys(found))

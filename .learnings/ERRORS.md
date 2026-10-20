@@ -585,3 +585,13 @@ Status: current_binding_resolved_tool_gap_open。CLI以G:/创建session，worksp
 ### ERR-20261020-CLEAN-INTEGRATION｜公开夹具缺失与Windows隔离路径误拒
 
 Status: resolved_in_integration_final_full_3091_passed。临时detached合并树全量3082通过/3失败：两例因5份公开PDF只存在原工作区ignored目录，一例为同临时根并发mkdir被路径判断拒绝。5份PDF已逐个核既有manifest的SHA后精确补齐，63项相关测试通过；同根被拒的Windows扩展前缀机制通过真实ntpath分支替身复现，1红→51绿。原一次失败未记录resolved值，不能追溯证明其具体前缀。最终全量及停止指纹见本轮R15/REVIEW_INDEX与既有日志；不删失败证据、不开放真实状态写入。
+
+
+### ERR-20261020-CONTINUATION-TOOLS
+
+Status: resolved_for_this_continuation / low. 当前运行时未暴露read_thread/create_thread，不能读取引用聊天或创建Codex聊天；已明示限制，按磁盘RESUME续正式DSH任务，不推定聊天内容。Git直连21秒失败，命令级http.proxy及http.https://github.com.proxy指向现有127.0.0.1:7890后核远端与本地bd9e5d0一致，不改全局配置。一次错误写为https://github.com.proxy被Git拒绝，已纠正键名。REVIEW_INDEX是JSON不是Markdown；查询先rg --files，不猜路径。
+
+
+### ERR-20261021-T05-REVIEW-GUARD
+
+Status: resolved / parent temporary review fixture only。独立退出复验先3例误拒NUL stdin设备（admitted child=0），再3例误认Windows subprocess审计的list2cmdline字符串为列表（admitted child=0）。仅修OS Temp父夹具：精确NUL别名、精确重建命令字符串；最终3通过，admitted children=3，其他外联/账户0，7源码pins和8保护hash不变。两次夹具失败原始日志保留，未改产品或普通review_test_runner。

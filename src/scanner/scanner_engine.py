@@ -17,6 +17,7 @@
 import os
 import json
 import logging
+import time
 from difflib import SequenceMatcher
 from typing import Optional, Callable
 
@@ -26,11 +27,16 @@ import pandas as pd
 from src.scanner.market_cache import MarketCache
 from src.scanner.scanner_filter import ScannerFilter
 from src.data.models import ScanCandidate
+from src.data.timeout_call import call_with_timeout
 from src.core.ai_model import thinking_disabled_body
 from src.core.orchestrator import Orchestrator
 from src.data.akshare_client import AKShareClient
 
 logger = logging.getLogger(__name__)
+
+
+class _KlineBudgetExceeded(RuntimeError):
+    """K-line batch deadline reached inside the worker; no partial dict escapes."""
 
 
 class ScannerEngine:
@@ -1000,6 +1006,7 @@ class ScannerEngine:
     # 过滤条件的小集合），避免 volume_ratio/change_60d 条件被静默跳过。
     KLINE_DERIVED_COLS = ("量比", "60日涨跌幅")
     KLINE_ENRICH_MAX = 200
+    KLINE_TOTAL_TIMEOUT_S = 20.0
 
     def _apply_filters_with_kline_enrich(self, df, filters, sort_by=None):
         filters = filters or []
@@ -1014,40 +1021,101 @@ class ScannerEngine:
         first = [f for f in filters if ScannerFilter.FIELD_MAP.get(f.get("field", "")) not in need]
         later = [f for f in filters if ScannerFilter.FIELD_MAP.get(f.get("field", "")) in need]
         df = ScannerFilter.apply(df, first)
-        if df.empty or len(df) > self.KLINE_ENRICH_MAX or "代码" not in df.columns:
-            if len(df) > self.KLINE_ENRICH_MAX:
-                logger.warning(f"ScannerEngine: 候选 {len(df)} 只超 K 线补算上限 "
-                               f"{self.KLINE_ENRICH_MAX}，{sorted(need)} 条件仍无法执行")
-            return ScannerFilter.apply(df, later)
+        if df.empty:
+            return df
+        df = df.copy()
         if sort_col in self.KLINE_DERIVED_COLS:
             need.add(sort_col)
-        metrics = self._kline_metrics(df["代码"].astype(str).tolist())
-        df = df.copy()
-        df["量比"] = df["代码"].astype(str).map(lambda c: metrics.get(c, {}).get("量比"))
-        df["60日涨跌幅"] = df["代码"].astype(str).map(lambda c: metrics.get(c, {}).get("60日涨跌幅"))
-        got = int(df["量比"].notna().sum())
+        for col in need:
+            if col not in df.columns:
+                df[col] = None
+        metrics = {}
+        if "代码" in df.columns and len(df) <= self.KLINE_ENRICH_MAX:
+            metrics = self._kline_metrics(df["代码"].astype(str).tolist())
+        elif len(df) > self.KLINE_ENRICH_MAX:
+            logger.warning(f"ScannerEngine: 候选 {len(df)} 只超 K 线补算上限 "
+                           f"{self.KLINE_ENRICH_MAX}，{sorted(need)} 条件按缺失处理")
+        if "代码" in df.columns:
+            codes = df["代码"].astype(str)
+            for col in need:
+                df[col] = codes.map(lambda code, column=col: metrics.get(code, {}).get(column))
+        valid = df[list(need)].notna().all(axis=1) if need else pd.Series(True, index=df.index)
+        got = int(valid.sum())
         logger.info(f"ScannerEngine: K线补算量比/60日涨跌幅 {got}/{len(df)} 只"
                     f"（量比=最近一根日K成交量/前5日均量；缺K线者不满足该条件）")
-        if got == 0:
-            # 全部取不到：与旧行为一致地跳过（ScannerFilter 会告警），不伪造
-            df = df.drop(columns=[c for c in self.KLINE_DERIVED_COLS if c in need])
-        return ScannerFilter.apply(df, later)
+        # 缺失派生字段的行不得以 neq/not_in 等操作符蒙混过关：先按所需列齐全过滤。
+        return ScannerFilter.apply(df[valid], later)
 
     @staticmethod
-    def kline_metrics_from_rows(rows):
-        """rows: [(date, close, volume), ...] 升序。返回 {量比, 60日涨跌幅}（不足则 None）。"""
+    def kline_metrics_from_rows(rows, as_of=None, start_date=None):
+        """rows: [(date, close, volume), ...] 或 [(date, code, close, volume), ...]。
+
+        返回 {量比, 60日涨跌幅}（不足则 None）。T05-E：日期必须是完整非补零
+        YYYY-MM-DD；显式 as_of/start_date 非法直接返回两 None；as_of=None 采用
+        当前日（不允许默认未来）；生产传实际 start_d/end_d，只统计 [start, as_of]
+        窗口。按日期升序；同日同值去重、同日冲突整组 None；close 有限正、
+        volume 有限非负，bool/NaN/Inf 拒绝。6/61 期门槛与公式不变。
+        """
         import math
-        closes, vols = [], []
-        for _d, c, v in rows:
+        import re
+        from datetime import datetime
+
+        out = {"量比": None, "60日涨跌幅": None}
+
+        def parse_day(value):
+            text = str(value).strip()
+            if not re.fullmatch(r"\d{4}-\d{2}-\d{2}", text):
+                return None
             try:
-                c, v = float(c), float(v)
+                return datetime.strptime(text, "%Y-%m-%d").date()
+            except ValueError:
+                return None
+
+        end_day = datetime.now().date() if as_of is None else parse_day(as_of)
+        if end_day is None:
+            return out
+        start_day = None
+        if start_date is not None:
+            start_day = parse_day(start_date)
+            if start_day is None or start_day > end_day:
+                return out
+        by_date = {}
+        conflict = False
+        for row in rows or []:
+            if not isinstance(row, (list, tuple)) or len(row) < 3:
+                continue
+            if len(row) >= 4:
+                date_raw, close_raw, volume_raw = row[0], row[2], row[3]
+            else:
+                date_raw, close_raw, volume_raw = row[0], row[1], row[2]
+            day = parse_day(date_raw)
+            if day is None:
+                continue
+            if start_day is not None and day < start_day:
+                continue
+            if day > end_day:
+                continue
+            if isinstance(close_raw, bool) or isinstance(volume_raw, bool):
+                continue
+            try:
+                close, volume = float(close_raw), float(volume_raw)
             except (TypeError, ValueError):
                 continue
-            if math.isnan(c) or math.isnan(v):
+            if not math.isfinite(close) or not math.isfinite(volume):
                 continue
-            closes.append(c)
-            vols.append(v)
-        out = {"量比": None, "60日涨跌幅": None}
+            if close <= 0 or volume < 0:
+                continue
+            prior = by_date.get(day)
+            if prior is not None:
+                if prior != (close, volume):
+                    conflict = True
+                continue
+            by_date[day] = (close, volume)
+        if conflict:
+            return out
+        ordered = [by_date[day] for day in sorted(by_date)]
+        closes = [value[0] for value in ordered]
+        vols = [value[1] for value in ordered]
         if len(vols) >= 6:
             prior = vols[-6:-1]
             avg = sum(prior) / 5.0
@@ -1058,48 +1126,91 @@ class ScannerEngine:
         return out
 
     def _kline_metrics(self, codes):
+        import re
         from datetime import datetime, timedelta
-        try:
-            from src.data.akshare_client import _ensure_baostock_login
-            import baostock as bs
-            if not _ensure_baostock_login():
-                return {}
-        except Exception as e:
-            logger.debug(f"kline metrics: baostock 不可用 {e}")
-            return {}
+
+        budget = float(getattr(self, "KLINE_TOTAL_TIMEOUT_S", 20.0))
         end_d = datetime.now().strftime("%Y-%m-%d")
         start_d = (datetime.now() - timedelta(days=130)).strftime("%Y-%m-%d")
+        # 截止锚在调用线程、worker 启动之前；worker 晚启动/慢导入不能重新领预算。
+        deadline = time.monotonic() + budget
 
-        def one(code):
-            prefix = "sh" if code.startswith(("6", "9")) else ("bj" if code.startswith(("4", "8")) else "sz")
-            try:
-                rs = bs.query_history_k_data_plus(f"{prefix}.{code}", "date,close,volume",
-                                                  start_date=start_d, end_date=end_d,
-                                                  frequency="d", adjustflag="2")
-                if rs.error_code != "0":
-                    return code, None
-                rows = []
-                while rs.next():
-                    rows.append(rs.get_row_data())
-                return code, self.kline_metrics_from_rows(rows)
-            except Exception as e:
-                logger.debug(f"kline metrics {code} 失败: {type(e).__name__}")
-                return code, None
+        def check_deadline():
+            if time.monotonic() >= deadline:
+                raise _KlineBudgetExceeded()
 
-        shim = "bs_shim" in getattr(bs.query_history_k_data_plus, "__module__", "")
-        out = {}
-        if shim:  # 垫片为无状态 HTTP + 全局节流，可并发；原生 baostock 单连接需串行
-            from concurrent.futures import ThreadPoolExecutor
-            with ThreadPoolExecutor(max_workers=6) as ex:
-                for code, m in ex.map(one, codes):
-                    if m:
-                        out[code] = m
-        else:
+        def row_matches(raw, code, prefix):
+            if not re.fullmatch(r"\d{6}", code):
+                return False
+            text = str(raw or "").strip().lower()
+            # 只接受完整词元：sh.600519 / sh600519 / 600519.sh（交易所与代码均精确）。
+            # 不做六位子串搜索，裸六位也不拿请求上下文补交易所。
+            for pattern in (rf"{prefix}\.{code}", rf"{prefix}{code}", rf"{code}\.{prefix}"):
+                if re.fullmatch(pattern, text):
+                    return True
+            return False
+
+        def collect():
+            check_deadline()
+            from src.data.akshare_client import _ensure_baostock_login
+            import baostock as bs
+
+            check_deadline()
+            if not _ensure_baostock_login():
+                return {}
+            check_deadline()
+            query = bs.query_history_k_data_plus
+            out = {}
             for code in codes:
-                code, m = one(code)
-                if m:
-                    out[code] = m
-        return out
+                check_deadline()
+                code = str(code)
+                prefix = "sh" if code.startswith(("6", "9")) else ("bj" if code.startswith(("4", "8")) else "sz")
+                try:
+                    rs = query(f"{prefix}.{code}", "date,code,close,volume",
+                               start_date=start_d, end_date=end_d,
+                               frequency="d", adjustflag="2")
+                    check_deadline()
+                    if rs.error_code != "0":
+                        continue
+                    rows = []
+                    while True:
+                        check_deadline()
+                        if not rs.next():
+                            break
+                        rows.append(rs.get_row_data())
+                    check_deadline()
+                    valid_rows = []
+                    for row in rows:
+                        if not isinstance(row, (list, tuple)) or len(row) < 4:
+                            valid_rows = []
+                            break
+                        if not row_matches(row[1], code, prefix):
+                            valid_rows = []
+                            break
+                        valid_rows.append(row)
+                    if not valid_rows:
+                        continue
+                    metrics = self.kline_metrics_from_rows(valid_rows, as_of=end_d, start_date=start_d)
+                    if metrics and any(value is not None for value in metrics.values()):
+                        out[code] = metrics
+                except _KlineBudgetExceeded:
+                    raise
+                except Exception as e:
+                    logger.debug(f"kline metrics {code} 失败: {type(e).__name__}")
+                    continue
+            return out
+
+        try:
+            return call_with_timeout(collect, timeout=budget)
+        except TimeoutError:
+            logger.warning(f"ScannerEngine: K线补算超过总预算 {budget:.0f}s，本批返回空")
+            return {}
+        except _KlineBudgetExceeded:
+            logger.warning(f"ScannerEngine: K线补算超过总预算 {budget:.0f}s，本批返回空")
+            return {}
+        except Exception as e:
+            logger.debug(f"kline metrics 批处理失败: {type(e).__name__}")
+            return {}
 
     def _enrich_trend_data(self, candidates: list) -> list:
         """Enrich candidates with 60-day price change via Baostock (v0.8.4).

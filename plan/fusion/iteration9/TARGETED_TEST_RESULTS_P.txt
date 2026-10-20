@@ -21225,3 +21225,2156 @@ PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
 PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
 KNOWLEDGE_FILE_SET_UNCHANGED True
 
+
+===== T05-A THREE HELPER EXIT COUNTEREXAMPLES 2026-10-20 =====
+cwd: G:\Tools\暮云思辨投资助手
+git: main@bd9e5d0789de8189b5757d52af253341435290b1
+scope: read-only product verification, no production edit, T05 not closed
+command-default: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-default: 9 passed, 3 skipped (subprocess case skipped without MUYUN_T05_EXIT_PROBE=1)
+--- raw default output ---
+.........sss                                                             [100%]
+9 passed, 3 skipped in 0.79s
+
+command-probe: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-probe: 3 failed, 9 passed; all failures are EXIT ASSERTION after helper returned
+runner-scope: plain pytest, not plan/fusion/iteration9/review_test_runner.py; parent process not under the review IO guard, child blocks network/subprocess itself
+--- raw probe output ---
+.........FFF                                                             [100%]
+================================== FAILURES ===================================
+_________ test_helper_returns_before_process_exit_deadline[safe_call] _________
+
+case = 'safe_call'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(proc, events_path, ("worker_started", "returned"), STARTUP_DEADLINE_S)
+            missing = [name for name in ("import_done", "worker_started", "returned") if name not in seen]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            _assert_timeout_semantics(case, seen["returned"])
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'safe_call' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 0.594, 'event': 'import_done'}, {'at_s': 0.625, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 0.672, 'event': 'returned', 'value_is_none': True, 'value_repr': 'None'}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr='data_provider.t05_safe_call 超时(>0s)，放弃走降级\n'
+
+tests\core\test_t05_timeout_exit.py:345: Failed
+_____ test_helper_returns_before_process_exit_deadline[call_with_timeout] _____
+
+case = 'call_with_timeout'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(proc, events_path, ("worker_started", "returned"), STARTUP_DEADLINE_S)
+            missing = [name for name in ("import_done", "worker_started", "returned") if name not in seen]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            _assert_timeout_semantics(case, seen["returned"])
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'call_with_timeout' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 1.078, 'event': 'import_done'}, {'at_s': 1.078, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 1.125, 'error_type': 'TimeoutError', 'event': 'returned', 'timeout_error': True}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr=''
+
+tests\core\test_t05_timeout_exit.py:345: Failed
+__________ test_helper_returns_before_process_exit_deadline[probe_t] __________
+
+case = 'probe_t'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(proc, events_path, ("worker_started", "returned"), STARTUP_DEADLINE_S)
+            missing = [name for name in ("import_done", "worker_started", "returned") if name not in seen]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            _assert_timeout_semantics(case, seen["returned"])
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'probe_t' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 0.61, 'event': 'import_done'}, {'at_s': 0.61, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 0.657, 'error': '超时(>0s)，接口可能 hang/反爬', 'event': 'returned', 'ok': False}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr=''
+
+tests\core\test_t05_timeout_exit.py:345: Failed
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[safe_call]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[call_with_timeout]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[probe_t]
+3 failed, 9 passed in 7.65s
+
+===== T05-B SHARED TIMEOUT FIX AND EXIT GREEN 2026-10-20 =====
+cwd: G:\Tools\暮云思辨投资助手
+git: main@bd9e5d0789de8189b5757d52af253341435290b1
+scope: minimal T05-B fix; no git action; T05/G7 not closed
+command-default: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-default: 22 passed, 3 skipped (exit case skipped without MUYUN_T05_EXIT_PROBE=1)
+--- raw default output ---
+......................sss                                                [100%]
+22 passed, 3 skipped in 2.97s
+
+command-probe: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-probe: 25 passed; call_elapsed 0.078/0.078/0.063s; exit_after 0.031/0.063/0.046s; child exited naturally rc=0
+--- raw probe output ---
+......................T05_EXIT_OK case=safe_call import_done=0.562s call_started=0.578s returned=0.656s call_elapsed=0.078s exit_after=0.031s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.047s call_started=1.047s returned=1.125s call_elapsed=0.078s exit_after=0.063s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.578s call_started=0.594s returned=0.657s call_elapsed=0.063s exit_after=0.046s cleanup=child exited before cleanup rc=0
+.
+25 passed in 5.87s
+
+command-review: .\.venv\Scripts\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_t05_timeout_exit.py tests/core/test_t05_cache_timeout_count.py tests/core/test_plain_errors.py tests/core/test_shared_config_consumers.py tests/data_sources/test_source_check.py tests/benzong/test_benzong_scorer.py tests/benzong/test_industry_prosperity_wiring.py
+result-review: 66 passed, 3 skipped, 1 deselected (6.50s); BLOCKED_IO 0/0/0; protected hashes unchanged
+--- raw review output ---
+......................sss............................................    [100%]
+66 passed, 3 skipped, 1 deselected in 6.50s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+===== T05-B FIXTURE-FIRST RED PROOF 2026-10-20 =====
+scope: improved fixture on HEAD helper code (temporary local restore, no git action), then fixed code; logs appended verbatim
+command-old: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py -k helper_returns_before_process_exit_deadline
+result-old: 3 failed, 22 deselected (6.63s); call_elapsed 0.078/0.062/0.062s; all failures are EXIT ASSERTION
+--- raw old-code red output ---
+FFF
+================================== FAILURES ===================================
+_________ test_helper_returns_before_process_exit_deadline[safe_call] _________
+
+case = 'safe_call'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(
+                proc, events_path, ("call_started", "worker_started", "returned"), STARTUP_DEADLINE_S
+            )
+            missing = [
+                name
+                for name in ("import_done", "call_started", "worker_started", "returned")
+                if name not in seen
+            ]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["call_started"]["at_s"] >= seen["import_done"]["at_s"]
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            call_elapsed = seen["returned"].get("call_elapsed_s")
+            assert call_elapsed is not None and call_elapsed <= CALL_ELAPSED_LIMIT_S, (
+                "CALL DURATION ASSERTION: helper %r blocked %.3fs (>%.1fs), so the exit check would "
+                "not prove non-blocking; events=%r"
+                % (
+                    case,
+                    -1.0 if call_elapsed is None else call_elapsed,
+                    CALL_ELAPSED_LIMIT_S,
+                    _read_events(events_path),
+                )
+            )
+            _assert_timeout_semantics(case, seen["returned"])
+            assert seen["returned"]["at_s"] + EXIT_DEADLINE_S + 0.25 < WORKER_SLEEP_S, (
+                "fixture precondition failed: returned at %.3fs leaves no exit window before the "
+                "%.1fs worker completes; this would be a false green"
+                % (seen["returned"]["at_s"], WORKER_SLEEP_S)
+            )
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'safe_call' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 0.594, 'event': 'import_done'}, {'at_s': 0.594, 'event': 'call_started'}, {'at_s': 0.61, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 0.672, 'call_elapsed_s': 0.078, 'event': 'returned', 'value_is_none': True, 'value_repr': 'None'}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr='data_provider.t05_safe_call 超时(>0s)，放弃走降级\n'
+
+tests\core\test_t05_timeout_exit.py:562: Failed
+_____ test_helper_returns_before_process_exit_deadline[call_with_timeout] _____
+
+case = 'call_with_timeout'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(
+                proc, events_path, ("call_started", "worker_started", "returned"), STARTUP_DEADLINE_S
+            )
+            missing = [
+                name
+                for name in ("import_done", "call_started", "worker_started", "returned")
+                if name not in seen
+            ]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["call_started"]["at_s"] >= seen["import_done"]["at_s"]
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            call_elapsed = seen["returned"].get("call_elapsed_s")
+            assert call_elapsed is not None and call_elapsed <= CALL_ELAPSED_LIMIT_S, (
+                "CALL DURATION ASSERTION: helper %r blocked %.3fs (>%.1fs), so the exit check would "
+                "not prove non-blocking; events=%r"
+                % (
+                    case,
+                    -1.0 if call_elapsed is None else call_elapsed,
+                    CALL_ELAPSED_LIMIT_S,
+                    _read_events(events_path),
+                )
+            )
+            _assert_timeout_semantics(case, seen["returned"])
+            assert seen["returned"]["at_s"] + EXIT_DEADLINE_S + 0.25 < WORKER_SLEEP_S, (
+                "fixture precondition failed: returned at %.3fs leaves no exit window before the "
+                "%.1fs worker completes; this would be a false green"
+                % (seen["returned"]["at_s"], WORKER_SLEEP_S)
+            )
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'call_with_timeout' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 1.078, 'event': 'import_done'}, {'at_s': 1.078, 'event': 'call_started'}, {'at_s': 1.078, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 1.14, 'call_elapsed_s': 0.062, 'error_type': 'TimeoutError', 'event': 'returned', 'timeout_error': True}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr=''
+
+tests\core\test_t05_timeout_exit.py:562: Failed
+__________ test_helper_returns_before_process_exit_deadline[probe_t] __________
+
+case = 'probe_t'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(
+                proc, events_path, ("call_started", "worker_started", "returned"), STARTUP_DEADLINE_S
+            )
+            missing = [
+                name
+                for name in ("import_done", "call_started", "worker_started", "returned")
+                if name not in seen
+            ]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["call_started"]["at_s"] >= seen["import_done"]["at_s"]
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            call_elapsed = seen["returned"].get("call_elapsed_s")
+            assert call_elapsed is not None and call_elapsed <= CALL_ELAPSED_LIMIT_S, (
+                "CALL DURATION ASSERTION: helper %r blocked %.3fs (>%.1fs), so the exit check would "
+                "not prove non-blocking; events=%r"
+                % (
+                    case,
+                    -1.0 if call_elapsed is None else call_elapsed,
+                    CALL_ELAPSED_LIMIT_S,
+                    _read_events(events_path),
+                )
+            )
+            _assert_timeout_semantics(case, seen["returned"])
+            assert seen["returned"]["at_s"] + EXIT_DEADLINE_S + 0.25 < WORKER_SLEEP_S, (
+                "fixture precondition failed: returned at %.3fs leaves no exit window before the "
+                "%.1fs worker completes; this would be a false green"
+                % (seen["returned"]["at_s"], WORKER_SLEEP_S)
+            )
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'probe_t' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin'}, {'at_s': 0.563, 'event': 'import_done'}, {'at_s': 0.563, 'event': 'call_started'}, {'at_s': 0.563, 'event': 'worker_started', 'where': 'worker-thread'}, {'at_s': 0.625, 'call_elapsed_s': 0.062, 'error': '超时(>0s)，接口可能 hang/反爬', 'event': 'returned', 'ok': False}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr=''
+
+tests\core\test_t05_timeout_exit.py:562: Failed
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[safe_call]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[call_with_timeout]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[probe_t]
+3 failed, 22 deselected in 6.63s
+
+command-fixed: same command after restoring the fixed helpers
+result-fixed: 3 passed, 22 deselected (3.05s); child exited naturally rc=0
+--- raw fixed-code green output ---
+T05_EXIT_OK case=safe_call import_done=0.578s call_started=0.578s returned=0.672s call_elapsed=0.078s exit_after=0.031s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.062s call_started=1.062s returned=1.125s call_elapsed=0.063s exit_after=0.062s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.562s call_started=0.562s returned=0.640s call_elapsed=0.078s exit_after=0.031s cleanup=child exited before cleanup rc=0
+.
+3 passed, 22 deselected in 3.05s
+
+command-full: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-full: 25 passed (5.78s)
+--- raw full output ---
+.........................                                                [100%]
+25 passed in 5.78s
+
+===== T05-C BUDGET EDGE FIX AND PARENT WALL OBSERVATION 2026-10-20 =====
+scope: timeout_call budget normalization + single-put worker; test window checks parent wall clock; no other production files; T05/G7 not closed
+command-red: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py (probe off, after adding edge tests, before fix)
+result-red: 3 failed, 25 passed, 3 skipped (3.75s); negative -> ValueError, NaN -> DID NOT RAISE (returned late)
+--- raw red output ---
+...........FFF..............sss                                          [100%]
+================================== FAILURES ===================================
+_____ test_nonpositive_or_nan_budget_times_out_immediately[negative-int] ______
+
+budget = -1.0
+
+    @pytest.mark.parametrize(
+        "budget",
+        [-1.0, -0.001, float("nan"), 0.0],
+        ids=["negative-int", "negative-fraction", "nan", "zero"],
+    )
+    def test_nonpositive_or_nan_budget_times_out_immediately(budget):
+        from src.data.timeout_call import call_with_timeout
+    
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+>           call_with_timeout(lambda: time.sleep(0.25) or "late", timeout=budget)
+
+tests\core\test_t05_timeout_exit.py:350: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\data\timeout_call.py:43: in call_with_timeout
+    status, payload = slot.get(timeout=timeout)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <queue.Queue object at 0x000001BF11245810>, block = True, timeout = -1.0
+
+    def get(self, block=True, timeout=None):
+        '''Remove and return an item from the queue.
+    
+        If optional args 'block' is true and 'timeout' is None (the default),
+        block if necessary until an item is available. If 'timeout' is
+        a non-negative number, it blocks at most 'timeout' seconds and raises
+        the Empty exception if no item was available within that time.
+        Otherwise ('block' is false), return an item if one is immediately
+        available, else raise the Empty exception ('timeout' is ignored
+        in that case).
+        '''
+        with self.not_empty:
+            if not block:
+                if not self._qsize():
+                    raise Empty
+            elif timeout is None:
+                while not self._qsize():
+                    self.not_empty.wait()
+            elif timeout < 0:
+>               raise ValueError("'timeout' must be a non-negative number")
+E               ValueError: 'timeout' must be a non-negative number
+
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\queue.py:173: ValueError
+___ test_nonpositive_or_nan_budget_times_out_immediately[negative-fraction] ___
+
+budget = -0.001
+
+    @pytest.mark.parametrize(
+        "budget",
+        [-1.0, -0.001, float("nan"), 0.0],
+        ids=["negative-int", "negative-fraction", "nan", "zero"],
+    )
+    def test_nonpositive_or_nan_budget_times_out_immediately(budget):
+        from src.data.timeout_call import call_with_timeout
+    
+        started = time.monotonic()
+        with pytest.raises(TimeoutError):
+>           call_with_timeout(lambda: time.sleep(0.25) or "late", timeout=budget)
+
+tests\core\test_t05_timeout_exit.py:350: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\data\timeout_call.py:43: in call_with_timeout
+    status, payload = slot.get(timeout=timeout)
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <queue.Queue object at 0x000001BF115104D0>, block = True
+timeout = -0.001
+
+    def get(self, block=True, timeout=None):
+        '''Remove and return an item from the queue.
+    
+        If optional args 'block' is true and 'timeout' is None (the default),
+        block if necessary until an item is available. If 'timeout' is
+        a non-negative number, it blocks at most 'timeout' seconds and raises
+        the Empty exception if no item was available within that time.
+        Otherwise ('block' is false), return an item if one is immediately
+        available, else raise the Empty exception ('timeout' is ignored
+        in that case).
+        '''
+        with self.not_empty:
+            if not block:
+                if not self._qsize():
+                    raise Empty
+            elif timeout is None:
+                while not self._qsize():
+                    self.not_empty.wait()
+            elif timeout < 0:
+>               raise ValueError("'timeout' must be a non-negative number")
+E               ValueError: 'timeout' must be a non-negative number
+
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\queue.py:173: ValueError
+__________ test_nonpositive_or_nan_budget_times_out_immediately[nan] __________
+
+budget = nan
+
+    @pytest.mark.parametrize(
+        "budget",
+        [-1.0, -0.001, float("nan"), 0.0],
+        ids=["negative-int", "negative-fraction", "nan", "zero"],
+    )
+    def test_nonpositive_or_nan_budget_times_out_immediately(budget):
+        from src.data.timeout_call import call_with_timeout
+    
+        started = time.monotonic()
+>       with pytest.raises(TimeoutError):
+E       Failed: DID NOT RAISE TimeoutError
+
+tests\core\test_t05_timeout_exit.py:349: Failed
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_nonpositive_or_nan_budget_times_out_immediately[negative-int]
+FAILED tests/core/test_t05_timeout_exit.py::test_nonpositive_or_nan_budget_times_out_immediately[negative-fraction]
+FAILED tests/core/test_t05_timeout_exit.py::test_nonpositive_or_nan_budget_times_out_immediately[nan]
+3 failed, 25 passed, 3 skipped in 3.75s
+
+command-fixed-default: same command after fix
+result-fixed-default: 28 passed, 3 skipped (2.97s)
+--- raw fixed default output ---
+............................sss                                          [100%]
+28 passed, 3 skipped in 2.97s
+
+command-exit: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py -k helper_returns_before_process_exit_deadline
+result-exit: 3 passed, 28 deselected (3.02s); call_elapsed 0.078/0.062/0.063s; exit_after 0.031/0.063/0.031s; window_margin 6.941/6.939/6.930s; child exited before cleanup rc=0
+--- raw exit output ---
+T05_EXIT_OK case=safe_call import_done=0.578s call_started=0.578s returned=0.656s call_elapsed=0.078s exit_after=0.031s worker_wall=1792511813.055 observed_wall=1792511813.115 window_margin=6.941s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.063s call_started=1.063s returned=1.125s call_elapsed=0.062s exit_after=0.063s worker_wall=1792511814.298 observed_wall=1792511814.359 window_margin=6.939s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.578s call_started=0.578s returned=0.641s call_elapsed=0.063s exit_after=0.031s worker_wall=1792511815.099 observed_wall=1792511815.169 window_margin=6.930s cleanup=child exited before cleanup rc=0
+.
+3 passed, 28 deselected in 3.02s
+
+command-full: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-full: 31 passed (5.82s)
+--- raw full output ---
+...............................                                          [100%]
+31 passed in 5.82s
+
+command-guard: .\.venv\Scripts\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_t05_timeout_exit.py tests/core/test_t05_cache_timeout_count.py tests/core/test_plain_errors.py tests/core/test_shared_config_consumers.py tests/data_sources/test_source_check.py tests/benzong/test_benzong_scorer.py tests/benzong/test_industry_prosperity_wiring.py
+result-guard: 72 passed, 3 skipped, 1 deselected (6.45s); BLOCKED_IO 0/0/0; protected hashes unchanged
+--- raw guard output ---
+............................sss......................................... [ 96%]
+...                                                                      [100%]
+72 passed, 3 skipped, 1 deselected in 6.45s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+===== PARENT_REVIEW_FIXTURE_NUL_REJECT_0_CHILDREN 2026-10-21 =====
+INDEPENDENT_REVIEW_ROOT C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-2qpojkvd
+FINAL_PINS {"src/cli/plain_errors.py": "0e3cafd654437376d0ba5b31b218dc6c458188db96f0aabcdb6f7466ceff77a3", "src/core/benzong/data_provider.py": "c5d6582c13d804c87e1dd6519675f6f33c9b32a743d2cd83d47914638858cc46", "src/data/akshare_client.py": "e2aa689f5ec93d6ee06900f05e69e09fef2651bf3f26e104910ec05d282a17e8", "src/data/source_check.py": "c2d5692c5a057362a0b4c4e17ad59a7cf465023ac4f7085623ccce51e08832b4", "src/data/timeout_call.py": "2a3dfe8c13353f8645cdd38c019e0f22c89d5e5f413350f9c64e960ac7051d6c", "start.py": "ebf8ed2e287a88f3d9ed7da82a9f13e96a2733d857a3455bb82513cca3cf14f0", "tests/core/test_t05_timeout_exit.py": "a8856ddfa131c65e24256ad11f561fee55c6514e9df5da221f1f4e328bda5f69"}
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_________ test_helper_returns_before_process_exit_deadline[safe_call] _________
+
+case = 'safe_call'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:992: in __init__
+    errread, errwrite) = self._get_handles(stdin, stdout, stderr)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1359: in _get_handles
+    p2cread = msvcrt.get_osfhandle(self._get_devnull())
+                                   ^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1137: in _get_devnull
+    self._devnull = os.open(os.devnull, os.O_RDWR)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:60: in audit
+    if (isinstance(mode,str) and any(c in mode for c in 'wax+')) or (isinstance(flags,int) and flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC)):writable(p)
+                                                                                                                                                      ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+p = WindowsPath('//./NUL/')
+
+    def writable(p):
+>    if not resolved(p).is_relative_to(root):raise RuntimeError('T05 independent review write outside Temp root')
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E    RuntimeError: T05 independent review write outside Temp root
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:43: RuntimeError
+_____ test_helper_returns_before_process_exit_deadline[call_with_timeout] _____
+
+case = 'call_with_timeout'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:992: in __init__
+    errread, errwrite) = self._get_handles(stdin, stdout, stderr)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1359: in _get_handles
+    p2cread = msvcrt.get_osfhandle(self._get_devnull())
+                                   ^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1137: in _get_devnull
+    self._devnull = os.open(os.devnull, os.O_RDWR)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:60: in audit
+    if (isinstance(mode,str) and any(c in mode for c in 'wax+')) or (isinstance(flags,int) and flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC)):writable(p)
+                                                                                                                                                      ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+p = WindowsPath('//./NUL/')
+
+    def writable(p):
+>    if not resolved(p).is_relative_to(root):raise RuntimeError('T05 independent review write outside Temp root')
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E    RuntimeError: T05 independent review write outside Temp root
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:43: RuntimeError
+__________ test_helper_returns_before_process_exit_deadline[probe_t] __________
+
+case = 'probe_t'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:992: in __init__
+    errread, errwrite) = self._get_handles(stdin, stdout, stderr)
+                         ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1359: in _get_handles
+    p2cread = msvcrt.get_osfhandle(self._get_devnull())
+                                   ^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1137: in _get_devnull
+    self._devnull = os.open(os.devnull, os.O_RDWR)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:60: in audit
+    if (isinstance(mode,str) and any(c in mode for c in 'wax+')) or (isinstance(flags,int) and flags & (os.O_WRONLY|os.O_RDWR|os.O_CREAT|os.O_TRUNC)):writable(p)
+                                                                                                                                                      ^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+p = WindowsPath('//./NUL/')
+
+    def writable(p):
+>    if not resolved(p).is_relative_to(root):raise RuntimeError('T05 independent review write outside Temp root')
+                                             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E    RuntimeError: T05 independent review write outside Temp root
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:43: RuntimeError
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[safe_call]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[call_with_timeout]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[probe_t]
+3 failed, 28 deselected in 0.78s
+INDEPENDENT_ADMISSION_COUNTS {'allowed_exact_children': 0, 'network_blocked': 0, 'other_child_blocked': 0, 'real_state_blocked': 0}
+SOURCE_PINS_UNCHANGED True
+PROTECTED_HASHES_UNCHANGED True BASELINE_PROTECTED_UNCHANGED True
+KNOWLEDGE_SET_UNCHANGED True
+Traceback (most recent call last):
+  File "C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py", line 78, in <module>
+    assert code==0 and counts['allowed_exact_children']==3 and pinmatch and before==after and knowledge_ok
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+
+===== PARENT_REVIEW_FIXTURE_WINDOWS_COMMAND_REJECT_0_CHILDREN 2026-10-21 =====
+INDEPENDENT_REVIEW_ROOT C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-_e90my_k
+FINAL_PINS {"src/cli/plain_errors.py": "0e3cafd654437376d0ba5b31b218dc6c458188db96f0aabcdb6f7466ceff77a3", "src/core/benzong/data_provider.py": "c5d6582c13d804c87e1dd6519675f6f33c9b32a743d2cd83d47914638858cc46", "src/data/akshare_client.py": "e2aa689f5ec93d6ee06900f05e69e09fef2651bf3f26e104910ec05d282a17e8", "src/data/source_check.py": "c2d5692c5a057362a0b4c4e17ad59a7cf465023ac4f7085623ccce51e08832b4", "src/data/timeout_call.py": "2a3dfe8c13353f8645cdd38c019e0f22c89d5e5f413350f9c64e960ac7051d6c", "start.py": "ebf8ed2e287a88f3d9ed7da82a9f13e96a2733d857a3455bb82513cca3cf14f0", "tests/core/test_t05_timeout_exit.py": "a8856ddfa131c65e24256ad11f561fee55c6514e9df5da221f1f4e328bda5f69"}
+FFF                                                                      [100%]
+================================== FAILURES ===================================
+_________ test_helper_returns_before_process_exit_deadline[safe_call] _________
+
+case = 'safe_call'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1026: in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1534: in _execute_child
+    sys.audit("subprocess.Popen", executable, args, cwd, env)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+event = 'subprocess.Popen'
+args = (None, 'G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05-independen...\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05-independent-_e90my_k\\muyun-t05-exit-safe_call-anae0th4\\appdata', ...})
+
+    def audit(event,args):
+     global checking
+     if event in ('socket.connect','socket.getaddrinfo'):
+      counts['network_blocked']+=1;raise RuntimeError('T05 review blocks network')
+     if event=='subprocess.Popen':
+      cmd=args[1];env=args[3];cwd=resolved(args[2])
+      if not (isinstance(cmd,list) and len(cmd)==6 and resolved(cmd[0])==resolved(REPO/'.venv/Scripts/python.exe') and cmd[1]=='-B' and Path(cmd[2]).name=='child_probe.py' and resolved(cmd[2]).is_relative_to(root) and cwd.is_relative_to(root) and cmd[3] in ('safe_call','call_with_timeout','probe_t') and resolved(cmd[4]).is_relative_to(cwd) and cmd[5]=='8.0' and env.get('PYTHONDONTWRITEBYTECODE')=='1' and all(resolved(env[k]).is_relative_to(cwd) for k in ('HOME','USERPROFILE','TEMP','TMP','APPDATA','LOCALAPPDATA'))):
+>      counts['other_child_blocked']+=1;raise RuntimeError('Unexpected child command denied')
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E      RuntimeError: Unexpected child command denied
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:51: RuntimeError
+_____ test_helper_returns_before_process_exit_deadline[call_with_timeout] _____
+
+case = 'call_with_timeout'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1026: in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1534: in _execute_child
+    sys.audit("subprocess.Popen", executable, args, cwd, env)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+event = 'subprocess.Popen'
+args = (None, 'G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05-independen...\Crux\\AppData\\Local\\Temp\\muyun-t05-independent-_e90my_k\\muyun-t05-exit-call_with_timeout-y9b2moi1\\appdata', ...})
+
+    def audit(event,args):
+     global checking
+     if event in ('socket.connect','socket.getaddrinfo'):
+      counts['network_blocked']+=1;raise RuntimeError('T05 review blocks network')
+     if event=='subprocess.Popen':
+      cmd=args[1];env=args[3];cwd=resolved(args[2])
+      if not (isinstance(cmd,list) and len(cmd)==6 and resolved(cmd[0])==resolved(REPO/'.venv/Scripts/python.exe') and cmd[1]=='-B' and Path(cmd[2]).name=='child_probe.py' and resolved(cmd[2]).is_relative_to(root) and cwd.is_relative_to(root) and cmd[3] in ('safe_call','call_with_timeout','probe_t') and resolved(cmd[4]).is_relative_to(cwd) and cmd[5]=='8.0' and env.get('PYTHONDONTWRITEBYTECODE')=='1' and all(resolved(env[k]).is_relative_to(cwd) for k in ('HOME','USERPROFILE','TEMP','TMP','APPDATA','LOCALAPPDATA'))):
+>      counts['other_child_blocked']+=1;raise RuntimeError('Unexpected child command denied')
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E      RuntimeError: Unexpected child command denied
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:51: RuntimeError
+__________ test_helper_returns_before_process_exit_deadline[probe_t] __________
+
+case = 'probe_t'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+>       proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+
+tests\core\test_t05_timeout_exit.py:564: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1026: in __init__
+    self._execute_child(args, executable, preexec_fn, close_fds,
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\subprocess.py:1534: in _execute_child
+    sys.audit("subprocess.Popen", executable, args, cwd, env)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+event = 'subprocess.Popen'
+args = (None, 'G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05-independen...C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05-independent-_e90my_k\\muyun-t05-exit-probe_t-acyn8dol\\appdata', ...})
+
+    def audit(event,args):
+     global checking
+     if event in ('socket.connect','socket.getaddrinfo'):
+      counts['network_blocked']+=1;raise RuntimeError('T05 review blocks network')
+     if event=='subprocess.Popen':
+      cmd=args[1];env=args[3];cwd=resolved(args[2])
+      if not (isinstance(cmd,list) and len(cmd)==6 and resolved(cmd[0])==resolved(REPO/'.venv/Scripts/python.exe') and cmd[1]=='-B' and Path(cmd[2]).name=='child_probe.py' and resolved(cmd[2]).is_relative_to(root) and cwd.is_relative_to(root) and cmd[3] in ('safe_call','call_with_timeout','probe_t') and resolved(cmd[4]).is_relative_to(cwd) and cmd[5]=='8.0' and env.get('PYTHONDONTWRITEBYTECODE')=='1' and all(resolved(env[k]).is_relative_to(cwd) for k in ('HOME','USERPROFILE','TEMP','TMP','APPDATA','LOCALAPPDATA'))):
+>      counts['other_child_blocked']+=1;raise RuntimeError('Unexpected child command denied')
+                                        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E      RuntimeError: Unexpected child command denied
+
+C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py:51: RuntimeError
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[safe_call]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[call_with_timeout]
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[probe_t]
+3 failed, 28 deselected in 0.76s
+INDEPENDENT_ADMISSION_COUNTS {'allowed_exact_children': 0, 'network_blocked': 0, 'other_child_blocked': 3, 'real_state_blocked': 0}
+SOURCE_PINS_UNCHANGED True
+PROTECTED_HASHES_UNCHANGED True BASELINE_PROTECTED_UNCHANGED True
+KNOWLEDGE_SET_UNCHANGED True
+Traceback (most recent call last):
+  File "C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-runner.py", line 79, in <module>
+    assert code==0 and counts['allowed_exact_children']==3 and pinmatch and before==after and knowledge_ok
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+
+===== PARENT_FINAL_INDEPENDENT_EXACT_CHILD_EXIT_3_PASS 2026-10-21 =====
+INDEPENDENT_REVIEW_ROOT C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-aox80cfx
+FINAL_PINS {"src/cli/plain_errors.py": "0e3cafd654437376d0ba5b31b218dc6c458188db96f0aabcdb6f7466ceff77a3", "src/core/benzong/data_provider.py": "c5d6582c13d804c87e1dd6519675f6f33c9b32a743d2cd83d47914638858cc46", "src/data/akshare_client.py": "e2aa689f5ec93d6ee06900f05e69e09fef2651bf3f26e104910ec05d282a17e8", "src/data/source_check.py": "c2d5692c5a057362a0b4c4e17ad59a7cf465023ac4f7085623ccce51e08832b4", "src/data/timeout_call.py": "2a3dfe8c13353f8645cdd38c019e0f22c89d5e5f413350f9c64e960ac7051d6c", "start.py": "ebf8ed2e287a88f3d9ed7da82a9f13e96a2733d857a3455bb82513cca3cf14f0", "tests/core/test_t05_timeout_exit.py": "a8856ddfa131c65e24256ad11f561fee55c6514e9df5da221f1f4e328bda5f69"}
+...                                                                      [100%]
+3 passed, 28 deselected in 5.06s
+INDEPENDENT_ADMISSION_COUNTS {'allowed_exact_children': 3, 'network_blocked': 0, 'other_child_blocked': 0, 'real_state_blocked': 0}
+SOURCE_PINS_UNCHANGED True
+PROTECTED_HASHES_UNCHANGED True BASELINE_PROTECTED_UNCHANGED True
+KNOWLEDGE_SET_UNCHANGED True
+INDEPENDENT_EXIT_REVIEW_PASS
+
+
+===== PARENT_PUBLIC_REPL_HELP_1_PASS 2026-10-21 =====
+PUBLIC_HELP_CONFIRMED 数据源超时会停止等待并降级；底层请求可能仍在运行，避免连续重试
+.
+1 passed in 12.01s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+===== T05-D REMOTE INTEGRATION BOUNDARIES 2026-10-21 =====
+cwd: C:\Users\Crux\AppData\Local\Temp\muyun-t05-integration-20261021-3d_h18yc\workspace (temp detached; HEAD 4cc3bf6a0b08f763d7f54c1b174da7c6a9d55bef)
+scope: six new blockers, tests-first red then minimal fix; no git action; not final integration acceptance
+--- red1 boundaries (robust cache/kline/theme) ---
+F.F.F..FFFFFFFFF.                                                        [100%]
+================================== FAILURES ===================================
+______________ test_robust_load_rejects_bad_shape_and_timestamp _______________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1128/test_robust_load_rejects_bad_s0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F36E3790>
+
+    def test_robust_load_rejects_bad_shape_and_timestamp(tmp_path, monkeypatch):
+        monkeypatch.setenv("MUYUN_ROBUST_CACHE_DIR", str(tmp_path / "cache"))
+        path = rf._path("t", "shape")
+        now = time.time()
+        bad = [
+            ["not", "a", "dict"],
+            {"value": 1},
+            {"ts": now, "value": 1, "extra": True},
+        ]
+        for payload in bad[:2]:
+            _write_record(path, payload)
+>           assert rf._load("t", "shape") is None, payload
+E           AssertionError: ['not', 'a', 'dict']
+E           assert ['not', 'a', 'dict'] is None
+E            +  where ['not', 'a', 'dict'] = <function _load at 0x00000254F18D7B00>('t', 'shape')
+E            +    where <function _load at 0x00000254F18D7B00> = rf._load
+
+tests\core\test_remote_integration_boundaries.py:40: AssertionError
+___________ test_robust_future_bool_and_string_cache_do_not_revive ____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1128/test_robust_future_bool_and_st0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F36D9650>
+
+    def test_robust_future_bool_and_string_cache_do_not_revive(tmp_path, monkeypatch):
+        monkeypatch.setenv("MUYUN_ROBUST_CACHE_DIR", str(tmp_path / "cache"))
+        now = time.time()
+        for ts in (now + 60, True, "123"):
+            path = rf._path("t", "gate")
+            _write_record(path, {"ts": ts, "value": {"v": "cached"}})
+            value = rf.robust_call("t", "gate", lambda: {"v": "live"}, ttl=3600, retries=0)
+>           assert value == {"v": "live"}, ts
+E           AssertionError: 1792512844.4141097
+E           assert {'v': 'cached'} == {'v': 'live'}
+E             
+E             Differing items:
+E             {'v': 'cached'} != {'v': 'live'}
+E             Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:67: AssertionError
+________ test_robust_save_partial_failure_keeps_old_bytes_and_own_tmp _________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1128/test_robust_save_partial_failu0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F3820910>
+
+    def test_robust_save_partial_failure_keeps_old_bytes_and_own_tmp(tmp_path, monkeypatch):
+        monkeypatch.setenv("MUYUN_ROBUST_CACHE_DIR", str(tmp_path / "cache"))
+        rf._save("t", "atomic", {"v": "old"})
+        path = rf._path("t", "atomic")
+        old_bytes = path.read_bytes()
+    
+        def broken_dump(obj, handle, protocol=None):
+            handle.write(b"partial")
+            raise OSError("disk full")
+    
+        monkeypatch.setattr(rf.pickle, "dump", broken_dump)
+        rf._save("t", "atomic", {"v": "new"})
+        assert path.read_bytes() == old_bytes
+        leftovers = [item for item in path.parent.iterdir() if item.suffix == ".tmp"]
+>       assert leftovers == []
+E       AssertionError: assert [WindowsPath(...0a868c6.tmp')] == []
+E         
+E         Left contains one more item: WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1128/test_robust_save_partial_failu0/cache/t_atomic_10a868c6.tmp')
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:95: AssertionError
+____________ test_kline_metrics_sorts_and_drops_future_observation ____________
+
+    def test_kline_metrics_sorts_and_drops_future_observation():
+        rows = _rows(61)
+        future = [("2026-03-03", 999.0, 1.0)]
+        as_of = rows[-1][0]
+        expected = _metrics(rows)
+>       assert _metrics(list(reversed(rows)) + future, as_of=as_of) == expected
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\core\test_remote_integration_boundaries.py:147: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+rows = [('2026-03-02', 10.0, 100.0), ('2026-03-01', 10.0, 100.0), ('2026-02-28', 10.0, 100.0), ('2026-02-27', 10.0, 100.0), ('2026-02-26', 10.0, 100.0), ('2026-02-25', 10.0, 100.0), ...]
+kwargs = {'as_of': '2026-03-02'}
+
+    def _metrics(rows, **kwargs):
+>       return ScannerEngine.kline_metrics_from_rows(rows, **kwargs)
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       TypeError: ScannerEngine.kline_metrics_from_rows() got an unexpected keyword argument 'as_of'
+
+tests\core\test_remote_integration_boundaries.py:131: TypeError
+_ test_kline_metrics_duplicate_days_do_not_fill_periods_and_conflict_rejects __
+
+    def test_kline_metrics_duplicate_days_do_not_fill_periods_and_conflict_rejects():
+        rows = _rows(60)
+        duplicate_same = rows + [rows[0]]
+>       assert _metrics(duplicate_same)["60日涨跌幅"] is None
+E       assert 0.0 is None
+
+tests\core\test_remote_integration_boundaries.py:155: AssertionError
+________ test_kline_metrics_rejects_bool_nonfinite_and_negative_values ________
+
+    def test_kline_metrics_rejects_bool_nonfinite_and_negative_values():
+        rows = _rows(61)
+        bad_values = [(True, 100.0), (float("inf"), 100.0), (10.0, float("nan")),
+                      (0.0, 100.0), (10.0, -1.0)]
+        for index, (close, volume) in enumerate(bad_values):
+            rows[index] = (rows[index][0], close, volume)
+        result = _metrics(rows)
+        assert result["60日涨跌幅"] is None
+>       assert result["量比"] is None
+E       assert 1.0 is None
+
+tests\core\test_remote_integration_boundaries.py:170: AssertionError
+___________________ test_kline_metrics_budget_covers_login ____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F3822850>
+
+    def test_kline_metrics_budget_covers_login(monkeypatch):
+        engine, calls = _fake_baostock(monkeypatch, login_delay=0.4)
+        started = time.monotonic()
+        result = engine._kline_metrics(["000001", "000002"])
+        elapsed = time.monotonic() - started
+>       assert result == {}
+E       AssertionError: assert {'000001': {'...0日涨跌幅': None}} == {}
+E         
+E         Left contains 2 more items:
+E         {'000001': {'60日涨跌幅': None, '量比': None}, '000002': {'60日涨跌幅': None, '量比': None}}
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:218: AssertionError
+________ test_kline_metrics_budget_covers_read_and_stops_next_security ________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F3811590>
+
+    def test_kline_metrics_budget_covers_read_and_stops_next_security(monkeypatch):
+        engine, calls = _fake_baostock(monkeypatch, next_delay=0.4)
+        started = time.monotonic()
+        result = engine._kline_metrics(["000001", "000002"])
+        elapsed = time.monotonic() - started
+>       assert result == {}
+E       AssertionError: assert {'000001': {'...0日涨跌幅': None}} == {}
+E         
+E         Left contains 2 more items:
+E         {'000001': {'60日涨跌幅': None, '量比': None}, '000002': {'60日涨跌幅': None, '量比': None}}
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:229: AssertionError
+_______________ test_enrich_missing_metric_never_satisfies_neq ________________
+
+    def test_enrich_missing_metric_never_satisfies_neq():
+        engine = ScannerEngine.__new__(ScannerEngine)
+        engine._kline_metrics = lambda codes: {"000001": {"量比": 0.6, "60日涨跌幅": 1.0}}
+        df = pd.DataFrame({"代码": ["000001", "000002"], "涨跌幅": [-1.0, -1.0]})
+        out = engine._apply_filters_with_kline_enrich(
+            df, [{"field": "volume_ratio", "op": "neq", "value": 1.0}]
+        )
+>       assert out["代码"].tolist() == ["000001"]
+E       AssertionError: assert ['000001', '000002'] == ['000001']
+E         
+E         Left contains one more item: '000002'
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:242: AssertionError
+___________ test_enrich_without_code_keeps_kline_condition_failing ____________
+
+    def test_enrich_without_code_keeps_kline_condition_failing():
+        engine = ScannerEngine.__new__(ScannerEngine)
+        engine._kline_metrics = lambda codes: {}
+        df = pd.DataFrame({"涨跌幅": [-1.0, -1.0]})
+        out = engine._apply_filters_with_kline_enrich(
+            df, [{"field": "change_pct", "op": "between", "value": [-3, -0.1]},
+                 {"field": "volume_ratio", "op": "lt", "value": 1.0}]
+        )
+>       assert out.empty
+E       assert False
+E        +  where False =    涨跌幅\n0 -1.0\n1 -1.0.empty
+
+tests\core\test_remote_integration_boundaries.py:253: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.scanner.scanner_filter:scanner_filter.py:120 ScannerFilter: 数据源无列 '量比'(字段:volume_ratio)，该过滤条件跳过--候选池可能不符规则名所声称条件（如新浪源无量比->'缩量回调'未真缩量）
+____________ test_enrich_over_limit_keeps_kline_condition_failing _____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000254F18A3390>
+
+    def test_enrich_over_limit_keeps_kline_condition_failing(monkeypatch):
+        engine = ScannerEngine.__new__(ScannerEngine)
+        monkeypatch.setattr(ScannerEngine, "KLINE_ENRICH_MAX", 1, raising=False)
+        engine._kline_metrics = lambda codes: {code: {"量比": 0.5} for code in codes}
+        df = pd.DataFrame({"代码": ["000001", "000002"], "涨跌幅": [-1.0, -1.0]})
+        out = engine._apply_filters_with_kline_enrich(
+            df, [{"field": "change_pct", "op": "between", "value": [-3, -0.1]},
+                 {"field": "volume_ratio", "op": "lt", "value": 1.0}]
+        )
+>       assert out.empty
+E       assert False
+E        +  where False =        代码  涨跌幅\n0  000001 -1.0\n1  000002 -1.0.empty
+
+tests\core\test_remote_integration_boundaries.py:265: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.scanner.scanner_engine:scanner_engine.py:1019 ScannerEngine: 候选 2 只超 K 线补算上限 1，['量比'] 条件仍无法执行
+WARNING  src.scanner.scanner_filter:scanner_filter.py:120 ScannerFilter: 数据源无列 '量比'(字段:volume_ratio)，该过滤条件跳过--候选池可能不符规则名所声称条件（如新浪源无量比->'缩量回调'未真缩量）
+________ test_theme_static_requires_exact_key_and_no_reverse_substring ________
+
+    def test_theme_static_requires_exact_key_and_no_reverse_substring():
+        nodes = lambda: [("sw2_410100", "电力"), ("sw2_630800", "电网设备")]
+>       assert bma.resolve_nodes(["电力设备"], node_fetcher=nodes) == []
+E       AssertionError: assert [('sw2_410100', '电力')] == []
+E         
+E         Left contains one more item: ('sw2_410100', '电力')
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:272: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_remote_integration_boundaries.py::test_robust_load_rejects_bad_shape_and_timestamp
+FAILED tests/core/test_remote_integration_boundaries.py::test_robust_future_bool_and_string_cache_do_not_revive
+FAILED tests/core/test_remote_integration_boundaries.py::test_robust_save_partial_failure_keeps_old_bytes_and_own_tmp
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_sorts_and_drops_future_observation
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_duplicate_days_do_not_fill_periods_and_conflict_rejects
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_rejects_bool_nonfinite_and_negative_values
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_budget_covers_login
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_budget_covers_read_and_stops_next_security
+FAILED tests/core/test_remote_integration_boundaries.py::test_enrich_missing_metric_never_satisfies_neq
+FAILED tests/core/test_remote_integration_boundaries.py::test_enrich_without_code_keeps_kline_condition_failing
+FAILED tests/core/test_remote_integration_boundaries.py::test_enrich_over_limit_keeps_kline_condition_failing
+FAILED tests/core/test_remote_integration_boundaries.py::test_theme_static_requires_exact_key_and_no_reverse_substring
+12 failed, 5 passed in 5.65s
+
+command-red1: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-red1: 12 failed, 5 passed (5.65s)
+--- raw red1 output ---
+........F........                                                        [100%]
+================================== FAILURES ===================================
+_ test_trading_days_ttl_display_without_rebuild_and_strict_rejects_incomplete _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CB887E9DD0>
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1129/test_trading_days_ttl_display_0')
+
+    def test_trading_days_ttl_display_without_rebuild_and_strict_rejects_incomplete(monkeypatch, tmp_path):
+        from src.core.fear_index import history as h
+        monkeypatch.setattr(h, "BASE_DIR", tmp_path)
+        today = datetime.now()
+        dates = [(today - timedelta(days=3)).strftime("%Y-%m-%d")]
+        (tmp_path / "trade_dates.json").write_text(json.dumps({
+            "version": h.FEAR_VERSION, "built_at": today.isoformat(timespec="seconds"),
+            "dates": dates}), encoding="utf-8")
+    
+        import src.data.akshare_client as ac
+        monkeypatch.setattr(ac, "_ensure_baostock_login",
+                            lambda: (_ for _ in ()).throw(AssertionError("TTL display must not refresh")))
+>       assert h.trading_days() == dates
+               ^^^^^^^^^^^^^^^^
+
+tests\core\test_trial_run_fixes.py:144: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\core\fear_index\history.py:251: in trading_days
+    if not _ensure_baostock_login():
+           ^^^^^^^^^^^^^^^^^^^^^^^^
+tests\core\test_trial_run_fixes.py:143: in <lambda>
+    lambda: (_ for _ in ()).throw(AssertionError("TTL display must not refresh")))
+            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <tuple_iterator object at 0x000001CB88844760>
+
+>   lambda: (_ for _ in ()).throw(AssertionError("TTL display must not refresh")))
+E   AssertionError: TTL display must not refresh
+
+tests\core\test_trial_run_fixes.py:143: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_trial_run_fixes.py::test_trading_days_ttl_display_without_rebuild_and_strict_rejects_incomplete
+1 failed, 16 passed in 5.37s
+
+command-red2: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_trial_run_fixes.py tests/core/test_theme_filter_fallback.py
+result-red2: 1 failed, 16 passed (5.37s); calendar TTL display forced refresh
+--- raw red2 output ---
+T05_EXIT_OK case=safe_call import_done=0.828s call_started=0.828s returned=0.906s call_elapsed=0.078s exit_after=0.031s worker_wall=1792512807.724 observed_wall=1792512807.785 window_margin=6.940s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.593s call_started=1.593s returned=1.656s call_elapsed=0.063s exit_after=0.063s worker_wall=1792512809.525 observed_wall=1792512809.593 window_margin=6.932s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.797s call_started=0.812s returned=0.875s call_elapsed=0.063s exit_after=0.031s worker_wall=1792512810.593 observed_wall=1792512810.675 window_margin=6.918s cleanup=child exited before cleanup rc=0
+.F
+================================== FAILURES ===================================
+____ test_helper_returns_before_process_exit_deadline[robust_call_timeout] ____
+
+case = 'robust_call_timeout'
+
+    @pytest.mark.skipif(
+        os.environ.get(PROBE_ENV) != "1",
+        reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
+    )
+    @pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t", "robust_call_timeout"])
+    def test_helper_returns_before_process_exit_deadline(case):
+        """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
+        if not VENV_PYTHON.is_file():
+            pytest.fail("project venv interpreter missing: %s" % VENV_PYTHON)
+    
+        sandbox = Path(tempfile.mkdtemp(prefix="muyun-t05-exit-%s-" % case))
+        home = sandbox / "home"
+        temp = sandbox / "temp"
+        appdata = sandbox / "appdata"
+        localappdata = sandbox / "localappdata"
+        for directory in (home, temp, appdata, localappdata):
+            directory.mkdir()
+        events_path = sandbox / "events.jsonl"
+        stdout_path = sandbox / "child_stdout.txt"
+        stderr_path = sandbox / "child_stderr.txt"
+        child_script = sandbox / "child_probe.py"
+        child_script.write_text(_CHILD_SOURCE, encoding="utf-8")
+    
+        env = os.environ.copy()
+        for key in ("PYTHONHOME", "PYTHONSTARTUP", "MUYUN_FAST_FAIL",
+                    "MUYUN_SKIP_SOURCES", "MUYUN_DATA_CALL_TIMEOUT", "MUYUN_TESTS_REAL_HOME"):
+            env.pop(key, None)
+        env.update({
+            "HOME": str(home),
+            "USERPROFILE": str(home),
+            "TEMP": str(temp),
+            "TMP": str(temp),
+            "TMPDIR": str(temp),
+            "APPDATA": str(appdata),
+            "LOCALAPPDATA": str(localappdata),
+            "XDG_CACHE_HOME": str(temp),
+            "MPLCONFIGDIR": str(temp),
+            "PYTHONPATH": str(REPO_ROOT),
+            "PYTHONDONTWRITEBYTECODE": "1",
+            "PYTHONIOENCODING": "utf-8",
+            "PYTHONUTF8": "1",
+        })
+    
+        stdout_handle = open(stdout_path, "wb")
+        stderr_handle = open(stderr_path, "wb")
+        command = [str(VENV_PYTHON), "-B", str(child_script), case, str(events_path), str(WORKER_SLEEP_S)]
+        spawn_wall = time.time()
+        proc = subprocess.Popen(
+            command,
+            cwd=str(sandbox),
+            env=env,
+            stdin=subprocess.DEVNULL,
+            stdout=stdout_handle,
+            stderr=stderr_handle,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+    
+        exit_after = None
+        try:
+            seen = _wait_for(
+                proc, events_path, ("call_started", "worker_started", "returned"), STARTUP_DEADLINE_S
+            )
+            returned_observed_wall = time.time()
+            missing = [
+                name
+                for name in ("import_done", "call_started", "worker_started", "returned")
+                if name not in seen
+            ]
+            assert not missing, (
+                "fixture/startup failed before exit assertion, missing=%r rc=%r stdout=%r stderr=%r"
+                % (missing, proc.poll(), _tail(stdout_path), _tail(stderr_path))
+            )
+            assert seen["call_started"]["at_s"] >= seen["import_done"]["at_s"]
+            assert seen["worker_started"]["at_s"] <= seen["returned"]["at_s"]
+            call_elapsed = seen["returned"].get("call_elapsed_s")
+            assert call_elapsed is not None and call_elapsed <= CALL_ELAPSED_LIMIT_S, (
+                "CALL DURATION ASSERTION: helper %r blocked %.3fs (>%.1fs), so the exit check would "
+                "not prove non-blocking; events=%r"
+                % (
+                    case,
+                    -1.0 if call_elapsed is None else call_elapsed,
+                    CALL_ELAPSED_LIMIT_S,
+                    _read_events(events_path),
+                )
+            )
+            _assert_timeout_semantics(case, seen["returned"])
+            worker_started_wall = seen["worker_started"].get("wall_s")
+            returned_wall = seen["returned"].get("wall_s")
+            assert worker_started_wall is not None and returned_wall is not None, (
+                "fixture missing child wall-clock timestamps: %r" % (_read_events(events_path),)
+            )
+            assert worker_started_wall >= spawn_wall - 1.0, (
+                "fixture wall clock moved backwards before worker start: spawn=%r worker=%r"
+                % (spawn_wall, worker_started_wall)
+            )
+            assert returned_observed_wall >= returned_wall - 0.5, (
+                "fixture parent observation predates child marker: observed=%r returned=%r"
+                % (returned_observed_wall, returned_wall)
+            )
+            assert _exit_window_is_safe(worker_started_wall, returned_observed_wall), (
+                "LATE OBSERVATION: worker started at wall %.3f, parent observed returned at wall %.3f; "
+                "the exit window (%.1fs + %.2fs margin) must end before the worker's natural finish at "
+                "wall %.3f; events=%r"
+                % (
+                    worker_started_wall,
+                    returned_observed_wall,
+                    EXIT_DEADLINE_S,
+                    LATE_OBSERVATION_MARGIN_S,
+                    worker_started_wall + WORKER_SLEEP_S,
+                    _read_events(events_path),
+                )
+            )
+    
+            returned_observed_at = time.monotonic()
+            try:
+                proc.wait(timeout=EXIT_DEADLINE_S)
+                exit_after = time.monotonic() - returned_observed_at
+            except subprocess.TimeoutExpired:
+                exit_after = None
+        finally:
+            cleanup_note = _stop_child(proc)
+            stdout_handle.close()
+            stderr_handle.close()
+            stdout_text = _tail(stdout_path)
+            stderr_text = _tail(stderr_path)
+    
+        if exit_after is None:
+>           pytest.fail(
+                "EXIT ASSERTION: helper %r returned but the child process was still alive %.1fs later. "
+                "events=%r cleanup=%s rc=%r stdout=%r stderr=%r"
+                % (case, EXIT_DEADLINE_S, _read_events(events_path), cleanup_note,
+                   proc.returncode, stdout_text, stderr_text)
+            )
+E           Failed: EXIT ASSERTION: helper 'robust_call_timeout' returned but the child process was still alive 1.0s later. events=[{'at_s': 0.0, 'event': 'import_begin', 'mono_s': 22912.015, 'wall_s': 1792512810.8170893}, {'at_s': 0.813, 'event': 'import_done', 'mono_s': 22912.828, 'wall_s': 1792512811.6225753}, {'at_s': 0.813, 'event': 'call_started', 'mono_s': 22912.828, 'wall_s': 1792512811.6245751}, {'at_s': 0.813, 'event': 'worker_started', 'mono_s': 22912.828, 'wall_s': 1792512811.626575, 'where': 'worker-thread'}, {'at_s': 0.875, 'call_elapsed_s': 0.062, 'error_type': 'TimeoutError', 'event': 'returned', 'mono_s': 22912.89, 'timeout_error': True, 'wall_s': 1792512811.6914005}] cleanup=child killed after marker, rc=1 rc=1 stdout='' stderr=''
+
+tests\core\test_t05_timeout_exit.py:653: Failed
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05_timeout_exit.py::test_helper_returns_before_process_exit_deadline[robust_call_timeout]
+1 failed, 3 passed, 28 deselected in 7.33s
+
+command-red3: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py -k helper_returns_before_process_exit_deadline
+result-red3: 1 failed, 3 passed, 28 deselected (7.33s); robust_call_timeout EXIT ASSERTION
+--- raw red3 output ---
+.................                                                        [100%]
+17 passed in 2.25s
+
+command-green1: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-green1: 17 passed (2.25s)
+--- raw green1 output ---
+.................                                                        [100%]
+17 passed in 3.51s
+
+command-green2: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_trial_run_fixes.py tests/core/test_theme_filter_fallback.py
+result-green2: 17 passed (3.51s)
+--- raw green2 output ---
+T05_EXIT_OK case=safe_call import_done=0.843s call_started=0.843s returned=0.937s call_elapsed=0.078s exit_after=0.031s worker_wall=1792512894.796 observed_wall=1792512894.858 window_margin=6.938s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.625s call_started=1.625s returned=1.688s call_elapsed=0.063s exit_after=0.063s worker_wall=1792512896.620 observed_wall=1792512896.683 window_margin=6.937s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.843s call_started=0.843s returned=0.906s call_elapsed=0.063s exit_after=0.031s worker_wall=1792512897.719 observed_wall=1792512897.788 window_margin=6.931s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=robust_call_timeout import_done=0.812s call_started=0.828s returned=0.890s call_elapsed=0.062s exit_after=0.031s worker_wall=1792512898.749 observed_wall=1792512898.817 window_margin=6.931s cleanup=child exited before cleanup rc=0
+.
+4 passed, 28 deselected in 5.25s
+
+command-green3: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py -k helper_returns_before_process_exit_deadline
+result-green3: 4 passed, 28 deselected (5.25s); call_elapsed 0.078/0.063/0.063/0.062s; exit_after 0.031/0.063/0.031/0.031s; child exited naturally rc=0
+--- raw green3 output ---
+................................                                         [100%]
+32 passed in 8.46s
+
+command-green4: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_t05_timeout_exit.py
+result-green4: 32 passed (8.46s)
+--- raw green4 output ---
+.............................................ssss....................... [ 96%]
+...                                                                      [100%]
+71 passed, 4 skipped in 10.32s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+command-green5: .\.venv\Scripts\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_remote_integration_boundaries.py tests/core/test_t05_timeout_exit.py tests/core/test_t05_cache_timeout_count.py tests/core/test_trial_run_fixes.py tests/core/test_theme_filter_fallback.py tests/core/test_plain_errors.py tests/core/test_calendar_empty_period.py
+result-green5: 71 passed, 4 skipped (10.32s); BLOCKED_IO 0/0/0; protected hashes unchanged
+--- raw green5 output ---
+
+===== T05-E REMOTE INTEGRATION GAP FIX 2026-10-21 =====
+cwd: C:\Users\Crux\AppData\Local\Temp\muyun-t05-integration-20261021-3d_h18yc\workspace (detached HEAD 4cc3bf6a0b08f763d7f54c1b174da7c6a9d55bef); no git/add/push; not full suite
+scope: scanner_engine deadline/strict-window/code-identity gaps + T05-D green5 log gap; actual non-empty logs only
+
+--- T05-D historical green5 gap (D block left unchanged) ---
+D block's raw green5 output is empty; actual non-empty original files were found and are appended verbatim below.
+D block labels green3/green4 were shifted; these logs are the authoritative files, not rewritten summaries.
+
+file: %TEMP%\t05d_child_green.log bytes=1012 sha256=ad6e42976819ee69b8123de3d36428acc8f73519b77542a9d8a134281f27a771
+--- raw D dedicated 4-case exit output ---
+T05_EXIT_OK case=safe_call import_done=0.843s call_started=0.843s returned=0.937s call_elapsed=0.078s exit_after=0.031s worker_wall=1792512894.796 observed_wall=1792512894.858 window_margin=6.938s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.625s call_started=1.625s returned=1.688s call_elapsed=0.063s exit_after=0.063s worker_wall=1792512896.620 observed_wall=1792512896.683 window_margin=6.937s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.843s call_started=0.843s returned=0.906s call_elapsed=0.063s exit_after=0.031s worker_wall=1792512897.719 observed_wall=1792512897.788 window_margin=6.931s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=robust_call_timeout import_done=0.812s call_started=0.828s returned=0.890s call_elapsed=0.062s exit_after=0.031s worker_wall=1792512898.749 observed_wall=1792512898.817 window_margin=6.931s cleanup=child exited before cleanup rc=0
+.
+4 passed, 28 deselected in 5.25s
+
+file: %TEMP%\t05d_child_full_green.log bytes=101 sha256=df1e1e43c232909267748198c591b799dedf8dbd9c4f4bf8f2d110500f959432
+--- raw D full T05 file output ---
+................................                                         [100%]
+32 passed in 8.46s
+
+file: %TEMP%\t05d_guard_final.log bytes=385 sha256=d8189014cb0491da54d514b1b13fc67c4beffb3b8cfa176a8f4a61498293fe46
+--- raw D guard output ---
+.............................................ssss....................... [ 96%]
+...                                                                      [100%]
+71 passed, 4 skipped in 10.32s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+--- T05-E red on reconstructed D source ---
+source: scanner_engine.py D bytes=53654 sha256=e6eb951b6f410105b11c9a7f001b56121bfdf7b9ec19f0c3e30a2b49ce00ce93; E restored after red
+file: %TEMP%\t05e_red_dsource3.log bytes=4203 sha256=7a0279b02748eeaa504efb9eb2b400cc3da09ceba55e58c8182d5836712ca39c
+command-red: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-red: 5 failed, 16 passed (3.81s); default future, strict dates/start, native/shim code gate, late-worker deadline
+--- raw red output ---
+.......FF..FFF.......                                                    [100%]
+================================== FAILURES ===================================
+____________ test_kline_metrics_sorts_and_drops_future_observation ____________
+
+    def test_kline_metrics_sorts_and_drops_future_observation():
+        rows = _rows(61)
+        near_future = [("2026-03-03", 999.0, 1.0)]
+        as_of = rows[-1][0]
+        expected = _metrics(rows)
+        assert _metrics(list(reversed(rows)) + near_future, as_of=as_of) == expected
+        assert _metrics(rows + near_future) != expected  # default today includes a near-past date
+>       assert _metrics(rows + [("2099-01-01", 999.0, 1.0)]) == expected  # default excludes true future
+        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       AssertionError: assert {'量比': 0.01, '60日涨跌幅': 9890.0} == {'量比': 1.0, '60日涨跌幅': 0.0}
+E         
+E         Differing items:
+E         {'量比': 0.01} != {'量比': 1.0}
+E         {'60日涨跌幅': 9890.0} != {'60日涨跌幅': 0.0}
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:149: AssertionError
+_________________ test_kline_metrics_strict_dates_and_window __________________
+
+    def test_kline_metrics_strict_dates_and_window():
+        non_padded_day = _rows(60) + [("2026-10-9", 20.0, 100.0)]
+>       assert _metrics(non_padded_day)["60日涨跌幅"] is None
+E       assert 100.0 is None
+
+tests\core\test_remote_integration_boundaries.py:154: AssertionError
+_________________ test_kline_query_verifies_code_and_exchange _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000188AF58E390>
+
+    def test_kline_query_verifies_code_and_exchange(monkeypatch):
+        engine, calls = _fake_kline(monkeypatch, _code_rows("sh.600519"))
+>       assert engine._kline_metrics(["600519"])["600519"]["量比"] == 1.0
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '600519'
+
+tests\core\test_remote_integration_boundaries.py:276: KeyError
+_______________________ test_kline_query_shim_code_gate _______________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000188AF62A510>
+
+    def test_kline_query_shim_code_gate(monkeypatch):
+        engine, _ = _fake_kline(monkeypatch, _code_rows("sh.600519"), module_name="src.data.bs_shim")
+>       assert engine._kline_metrics(["600519"])["600519"]["量比"] == 1.0
+               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+E       KeyError: '600519'
+
+tests\core\test_remote_integration_boundaries.py:287: KeyError
+___________ test_kline_metrics_deadline_anchored_before_late_worker ___________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000188AF632610>
+
+    def test_kline_metrics_deadline_anchored_before_late_worker(monkeypatch):
+        import src.scanner.scanner_engine as se
+        engine, calls = _fake_baostock(monkeypatch)
+        real = se.call_with_timeout
+    
+        def delayed(fn, timeout):
+            time.sleep(0.3)
+            return real(fn, timeout=timeout)
+    
+        monkeypatch.setattr(se, "call_with_timeout", delayed)
+        started = time.monotonic()
+        result = engine._kline_metrics(["000001"])
+        elapsed = time.monotonic() - started
+        assert result == {}
+        assert elapsed < 0.8
+>       assert calls["login"] == 0 and calls["query"] == 0
+E       assert (1 == 0)
+
+tests\core\test_remote_integration_boundaries.py:309: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_sorts_and_drops_future_observation
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_strict_dates_and_window
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_query_verifies_code_and_exchange
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_query_shim_code_gate
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_metrics_deadline_anchored_before_late_worker
+5 failed, 16 passed in 3.81s
+
+--- T05-E green boundaries ---
+file: %TEMP%\t05e_green_e2.log bytes=101 sha256=f51acaeb0a29d14419ba266ca3c908c0e8b4a90fde7224a08d52eac9b794ad59
+command-green: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-green: 21 passed (2.53s)
+--- raw green output ---
+.....................                                                    [100%]
+21 passed in 2.53s
+
+--- T05-E green dedicated 4-case exit ---
+file: %TEMP%\t05e_child_green.log bytes=1012 sha256=92dbf21f94fd987dc15d8e015d7ead3ac2b55abace40549447b68ead6a6b3864
+command-exit: MUYUN_T05_EXIT_PROBE=1 .\.venv\Scripts\python.exe -B -m pytest -q -s -p no:cacheprovider tests/core/test_t05_timeout_exit.py -k helper_returns_before_process_exit_deadline
+result-exit: 4 passed, 28 deselected (5.19s); call_elapsed 0.094/0.063/0.062/0.063s; exit_after 0.031/0.062/0.047/0.031s; child exited naturally rc=0
+--- raw exit output ---
+T05_EXIT_OK case=safe_call import_done=0.828s call_started=0.828s returned=0.922s call_elapsed=0.094s exit_after=0.031s worker_wall=1792513410.667 observed_wall=1792513410.740 window_margin=6.928s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.609s call_started=1.609s returned=1.672s call_elapsed=0.063s exit_after=0.062s worker_wall=1792513412.478 observed_wall=1792513412.547 window_margin=6.932s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.813s call_started=0.829s returned=0.891s call_elapsed=0.062s exit_after=0.047s worker_wall=1792513413.546 observed_wall=1792513413.616 window_margin=6.930s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=robust_call_timeout import_done=0.812s call_started=0.812s returned=0.875s call_elapsed=0.063s exit_after=0.031s worker_wall=1792513414.595 observed_wall=1792513414.665 window_margin=6.930s cleanup=child exited before cleanup rc=0
+.
+4 passed, 28 deselected in 5.19s
+
+--- T05-E green guard ---
+file: %TEMP%\t05e_guard.log bytes=385 sha256=a3cb6c886f45badc707c9cb77c93f1d0007ef8407fcc45a3836ca9df4b8916a1
+command-guard: .\.venv\Scripts\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_remote_integration_boundaries.py tests/core/test_t05_timeout_exit.py tests/core/test_t05_cache_timeout_count.py tests/core/test_trial_run_fixes.py tests/core/test_theme_filter_fallback.py tests/core/test_plain_errors.py tests/core/test_calendar_empty_period.py
+result-guard: 75 passed, 4 skipped (10.44s); BLOCKED_IO 0/0/0; protected hashes unchanged
+--- raw guard output ---
+.................................................ssss................... [ 91%]
+.......                                                                  [100%]
+75 passed, 4 skipped in 10.44s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+===== T05-F STRICT SUBJECT TOKEN GATE 2026-10-21 =====
+cwd: C:\Users\Crux\AppData\Local\Temp\muyun-t05-integration-20261021-3d_h18yc\workspace (detached HEAD 4cc3bf6a0b08f763d7f54c1b174da7c6a9d55bef); no git/add/push; not full suite
+scope: row_matches full-token gate + same strict subject gate for every source; supersedes E shim no-code compatibility
+
+file: %TEMP%\t05f_red.log bytes=2512 sha256=afe2af0a97820adaaef3db0505b084a83cc5a3be6bb3b305020ec9ea32f41ed4
+command-red: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-red: 2 failed, 19 passed (4.39s); sh6005190 / sh.600519garbage / 6005190.sh and shim no-code still accepted
+--- raw F red (E source) output ---
+...........FF........                                                    [100%]
+================================== FAILURES ===================================
+_________________ test_kline_query_verifies_code_and_exchange _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000023DC13E9310>
+
+    def test_kline_query_verifies_code_and_exchange(monkeypatch):
+        engine, calls = _fake_kline(monkeypatch, _code_rows("sh.600519"))
+        assert engine._kline_metrics(["600519"])["600519"]["量比"] == 1.0
+        assert "code" in calls["fields"][0]
+        for bad in ("sz.600519", "sh.000001", "", "600519",
+                    "sh6005190", "sh.600519garbage", "6005190.sh"):
+            engine, _ = _fake_kline(monkeypatch, _code_rows(bad))
+>           assert engine._kline_metrics(["600519"]) == {}, bad
+E           AssertionError: sh6005190
+E           assert {'600519': {'...0日涨跌幅': None}} == {}
+E             
+E             Left contains 1 more item:
+E             {'600519': {'60日涨跌幅': None, '量比': 1.0}}
+E             Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:281: AssertionError
+_____________________ test_kline_query_shim_requires_code _____________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000023DC13E8250>
+
+    def test_kline_query_shim_requires_code(monkeypatch):
+        engine, _ = _fake_kline(monkeypatch, _code_rows("sh.600519"), module_name="src.data.bs_shim")
+        assert engine._kline_metrics(["600519"])["600519"]["量比"] == 1.0
+        engine, _ = _fake_kline(monkeypatch, _code_rows("sh.000001"), module_name="src.data.bs_shim")
+        assert engine._kline_metrics(["600519"]) == {}
+        engine, _ = _fake_kline(monkeypatch, _code_rows("600519"), module_name="src.data.bs_shim")
+>       assert engine._kline_metrics(["600519"]) == {}
+E       AssertionError: assert {'600519': {'...0日涨跌幅': None}} == {}
+E         
+E         Left contains 1 more item:
+E         {'600519': {'60日涨跌幅': None, '量比': 1.0}}
+E         Use -v to get more diff
+
+tests\core\test_remote_integration_boundaries.py:292: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_query_verifies_code_and_exchange
+FAILED tests/core/test_remote_integration_boundaries.py::test_kline_query_shim_requires_code
+2 failed, 19 passed in 4.39s
+
+file: %TEMP%\t05f_green.log bytes=101 sha256=e6742db228fbc33eab6cd06111ce14dbaed7db2541166ca342ff03b997541db7
+command-green: .\.venv\Scripts\python.exe -B -m pytest -q -p no:cacheprovider tests/core/test_remote_integration_boundaries.py
+result-green: 21 passed (2.60s)
+--- raw F green boundaries output ---
+.....................                                                    [100%]
+21 passed in 2.60s
+
+file: %TEMP%\t05f_guard.log bytes=292 sha256=fa9c9cec2971af60523c42cbc28d62e815e35ab235fa3ceb5c532fa106e24a49
+command-guard: .\.venv\Scripts\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_theme_filter_fallback.py
+result-guard: 38 passed (6.54s); BLOCKED_IO 0/0/0; protected hashes unchanged
+--- raw F green trial/theme guard output ---
+......................................                                   [100%]
+38 passed in 6.54s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 6
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+===== FINAL_PARENT_INTEGRATED_F_FOUR_EXACT_CHILDREN 2026-10-21 =====
+INDEPENDENT_REVIEW_ROOT C:\Users\Crux\AppData\Local\Temp\muyun-t05-independent-4jx0eajg
+FINAL_PINS {"src/cli/plain_errors.py": "6897e3c1402b52fe2dcf24aa38662ca7dbc61c5124ce997871e61654087cf44e", "src/core/benzong/data_provider.py": "92f6540a2f1d13ea28f2f3ec718984014fb501358570b4d5ce7a736d3b7ea5b3", "src/core/fear_index/history.py": "7a65c458d92b5ff3e6d14b32977521f97338530893b899995a9a6bffd4cdc53a", "src/data/akshare_client.py": "e2aa689f5ec93d6ee06900f05e69e09fef2651bf3f26e104910ec05d282a17e8", "src/data/board_members_alt.py": "641615052dc410d10429e759cac33c642e601875759d3947a9dd6b4eef3c6b56", "src/data/robust_fetch.py": "fdb8b6748c9eae87c81e6131e74c8786d3ad9a62e037491ad6cefdcf70ee6908", "src/data/source_check.py": "c2d5692c5a057362a0b4c4e17ad59a7cf465023ac4f7085623ccce51e08832b4", "src/data/timeout_call.py": "2a3dfe8c13353f8645cdd38c019e0f22c89d5e5f413350f9c64e960ac7051d6c", "src/scanner/scanner_engine.py": "d5795600c4d0180bbaf4cf4ae00baf37cb993f2255b6ef33b85cf2a688b0723a", "start.py": "ebf8ed2e287a88f3d9ed7da82a9f13e96a2733d857a3455bb82513cca3cf14f0", "tests/core/test_remote_integration_boundaries.py": "e5fdf69ca6d16e3db425f63fa2844c430012d9c20a34a12990bc43caad845f57", "tests/core/test_t05_timeout_exit.py": "ceef8c3decc7c1469a25b1379d3f4d8e3bb4859dcc175cde065dc8a67da03da8"}
+....                                                                     [100%]
+4 passed, 28 deselected in 8.06s
+INDEPENDENT_ADMISSION_COUNTS {'allowed_exact_children': 4, 'network_blocked': 0, 'other_child_blocked': 0, 'real_state_blocked': 0}
+SOURCE_PINS_UNCHANGED True
+PROTECTED_HASHES_UNCHANGED True BASELINE_PROTECTED_UNCHANGED True
+KNOWLEDGE_SET_UNCHANGED True
+INDEPENDENT_EXIT_REVIEW_PASS
+

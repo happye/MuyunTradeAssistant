@@ -1,12 +1,12 @@
 # 第九轮：账户与行动说明统一补修 → 合同冻结 → M2只读研究 → T01 today卡片 → G3研究资格
 
-更新2026-10-20。**本文件仍是第九轮唯一合同与历史证据入口；当前为main整合与文档收尾，不启动新产品批。** 以下v42测试为历史限定验收，2026-10-20整合结果见末节。原批当时状态： v0.8.42限定接收`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未commit/tag/push。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹起止稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅受影响组1 passed（2.19s），真实worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），最终进程退出case1 passed。真实PDF和SSE各请求一次，产生1个当前条件化组2期。v39-v41历史验收保持。真实MID仍NO_VALID，历史行业/PIT、ROE、现金持续性UNKNOWN；G4整体/V1未完成；capture_only/default、旧接受态、缓存、阈值不变。
+更新2026-10-20。**本文件仍是第九轮唯一合同与历史证据入口；T05及远端增量限定接收，最终合同与结果见末节。** 以下v42测试为历史限定验收，2026-10-20整合结果见末节。原批当时状态： v0.8.42限定接收`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未commit/tag/push。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹起止稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅受影响组1 passed（2.19s），真实worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），最终进程退出case1 passed。真实PDF和SSE各请求一次，产生1个当前条件化组2期。v39-v41历史验收保持。真实MID仍NO_VALID，历史行业/PIT、ROE、现金持续性UNKNOWN；G4整体/V1未完成；capture_only/default、旧接受态、缓存、阈值不变。
 
 **此前G3合同保持**：数值/来源资格修复升`cv6/g3.binding_v4`，综合method自动吸收组件变化，使已保存cv5评估待复核；旧原件及接受主槽保留，新结果只入候选。旧cv3冻结语料不覆盖。命题算法assertion_v2、笨总缓存和交易阈值保持；shadow_v15仅冻结已验工程合同，不宣称真实MID/投资效果过门。未来新增解析能力独立版本化，不追改本合同。
 
 ## 实施与交接：只从这里进入
 
-**当前窗口**：v42按下方既有合同限定接收：首个C15非金融样例为SSE当次转述，真实产品形成1个条件化组2期；J金融类为不适用，其余未知分类保持UNKNOWN。历史行业/PIT、ROE、现金持续性UNKNOWN，真实MID NO_VALID，G4整体/V1未完成。v39-v41历史结果不重算。Codex管理审批+DSH开发协作已完成正式工作区接入；本轮整合后暂停，下一产品批另行指派；不启动G7/T05候选或v43。
+**当前窗口**：v42按下方既有合同限定接收：首个C15非金融样例为SSE当次转述，真实产品形成1个条件化组2期；J金融类为不适用，其余未知分类保持UNKNOWN。历史行业/PIT、ROE、现金持续性UNKNOWN，真实MID NO_VALID，G4整体/V1未完成。v39-v41历史结果不重算。Codex管理审批+DSH开发协作已完成正式工作区接入；此句描述原v42停止线；本次用户已新指派T05，按末节最新合同执行。
 
 | 需要时读什么 | 现有文件及用途 |
 |---|---|
@@ -317,3 +317,17 @@ $env:PYTHONUTF8 = '1'
 分轮证据不混算：NAV反例5红→目标347通过/2替身签名失败→修正替身后76通过；pipeline10红→11通过；公开原件关联63通过；隔离器反例1失败/2通过→关联51通过。首轮失败与最终全量及全部原始定向日志保留在既有TARGETED/FULL文件，REVIEW_INDEX登记最终停止指纹。隔离器仅为Python审计保护，不是OS沙箱。
 
 原工作区`portfolio.yaml`、`knowledge/index/embedder_metadata.json`原有脏改及109个未跟踪文件保持；不恢复、不提交私人状态。文档已对齐MILESTONES、STATUS、RESUME、ISSUES及使用入口，原有分支/代理规则过期部分修正。v42原限定接收不扩大，真实MID仍NO_VALID，历史行业/PIT、ROE、现金持续性及G4/V1仍未完成。下一产品批先按既有T05候选固定有限退出反例，再安排DSH实施；本轮不自动启动G7/v43。
+
+## 2026-10-21：T05共享等待与远端增量限定验收（本轮合同与结果）
+
+**裁决：`ACCEPTED_SHARED_TIMEOUT_AND_REMOTE_INTEGRATION_SCOPE_ONLY`。** DSH实施，Codex审批/独立运行验证/Git。基线bd9e5d0，远端4cc3bf6（13文件）在临时detached树三方整合，无新命名分支；最终提交见main实际Git，不以旧基线冒充交付。
+
+最终隔离全量 **3157 passed/0 failed/7 skipped/1 external deselected（265.49s）**；494项源码/测试/材料/隔离器指纹起止一致；Temp6项保护hash与知识库集合、原树8项保护hash不变。守卫尝试network=1013、subprocess=12、real_state=2，均被阻断。独立最终四child4 passed（8.06s），只放行4个核定命令/内容，network/其他child/real_state=0；12关键pins和14项双树保护hash不变。独立静态审查最终PASS，reviewer未运行测试；角色请求Sol/high，运行时未披露实际执行型号。REPL帮助另实跑1 passed（12.01s），当时start.py最终SHA相同。
+
+接收范围：三共享helper及robust调用自身退出等待；坏缓存shape/时间与唯一临时文件保全；扫描新补算批总等待、严格日期/窗口及完整证券/交易所词元、必需指标缺失拒满足；主题精确/核定方向匹配及TTL内旧日历展示兼容。F移除shim无code豁免，所有生产来源同门。
+
+分轮证据保留：T05自身3119/6skip/1deselect（266.98s）不是整合全量；A三退出红，B补后绿；C预算3红；D六类反例，E日期/主体/截止5红，F词元/缺身份2红均先红后绿。E整合全量因F新阻断由父终止（rc4294967295），不计pytest失败或完整结果。D原raw标签错位/空green5历史保留，E按实际非空文件补录；父NUL/命令字符串两轮误拒均0 child，夹具修复后独立4通过，不混作产品红灯。原始逐字日志和每轮SHA见现有TARGETED/FULL/REVIEW_INDEX。
+
+限制：不能强杀底层DNS/socket/Baostock，不能保证全CLI总退出或无晚到缓存/会话副作用；4个旧executor构造仍未作专用退出反例。不宣称性能/费用/投资效果提升。无产品AI、真实账户迁移或缓存/评分阈值/研究资格变更；远端派生confidence展示口径保留，不改六维评分输入缓存。v42范围、真实MID NO_VALID及G4/V1未完成保持。
+
+详细分轮原始日志只维护现有TARGETED/FULL，独立审批与494 pins只见R15/REVIEW_INDEX；A-F请求ID和停止线见RESUME，不再复制逐轮流水。

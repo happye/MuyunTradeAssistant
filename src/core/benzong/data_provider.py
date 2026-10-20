@@ -21,6 +21,8 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeou
 from datetime import datetime, timedelta
 from typing import Optional
 
+from src.data.timeout_call import call_with_timeout
+
 logger = logging.getLogger(__name__)
 
 # 单个数据源调用的硬超时（秒）。akshare 底层 requests 默认无 timeout，
@@ -59,8 +61,9 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
     """统一的"失败返回 None + 日志"包装，带线程级硬超时。
 
     akshare 底层 requests 默认无 timeout，接口卡住会挂起到 WinError 10060/10054。
-    用 ThreadPoolExecutor 包住：超时放弃该调用返回 None（走降级），不冻结主流程。
-    失败时按错误类型给可操作 hint（与 E1-B5 一致）。
+    T05-B：用共享 daemon 线程 + 单槽队列限制等待；超时放弃该调用返回 None
+    （走降级），不冻结主流程。worker 不能被强杀，底层请求可能仍在运行，迟到
+    结果丢弃，不跨调用复用。失败时按错误类型给可操作 hint（与 E1-B5 一致）。
     """
     _fix_curl_ssl_paths()  # 确保 akshare curl_cffi 接口 SSL 可用
     to = timeout if timeout is not None else DATA_CALL_TIMEOUT
@@ -74,17 +77,14 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
             return None
         if timeout is None and os.environ.get("MUYUN_DATA_CALL_TIMEOUT"):
             to = float(os.environ["MUYUN_DATA_CALL_TIMEOUT"])
-    ex = ThreadPoolExecutor(max_workers=1)
-    fut = ex.submit(fn, *args, **kwargs)
     try:
-        return fut.result(timeout=to)
-    except FuturesTimeout:
+        return call_with_timeout(fn, *args, timeout=to, **kwargs)
+    except TimeoutError:
         if _fast_fail_enabled():
             _BROKEN_SOURCES.add(_key)
-        # v0.8.7.2 审查修复：不能用 with 块——__exit__ 的 shutdown(wait=True) 会 join
-        # 卡死的线程，"硬超时"退化成等底层 requests OS级放弃（分钟级）。改为立即
-        # 放弃等待（孤儿线程自行消亡，范本 source_check._probe_t）。
-        logger.warning(f"data_provider.{func_name} 超时(>{to:.0f}s)，放弃走降级")
+        logger.warning(
+            f"data_provider.{func_name} 超时(>{to:.0f}s)，已停止等待，底层调用可能仍在运行，放弃走降级"
+        )
         return None
     except Exception as e:
         err_str = str(e)
@@ -101,9 +101,6 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
             _BROKEN_SOURCES.add(_key)
         logger.warning(f"data_provider.{func_name} 失败: {type(e).__name__}: {err_str[:80]}{hint}")
         return None
-    finally:
-        # 无论成败都立即释放执行器（不 join 孤儿线程）；成功路径同样需要
-        ex.shutdown(wait=False)
 
 
 def _robust(func_name: str, key: str, fn, ttl: float = 7 * 86400, timeout: Optional[float] = None):

@@ -1,0 +1,5 @@
+# Preserve the exact committed bytes of the four public raw JSON fixtures.
+tests/artifacts/probe_fin_semantics_raw/raw/24c9aadcb7bcca84627fc220ed5a4cbfe191ced59f81ad10e78f80e32a8772dc.json -text
+tests/artifacts/probe_fin_semantics_raw/raw/58f7f8e1565f6eabe382751f7b0f788528f91b597d050a94478f8f72a1d3697c.json -text
+tests/artifacts/probe_fin_semantics_raw/raw/bf54dd18f55f846909e1de2d2cc50855d7046f9b1f5fe3e756ef707f5f81449b.json -text
+tests/artifacts/probe_fin_semantics_raw/raw/ecf7d204e025ec1aa5d534539331160773f5ce354affa98757d6416f73f4b6f3.json -text

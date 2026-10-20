@@ -238,12 +238,11 @@ def trading_days(allow_refresh: bool = True):
 
     if _valid_cache(payload):
         age = datetime.now() - datetime.fromisoformat(payload.get("built_at"))
-        # 日历按 now+30 天构建，必含构建日之后的交易日；若最大交易日早于构建日
-        #（例：垫片旧版按「已有 K 线」推断，盘中构建把当日及未来全标休市），
-        # 该缓存不可信，强制重建——否则基准日会滞后一个交易日。
+        # 展示路径沿用旧 TTL 兼容：只要求缓存有效、未过 7 天且 dates 非空。
+        # 不因 dates[-1] 早于 built_at 强制联网重建；覆盖/资格判定仍由
+        # allow_refresh=False 的严格门负责，绝不放宽硬授权。
         _dates = payload.get("dates") or []
-        _future_ok = bool(_dates) and str(_dates[-1]) >= str(payload.get("built_at"))[:10]
-        if age < timedelta(days=7) and _dates and _future_ok:
+        if age < timedelta(days=7) and _dates:
             return payload["dates"]
     from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
     import baostock as bs

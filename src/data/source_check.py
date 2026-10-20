@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Optional
 
 from src.core.ai_model import thinking_disabled_body
+from src.data.timeout_call import call_with_timeout
 
 logger = logging.getLogger(__name__)
 
@@ -168,25 +169,22 @@ def _probe_t(label: str, fn, timeout: float = 20.0) -> dict:
     """带超时的探针（报告2.2/3.3 新增 akshare/baostock 源用，防 hang）。
 
     akshare 底层 requests 无 timeout，股东户数/融资余额等接口卡住会拖垮整个体检。
-    用 ThreadPoolExecutor 包硬超时，超时即 shutdown(wait=False) 放弃不等线程。
+    T05-B：用共享 daemon 线程 + 单槽队列限制等待；到点立即返回 ok=False，不再
+    等待 worker。worker 不能被强杀，底层接口可能仍在运行，迟到结果不会进入
+    下一次探针。原异常仍按类型/提示归类。
     """
-    from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
     t0 = time.time()
-    ex = ThreadPoolExecutor(max_workers=1)
-    fut = ex.submit(fn)
     try:
-        detail = fut.result(timeout=timeout)
-        ex.shutdown(wait=False)
+        detail = call_with_timeout(fn, timeout=timeout)
         latency = int((time.time() - t0) * 1000)
         return {"name": label, "ok": True, "latency_ms": latency,
                 "detail": detail, "error": None, "hint": None}
-    except FuturesTimeout:
-        ex.shutdown(wait=False)  # 不等孤儿线程，立刻返回
+    except TimeoutError:
         return {"name": label, "ok": False, "latency_ms": None,
-                "detail": None, "error": f"超时(>{timeout:.0f}s)，接口可能 hang/反爬",
-                "hint": "超时 | 提示：网络慢或服务端响应慢，稍后重试"}
+                "detail": None,
+                "error": f"超时(>{timeout:.0f}s)，已停止等待，底层调用可能仍在运行",
+                "hint": "超时 | 提示：网络慢或服务端响应慢，稍后重试；避免连续重试"}
     except Exception as e:
-        ex.shutdown(wait=False)
         err_str = f"{type(e).__name__}: {str(e)[:120]}"
         hint = _classify_error(err_str)
         return {"name": label, "ok": False, "latency_ms": None,

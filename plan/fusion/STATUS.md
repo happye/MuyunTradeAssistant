@@ -1,5 +1,7 @@
 # 融合项目当前实施与审批状态
 
+T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
+
 更新：2026-10-20。main整合限定通过，原v42当前行业条件化现金观察与v39-v41等历史范围保持。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 当前范围及分轮证据见[R15最新段](iteration9/R15_ACCEPTANCE.md)与[第九轮末节](iteration9/DELIVERY_PLAN.md)，不以旧3049结果代替本轮。
 
 v0.8.42唯一完整命令为`research <代码> --cash-verify <material_id> --source-check --industry-check [--json]`，单次PDF和SSE请求；普通research、getter和离线核对不后台联网。当前仅取得当次SSE转述C15非金融适用性，形成1个条件化组2期；支持映射边界仍限C15与J金融，其他未知。历史行业/PIT、ROE、现金持续性UNKNOWN；不形成长期TRUE/MID，不修改旧factor、评估/接受态、capture_only/default、缓存或阈值。G4整体及V1未完成。

@@ -2240,3 +2240,21 @@ P3（已取消）:
 - **实证**：`src/data/financial_data.py:459`取得供应商行后未核code/statDate，原`:505`直接写请求security_id；错股/错季度可冒充请求对象。正式固定矩阵修前93 failed/13 deselected（8.71s），为离线反例，不证明真实供应商已经返回过错股。
 - **合同**：五接口同门核实际返回证券、交易所和严格季度末；错/缺/坏身份仅拒该接口，其他合法接口继续。独立producer规则版本进入新content/metadata，不改供应商版本与负债率映射。旧raw不覆盖/迁移，旧记录不追认资格，接受态/综合method及默认策略保持。
 - **修复与验证**：`src/data/financial_data.py:447`统一解析返回证券，`:488`拒不匹配报告期，capture全出口同源并规范skip；新producer不改来源版本。父272定向、独立122及全量2844通过/0失败，7保护hash/知识库集合不变；审批与最终指纹见现有iteration9/R15、REVIEW_INDEX和日志。本项不扩为旧归档、原件现金语义、行业、PIT或G4整体通过。
+
+
+### ISS-120: 三个共享超时包装器返回后仍阻塞解释器退出
+
+- **状态/日期/基线**：2026-10-21，基线main@bd9e5d0、整合父4cc3bf6；本批限定验收通过，交付commit见main实际日志。G7/T05部分范围，不关闭整体。
+- **反例**：`tests/core/test_t05_timeout_exit.py`，三个实际helper均已超时返回但子进程1秒后仍存活；T05-A 3红/9正例绿，T05-B加强夹具后旧源码3红，再补后三退出绿。各轮证据见现有iteration9/TARGETED与第九轮末节，数字不混算。
+- **原因/修复范围**：`shutdown(wait=False)`不解除线程池解释器退出join；仅三个包装器共用独立daemon线程和单槽结果，保留异常、重试、熔断。Codex审查发现NaN/负预算新回退及父迟读marker假绿窗口，均已先红后绿并通过最终独立验收。
+- **用户可见**：REPL帮助与超时诊断显示停止等待、数据降级和底层请求可能继续，提示避免连续重试；不承诺全CLI总退出期限。
+- **同类剩余4处（本批不修）**：`src/core/benzong/data_provider.py`的industry_metrics内3个executor构造（当前422/449/465行）；`src/scanner/market_cache.py:458`新浪并行1处。仅为静态风险定位，未有本批专用反例，不称已复现/修复。
+- **保留限制**：_safe_call内MarketCache/K线仍可晚到写缓存，Baostock会话与后续重试仍可能重叠；线程不能强杀，单槽不限制总线程/内存。无真实外联、账户迁移、策略/研究资格或效果晋级。
+
+
+### ISS-121: 远端免费源与扫描增量的边界回退
+
+- **状态/日期/基线**：2026-10-21，origin/main@4cc3bf6；指定六类及日期/主体追修限定验收通过，最终commit见main日志；不关闭G7/T05整体。
+- **范围**：robust_fetch::_call_timeout复用共享等待，缓存shape/时间门及唯一临时提交；scanner::_kline_metrics批截止在调用线程建立、严格日期窗口及返回code完整匹配，缺指标不跳条件；board_members_alt精确静态主题/动态单向包含；fear.history保TTL展示兼容。原剩余4executor见ISS-120，不扩修。
+- **正式证据**：test_remote_integration_boundaries.py、test_t05_timeout_exit.py第四case及修正后的trial用例；D/E/F各轮先红后绿，最终全量/独立审查只见iteration9/R15、REVIEW_INDEX及原始日志。不用通过计数代替真实网络、性能或投资效果。
+- **限制**：底层调用及会话/缓存晚到副作用仍可能继续；无产品AI/账户迁移/评分或阈值改动。

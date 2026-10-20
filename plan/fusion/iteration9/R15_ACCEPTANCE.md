@@ -1,6 +1,19 @@
 # R15续接：融合工程、账户入口与研究资格验收
 
-## 2026-10-20：main整合与双仓库收尾（最新）
+## 2026-10-21：T05共享等待与远端增量限定验收（最新）
+
+**裁决：`ACCEPTED_SHARED_TIMEOUT_AND_REMOTE_INTEGRATION_SCOPE_ONLY`。** DSH实施，Codex审批/独立运行验证/Git。基线bd9e5d0，远端4cc3bf6（13文件）在临时detached树三方整合，无新命名分支；最终提交见main实际Git，不以旧基线冒充交付。
+
+最终隔离全量 **3157 passed/0 failed/7 skipped/1 external deselected（265.49s）**；494项源码/测试/材料/隔离器指纹起止一致；Temp6项保护hash与知识库集合、原树8项保护hash不变。守卫尝试network=1013、subprocess=12、real_state=2，均被阻断。独立最终四child4 passed（8.06s），只放行4个核定命令/内容，network/其他child/real_state=0；12关键pins和14项双树保护hash不变。独立静态审查最终PASS，reviewer未运行测试；角色请求Sol/high，运行时未披露实际执行型号。REPL帮助另实跑1 passed（12.01s），当时start.py最终SHA相同。
+
+接收范围：三共享helper及robust调用自身退出等待；坏缓存shape/时间与唯一临时文件保全；扫描新补算批总等待、严格日期/窗口及完整证券/交易所词元、必需指标缺失拒满足；主题精确/核定方向匹配及TTL内旧日历展示兼容。F移除shim无code豁免，所有生产来源同门。
+
+分轮证据保留：T05自身3119/6skip/1deselect（266.98s）不是整合全量；A三退出红，B补后绿；C预算3红；D六类反例，E日期/主体/截止5红，F词元/缺身份2红均先红后绿。E整合全量因F新阻断由父终止（rc4294967295），不计pytest失败或完整结果。D原raw标签错位/空green5历史保留，E按实际非空文件补录；父NUL/命令字符串两轮误拒均0 child，夹具修复后独立4通过，不混作产品红灯。原始逐字日志和每轮SHA见现有TARGETED/FULL/REVIEW_INDEX。
+
+限制：不能强杀底层DNS/socket/Baostock，不能保证全CLI总退出或无晚到缓存/会话副作用；4个旧executor构造仍未作专用退出反例。不宣称性能/费用/投资效果提升。无产品AI、真实账户迁移或缓存/评分阈值/研究资格变更；远端派生confidence展示口径保留，不改六维评分输入缓存。v42范围、真实MID NO_VALID及G4/V1未完成保持。
+
+
+## 2026-10-20：main整合与双仓库收尾（历史）
 
 **裁决：`ACCEPTED_MAIN_INTEGRATION_SCOPE_ONLY`。** 将远端main `84fc530`（原本地基线后7提交）与已接收快照`759095e`整合；临时detached检出验证，不创建新的命名分支或PR。交付使用main正常推送，具体提交以Git历史为准。协作工具独立仓main已推送`d4ef9b0`，不把工具源码放进暮云。
 
@@ -298,3 +311,5 @@ Z1是R14 Y1两个异常维度的交叉，Z2是O0新读出口的异常返回，Z3
 ## 下一动作
 
 Claude Code按任务卡P0/P1补齐三组缺口，以固定状态组合矩阵替代只复制单条反例。Codex按新交付与[本轮指纹](REVIEW_INDEX.json)复验，决定合同冻结与M2生产放行；无需用户重复常规工程审批。O1/O2无变化不再重复纯函数审查，只保留联合回归。根[MILESTONES](../../../MILESTONES.md)、STATUS、RESUME同步本裁决。
+
+交付字节复核：四份既有公开raw JSON保持origin/main原始LF blob，新增四条精确路径-text属性防止Windows转换；数据未改。恢复原始字节后重新全量3157/7skip/1deselect，265.49s，作为最终交付结果。此前F树268.50s为上一轮记录。
