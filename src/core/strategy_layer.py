@@ -799,6 +799,10 @@ class StrategyLayer:
                 return PositionAction.HOLD_POSITION, 0.0
 
         else:  # WATCH
+            # 观望=不新增风险。已持仓（含权重未知 None）时观望应为「维持」而非「空仓观望」，
+            # 与 HOLD 分支同口径（目标 0.0=不调整）；仅确认空仓时才是 STAY_OUT。
+            if current_position_ratio is None or current_position_ratio > 0:
+                return PositionAction.HOLD_POSITION, 0.0
             return PositionAction.STAY_OUT, 0.0
 
     @staticmethod

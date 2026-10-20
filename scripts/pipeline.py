@@ -46,6 +46,22 @@ def _ev(x):
     return getattr(x, "value", x)
 
 
+# 决策→动作口径（输出中展示）：「决策」列=策略层最终决策（strategy_decision），动作由它推导：
+#   BUY→建仓/加仓（权重未知或软上限加不动→维持）；HOLD→维持；SELL→减仓/清仓（空仓→观望）；
+#   WATCH→空仓=观望、持仓=维持。引擎原始信号与最终决策不同时以「引擎X→策略Y（原因）」标出。
+DECISION_RULE = ("决策列=策略层最终决策（引擎原始信号经稳定性/惯性/确认/冷却/软上限过滤）；"
+                 "动作由最终决策推导：BUY→建仓/加仓，HOLD→维持，SELL→减仓/清仓，"
+                 "WATCH→空仓观望、持仓维持；两者不同时标「引擎X→Y」。")
+
+
+def decision_label(c):
+    eng, fin = c.get("decision"), c.get("strategy_decision") or c.get("decision")
+    if eng and fin and eng != fin:
+        why = "；".join(c.get("downgrade_reasons") or [])[:40]
+        return f"引擎{eng}→{fin}" + (f"（{why}）" if why else "")
+    return fin
+
+
 class Stage:
     def __init__(self, log):
         self.log = log
@@ -105,6 +121,8 @@ def analyze_one(orch, pm, code, *, ai=True):
         "strategy_decision": _ev(sd.decision), "position_action": _ev(sd.position_action),
         "action_semantic": sd.action_semantic, "sell_path": sd.sell_path,
         "target_ratio": sd.position_ratio, "reasons": (dr.reason or [])[:6],
+        "downgrade_reasons": [r for r in (getattr(sd, "strategy_reasons", None) or [])
+                              if not str(r).startswith(("参数档", "⚠ 极端"))][:2],
         "warnings": (dr.warnings or [])[:4],
         "ai": ({"sentiment": air.sentiment, "confidence": air.confidence, "risk": air.risk_level,
                 "summary": air.summary} if air is not None else None),
@@ -156,20 +174,76 @@ def stage_holdings(orch, pm, nav, risk_profile, ai):
     return out
 
 
-def stage_candidates(orch, pm, scanner, rule, theme, top, ai):
+FALLBACK_LABEL = "未按板块过滤（接口失败，已退回全市场）"
+FILTER_STATUS_CN = {"theme_ok": "主题板块过滤正常", "alt_source": "主题接口失败，已用替代源（申万行业成分股）",
+                    "market_fallback": FALLBACK_LABEL, "none": "未指定主题（全市场）"}
+
+
+def recent_pipeline_codes(out_dir, n=3):
+    """最近 n 份流水线 JSON 中出现过的候选代码。"""
+    codes = set()
+    try:
+        files = sorted(Path(out_dir).glob("pipeline_*.json"), key=lambda f: f.stat().st_mtime, reverse=True)[:n]
+    except Exception:
+        return codes
+    for f in files:
+        try:
+            for c in (json.loads(f.read_text(encoding="utf-8")).get("candidates") or []):
+                if c.get("code"):
+                    codes.add(str(c["code"]))
+        except Exception:
+            continue
+    return codes
+
+
+def _lookup_industry(code):
+    from src.data import robust_fetch as rf
+    v = rf.robust_call("sina_industry_concepts", code, lambda: rf.sina_industry_concepts(code),
+                       ttl=7 * 86400, timeout=6.0, retries=0, quiet=True)
+    return (v or {}).get("industry")
+
+
+def diversify_fallback(cands, recent, industry_of, cap=2, penalty=5):
+    """全市场兜底时：近期出现过的股票排名下调 penalty 位（除非原排名领先超过 penalty 位，
+    即分数明显更好），再按行业每行业最多 cap 只。返回 [(cand, industry, is_recent)]。"""
+    ranked = sorted(enumerate(cands), key=lambda t: t[0] + (penalty if t[1].stock_code in recent else 0))
+    out, per = [], {}
+    for _, c in ranked:
+        ind = c.industry or industry_of(c.stock_code) or "未知行业"
+        if ind != "未知行业" and per.get(ind, 0) >= cap:
+            continue
+        per[ind] = per.get(ind, 0) + 1
+        out.append((c, ind, c.stock_code in recent))
+    return out
+
+
+def stage_candidates(orch, pm, scanner, rule, theme, top, ai, out_dir=None):
     held = {p.stock_code for p in pm.list_positions()}
     cands, info = scanner.quick_scan(rule_name=rule, market_query=theme, exclude_codes=held)
+    status = getattr(scanner, "last_theme_filter_status", None)
+    if status not in FILTER_STATUS_CN:
+        status = ("market_fallback" if getattr(scanner, "last_theme_filter_failed", False)
+                  else ("theme_ok" if theme else "none"))
+    if status == "market_fallback":
+        recent = recent_pipeline_codes(out_dir) if out_dir else set()
+        picked = diversify_fallback(cands[:max(top * 6, 30)], recent, _lookup_industry)
+    else:
+        picked = [(c, c.industry, False) for c in cands]
     rows = []
-    for c in cands[:top]:
+    for c, ind, was_recent in picked[:top]:
         try:
             a = analyze_one(orch, pm, c.stock_code, ai=ai)
-            a["industry"] = c.industry
-            rows.append(a)
+            a["industry"] = ind
         except Exception as e:
-            rows.append({"code": c.stock_code, "name": c.stock_name, "error": str(e)})
-    info = info or {}
+            a = {"code": c.stock_code, "name": c.stock_name, "error": str(e)}
+        if status == "market_fallback":
+            a["market_fallback"] = True
+            a["recent_repeat"] = was_recent
+        rows.append(a)
     meta = {"rule": rule, "theme": theme, "scanned": len(cands),
-            "theme_filter_failed": bool(getattr(scanner, "last_theme_filter_failed", False))}
+            "filter_status": status, "filter_status_cn": FILTER_STATUS_CN[status],
+            "alt_boards": list(getattr(scanner, "last_alt_boards", None) or []),
+            "theme_filter_failed": status == "market_fallback"}
     return rows, meta
 
 
@@ -257,7 +331,11 @@ def fmt_md(R):
     def pct(value, digits=1):
         return "UNKNOWN" if value is None else f"{value:.{digits}%}"
 
-    L = [f"# 暮云每日流水线报告 {R['generated_at']}", "",
+    cm0 = R.get("cand_meta") or {}
+    L = [f"# 暮云每日流水线报告 {R['generated_at']}"
+         + (f" 「{FALLBACK_LABEL}」" if cm0.get("filter_status") == "market_fallback" else ""), "",
+         f"> 选股过滤状态：`{cm0.get('filter_status', '-')}` {cm0.get('filter_status_cn', '')}"
+         + (f"（{'、'.join(cm0['alt_boards'])}）" if cm0.get("alt_boards") else ""), "",
          "> 只读原型输出：建议≠成交，未修改持仓、未记录建议。数据源：" + R["data_source"], ""]
     m = R.get("market") or {}
     idx, fear = m.get("index", {}), m.get("fear", {})
@@ -267,7 +345,7 @@ def fmt_md(R):
     s = R.get("sizing") or {}
     L += ["## 2. 持仓体检", f"总仓位 {pct(s.get('exposure'))}，可用现金 UNKNOWN，"
           f"单股上限 {pct(s.get('per_stock_max'), 0)}，NAV（用户估计/默认，非账户事实）{R['nav']:,.0f} 元",
-          QUANTITY_PENDING, "",
+          QUANTITY_PENDING, DECISION_RULE, "",
           "| 代码 | 名称 | 现价 | 成本 | 浮盈% | 仓位 | 股数核验 | 决策 | 建议动作 | 卖出路径 | AI情绪 | 风险标记 |",
           "|---|---|---|---|---|---|---|---|---|---|---|---|"]
     for h in R.get("holdings") or []:
@@ -277,28 +355,30 @@ def fmt_md(R):
         ai = h.get("ai") or {}
         act = ACTION_CN.get(h["position_action"], h["position_action"])
         L.append(f"| {h['code']} | {h['name']} | {h['price']} | {h['entry_price']} | {h['pnl_pct']} | "
-                 f"{pct(h.get('ratio'))} | UNKNOWN | {h['decision']} | {act} | {h.get('sell_path') or '-'} | "
+                 f"{pct(h.get('ratio'))} | UNKNOWN | {decision_label(h)} | {act} | {h.get('sell_path') or '-'} | "
                  f"{ai.get('sentiment', '-')} | {'；'.join(h.get('flags') or []) or '-'} |")
     cm = R.get("cand_meta") or {}
     L += ["", "## 3. 选股候选", f"规则 `{cm.get('rule')}` 主题 `{cm.get('theme')}`，"
           f"初筛 {cm.get('scanned')} 只，深度分析前 {len(R.get('candidates') or [])} 只"
-          + ("（⚠ 主题过滤失败，按全市场）" if cm.get('theme_filter_failed') else "")
-          + "。排序：建仓动作 > BUY > 笨总分+0.2×回测超额 > 规则评分；第一行=今日最佳候选，WATCH=只观察不买。", "",
+          + (f"（⚠ {FALLBACK_LABEL}；每行业≤2只，近期重复出现者降权）" if cm.get('filter_status') == "market_fallback"
+             else ("（替代源：" + "、".join(cm.get("alt_boards") or []) + "）" if cm.get("filter_status") == "alt_source" else ""))
+          + "。排序：建仓动作 > BUY > 笨总分+0.2×回测超额 > 规则评分；第一行=今日最佳候选，WATCH=只观察不买。" + DECISION_RULE, "",
           "| 代码 | 名称 | 现价 | 决策 | 动作 | 评分 | 回测收益% | 基准% | 超额% | 最大回撤% | 笨总 |",
           "|---|---|---|---|---|---|---|---|---|---|---|"]
     bt, bz = R.get("backtest") or {}, R.get("bz") or {}
     def _rank(c):
         z = (bz.get(c.get("code"), {}) or {}).get("total") or 0
         b = (bt.get(c.get("code"), {}) or {}).get("excess_pct") or 0
-        return (c.get("position_action") in ("OPEN", "ADD"), c.get("decision") == "BUY", z + b * 0.2, c.get("score") or 0)
+        return (c.get("position_action") in ("OPEN", "ADD"), (c.get("strategy_decision") or c.get("decision")) == "BUY", z + b * 0.2, c.get("score") or 0)
     for c in sorted([c for c in R.get("candidates") or [] if not c.get("error")], key=_rank, reverse=True) + \
             [c for c in R.get("candidates") or [] if c.get("error")]:
         if c.get("error"):
-            L.append(f"| {c['code']} | {c.get('name')} | 错误 {c['error']} |||||||||")
+            L.append(f"| {c['code']} | {c.get('name')}{'〔全市场兜底·未按板块〕' if c.get('market_fallback') else ''} | 错误 {c['error']} |||||||||")
             continue
         b, z = bt.get(c["code"], {}), bz.get(c["code"], {})
         zt = f"{z.get('total')}/{z.get('grade')}" if z.get("total") is not None else "-"
-        L.append(f"| {c['code']} | {c['name']} | {c['price']} | {c['decision']} | "
+        nm = c['name'] + ("〔全市场兜底·未按板块〕" if c.get("market_fallback") else "") + ("〔近期重复〕" if c.get("recent_repeat") else "")
+        L.append(f"| {c['code']} | {nm} | {c['price']} | {decision_label(c)} | "
                  f"{ACTION_CN.get(c['position_action'], c['position_action'])} | {c['score']} | "
                  f"{b.get('total_return_pct', '-')} | {b.get('benchmark_pct', '-')} | {b.get('excess_pct', '-')} | "
                  f"{b.get('max_dd_pct', '-')} | {zt} |")
@@ -358,8 +438,9 @@ def main():
          "stages": log}
     R["market"] = st.run("1 大盘与情绪", stage_market)
     R["holdings"] = st.run("2 持仓体检", stage_holdings, orch, pm, a.nav, rp, ai) or []
-    cands, meta = st.run("3 选股初筛+深度分析", stage_candidates, orch, pm, scanner, a.rule, a.theme, a.top, ai) or ([], {})
+    cands, meta = st.run("3 选股初筛+深度分析", stage_candidates, orch, pm, scanner, a.rule, a.theme, a.top, ai, a.out) or ([], {})
     R["candidates"], R["cand_meta"] = cands, meta
+    R["filter_status"] = (meta or {}).get("filter_status")
     end = datetime.now().strftime("%Y-%m-%d")
     start = (datetime.now() - timedelta(days=int(365 * a.bt_years))).strftime("%Y-%m-%d")
     bt_codes = [c["code"] for c in cands if not c.get("error")

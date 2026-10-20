@@ -106,6 +106,30 @@ def _safe_call(func_name: str, fn, *args, timeout: Optional[float] = None, **kwa
         ex.shutdown(wait=False)
 
 
+def _robust(func_name: str, key: str, fn, ttl: float = 7 * 86400, timeout: Optional[float] = None):
+    """短超时 + 1 次退避重试 + 磁盘最近成功缓存（TTL 内直接用，失败时 30 天内旧值兜底）。
+
+    与 _safe_call 共用熔断：已熔断的源不再打网络，但仍可读缓存（新鲜或过期兜底）。
+    """
+    from src.data.robust_fetch import robust_call
+    _fix_curl_ssl_paths()
+    k = _breaker_key(func_name)
+    broken = _fast_fail_enabled() and (k in _BROKEN_SOURCES or k in _skip_sources())
+
+    def call():
+        if broken:
+            raise ConnectionError("source circuit-broken")
+        return fn()
+
+    to = timeout if timeout is not None else min(
+        DATA_CALL_TIMEOUT, float(os.environ.get("MUYUN_DATA_CALL_TIMEOUT") or 10))
+    v = robust_call(func_name, key, call, ttl=ttl, timeout=to, retries=0 if broken else 1,
+                    quiet=broken)
+    if v is None and _fast_fail_enabled() and not broken:
+        _BROKEN_SOURCES.add(k)
+    return v
+
+
 def get_business_introduction(code: str) -> Optional[str]:
     """获取公司主营业务介绍。
 
@@ -120,7 +144,7 @@ def get_business_introduction(code: str) -> Optional[str]:
         return None
 
     # 试 1：同花顺主营介绍
-    df = _safe_call("stock_zyjs_ths", lambda: ak.stock_zyjs_ths(symbol=code))
+    df = _robust("stock_zyjs_ths", code, lambda: ak.stock_zyjs_ths(symbol=code))
     if df is not None and not df.empty:
         # 通常返回主营业务、产品类型、产品名称等多列
         try:
@@ -135,7 +159,7 @@ def get_business_introduction(code: str) -> Optional[str]:
             logger.warning(f"主营介绍解析失败: {e}")
 
     # 试 2：东方财富个股信息（兜底）
-    df2 = _safe_call("stock_individual_info_em", lambda: ak.stock_individual_info_em(symbol=code))
+    df2 = _robust("stock_individual_info_em", code, lambda: ak.stock_individual_info_em(symbol=code))
     if df2 is not None and not df2.empty:
         try:
             # 转 dict 形态
@@ -146,6 +170,12 @@ def get_business_introduction(code: str) -> Optional[str]:
                 return "\n".join(text_parts)
         except Exception as e:
             logger.warning(f"个股信息解析失败: {e}")
+
+    # 试 3：新浪公司简介页（主营业务/公司简介，真实页面文本）
+    from src.data import robust_fetch as _rf
+    info = _robust("sina_corp_info", code, lambda: _rf.sina_corp_info(code))
+    if info:
+        return "\n".join(f"{k}: {v}" for k, v in info.items()) + "\n(来源: 新浪财经公司简介)"
 
     return None
 
@@ -269,11 +299,17 @@ def get_industry_info(code: str) -> Optional[dict]:
                     f = rs.fields
                     industry = rows[0][f.index('industry')]
                     stock_name = rows[0][f.index('code_name')]
+                    from src.data import robust_fetch as _rf
+                    q = _robust("tencent_quote_fundamentals", code,
+                                lambda: _rf.tencent_quote_fundamentals(code), ttl=86400) or {}
+                    fmt = (lambda v: f"{v}亿" if v is not None else "")
                     return {
                         "industry_name": industry,
                         "stock_name": stock_name,
-                        "total_market_cap": "",
-                        "circulating_market_cap": "",
+                        "total_market_cap": fmt(q.get("total_mcap_yi")),
+                        "circulating_market_cap": fmt(q.get("circ_mcap_yi")),
+                        "pe_ttm": q.get("pe_ttm"),
+                        "pb": q.get("pb"),
                         "industry_raw": {"source": "baostock", "industry": industry},
                     }
             else:
@@ -287,9 +323,9 @@ def get_industry_info(code: str) -> Optional[dict]:
     except ImportError:
         return None
 
-    df = _safe_call("stock_individual_info_em", lambda: ak.stock_individual_info_em(symbol=code))
+    df = _robust("stock_individual_info_em", code, lambda: ak.stock_individual_info_em(symbol=code))
     if df is None or df.empty:
-        return None
+        return _industry_info_alt(code)
 
     try:
         info = dict(zip(df["item"], df["value"]))
@@ -303,6 +339,28 @@ def get_industry_info(code: str) -> Optional[dict]:
     except Exception as e:
         logger.warning(f"行业信息解析失败: {e}")
         return None
+
+
+def _industry_info_alt(code: str) -> Optional[dict]:
+    """替代源：新浪申万行业/概念 + 腾讯 PE/PB/市值。全部取不到返回 None（不编造）。"""
+    from src.data import robust_fetch as _rf
+    ind = _robust("sina_industry_concepts", code, lambda: _rf.sina_industry_concepts(code)) or {}
+    q = _robust("tencent_quote_fundamentals", code, lambda: _rf.tencent_quote_fundamentals(code),
+                ttl=86400) or {}
+    if not ind.get("industry") and not q:
+        return None
+    concepts = [c for c in (ind.get("concepts") or []) if c != ind.get("industry")]
+    fmt = (lambda v: f"{v}亿" if v is not None else "")
+    return {
+        "industry_name": ind.get("industry", ""),
+        "stock_name": q.get("stock_name", ""),
+        "total_market_cap": fmt(q.get("total_mcap_yi")),
+        "circulating_market_cap": fmt(q.get("circ_mcap_yi")),
+        "pe_ttm": q.get("pe_ttm"),
+        "pb": q.get("pb"),
+        "concepts": concepts,
+        "industry_raw": {"source": "sina_sw_industry+tencent_qt", **ind, **q},
+    }
 
 
 def get_recent_kline(code: str, lookback_days: int = 750):

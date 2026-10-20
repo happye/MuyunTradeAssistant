@@ -883,11 +883,18 @@ class MarketCache:
             logger.info("MarketCache: 概念板块缓存命中")
             return MarketCache._shared_concept_df
 
-        logger.info("MarketCache: 获取概念板块列表(THS)...")
+        logger.info("MarketCache: 获取概念板块列表(THS, timeout=12s, 失败用磁盘最近成功结果)...")
         try:
             import akshare as ak
-            with self._without_proxy():
-                df = ak.stock_board_concept_name_ths()
+            from src.data.robust_fetch import robust_call
+
+            def _fetch():
+                with self._without_proxy():
+                    return ak.stock_board_concept_name_ths()
+            # 仍按上方 10 分钟内存 TTL 实时拉取（ttl=0 不读新鲜盘缓存）；拉取失败时用磁盘上
+            # 30 天内最近一次成功结果兜底（夜间 THS 常超时）
+            df = robust_call("ths_concept_boards", "all", _fetch, ttl=0,
+                             stale_max=30 * 86400, timeout=12, retries=1)
             if df is not None and not df.empty:
                 df = df.rename(columns={"name": "板块名称"})
                 MarketCache._shared_concept_df = df
