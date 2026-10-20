@@ -487,7 +487,7 @@ def get_rag_service(config: dict = None, auto_initialize: bool = True):
         return None
     try:
         if config is None:
-            from src.cli.main import load_config
+            from src.config import load_config
             config = load_config()
         # RAGService 期望 rag 子节（含 enabled/knowledge_dir 等），非整个 settings.yaml
         rag_cfg = config.get("rag", config) if isinstance(config, dict) else {}

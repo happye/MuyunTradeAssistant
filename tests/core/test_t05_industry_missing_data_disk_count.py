@@ -1,16 +1,16 @@
 """T05 read-only count: an industry disk file with ts but no data misses.
 
 The industry memory key is absent. The disk pickle is a dict whose only
-key is ts, set to BASE+1, and it has no data key. Real _disk_load returns
-that dict, not None, because it is a dict and ts is present. The clock is
-BASE, so the disk age is -1 and is inside the strict less-than 1800 test.
+key is ts, set to BASE-1, and it has no data key. Real _disk_load returns
+that dict because its timestamp is valid. The clock is
+BASE, so the disk age is 1 and is inside the strict less-than 1800 test.
 _d.get("data") is None, which is falsy, so this is not a hit and nothing
 from the disk dict is copied into memory. The disk load runs once. The
 worker then finishes and returns a list of 30 codes. It does not raise.
 join uses the production 15s argument but returns at once because the
 worker is already dead, so this is not the timeout path and the test does
 not wait 15s. Memory is written with those 30 codes and the timestamp
-becomes the current clock BASE, not the disk ts BASE+1. The disk file is
+becomes the current clock BASE, not the disk ts BASE-1. The disk file is
 overwritten with that list and the clock ts. The fallback is not called.
 Concept memory is left alone. Production code is not changed, and the real
 ~/.muyun/market_cache is not used. This is not the missing-ts count and
@@ -30,7 +30,7 @@ N = 30
 NAME = "t05inoda"
 BASE = 1_700_000_000.0
 TTL = 1800
-FUTURE = BASE + 1
+STORED_TS = BASE - 1
 
 
 class _Clock:
@@ -77,7 +77,7 @@ def test_t05_industry_missing_data_disk_count(tmp_path, monkeypatch, capsys):
     real_load = market_cache._disk_load
     real_save = market_cache._disk_save
     path = cache_dir / "industry_stocks_t05inoda.pkl"
-    pd.to_pickle({"ts": FUTURE}, path)
+    pd.to_pickle({"ts": STORED_TS}, path)
     old_bytes = path.read_bytes()
     raw = pd.read_pickle(path)
 
@@ -146,18 +146,18 @@ def test_t05_industry_missing_data_disk_count(tmp_path, monkeypatch, capsys):
     stored = pd.read_pickle(path)
     loaded = disk_loads["value"]
     assert memory_absent
-    assert isinstance(raw, dict) and "data" not in raw and raw["ts"] == FUTURE
-    assert disk_age == -1 and disk_inside
+    assert isinstance(raw, dict) and "data" not in raw and raw["ts"] == STORED_TS
+    assert disk_age == 1 and disk_inside
     assert len(fresh) == N
     assert loaded is not None and loaded == raw and "data" not in loaded
     assert loaded.get("data") is None and not loaded.get("data")
     assert returned is fresh
     assert rows[NAME] is fresh
-    assert ts[NAME] == clock.now == BASE and ts[NAME] != FUTURE
+    assert ts[NAME] == clock.now == BASE and ts[NAME] != STORED_TS
     assert rows.writes == [(NAME, fresh)]
     assert ts.writes == [(NAME, BASE)]
     assert all(value is not None for _, value in rows.writes)
-    assert stored["ts"] == clock.now == BASE and stored["ts"] != FUTURE
+    assert stored["ts"] == clock.now == BASE and stored["ts"] != STORED_TS
     assert stored["data"] == fresh and "data" in stored
     assert kept != old_bytes and len(old_bytes) > 0 and len(kept) > len(old_bytes)
     assert disk_loads["n"] == 1 and disk_loads["keys"] == [f"industry_stocks_{NAME}"]

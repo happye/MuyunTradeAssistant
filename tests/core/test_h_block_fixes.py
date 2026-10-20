@@ -34,37 +34,37 @@ def el():
 
 def test_h01_chinext_normal_surge_not_blocked(el):
     """创业板 +12%（20cm 板内合法波动）不得被判涨停封板"""
-    ev = el.evaluate(_sd("300502", 12.0), PositionAction.OPEN)
+    ev = el.evaluate(_sd("300502", 12.0), PositionAction.OPEN, simulated=True)
     assert not ev.blocked, f"创业板 +12% 被误封: {ev.block_reason}"
 
 
 def test_h01_chinext_normal_crash_sell_not_blocked(el):
     """创业板 -12% 当日止损 SELL 不得被判跌停封板"""
-    ev = el.evaluate(_sd("300502", -12.0), PositionAction.CLOSE_ALL)
+    ev = el.evaluate(_sd("300502", -12.0), PositionAction.CLOSE_ALL, simulated=True)
     assert not ev.blocked, f"创业板 -12% 止损被误封: {ev.block_reason}"
 
 
 def test_h01_main_board_limit_still_blocked(el):
     """主板 +9.9%（真涨停区）仍必须封锁 BUY"""
-    ev = el.evaluate(_sd("600519", 9.9), PositionAction.OPEN)
+    ev = el.evaluate(_sd("600519", 9.9), PositionAction.OPEN, simulated=True)
     assert ev.blocked and "涨停" in ev.block_reason
 
 
 def test_h01_main_board_limit_down_still_blocked(el):
     """主板 -9.9%（真跌停区）仍必须封锁 SELL"""
-    ev = el.evaluate(_sd("600519", -9.9), PositionAction.CLOSE_ALL)
+    ev = el.evaluate(_sd("600519", -9.9), PositionAction.CLOSE_ALL, simulated=True)
     assert ev.blocked and "跌停" in ev.block_reason
 
 
 def test_h01_star_market_limit_blocked(el):
     """科创板 +19.9%（真涨停）必须封锁 BUY"""
-    ev = el.evaluate(_sd("688981", 19.9), PositionAction.OPEN)
+    ev = el.evaluate(_sd("688981", 19.9), PositionAction.OPEN, simulated=True)
     assert ev.blocked
 
 
 def test_h01_star_normal_move_not_blocked(el):
     """科创板 +12%（未到 19.5%）不得封"""
-    ev = el.evaluate(_sd("688981", 12.0), PositionAction.OPEN)
+    ev = el.evaluate(_sd("688981", 12.0), PositionAction.OPEN, simulated=True)
     assert not ev.blocked
 
 

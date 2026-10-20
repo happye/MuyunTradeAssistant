@@ -29,6 +29,8 @@ PIT 闸门进快照，回放从快照读而非实时拉）。
 """
 
 import logging
+import re
+from calendar import monthrange
 from concurrent.futures import TimeoutError as _FuturesTimeout
 from datetime import datetime
 from typing import Literal, Optional
@@ -40,6 +42,7 @@ from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
 logger = logging.getLogger(__name__)
 
 FINANCIAL_SOURCE_VERSION = "baostock_financial_v1"
+FINANCIAL_PRODUCER_VERSION = "financial.response_identity.v1"
 FIELD_REGISTRY_VERSION = "baostock_field_registry_v1"
 
 # (接口名, [(字段, 单位), ...])——单位实测锚定见模块 docstring；新增字段先实测再登记
@@ -441,6 +444,22 @@ def _query_one(fn_name: str, bs_code: str, year: int, quarter: int,
         return None
 
 
+def _response_security_id(value, bs_code: str) -> str | None:
+    """独立解析返回主体；拒绝垃圾后缀和与代码市场矛盾的显式交易所。"""
+    if not isinstance(value, str):
+        return None
+    value = value.strip().lower()
+    match = re.fullmatch(r"(?:(sh|sz|bj)\.?([0-9]{6})|([0-9]{6})(?:\.(sh|sz|bj))?)", value)
+    if match is None:
+        return None
+    canonical = _to_baostock_code(value)
+    explicit_exchange = match.group(1) or match.group(4)
+    exchange, security_id = canonical.split(".")
+    if (explicit_exchange and explicit_exchange != exchange) or canonical != bs_code:
+        return None
+    return security_id
+
+
 def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
                             timeout: int = 30) -> list[dict]:
     """五接口 → research_snapshot.financial_record 可直接消费的 fin dict 列表。
@@ -450,6 +469,8 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
     单接口失败只缺该接口字段（告警留痕），不拖垮其余接口。
     """
     bs_code = _to_baostock_code(stock_code)
+    month = quarter * 3
+    expected_period = f"{year:04d}-{month:02d}-{monthrange(year, month)[1]:02d}"
     if not _ensure_baostock_login():
         logger.warning(f"Baostock 登录失败，财务季频证据跳过 {bs_code} {year}Q{quarter}")
         return []
@@ -464,6 +485,13 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
             continue
         if row is None:
             continue  # 超时/错误已告警；缺该接口全部字段
+        security_id = _response_security_id(row.get("code"), bs_code)
+        # 与真实请求季末完整相等也排除缺失、非法日期及截断/后缀洗白。
+        if security_id is None or row.get("statDate") != expected_period:
+            reason = "返回证券缺失、非法或不匹配" if security_id is None else "返回报告期缺失、非法或不匹配"
+            logger.warning(
+                f"财务返回身份核对失败 {fn_name} {bs_code} {year}Q{quarter}: {reason}，该接口不产生证据")
+            continue
         pub = row.get("pubDate") or None
         stat = row.get("statDate") or None
         if not pub:
@@ -502,7 +530,7 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
                     value = None  # 畸形值按缺失处理，不猜
             out.append({
                 "metric": field,
-                "security_id": str(stock_code),  # J1 范围门判定需要（映射按证券核定）
+                "security_id": security_id,  # 仅使用独立核定的返回证券
                 "value": value,
                 "unit": unit,
                 "period_kind": "cumulative",  # baostock 季频=年初累计（实测口径；兼容旧读取）
@@ -514,6 +542,7 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
                 "published_at": pub,
                 "source_uri": f"baostock.{fn_name}(code={bs_code},year={year},quarter={quarter})",
                 "source_version": FINANCIAL_SOURCE_VERSION,
+                "producer_version": FINANCIAL_PRODUCER_VERSION,
             })
     return out
 
@@ -540,7 +569,7 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
     """
     from src.data.research_snapshot import financial_record
     if store is not None and skip_archived and store.has_quarter_evidence(
-            str(stock_code), year, quarter):
+            _to_baostock_code(stock_code).split(".")[1], year, quarter):
         logger.info(f"财务季频证据已归档，跳过重复抓取 {stock_code} {year}Q{quarter}")
         return ([], []) if return_raw else []
     fin_dicts = get_financial_quarterly(stock_code, year, quarter, timeout=timeout)
@@ -548,17 +577,18 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
     if store is not None:
         query_meta = {
             "kind": "baostock_financial_quarterly",
-            "stock_code": str(stock_code),
             "bs_code": _to_baostock_code(stock_code),
             "year": year, "quarter": quarter,
             "queried_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "source_version": FINANCIAL_SOURCE_VERSION,
+            "producer_version": FINANCIAL_PRODUCER_VERSION,
             "field_registry_version": FIELD_REGISTRY_VERSION,
         }
         # 留样=供应商原貌（映射前归档——原始响应不可篡改，DATA_TRUST §2）
         for d in fin_dicts:
             digest, _created = store.archive_raw(d, metadata={
-                **query_meta, "interface": d["source_uri"], "metric": d["metric"],
+                **query_meta, "stock_code": d["security_id"],
+                "interface": d["source_uri"], "metric": d["metric"],
                 "period_end": d.get("period_end"), "published_at": d.get("published_at")})
             raw_digests.append(digest)
     mapped = [apply_unit_drift_mapping(d) for d in fin_dicts]
@@ -566,7 +596,7 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
         # 观测索引登记映射后状态（含命中的 unit_drift_mapping_id/隔离标记——追溯可查）
         for d, digest in zip(mapped, raw_digests):
             store.append_observation({
-                "kind": "financial_quarterly", "security_id": str(stock_code),
+                "kind": "financial_quarterly", "security_id": d["security_id"],
                 "metric": d["metric"], "period_end": d.get("period_end"),
                 "value": d.get("value"), "unit": d.get("unit"),
                 "raw_sha256": digest,
@@ -574,7 +604,7 @@ def capture_quarterly_evidence(stock_code: str, year: int, quarter: int, *,
                 "semantic_status": d.get("semantic_status", ""),
                 "unit_drift_mapping_id": d.get("unit_drift_mapping_id", ""),
             })
-    records = [financial_record(str(stock_code), d) for d in mapped]
+    records = [financial_record(d["security_id"], d) for d in mapped]
     if return_raw:
         return records, mapped  # raw=映射后 fin dict（factor_compute._get 消费 "metric" 键）
     return records

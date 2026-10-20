@@ -26,6 +26,12 @@ if os.environ.get("MUYUN_TESTS_REAL_HOME") != "1":
     atexit.register(shutil.rmtree, _TEST_HOME, ignore_errors=True)
 
 # ── 收集期排除（路径相对本文件所在 tests/ 目录）────────────────
-collect_ignore = ["artifacts", "rag_eval"]
+collect_ignore = ["artifacts", "rag_eval", "backtest/test_large_matrix_20260829.py"]  # 外源长跑脚本，导入会写driver，不是离线回归
 if os.environ.get("MUYUN_RUN_EXTERNAL") != "1":
     collect_ignore.append("data_sources/test_all_api.py")
+
+# Default portfolio is repository-relative, so HOME isolation alone is insufficient.
+# Set its fallback once; individual test fixtures retain precedence.
+if os.environ.get("MUYUN_TESTS_REAL_HOME") != "1":
+    from src.data import portfolio as _portfolio_module
+    _portfolio_module.DEFAULT_PORTFOLIO_PATH = os.path.join(_TEST_HOME, "portfolio.yaml")

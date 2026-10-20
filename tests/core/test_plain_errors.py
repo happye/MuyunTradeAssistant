@@ -21,11 +21,17 @@ def setup_function():
 
 def test_translate_hits_all_categories():
     cases = [
+        ("财务返回身份核对失败 query_profit_data sh.600519 2024Q1: 返回证券不符", "已拒收", "缺失"),
+        ("MarketCache: 缓存时间异常，已忽略该缓存 (industry)", "缓存的时间无效或晚于当前时间", "缺失"),
+        ("最新分析无操作建议，旧待办过期写入失败；请重跑分析复核待办", "持仓和成交记录不变", "缺失"),
         ("data_provider.margin_table_20260825 失败: ValueError: x",
          "融资余额表没拉到", "缺失"),
         ("所有实时行情接口均失败 600519, 最后错误: x", "这只股连价格都没拿到", "终止"),
         ("公告获取失败 603125（top_signal 减持子信号降级跳过）: y", "减持公告扫描失败", "缺失"),
         ("MarketCache: 双源失败冷却中(60秒内)，本次跳过全市场拉取", "歇60秒防封禁", "缺失"),
+        ("web 账户资格不可核(600519)，本次不生成分析建议: broken", "不会按空仓给建议", "终止"),
+        ("web 策略状态元数据读取失败(600519)，保留账户事实和独立计划: broken", "独立交易计划", "缺失"),
+        ("持仓读取失败，本次扫描无法排除已持仓股: broken", "读取失败不能证明空仓", "缺失"),
     ]
     for raw, plain_sub, tag in cases:
         plain, got_tag = pe.translate(raw)

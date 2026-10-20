@@ -6,7 +6,7 @@
    已空仓 CLOSE_ALL）钳制为合法包 + reason_code 留痕，绝不产出非法包
 3. 执行状态：execution_eval.blocked → BLOCKED+blocker；HOLD/WAIT/REVIEW → NOT_NEEDED；
    其余 ELIGIBLE 且 executable=desired
-4. research_status：warnings→INCOMPLETE；divergence→CONFLICTED
+4. research_status：结构化缺口→INCOMPLETE；风险提示不改变完整性；divergence→CONFLICTED
 5. legacy_trace 投影：原始 decision/score/position_action/position_ratio/sell_path
    全部可追（专家展开），不参与二次裁决
 
@@ -26,11 +26,12 @@ from src.data.models import (
 )
 
 
-def _dr(decision="HOLD", score=0.5, warnings=None):
+def _dr(decision="HOLD", score=0.5, warnings=None, data_gaps=()):
     return SimpleNamespace(
         decision=SimpleNamespace(value=decision), score=score,
         stock=SimpleNamespace(stock_code="601318"),
         warnings=warnings or [],
+        data_gaps=list(data_gaps) if data_gaps is not None else None,
     )
 
 
@@ -53,6 +54,7 @@ def _eval(blocked=False, reason="") -> ExecutionEvaluation:
         original_action=PositionAction.HOLD_POSITION,
         effective_action=PositionAction.HOLD_POSITION,
         blocked=blocked, block_reason=reason,
+        execution_status=ExecutionStatus.BLOCKED if blocked else ExecutionStatus.ELIGIBLE,
         slippage_pct=0.0, impact_cost_pct=0.0, total_cost_pct=0.0,
     )
 
@@ -161,8 +163,8 @@ def test_blocked_exit_packet():
 
 # ── 4. research_status ───────────────────────────────────
 
-def test_research_status_incomplete_on_warnings():
-    p = build_decision_packet(_dr("HOLD", warnings=["量比缺失"]),
+def test_research_status_incomplete_on_structured_gaps():
+    p = build_decision_packet(_dr("HOLD", data_gaps=["量比缺失"]),
                               _sd("HOLD", "HOLD_POSITION"), _eval(False), confirmed_ratio=0.1)
     assert p.research_status is ResearchStatus.INCOMPLETE
 

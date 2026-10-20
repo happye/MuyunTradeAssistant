@@ -1,10 +1,10 @@
 # -*- coding: utf-8 -*-
 """ISS-117 S0/S1 信号权限收口验收测试（架构师裁决 2026-10-09）。
 
-把 authority_probes 的 23 个反例中 S0/S1 范围内的场景落成正式回归（A01/A02/A03/
+把专项发现中 S0/S1 范围内的场景落成正式回归（A01/A02/A03/
 A04/A05/A06/A07/A11 价格资格/A12），并补合法正例（有效止损、三倍定律 exit 资格）。
-S2（A08 投票公式/A09 模式重裁）与 S3（A13 shadow/全消费者闭环）见 plan/fusion/
-signal_authority_review/IMPLEMENTATION_TASKS.md，为后续卡片。
+完整冻结合同见 plan/fusion/signal_authority_review/S2_DESIGN.md；
+S2/S3已由正式专项回归承接，当前结论见同目录 S2AC_ACCEPTANCE.md。
 
 零网络、零 AI、不触碰真实 ~/.muyun（缓存目录重定向 tmp_path）。
 跑法：pytest tests/core/test_signal_authority_iss117.py

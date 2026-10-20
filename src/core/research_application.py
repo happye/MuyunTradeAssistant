@@ -67,6 +67,7 @@ class ResearchRunResult(BaseModel):
     source_count: int = 0
     source_uris: list[str] = Field(default_factory=list, description="来源文档 URI（J3 验收「来源跳转真实可达」）")
     account_version: str = Field(default="", description="账户账本内容版本（调用方传入——J3 服务输入契约）")
+    financial_observations: Optional[dict] = None
 
 
 class ResearchApplicationService:
@@ -86,6 +87,58 @@ class ResearchApplicationService:
         self.assessment_store = assessment_store
         self.fetch_fn = fetch_fn
         self.n_quarters = n_quarters
+
+    def get_cash_observations(self, security_id: str, *, as_of: datetime) -> dict:
+        """Read existing archive only; never fetch, evaluate, write or infer industry."""
+        from src.core.cash_material_intake import read_materials
+        from src.core.cash_numeric_verification import read_proofs
+        view = _cash_archive_view(self.store, security_id, as_of=as_of)
+        context = {}
+        materials = read_materials(self.store, str(security_id), as_of=as_of, _verified_context=context)
+        view["cash_materials"] = materials
+        proofs = read_proofs(self.store, str(security_id), as_of=as_of, _verified_context=context)
+        view["cash_numeric_proofs"] = proofs
+        from src.core.cash_source_qualification import read_source_checks
+        source_checks = read_source_checks(self.store, str(security_id), as_of=as_of, _verified_context=context)
+        view["cash_source_checks"] = source_checks
+        if source_checks["source_checks"]:
+            view["summary"] += "；留有官方字段核定历史记录，本次只读未重放"
+        if source_checks["read_errors"]:
+            view["summary"] += "；官方字段核定历史记录或依赖不完整，待重新取证"
+        for proof in proofs["proofs"]:
+            view["summary"] += "；" + proof["summary"] + "（" + proof["proof_id"] + "）"
+        if proofs["read_errors"]:
+            view["summary"] += "；本地数值核对记录读取不完整，待重新核对"
+        if materials["receipts"]:
+            view["summary"] += f"；本地现金材料回执{len(materials['receipts'])}条，均已归档待核"
+            failures = sorted({r["extraction_explanation"] for r in materials["receipts"] if r.get("extraction_explanation")})
+            if failures:
+                view["summary"] += "；" + "；".join(failures)
+        if materials["conflicts"]:
+            view["summary"] += "；同期间字段存在冲突，两份材料均保留待核"
+        if materials["read_errors"]:
+            view["summary"] += "；现金材料读取不完整，待核对原件"
+        return view
+
+    def intake_cash_materials(self, security_id: str, manifest_path, *, as_of: datetime,
+                              extractor=None) -> dict:
+        """Separate intake branch; never invoke assessments, factors or drafts."""
+        from src.core.cash_material_intake import intake
+        return intake(self.store, security_id, manifest_path, as_of=as_of, extractor=extractor)
+
+    def verify_cash_material(self, security_id: str, material_id: str, *, as_of: datetime,
+                             extractor=None) -> dict:
+        """Independent local arithmetic only; no assessments, facts or drafts."""
+        from src.core.cash_numeric_verification import verify
+        return verify(self.store, security_id, material_id, as_of=as_of, extractor=extractor)
+
+    def check_cash_source(self, security_id: str, material_id: str, *, requested_as_of=None,
+                          fetcher=None, extractor=None, industry_check=False, industry_fetcher=None) -> dict:
+        """Explicit current source branch, independent of research run and its cutoff."""
+        from src.core.cash_source_qualification import check_source
+        return check_source(self.store, security_id, material_id, requested_as_of=requested_as_of,
+                            fetcher=fetcher, extractor=extractor, industry_check=industry_check,
+                            industry_fetcher=industry_fetcher)
 
     def get_daily_view(self, security_id: str, *, as_of: datetime) -> dict:
         """Consume local plan/assessment state without executing the research loop.
@@ -335,6 +388,11 @@ class ResearchApplicationService:
         except Exception as e:
             logger.warning(f"run manifest 落盘失败（不影响研究结论）: {e}")
 
+        try:
+            financial_observations = self.get_cash_observations(security_id, as_of=as_of)
+        except Exception:
+            financial_observations = _cash_read_failure(security_id, as_of)
+
         return ResearchRunResult(
             security_id=security_id, as_of=as_of, run_id=bundle.run_id,
             snapshot_id=snap.snapshot_id,
@@ -357,6 +415,7 @@ class ResearchApplicationService:
             source_uris=list(dict.fromkeys(
                 list(bundle.source_document_ids) + claim_doc_uris)),
             account_version=str(account_version or ""),
+            financial_observations=financial_observations,
         )
 
     def _load_archived_records(self, security_id: str, year: int, quarter: int) -> list:
@@ -454,3 +513,303 @@ class ResearchApplicationService:
 def _quarter_end(year: int, quarter: int) -> str:
     last_day = {1: "31", 2: "30", 3: "30", 4: "31"}[quarter]
     return f"{year:04d}-{quarter * 3:02d}-{last_day}"
+
+
+CASH_DISPLAY_VERSION = "g4.archive_display.v1"
+_CASH_METRICS = ("CFOToNP", "netProfit", "roeAvg")
+
+
+def _cash_read_failure(security_id, as_of):
+    return {"display_version": CASH_DISPLAY_VERSION, "security_id": str(security_id),
+            "as_of": as_of.isoformat(), "status": "UNREADABLE", "incomplete": True,
+            "coverage_complete": False, "cash_sustainability": "UNKNOWN",
+            "gaps": ["现金资料读取失败，请核对归档索引与原件"],
+            "summary": "现金资料：读取失败，资料不完整，待核对归档索引与原件；仅资料观察，不改变研究评估"}
+
+
+def _cash_archive_view(store, security_id, *, as_of):
+    """Separate inventory and qualification; no unqualified values cross this view."""
+    import hashlib
+    import json
+    import re
+    from collections import defaultdict
+    from datetime import date
+    from src.core.cash_observations import observe_cash
+    from src.data.research_snapshot import EvidenceRecord, EvidenceSnapshot
+    from src.data.research_store import RAW_SCHEMA_VERSION
+
+    if not isinstance(as_of, datetime) or as_of.tzinfo is None or as_of.utcoffset() is None:
+        raise ValueError("as_of must be an independent timezone-aware datetime")
+    sid = str(security_id).strip()
+
+    def digest(value):
+        raw = value if isinstance(value, str) else json.dumps(
+            value, ensure_ascii=False, sort_keys=True, default=str)
+        return hashlib.sha256(raw.encode("utf-8")).hexdigest()
+
+    def declared_date(value):
+        if not isinstance(value, str) or not re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            raise ValueError("invalid report date")
+        return date.fromisoformat(value)
+
+    def declared_time(value):
+        # Day-only source dates remain day declarations, never manufactured instants.
+        if isinstance(value, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", value):
+            return declared_date(value), None
+        if not isinstance(value, str):
+            raise ValueError("missing source time")
+        dt = datetime.fromisoformat(value)
+        if dt.tzinfo is None or dt.utcoffset() is None:
+            raise ValueError("source time has no timezone")
+        return dt.date(), dt
+
+    try:
+        rows = store.query_observations(security_id=sid)  # exactly one index query
+        if not isinstance(rows, list):
+            raise ValueError("unreadable index result")
+    except Exception:
+        return _cash_read_failure(sid, as_of)
+
+    references, records, raw_cache = {}, {}, {}
+    signatures = defaultdict(set)
+    groups = defaultdict(list)
+    unreadable = False
+    metadata_gaps = set()
+    for row in rows:
+        if not isinstance(row, dict):
+            unreadable = True
+            continue
+        metric = row.get("metric")
+        if metric not in _CASH_METRICS:
+            continue
+        raw_id = row.get("raw_sha256")
+        # Deliberate allowlist: never copy index value/raw_value or raw payload extras.
+        ref = {"metric": metric, "raw_sha256": raw_id if isinstance(raw_id, str) else "",
+               "period_end": row.get("period_end") if isinstance(row.get("period_end"), str) else None,
+               "source_version": row.get("source_version") if isinstance(row.get("source_version"), str) else "",
+               "status": "QUARANTINED", "gaps": []}
+        issues = ref["gaps"]
+        content = None
+        if row.get("security_id") != sid:
+            issues.append("index_subject_mismatch")
+        if not isinstance(raw_id, str) or not re.fullmatch(r"[0-9a-fA-F]{64}", raw_id):
+            issues.append("invalid_raw_digest")
+        else:
+            if raw_id not in raw_cache:
+                try:
+                    raw_cache[raw_id] = store.load_raw(raw_id)
+                except Exception:
+                    raw_cache[raw_id] = None
+            payload = raw_cache[raw_id]
+            if payload is None:
+                issues.append("raw_missing_or_unreadable")
+                unreadable = True
+            elif (not isinstance(payload, dict) or type(payload.get("schema_version")) is not int
+                  or payload.get("schema_version") != RAW_SCHEMA_VERSION
+                  or payload.get("sha256") != raw_id or "content" not in payload
+                  or not isinstance(payload.get("metadata"), dict)
+                  or not isinstance(payload.get("archived_at"), str)):
+                issues.append("invalid_raw_schema_or_digest")
+            elif digest(payload["content"]) != raw_id:
+                issues.append("raw_content_hash_mismatch")
+            elif not isinstance(payload["content"], dict):
+                issues.append("unsupported_raw_content")
+            else:
+                content = payload["content"]
+                try:
+                    _, archive_instant = declared_time(payload["archived_at"])
+                    if archive_instant is None:
+                        raise ValueError("archive timestamp must be an instant")
+                except ValueError:
+                    issues.append("invalid_raw_archive_timestamp")
+                for key in ("security_id", "metric", "period_end", "source_version"):
+                    if not content.get(key) or content.get(key) != row.get(key):
+                        issues.append(f"raw_index_{key}_mismatch")
+                if content.get("security_id") != sid:
+                    issues.append("raw_subject_mismatch")
+                # Metadata declarations, when present, cannot contradict the original.
+                meta = payload["metadata"]
+                for key, raw_key in (("stock_code", "security_id"), ("security_id", "security_id"),
+                                     ("metric", "metric"), ("period_end", "period_end"),
+                                     ("source_version", "source_version")):
+                    if key in meta and meta[key] != content.get(raw_key):
+                        issues.append(f"raw_metadata_{key}_mismatch")
+                ref.update({key: content.get(key) for key in (
+                    "unit", "period_start", "period_kind", "period_basis", "value_kind",
+                    "underlying_period_basis", "metric_definition_version", "semantic_status",
+                    "knowledge_basis", "published_at", "source_uri")
+                    if isinstance(content.get(key), str)})
+                ref["declarations"] = "日期、单位、来源均为归档声明，待核"
+                try:
+                    if declared_date(content.get("period_end")) > as_of.date():
+                        issues.append("reporting_period_after_as_of")
+                except ValueError:
+                    issues.append("invalid_reporting_period")
+                time_values = {"observed_at": row.get("observed_at"),
+                               "queried_at": meta.get("queried_at")}
+                time_values.update({key: content.get(key) for key in (
+                    "published_at", "available_at", "first_seen_at", "version_available_at", "fetched_at")})
+                parsed_times = {}
+                collection_keys = {"queried_at", "observed_at", "fetched_at"}
+                for key, value in time_values.items():
+                    if value in (None, ""):
+                        continue
+                    try:
+                        day, instant = declared_time(value)
+                        after = day > as_of.date() or (instant is not None and instant > as_of)
+                        if key in collection_keys:
+                            ref.setdefault("collection_times", {})[key] = [value]
+                            if after:
+                                ref["collection_note"] = "采集晚于分析起点，仅为采集凭据，不证明历史可得性"
+                        else:
+                            ref[key] = value
+                        if after and key not in collection_keys:
+                            issues.append(f"{key}_after_as_of")
+                        if instant is not None:
+                            parsed_times[key] = instant
+                        elif day == as_of.date():
+                            metadata_gaps.add("来源同日时序未核定")
+                    except ValueError:
+                        issues.append(f"invalid_{key}")
+                missing = []
+                for key in ("period_start", "metric_definition_version", "source_uri", "period_basis", "value_kind"):
+                    if not content.get(key) or content.get(key) == "UNKNOWN":
+                        missing.append(key)
+                if content.get("semantic_status") != "VERIFIED":
+                    missing.append("VERIFIED_field_semantics")
+                if not parsed_times.get("available_at"):
+                    missing.append("trusted_available_at")
+                ref["metadata_missing"] = sorted(missing)
+                if missing:
+                    metadata_gaps.add("期间起点、字段口径或单位语义尚待原件核定")
+                if content.get("knowledge_basis") not in ("AS_PUBLISHED_ARCHIVE", "CONTEMPORANEOUS_CAPTURE"):
+                    metadata_gaps.add("归档版本与历史可得性未证明，latest-only不构成历史证据")
+                if not issues:
+                    try:
+                        data = {key: content[key] for key in EvidenceRecord.model_fields if key in content}
+                        data.update(evidence_id="raw_" + raw_id, source_kind="financial",
+                                    metric_or_claim=metric, source_document_hash=raw_id)
+                        # No wall-clock reconstruction and no request-subject backfill.
+                        for key in ("published_at", "available_at", "first_seen_at", "version_available_at", "fetched_at"):
+                            data[key] = parsed_times.get(key)
+                        if "period_start" in content:
+                            data["period_start"] = content["period_start"]
+                        rec = EvidenceRecord(**data)
+                        records[raw_id] = rec
+                        ref["status"] = "ARCHIVED_DECLARATION"
+                        key = (metric, content["period_end"])
+                        # All source/version disagreements stay visible; never last-winner.
+                        signatures[key].add(digest((content, row.get("value"), row.get("unit"),
+                                                    row.get("semantic_status"))))
+                        groups[key].append(raw_id)
+                    except Exception:
+                        issues.append("invalid_evidence_metadata")
+        ref["gaps"] = sorted(set(issues))
+        references[digest(ref)] = ref
+
+    for key, versions in signatures.items():
+        if len(versions) > 1:
+            for ref in references.values():
+                if (ref["metric"], ref["period_end"]) == key:
+                    ref["status"] = "QUARANTINED"
+                    ref["gaps"] = sorted(set(ref["gaps"] + ["conflicting_field_or_source_versions"]))
+            for raw_id in groups[key]:
+                records.pop(raw_id, None)
+    # Multiple collection events remain metadata of one archived field, not extra
+    # financial observations. Union their times; input order never selects a winner.
+    merged = {}
+    for ref in sorted(references.values(), key=digest):
+        identity = (ref["metric"], ref["period_end"], ref["source_version"], ref["raw_sha256"])
+        if identity not in merged:
+            merged[identity] = ref
+            continue
+        existing = merged[identity]
+        for key, values in ref.get("collection_times", {}).items():
+            times = existing.setdefault("collection_times", {}).setdefault(key, [])
+            existing["collection_times"][key] = sorted(set(times + values))
+        if ref.get("collection_note"):
+            existing["collection_note"] = ref["collection_note"]
+        existing["gaps"] = sorted(set(existing["gaps"] + ref["gaps"]))
+        if ref["status"] == "QUARANTINED":
+            existing["status"] = "QUARANTINED"
+    refs = sorted(merged.values(), key=lambda r: (r["metric"], str(r["period_end"]), r["raw_sha256"], digest(r)))
+    # Any rejected alias of a digest cannot leave a good alias in the display snapshot.
+    rejected = {r["raw_sha256"] for r in refs if r["gaps"]}
+    for ref in refs:
+        if ref["raw_sha256"] in rejected and ref["status"] != "QUARANTINED":
+            ref["status"] = "QUARANTINED"
+            ref["gaps"].append("conflicting_index_alias")
+    snap = EvidenceSnapshot.build(sid, as_of,
+        [r for key, r in sorted(records.items()) if key not in rejected], strict=False)
+    observations = observe_cash(snap, industry_premise=None, mode="current")
+    counts = {m: sum(r["metric"] == m and r["status"] == "ARCHIVED_DECLARATION" for r in refs)
+              for m in _CASH_METRICS}
+    periods = sorted({r["period_end"] for r in refs if r["status"] == "ARCHIVED_DECLARATION"})
+    quarantined = sum(r["status"] == "QUARANTINED" for r in refs)
+    metadata_gaps.add("行业资格未核定，生产端没有行业核验器")
+    status = "UNREADABLE" if unreadable else ("INCOMPLETE" if quarantined else
+             "READABLE_ARCHIVE" if any(counts.values()) else "NO_READABLE_OBSERVATIONS")
+    if refs:
+        summary = (f"现金资料：CFOToNP {counts['CFOToNP']}条/净利润{counts['netProfit']}条/ROE {counts['roeAvg']}条，"
+                   f"报告期 {','.join(periods) or '未核定'}（本次可读资料）；可比期0（行业/期间/口径待核）；"
+                   f"隔离{quarantined}条；日期、单位为归档声明，待核；独立资料快照，与研究评估快照分别建立；")
+        if unreadable:
+            summary += "部分留样缺失或读取失败，资料不完整；"
+        raw_refs = list(dict.fromkeys(r["raw_sha256"] for r in refs
+            if re.fullmatch(r"[0-9a-fA-F]{64}", r["raw_sha256"])))
+        if raw_refs:
+            summary += "归档留样编号（SHA256前16位）：" + "、".join(r[:16] for r in raw_refs[:2]) + "；"
+            if len(raw_refs) > 2:
+                summary += f"其余{len(raw_refs) - 2}份及完整引用见 research --json；"
+            else:
+                summary += "完整引用见 research --json；"
+        else:
+            summary += "归档留样编号缺失或非法，待补核；"
+        reason_groups = set()
+        for reason in {reason for ref in refs for reason in ref["gaps"]}:
+            if reason == "raw_content_hash_mismatch":
+                label = "留样内容与哈希不符"
+            elif "security_id" in reason or "subject" in reason or "stock_code" in reason:
+                label = "证券不一致或缺失"
+            elif reason == "raw_missing_or_unreadable":
+                label = "留样缺失或读取失败"
+            elif reason in {"invalid_raw_digest", "invalid_raw_schema_or_digest"}:
+                label = "留样编号或归档格式无效"
+            elif "conflicting" in reason:
+                label = "同字段留样或来源版本冲突"
+            elif "period" in reason:
+                label = "报告期间不一致、缺失或无效"
+            elif reason.endswith("_after_as_of"):
+                label = "公开或有效时点晚于分析截止"
+            elif reason.startswith("invalid_") and ("_at" in reason or "timestamp" in reason):
+                label = "时间声明无效"
+            elif reason.startswith("raw_index_") or reason.startswith("raw_metadata_"):
+                label = "来源版本或字段身份不一致"
+            else:
+                label = "字段元数据未通过核对"
+            reason_groups.add(label)
+        if reason_groups:
+            labels = sorted(reason_groups)
+            summary += "隔离原因：" + "、".join(labels[:3]) + "；"
+            if len(labels) > 3:
+                summary += f"其余{len(labels) - 3}类原因见 research --json；"
+        summary += "下一步核对留样对应财报的期间起点、现金字段口径及行业依据；"
+    else:
+        summary = "现金资料：本次无可读现金字段；" if not unreadable else "现金资料：读取失败，资料不完整；"
+    summary += "仅资料观察，不改变研究评估"
+    view = {"display_version": CASH_DISPLAY_VERSION, "security_id": sid, "as_of": as_of.isoformat(),
+            "status": status, "coverage_complete": False, "coverage_scope": "本次可读索引",
+            "incomplete": True, "inventory": {"counts": counts, "report_periods": periods,
+                "references": refs, "quarantined_count": quarantined},
+            "qualification": {"industry_status": "UNKNOWN", "comparable_periods": 0,
+                "gaps": sorted(metadata_gaps), "algorithm_gaps": list(observations.gaps)},
+            "cash_sustainability": "UNKNOWN", "observations_only": True,
+            "display_snapshot_id": snap.snapshot_id,
+            "snapshot_scope": "独立资料展示快照，与本次研究评估快照分别建立",
+            "summary": summary}
+    # Capturing the same original again does not change its display identity.
+    identity_refs = [{key: value for key, value in ref.items()
+                      if key not in {"collection_times", "collection_note"}} for ref in refs]
+    view["display_id"] = digest((CASH_DISPLAY_VERSION, sid, as_of.isoformat(),
+        snap.snapshot_id, status, identity_refs, sorted(metadata_gaps)))
+    return view

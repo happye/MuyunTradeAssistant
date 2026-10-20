@@ -2200,24 +2200,13 @@ P3（已取消）:
 - **来源**: 用户使用反馈（2026-09-27 对话）
 - **更新**: 2026-09-27 登记
 
-### ISS-116: 持仓展示多端支持范围台账（G2/G7/T01 持久未完成项，2026-10-02）
-- **状态**: 已登记（第九轮 P1 验收4 要求转录——不以文档登记冒充实现；逐项达成后回填）
-- **优先级**: P2（透明度台账；非 K1 冻结前置——R15 裁定3 明确"不把全部多端清单改造追加为 K1 前置，但不能宣称 T01 整体关闭"）
-- **描述**: 账本事实（ctx 三态/holding_entries 共享清单）与投影视图在各消费端的已支持/未支持范围。
-- **来源**: R15 审批 Z3 + 第九轮 DELIVERY_PLAN P1 验收4（plan/fusion/iteration9/DELIVERY_PLAN.md）
-- **已支持**:
-  - `l`/`la`（start.py live_all / cli analyze_live+analyze_portfolio）：批量清单=共享集合（账本确定有仓∪投影，归一去重）；启动提示按 ctx 三态（HELD 账本持仓/UNKNOWN 未对账/NONE FLAT）；账本独有显示"账本有仓 N股"标注成本比例未知；数据失败不阻断批量
-  - `chat get_portfolio`：全路径共享清单（投影明细 format_portfolio + 账本独有分段 + incomplete 提示）
-  - `chat analyze_stock`：ctx 同源贯穿（N0 已验收；硬退出 EXIT 方向保持）
-  - 扫描排除集（start.py auto_exclude_holdings / cli scanner / chat 扫描）：含账本独有持仓
-  - `today`：持仓卡以投影为主 + 账户事实区逐只显示账本股数（J2）+ 损坏/隔离提示
-- **未支持/投影视图**（本轮不扩大多端改造）:
-  - `today` 持仓卡清单未并集账本独有股（账户事实区已兜底显示；展示增强待 G2）
-  - `chat analyze_industry` 持仓定位仅投影清单（账本独有股不进图谱交叉定位；current_ratio=None 下游行为未验证）
-  - `pos list`/`pos plan all` 管理命令：明确为投影文件管理视图（语义即投影；账本事实见 today 账户区/分析入口）
-  - TUI（`tui/app.py` 排除集与展示）与 Web（`web/app.py` 多处）：仍纯投影清单，同模式可复用 holding_entries，随 G2/G7 排期
-- **guard 遗留（2026-10-02，不阻断合入）**: chat get_portfolio「集合相等」的无多余代码方向（第 4 只未知码混入输出）暂无断言——现有 fixture 下仅格式化器 bug 可触发，风险极低；G2 排期时随多端归并补齐。
-- **更新**: 2026-10-02 登记（第九轮 P1 交付）
+### ISS-116: 持仓展示多端支持范围台账（G2/G7/T01，2026-10-16限定关闭）
+- **状态**: ACCEPTED_REGISTERED_BUSINESS_READ_SCOPE。当前工作树v0.8.35、HEAD `3b4f07e`加受验未提交成果；独立最终SHA见第九轮REVIEW_INDEX，不伪造新commit。
+- **已验支持范围**: `l/la`共享批量清单与ctx三态；chat查仓/单股/扫描；today账户区和持仓卡；行业定位；TUI/Web扫描与单股分析、Web日历。账本/投影并集规范去重，UNKNOWN/权重缺口如实显示，同请求版本与独立计划保留，下次请求刷新。
+- **最后两项已收口**: `src/data/portfolio.py:444`显式快照先复制重验并在发布前拒归一重复/空证券、负数量和非有限现金；`src/cli/today_service.py:58`整页同源且facts优先，异常不读默认账本洗白；`tests/chat/test_p1_shared_portfolio_view.py:128`真实持仓行精确集合及六位数字干扰回归。正式坏输入回归见`tests/core/test_today_shared_account.py:338`及`:356`。
+- **保留范围**: `pos list/pos plan all`与Web pos管理为投影视图，明确豁免；本项不包含全部成交授权/并发事务、完整packet/全端研究视图或投资效果，也不使G1/G2/G7整体自动完成。
+- **最终证据**: 独立17边界用例及10格探针PASS；16文件290 passed（107.26s），全量2301 passed/0 failed/2 skipped/1 external deselected（342.60s），分别统计。网络/子进程尝试均阻断，真实状态0，7保护hash及知识库集合不变。today v33和行业/TUI/Web v34历史有限接收保留；本批关闭已登记尾项，不改历史数字。
+- **后续**: 新消费者/新反例需带证据另定受影响范围，不为未发生的泛化问题重开本项。当前开发转G4/T07原型与既定T04后续；只见原第九轮/R15/index。
 
 ---
 
@@ -2227,31 +2216,26 @@ P3（已取消）:
 - **自愈性**: 两条新宽度记录积累后边界自然消失。
 - **建议**: 后续 diff 展示侧对旧记录 index≥6 的警告加「或为旧版截断所致」注记。
 
-### ISS-117: 弱证据/经验规则越权主导交易建议（2026-10-09专项；S0/S1 已修复 2026-10-10，S2/S3 未实施）
+### ISS-117: 弱证据/经验规则越权主导交易建议（2026-10-09专项）
 
-- **状态**: 打开；Codex架构审查完成，Claude Code待实施，不能用本文代替修复。
-- **受审版本**: ac5aa8e / v0.8.28.1；对应 G2/G3/G6/G7、T03/T06，数据/执行子项涉及G1/G5/T07。
-- **证据**: [专项审查 A01–A13](plan/fusion/signal_authority_review/REVIEW.md)，30项隔离检查23红/7绿（包含重复场景和旧策略重裁，非23独立bug）；既有6文件48绿；7保护哈希/集合不变。
-- **主要代码**: `src/core/exit_signals/stock.py:171/226` 标题否定与最旧股东记录；`src/core/ai_modifier.py:387` 零置信度黑天鹅覆盖；`src/core/skill_engine.py:710` 未知条件缩分母；`src/core/plan_guard.py:265` 未求值当未失效；`src/core/shadow_diff.py:247` 路径名升格硬退出。完整坐标/性质/边界见主审。
-- **影响**: 不可靠输入可导致退出、PANIC、错误评级/模式，或压住减仓、伪称无法成交；已用合成案例验证否定标题到最终EXIT。未声称真实账户成交或损失。渗透率单点修复不关闭本项。
-- **处置**: [S0–S3任务卡](plan/fusion/signal_authority_review/IMPLEMENTATION_TASKS.md)。资格与行动权限分开、数据缺失不得升权、辅助风险不单独清仓、已接受硬纪律正例保护、终态/观察/证据同源。旧缓存/计划/待办不可恢复旧越权，历史记录不改写。
-- **关闭门**: 全组处置及正式回归、公开入口输出、隔离全量与Codex独立复验完成；K1/M2另行裁定，不凭本次文档放行。
+- **状态（2026-10-14）**：原计划S2a/S2b/S3保持接收；本次行动说明/独立止盈抑制尾项随限定P0/P1/P2补修通过独立Sol/high复核，关闭本次局部重开。统一记录仍在[第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)。
+- **验证**：v0.8.31父Agent隔离全量1962 passed / 0 failed / 2 skipped / 1 external deselected；定向131 passed含原19探针全绿。独立复核审阅源码/正式用例/运行日志并核38项指纹，未另跑测试。7项保护哈希与知识库集合不变，详见[R15当前审批](plan/fusion/iteration9/R15_ACCEPTANCE.md)。原1818/72及修复前485/19反例只作历史，见[S2AC_ACCEPTANCE](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)与[S2AC_FINAL_CLOSEOUT_TASK](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)。
+- **保留边界**：默认external resolver未装配，未验证真实券商执行快照、生产resolver全链及投资效果；external事实默认fail-closed。shadow_v14观察合同及K1已冻结；后续v0.8.32 M2仅有限生产l/la只读接线已过门（1997全量/68定向，独立核7指纹），capture_only保持，不晋级默认策略。G3完整真实MID VALID样板仍待做。
+- **长期工程规则**：事实资格与动作权限分离；UNKNOWN不得伪装FALSE或ELIGIBLE；弱证据不得单独触发清仓或压制独立保护；反例须贯穿真实消费者、存储和公开输出，并保留合法硬退出正例。
 
+### ISS-118: 异常缓存时点冒充新鲜与半写破坏旧文件
 
----
+- **状态**：2026-10-16，v0.8.36本地限定修复验收；受审HEAD `ec94bfc` 加未提交补丁，未发布。
+- **优先级/方向**：P2，G7/T05数据可靠性；不宣称整个T05性能优化。
+- **实证**：未来时间戳在行业/概念内存与磁盘被判命中；旧直接写pkl在部分写入后抛错会破坏旧字节。Grok基线测试不能以现行为作正确合同。
+- **修复**：[统一年龄校验](src/scanner/market_cache.py:68) 拒绝非有限、非数、bool、非正、未来时间，新鲜与回退共用；[原子写入](src/scanner/market_cache.py:106) 同目录唯一临时文件完成后replace，失败保旧文件并仅清自己临时文件。正常TTL/时段/有效过期回退保持；中文警示/映射/手册同步。
+- **验证**：初版正式矩阵157红/44绿后修复，最终294矩阵；独立306目标与8并发/首次失败/回退探针分别通过，全量2730通过/0失败/2跳过/1外源未选（224.53s），7保护hash与知识库集合不变。18镜像文件合为196行参数矩阵，剩余84份T05保留。当前源码SHA及原始日志只见iteration9现有REVIEW_INDEX/R15。
+- **范围限制**：非实网/性能改善、进程崩溃耐久性、共享内存事务或投资效果保证；这些不借本修复关闭。
 
-### ISS-117 实施进度（v0.8.29，2026-10-10）
+### ISS-119: 财务返回行未核主体/期间即贴请求证券
 
-**已落地（S0+S1，本 commit）**：
-- 权限合同：`models.SignalFinding`（signal_id/来源/适用证券/as_of/data_quality/action_scope/verified/strategy_binding/detail/reason；缺字段默认最严）
-- S0 弱证据降权（A01/A04/A06/A07/A12）：exit_signals 全子信号返回 SignalFinding（check_top_signals 改 list）；减持标题否定/澄清语义如实标注待核验（E1）；AI black_swan 不再 force PANIC（cap/压分按自报置信度缩放，conf=0 无调节）；事件四要素缺失=UNKNOWN 不硬覆盖、限仓仅空头方向（D2）、事件消费先按资格筛选（D3）；风险红线跨字段子串兜底删除（A07/D6）；skill_engine 未知条件 fail-closed（A04/D4）
-- S1 数据修正（A02/A03/A05/A11 价格资格）：股东户数按日期列倒序取最新+去重（E2 iloc[0] 缺陷）；缩量连续性缺失=UNKNOWN 不放宽单日（E3）；旗手取数 qfq 同口径+≥21 收盘观测（E4）；预告公开日期资格门（缺失/非法/未来跳过、同日时序不明标注 A05）；baostock 备用源 adjust 透传（qfq）；plan_guard 坏价格不判穿止损（A11）；exit_signal 缓存 v2（旧字符串缓存不复活）
-- 验收：authority_probes 反例落正式回归（tests/core/test_signal_authority_iss117.py 33 项 + 6 文件契约纠正）；全量离线 1587 passed / 0 failed
-- 实测：000001/000498 强制清仓信号消失（exit 资格=无），研究提醒按裁决输出
-
-**Q 补修批已落地（v0.8.29.1，2026-10-10，commit 2560d71）**：Q1 消费边界资格门（authorize_hard_findings + top_signal_authorized 贯穿 PlanGuard P1，缓存重放同门）；Q2 事件硬权限收口（不 force_state/不硬限仓，证券适用范围门）；Q3 AI invalidate 降红线候选；Q4 cap 增量语义（delta 公式单点应用）；Q5 三倍定律价格资格门+DataFeeder 补 bar 日期；Q6 公告规范化+子信号/逐层隔离；Q7 行级日期有效性。guard 两轮监督（初审 P0×2/P1×3 + 复核 R1-R4 全部修复）。验收探针反例落回归 25 项。**Q 尾项已落地（v0.8.29.2，2026-10-10）**：Q-R1 资格门复算确认（当前数据不成立即拒，缓存冒名失效；绑定精确相等）；Q-R2 事件 scope 缺省/非法=unknown、affected_codes 规范化保存（prompt 同步要求输出）；Q-R5 时点参照=本次分析数据时点（回测=bar 日期），证据晚于参照即拒，7天政策移除；Q-R7 sector 日期严格解析/冲突放弃/跨度核验、股东户数显式列映射+缺日期列 fail-closed+2个假绿测试修真。v0.8.29.3（d47c6b9）为部分增量（analysis_date 严格解析+scan 不重写 unknown codes），QR3 验收指出其日历消费 fail-open 且无正式测试。**QR3 收口批已落地（v0.8.29.4，2026-10-11）**：①Q-R5 日历资格 fail-closed——trading_days(allow_refresh=False) 只读严格模式（只核验有效缓存，绝不登录/刷新/按星期猜测），缺失/过期/损坏/覆盖不足/格式错误一律拒绝硬授权，两条 fail-open 路径（星期推算兜底/裸 except 吞异常）移除；②Q-R2 消费者+显式证券——范围门先拒 unknown/非法 scope，持仓解析保留 AI 事件主体证券（请求股不强制替换，scan 重写同步删除），MarketEvent.scope 默认 unknown；③Q-R1 复算三项核验——模式适用性不依赖行情对象、缺行情对象/时点拒绝、复算结果身份/证券/质量须一致；④Q-R7 sector 请求窗口——行日期完整解析、行日期落请求窗口、端点可比性。正式回归 tests/core/test_iss117_qr3_closeout.py 32 项入库（探针语义落库，QR2/QR3 各探针全绿）。**QR4 覆盖合同批已落地（v0.8.29.5，2026-10-11）**：①Q-R5 日历覆盖合同——缓存升级「完整自然日覆盖记录」（每日期明确交易/非交易，全部来自供应商），生产端核验返回集合与查询区间自然日全集一致才落缓存（缺行/中途错误/重复不盖覆盖合格章），strict 消费端逐自然日复核、分析日必须在已确认覆盖内；12 天猜测覆盖与靠未来交易日作证明的路径删除；旧 schema 缓存服务 fear 展示、硬授权 UNKNOWN（7 天 TTL 自然重建，无需手工清缓存）；②Q-R1 行情主体证券独立核对——复算前核 stock_data.stock_code 与请求证券一致，复算证券改传行情自身代码（消除自证）。正式回归 test_iss117_qr4_coverage.py 24 项（验收矩阵 7 行+生产全链）+ qr3_closeout 升级 35 项。Q-R2/Q-R7 已由 QR4 关闭；Q-R1 尾项已由 QR5 关闭（行情主体证券核对接收）；Q-R5 完整性尾项收口（v0.8.29.6，2026-10-11，QR5）：①覆盖记录核验升级**精确集合相等**（缺行、范围外多行均拒——孤立旧日期不得借「不缺行」混过核验，生产/strict 共用 _verify_calendar_days 口径）；②strict 专用 JSON 加载在**原始解析阶段拦截任意层级重复键**（同日先写交易后写休市的冲突不再被 dict 合并吞掉，fear 展示宽容路径不变）；③门内交易日选取限定核定区间（下界=覆盖起点）。三红反例落正式回归 test_iss117_qr5_integrity.py 6 项。旧日历升级过渡期（TTL 内复用旧格式、三倍持续 UNKNOWN）为预期行为，不承诺跑一次 fear 立即恢复（QR5 裁决）。已知部署窗口（登记非缺陷）：每年 12 月中下旬若供应商尚未入库次年交易日历，生产端全集核验会失败（fail-closed 按合同），展示走星期推算兜底、硬授权 UNKNOWN，供应商补齐后恢复——届时「交易日历获取失败」告警属预期，勿当新 bug 排查。**剩余**：S2a（投票公式，DESIGN_READY）/S2b-1/2/3（模式/三态/执行事实）按 S2_DESIGN.md 实施；S3 闭环。完成前本条保持打开。
-
-**未实施（后续卡片）**：
-- S2：A08 投票公式重设计（卡片前置「先固定公式与低覆盖矩阵」需架构师输入）；A09 自主可控关键词→模式/期限（架构师重裁项 D7）；A10 plan_guard 失效条件三态；A11 执行层措辞（UNKNOWN/条件建议）
-- S3：A13 shadow 桥接资格；signal_id 全消费者贯穿（decision_contract/shadow_diff/待办）；摘要三类内容分层展示
-- 关闭门：A01–A13 全部处置 + Codex 独立变形测试。完成前本条保持打开。
+- **状态**：2026-10-16，v0.8.38新增采集身份门限定验收通过；HEAD `ec94bfc`加未提交成果，未发布。
+- **优先级/映射**：P1，G1/G4/G7/T07，真实现金原件核验的必要前置。
+- **实证**：`src/data/financial_data.py:459`取得供应商行后未核code/statDate，原`:505`直接写请求security_id；错股/错季度可冒充请求对象。正式固定矩阵修前93 failed/13 deselected（8.71s），为离线反例，不证明真实供应商已经返回过错股。
+- **合同**：五接口同门核实际返回证券、交易所和严格季度末；错/缺/坏身份仅拒该接口，其他合法接口继续。独立producer规则版本进入新content/metadata，不改供应商版本与负债率映射。旧raw不覆盖/迁移，旧记录不追认资格，接受态/综合method及默认策略保持。
+- **修复与验证**：`src/data/financial_data.py:447`统一解析返回证券，`:488`拒不匹配报告期，capture全出口同源并规范skip；新producer不改来源版本。父272定向、独立122及全量2844通过/0失败，7保护hash/知识库集合不变；审批与最终指纹见现有iteration9/R15、REVIEW_INDEX和日志。本项不扩为旧归档、原件现金语义、行业、PIT或G4整体通过。

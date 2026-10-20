@@ -31,12 +31,19 @@ _SUMMARY_RE = re.compile(r"通过\s*(\d+)\s*项\s*\|\s*警告\s*(\d+)\s*项\s*\|
 @pytest.fixture(scope="module")
 def verify_run():
     """跑一次脚本（模块级缓存，避免同一份断言重复付 2 秒）。"""
-    env = dict(os.environ, PYTHONIOENCODING="utf-8")
-    # encoding 必须显式 utf-8：text=True 不带 encoding 时父进程按本地码页
-    # （中文 Windows=GBK）解码子进程的 UTF-8 输出 → 中文乱码 → 汇总行匹配不到
-    return subprocess.run(
-        [sys.executable, SCRIPT], cwd=ROOT, env=env,
-        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=300)
+    # Execute the same entry point under the parent's IO audit; a child could escape it.
+    import contextlib
+    import io
+    import runpy
+    output, errors = io.StringIO(), io.StringIO()
+    code = 0
+    with contextlib.redirect_stdout(output), contextlib.redirect_stderr(errors):
+        try:
+            runpy.run_path(SCRIPT, run_name="__main__")
+        except SystemExit as exc:
+            code = exc.code or 0
+    return subprocess.CompletedProcess([sys.executable, SCRIPT], code, output.getvalue(), errors.getvalue())
+
 
 
 def test_script_exists():

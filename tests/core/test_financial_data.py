@@ -31,19 +31,19 @@ _MOUTAI_2023Q4 = {
                           "netProfit": "77521476277.800000", "epsTTM": "59.492280",
                           "MBRevenue": "147218996281.040000", "totalShare": "1256197800.00",
                           "liqaShare": "1256197800.00"},
-    "query_balance_data": {"pubDate": "2024-04-03", "statDate": "2023-12-31",
+    "query_balance_data": {"code": "sh.600519", "pubDate": "2024-04-03", "statDate": "2023-12-31",
                            "currentRatio": "4.623892", "quickRatio": "3.670351",
                            "cashRatio": "1.426576", "YOYLiability": "-0.010483",
                            "liabilityToAsset": "0.179843", "assetToEquity": "1.219279"},
-    "query_cash_flow_data": {"pubDate": "2024-04-03", "statDate": "2023-12-31",
+    "query_cash_flow_data": {"code": "sh.600519", "pubDate": "2024-04-03", "statDate": "2023-12-31",
                              "CAToAsset": "0.825716", "NCAToAsset": "0.174284",
                              "tangibleAssetToAsset": "0.741007", "ebitToInterest": "",
                              "CFOToOR": "0.450888", "CFOToNP": "0.859030", "CFOToGr": "0.442303"},
-    "query_operation_data": {"pubDate": "2024-04-03", "statDate": "2023-12-31",
+    "query_operation_data": {"code": "sh.600519", "pubDate": "2024-04-03", "statDate": "2023-12-31",
                              "NRTurnRatio": "1471.805290", "NRTurnDays": "0.244598",
                              "INVTurnRatio": "0.278380", "INVTurnDays": "1293.103448",
                              "CATurnRatio": "0.681602", "AssetTurnRatio": "0.571317"},
-    "query_growth_data": {"pubDate": "2024-04-03", "statDate": "2023-12-31",
+    "query_growth_data": {"code": "sh.600519", "pubDate": "2024-04-03", "statDate": "2023-12-31",
                           "YOYEquity": "0.092103", "YOYAsset": "0.071508", "YOYNI": "0.185778",
                           "YOYEPSBasic": "0.191468", "YOYPNI": "0.191599"},
 }
@@ -268,6 +268,8 @@ def test_iss114_shape_isolated_not_corrected(monkeypatch, tmp_path):
     rows = {}
     for period, row in _ISS114_SHAPES.items():
         rows[period] = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+        for interface_row in rows[period].values():
+            interface_row.update(code="sz.000002", statDate=period)
         rows[period]["query_balance_data"] = dict(row)
         rows[period]["query_balance_data"].setdefault("code", "sz.000002")
     store = ResearchStore(tmp_path / "research")
@@ -303,6 +305,8 @@ def test_unit_drift_mapping_scoped_and_transparent(monkeypatch, tmp_path):
     from src.data.research_store import ResearchStore
     def row_for(period_end, pub, lta):
         rows = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+        for interface_row in rows.values():
+            interface_row.update(code="sz.000002", statDate=period_end, pubDate=pub)
         rows["query_balance_data"] = {"code": "sz.000002", "pubDate": pub,
                                       "statDate": period_end, "liabilityToAsset": str(lta)}
         return rows
@@ -333,3 +337,116 @@ def test_unit_drift_mapping_scoped_and_transparent(monkeypatch, tmp_path):
     lta_raws = [r for r in raws if r["content"]["metric"] == "liabilityToAsset"]
     values = sorted(r["content"]["value"] for r in lta_raws)
     assert values == [0.007294, 0.72707], "留样=供应商原貌（含漂移值本身）"
+
+
+@pytest.mark.parametrize("interface", list(fd._INTERFACE_FIELDS))
+@pytest.mark.parametrize("field,bad_value", [
+    ("code", None), ("code", ""), ("code", "invalid"),
+    ("code", "sh.600000"), ("code", "sz.600519"),
+    ("code", "sh.600519.extra"), ("code", "600519.SZ"),
+    ("statDate", None), ("statDate", ""), ("statDate", "2023-12-32"),
+    ("statDate", "2023-12-31junk"), ("statDate", "2023-9-30"),
+    ("statDate", "2023-09-30"), ("statDate", "2022-12-31"),
+])
+def test_response_identity_rejects_only_bad_interface(monkeypatch, caplog, interface,
+                                                       field, bad_value):
+    rows = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+    if bad_value is None:
+        rows[interface].pop(field)
+    else:
+        rows[interface][field] = bad_value
+    calls = _install_fakes(monkeypatch, rows)
+    out = fd.get_financial_quarterly("600519", 2023, 4)
+    assert calls == [(fn, "sh.600519", 2023, 4) for fn in fd._INTERFACE_FIELDS]
+    rejected_metrics = {metric for metric, _ in fd._INTERFACE_FIELDS[interface]}
+    assert {r["metric"] for r in out} == {
+        metric for fn, fields in fd._INTERFACE_FIELDS.items() if fn != interface
+        for metric, _ in fields}
+    assert not rejected_metrics.intersection(r["metric"] for r in out)
+    assert "财务返回身份核对失败" in caplog.text and interface in caplog.text
+
+
+@pytest.mark.parametrize("response_code", ["600519", "sh.600519", "SH.600519",
+                                           "600519.SH", "sh600519"])
+@pytest.mark.parametrize("year,quarter,period", [
+    (2023, 1, "2023-03-31"), (2023, 2, "2023-06-30"),
+    (2023, 3, "2023-09-30"), (2023, 4, "2023-12-31"),
+])
+def test_response_identity_normalizes_valid_aliases_and_quarter_ends(
+        monkeypatch, response_code, year, quarter, period):
+    rows = {k: {**v, "code": response_code, "statDate": period}
+            for k, v in _MOUTAI_2023Q4.items()}
+    calls = _install_fakes(monkeypatch, rows)
+    out = fd.get_financial_quarterly("600519.SH", year, quarter)
+    assert calls == [(fn, "sh.600519", year, quarter) for fn in fd._INTERFACE_FIELDS]
+    assert len(out) == 32
+    assert all(r["security_id"] == "600519" and r["period_end"] == period for r in out)
+
+
+@pytest.mark.parametrize("all_bad", [False, True])
+def test_capture_identity_gate_reaches_real_archive_and_cash_view(monkeypatch, tmp_path, all_bad):
+    from src.core.research_application import ResearchApplicationService
+    from src.data.horizon_plans import HorizonPlanStore
+    from src.data.research_store import AssessmentStore, ResearchStore
+    rows = {k: dict(v) for k, v in _MOUTAI_2023Q4.items()}
+    bad_interfaces = set(rows) if all_bad else {"query_cash_flow_data"}
+    for fn in bad_interfaces:
+        rows[fn]["code"] = "sh.600000"
+    calls = _install_fakes(monkeypatch, rows)
+    store = ResearchStore(tmp_path / "research")
+    records, raw = fd.capture_quarterly_evidence("sh.600519", 2023, 4, store=store,
+                                               return_raw=True)
+    assert calls == [(fn, "sh.600519", 2023, 4) for fn in fd._INTERFACE_FIELDS]
+    expected = {metric for fn, fields in fd._INTERFACE_FIELDS.items()
+                if fn not in bad_interfaces for metric, _ in fields}
+    assert {r.metric_or_claim for r in records} == expected
+    assert {d["metric"] for d in raw} == expected
+    index = store.query_observations(security_id="600519")
+    assert {r["metric"] for r in index} == expected
+    archives = [json.loads(p.read_text(encoding="utf-8"))
+                for p in (store.dir / "raw").glob("*.json")]
+    assert {p["content"]["metric"] for p in archives} == expected
+    for archive in archives:
+        assert archive["content"]["security_id"] == "600519"
+        assert archive["metadata"]["stock_code"] == "600519"
+        assert archive["metadata"]["bs_code"] == "sh.600519"
+        assert archive["content"]["producer_version"] == fd.FINANCIAL_PRODUCER_VERSION
+        assert archive["metadata"]["producer_version"] == fd.FINANCIAL_PRODUCER_VERSION
+    app = ResearchApplicationService(store=store,
+        plans_store=HorizonPlanStore(tmp_path / "plans.json"),
+        assessment_store=AssessmentStore(tmp_path / "research"))
+    view = app.get_cash_observations("600519", as_of=datetime.now(timezone.utc))
+    counts = view["inventory"]["counts"]
+    assert counts == {"CFOToNP": 0, "netProfit": 0 if all_bad else 1,
+                      "roeAvg": 0 if all_bad else 1}
+    assert view["cash_sustainability"] == "UNKNOWN"
+
+
+@pytest.mark.parametrize("request_code", ["600519", "sh.600519", "600519.SH"])
+def test_producer_version_separates_new_raw_without_migrating_legacy(monkeypatch, tmp_path, request_code):
+    from src.data.research_store import ResearchStore
+    calls = _install_fakes(monkeypatch, _MOUTAI_2023Q4)
+    store = ResearchStore(tmp_path / "research")
+    current = fd.get_financial_quarterly("600519", 2023, 4)[0]
+    legacy = {k: v for k, v in current.items() if k != "producer_version"}
+    old_digest, _ = store.archive_raw(legacy, metadata={"source_version": fd.FINANCIAL_SOURCE_VERSION})
+    old_bytes = store.raw_path(old_digest).read_bytes()
+    store.append_observation({"security_id": "600519", "period_end": "2023-12-31",
+        "metric": legacy["metric"], "raw_sha256": old_digest,
+        "source_version": fd.FINANCIAL_SOURCE_VERSION})
+    calls.clear()
+    assert fd.capture_quarterly_evidence(request_code, 2023, 4, store=store,
+                                         skip_archived=True) == []
+    assert calls == []
+    fd.capture_quarterly_evidence(request_code, 2023, 4, store=store)
+    assert len(calls) == 5
+    new_digest = next(r["raw_sha256"] for r in store.query_observations(security_id="600519")
+                      if r["metric"] == legacy["metric"] and r["raw_sha256"] != old_digest)
+    assert store.load_raw(new_digest)["content"]["producer_version"] == fd.FINANCIAL_PRODUCER_VERSION
+    assert store.raw_path(old_digest).read_bytes() == old_bytes
+    assert "producer_version" not in store.load_raw(old_digest)["content"]
+    assert fd.FINANCIAL_SOURCE_VERSION == "baostock_financial_v1"
+    calls.clear()
+    assert fd.capture_quarterly_evidence(request_code, 2023, 4, store=store,
+                                         skip_archived=True) == []
+    assert calls == []  # 新生产者归档后，别名再次采集同样零请求

@@ -37,7 +37,7 @@ def test_penetration_30_plus_no_longer_force_exit():
     """2.1 渗透率30+已降级为研究提醒（v0.8.28.1 架构师裁决）——不再单独触发强制清仓。
 
     原断言「30+ 应触发」是误触发事故的根因之一（银行/基建被 AI 标 30+ → 新开仓
-    当天即被反复 CLOSE_ALL），见 docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md。
+    当天即被反复 CLOSE_ALL），见 plan/fusion/signal_authority_review/IMPLEMENTATION_REPORT.md。
     """
     from src.core.exit_signals.sector import penetration_research_reminder
     p = _mk_plan(penetration_stage="30+")

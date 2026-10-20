@@ -10,7 +10,8 @@
 
 适用范围：用户当前指派 Codex 承担暮云融合项目总架构师的会话；不约束 Claude Code 或其他实施 Agent，用户后续明确改派任务时以新指派为准。
 
-- 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡；由 Claude Code 实施产品代码。未经用户改派，不直接修改产品代码、测试、配置和真实账户。
+- 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡。用户已于2026-10-17指定由DSH实施、Codex管理审批；实施方以用户最新指派为准。未经用户改派，不直接修改产品代码、测试、配置和真实账户。
+- 当前DSH协作入口为个人`codex-dsh-collab` Skill及`G:/Tools/ChatGPTRepo/codex-dsh-双端联通/bin/codex-dsh.mjs`；先读个人Skill同目录`local-settings.json`及工具`docs/manuals/codex-guide.md`，所有命令复用配置中的共享绝对`--state-dir`，不因换工作区重新询问或另建账本。当前Codex聊天管理审批，原生DSH执行；旧`G:/Tools/DeepseekHarness/codex-dsh/`仅作历史证据，不是当前入口。接续身份与验收见`plan/fusion/iteration9/DELIVERY_PLAN.md`末节；未知提交先resume，不盲目重发，DSH报告不能自证通过。工具不提供文件沙箱、事务合入、费用硬上限或聊天结束后的常驻主控；未获迭代指派不启动G7/v43。
 - 恢复顺序：根 `MILESTONES.md` → `plan/fusion/STATUS.md` → `plan/fusion/RESUME.md` → 最新独立验收与任务卡；每次先查 HEAD/工作树，按源码指纹复核受影响模块。
 - 持续维护长期里程碑：用户要求先固定目标/架构/完成标准，再按依赖验证小步设计；每批任务须映射G/T，审批后同步MILESTONES、STATUS与RESUME。必要迭代/优化/重构未完成前不宣称整体结项，不一次铺开未经验证的远期细节。
 - `AGENTS.md` 是共同规范，只能放工具中立规则与指针；Codex 身份和续接指令写在本文件，跨会话进度写入明确标注范围的 RESUME。
@@ -30,6 +31,7 @@
 5. **提交纪律**：commit message 用中文详细描述（AGENTS.md §六）；**禁止 `git add -A`**——
    `portfolio.yaml`、`knowledge/index/*`、`.claude/`、`项目记忆资产备份/` 是本地状态文件，
    只 add 与本次改动相关的文件。
+   用户已授权重大改动验收后集中commit并push，不做碎提交；由Codex集成负责，DSH合同明确git_owner。原生只读任务无提交是预期，不能把旧“未commit/tag/push”状态当作永久禁令。远端领先且有重叠文件时先用`codex/`里程碑分支保留本地受验快照，不强推main、不冒称已整合远端。
 
 ## 最高优先级红线（速查，详见 AGENTS.md）
 

@@ -1,73 +1,53 @@
 {
-  "review": "R15",
-  "head": "28c32cf704e8775a86eaed4f229707ab5a6e044f",
-  "passed": 9,
-  "failed": 4,
-  "R14_replay_passed": 6,
-  "incremental_passed": 3,
-  "incremental_failed": 4,
-  "finding_groups": [
-    "Z1",
-    "Z2",
-    "Z3"
+  "review": "R15 current P and user-visible action review",
+  "head": "0b3fadd5b604df60f29f13a0149b4fa5806eb18d",
+  "date": "2026-10-13",
+  "passed": 7,
+  "failed": 12,
+  "run_breakdown": [
+    {
+      "cases": 15,
+      "passed": 7,
+      "failed": 8,
+      "seconds": 16.75,
+      "label": "P AND L BOUNDARIES"
+    },
+    {
+      "cases": 3,
+      "passed": 0,
+      "failed": 3,
+      "seconds": 6.41,
+      "label": "L SOURCE SEMANTICS"
+    },
+    {
+      "cases": 1,
+      "passed": 0,
+      "failed": 1,
+      "seconds": 3.87,
+      "label": "TAKE-PROFIT PUBLIC STRATEGY REACHABILITY"
+    }
   ],
+  "count_note": "Three separate runs; failures include two execution-status cells and helper/public checks of the same defect, not twelve separate defects. Original R15 seven cases all pass.",
   "observations": [
     {
-      "case": "Y4_long_unknown_weight",
-      "action": "HOLD",
-      "target": null,
-      "execution": "NOT_NEEDED"
-    },
-    {
-      "case": "Y3_naive_future_quote",
-      "quote": "2026-10-02T23:59:59",
-      "as_of": "2026-10-02 12:00:00+08:00",
-      "effective": false,
-      "reasons": [
-        "quote_cutoff_future_mid"
-      ]
-    },
-    {
-      "case": "Y1_partial_no_remaining_lot",
-      "state": "UNKNOWN",
-      "weight": null,
-      "reason": "账本存在隔离事件（部分不可读）——无剩余持仓记录不足以证明空仓，待对账",
-      "isolated": 1
-    },
-    {
-      "case": "compat_ratio_only_missing_ledger",
-      "state": "HELD",
-      "weight": 0.1
-    },
-    {
-      "case": "Y1_read_failure_zero_projection",
-      "state": "UNKNOWN",
-      "weight": null,
-      "reason": "账本读取失败；旧数量投影为 0 不足以证明空仓——待对账"
-    },
-    {
-      "case": "Y2_la_ledger_only",
-      "output": "\n  一键分析所有持仓（1只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n\n\n============================================================\n  [1/1] 600519 (600519)  [账本持仓·投影缺失——成本/比例未知]\n============================================================\n\n实时行情模式\n正在获取 [600519] 的实时数据...\n\n✓ 数据获取成功!\n  股票: 测试股 (600519)\n  当前价: 10.0\n  涨跌幅: 1.0%\n  技术指标: MA5=9.8\n\n📂 无持仓记录（将从FLAT状态开始分析）\n┌──────────────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ─────────────────────────────────────────────────────────────────────────────────────────────┐\n│ 今天不是买点：适合观望，等信号出现再动手。                                                                                                                                                           │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                                     │\n│ 账本有仓 100 股，但持仓投影缺失——待对账（退出方向保留）。                                                                                                                                            │\n│ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                                                   │\n│ 小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）                                                                                                       │\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n"
-    },
-    {
       "case": "Z1_partial_zero_projection",
-      "state": "NONE",
-      "weight": 0.0,
-      "reason": "记录与账本均无持仓"
+      "state": "UNKNOWN",
+      "weight": null,
+      "reason": "账本存在隔离事件（部分不可读）——旧零数量投影不足以证明空仓，待对账"
     },
     {
       "case": "Z2_projection_list_failure",
       "count": 0,
-      "incomplete": false,
-      "output": "\n  当前无持仓记录\n"
+      "incomplete": true,
+      "output": "\n  [!] 持仓清单读取异常（账本/持仓库）——清单不完整，待对账（不当作空仓）\n"
     },
     {
       "case": "Z3_chat_mixed_collection",
-      "output": "=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-02)"
+      "output": "=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)\n\n--- 事件账本独有持仓（投影记录缺失——成本/比例未知待对账） ---\n  600519"
     },
     {
       "case": "Z3_ledger_holding_output",
-      "says_flat": true,
+      "says_flat": false,
       "says_ledger_held": true
     },
     {
@@ -79,7 +59,7 @@
     {
       "case": "O1_capture_report",
       "future": false,
-      "quote": "2026-10-03T09:00:00",
+      "quote": "2026-10-14T09:00:00",
       "effective": true,
       "stored": true,
       "denominator": 1,
@@ -88,13 +68,200 @@
     {
       "case": "O1_capture_report",
       "future": true,
-      "quote": "2026-10-03T23:00:00",
+      "quote": "2026-10-14T23:00:00",
       "effective": false,
       "stored": false,
       "denominator": 0,
       "reasons": [
         "quote_cutoff_future_mid"
       ]
+    },
+    {
+      "case": "P_partial_positive_ratio",
+      "state": "HELD",
+      "weight": 0.1
+    },
+    {
+      "case": "P_failed_snapshot_zero_ratio",
+      "state": "NONE",
+      "weight": 0.0
+    },
+    {
+      "case": "P_bad_projection_state",
+      "context": "UNKNOWN",
+      "error": "AttributeError"
+    },
+    {
+      "case": "P_shadow_retry",
+      "reads": 1,
+      "packet_version": null,
+      "shadow_version": "retry_success",
+      "effective": true
+    },
+    {
+      "case": "P_chat_normalized_collection",
+      "output": "=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)\n  sh600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)"
+    },
+    {
+      "case": "P_chat_unknown_weight",
+      "output": "=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)"
+    },
+    {
+      "case": "L_open_qualification",
+      "status": "UNKNOWN",
+      "desired": "OPEN",
+      "output": "┌────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ───────────────────────────────────────────────────────────────────────────────────┐\n│ 今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │\n│ 笨总评分：今日未评（跑 b"
+    },
+    {
+      "case": "L_open_qualification",
+      "status": "BLOCKED",
+      "desired": "OPEN",
+      "output": "┌────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ───────────────────────────────────────────────────────────────────────────────────┐\n│ 今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │\n│ 笨总评分：今日未评（跑 b"
+    },
+    {
+      "case": "L_take_profit_suppression",
+      "decision": "HOLD",
+      "strength": {
+        "BUY": 0.6,
+        "HOLD": 0.0,
+        "SELL": 0.0,
+        "WATCH": 0.0
+      },
+      "override": "take_profit",
+      "action": "ADD",
+      "target": 0.3
+    },
+    {
+      "case": "L_unaccepted_exit_hints",
+      "warnings": [
+        "市场多空分歧，趋势不明，建议轻仓观望",
+        "触发止损条件，止损只上移不下移，别让希望绑架决策",
+        "触发止盈条件，分批止盈落袋为安"
+      ]
+    },
+    {
+      "case": "L_risk_status",
+      "clean": "COMPLETE",
+      "with_risk": "INCOMPLETE"
+    },
+    {
+      "case": "L_take_profit_public_strategy",
+      "decision": "HOLD",
+      "action": "ADD",
+      "target": 0.3,
+      "reasons": [
+        "参数档[震荡档]: 止盈保留75% / 浮盈门槛10% / 趋势退出-2% / 强买上限30% / 普通信号",
+        "策略层: 信号通过所有约束，维持原决策"
+      ]
     }
-  ]
+  ],
+  "historical_R15": {
+    "review": "R15",
+    "head": "28c32cf704e8775a86eaed4f229707ab5a6e044f",
+    "passed": 9,
+    "failed": 4,
+    "R14_replay_passed": 6,
+    "incremental_passed": 3,
+    "incremental_failed": 4,
+    "finding_groups": [
+      "Z1",
+      "Z2",
+      "Z3"
+    ],
+    "observations": [
+      {
+        "case": "Y4_long_unknown_weight",
+        "action": "HOLD",
+        "target": null,
+        "execution": "NOT_NEEDED"
+      },
+      {
+        "case": "Y3_naive_future_quote",
+        "quote": "2026-10-02T23:59:59",
+        "as_of": "2026-10-02 12:00:00+08:00",
+        "effective": false,
+        "reasons": [
+          "quote_cutoff_future_mid"
+        ]
+      },
+      {
+        "case": "Y1_partial_no_remaining_lot",
+        "state": "UNKNOWN",
+        "weight": null,
+        "reason": "账本存在隔离事件（部分不可读）——无剩余持仓记录不足以证明空仓，待对账",
+        "isolated": 1
+      },
+      {
+        "case": "compat_ratio_only_missing_ledger",
+        "state": "HELD",
+        "weight": 0.1
+      },
+      {
+        "case": "Y1_read_failure_zero_projection",
+        "state": "UNKNOWN",
+        "weight": null,
+        "reason": "账本读取失败；旧数量投影为 0 不足以证明空仓——待对账"
+      },
+      {
+        "case": "Y2_la_ledger_only",
+        "output": "\n  一键分析所有持仓（1只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n\n\n============================================================\n  [1/1] 600519 (600519)  [账本持仓·投影缺失——成本/比例未知]\n============================================================\n\n实时行情模式\n正在获取 [600519] 的实时数据...\n\n✓ 数据获取成功!\n  股票: 测试股 (600519)\n  当前价: 10.0\n  涨跌幅: 1.0%\n  技术指标: MA5=9.8\n\n📂 无持仓记录（将从FLAT状态开始分析）\n┌──────────────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ─────────────────────────────────────────────────────────────────────────────────────────────┐\n│ 今天不是买点：适合观望，等信号出现再动手。                                                                                                                                                           │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                                     │\n│ 账本有仓 100 股，但持仓投影缺失——待对账（退出方向保留）。                                                                                                                                            │\n│ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                                                   │\n│ 小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）                                                                                                       │\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n"
+      },
+      {
+        "case": "Z1_partial_zero_projection",
+        "state": "NONE",
+        "weight": 0.0,
+        "reason": "记录与账本均无持仓"
+      },
+      {
+        "case": "Z2_projection_list_failure",
+        "count": 0,
+        "incomplete": false,
+        "output": "\n  当前无持仓记录\n"
+      },
+      {
+        "case": "Z3_chat_mixed_collection",
+        "output": "=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-02)"
+      },
+      {
+        "case": "Z3_ledger_holding_output",
+        "says_flat": true,
+        "says_ledger_held": true
+      },
+      {
+        "case": "compat_no_ledger",
+        "empty": "NONE",
+        "legacy": "HELD",
+        "weight": 0.1
+      },
+      {
+        "case": "O1_capture_report",
+        "future": false,
+        "quote": "2026-10-03T09:00:00",
+        "effective": true,
+        "stored": true,
+        "denominator": 1,
+        "reasons": []
+      },
+      {
+        "case": "O1_capture_report",
+        "future": true,
+        "quote": "2026-10-03T23:00:00",
+        "effective": false,
+        "stored": false,
+        "denominator": 0,
+        "reasons": [
+          "quote_cutoff_future_mid"
+        ]
+      }
+    ]
+  },
+  "current_followup": {
+    "date": "2026-10-14",
+    "version": "v0.8.31",
+    "original_new_probe_cases_passed": 19,
+    "original_new_probe_cases_failed": 0,
+    "run_passed": 131,
+    "log": "TARGETED_TEST_RESULTS_P.txt",
+    "note": "Historical cases/results above retained. Followup included all 19 original new cases; not added to full count."
+  }
 }

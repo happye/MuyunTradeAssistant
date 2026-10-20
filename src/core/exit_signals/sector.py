@@ -29,8 +29,7 @@ FLAGBEARER_MIN_STOCK_GAIN = 10.0
 def check_sector_top_signal(trade_plan=None, stock_data=None, code: str = "") -> list:
     """检查板块层大顶信号（报告2.1，笨总教学八）——v0.8.29 返回 list[SignalFinding]。
 
-    v0.8.28.1（架构师裁决 2026-10-08，决策简报 docs/2026-10-08_决策简报_渗透率30+_
-    误触发强制清仓.md）：penetration_stage=="30+" 不再作为强制清仓信号——该标注是
+    v0.8.28.1（架构师裁决 2026-10-08，当前合同 plan/fusion/signal_authority_review/S2_DESIGN.md）：penetration_stage=="30+" 不再作为强制清仓信号——该标注是
     建仓时 AI 对四选一枚举的猜测（无数据核实、prompt 原无「不适用」出口，银行/基建
     等无渗透率语义行业也会被标 30+），曾导致新开仓当天即被反复 CLOSE_ALL。
     降级为研究提醒（penetration_research_reminder，由 orchestrator 追加到

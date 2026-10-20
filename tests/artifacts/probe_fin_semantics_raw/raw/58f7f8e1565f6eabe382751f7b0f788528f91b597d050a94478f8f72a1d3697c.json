@@ -1,0 +1,33 @@
+{
+ "schema_version": 1,
+ "sha256": "58f7f8e1565f6eabe382751f7b0f788528f91b597d050a94478f8f72a1d3697c",
+ "archived_at": "2026-09-27T00:39:02+08:00",
+ "content": {
+  "metric": "CFOToNP",
+  "value": 0.369235,
+  "unit": "倍",
+  "period_kind": "cumulative",
+  "period_basis": "YTD",
+  "value_kind": "RATIO",
+  "underlying_period_basis": "YTD",
+  "metric_definition_version": "baostock_field_registry_v1",
+  "period_end": "2024-03-31",
+  "published_at": "2024-04-27",
+  "source_uri": "baostock.query_cash_flow_data(code=sh.600519,year=2024,quarter=1)",
+  "source_version": "baostock_financial_v1"
+ },
+ "metadata": {
+  "kind": "baostock_financial_quarterly",
+  "stock_code": "600519",
+  "bs_code": "sh.600519",
+  "year": 2024,
+  "quarter": 1,
+  "queried_at": "2026-09-27T00:39:02+08:00",
+  "source_version": "baostock_financial_v1",
+  "field_registry_version": "baostock_field_registry_v1",
+  "interface": "baostock.query_cash_flow_data(code=sh.600519,year=2024,quarter=1)",
+  "metric": "CFOToNP",
+  "period_end": "2024-03-31",
+  "published_at": "2024-04-27"
+ }
+}

@@ -29,7 +29,7 @@ if sys.platform == "win32":
     os.environ.setdefault("PYTHONIOENCODING", "utf-8")
     os.system("chcp 65001 >nul 2>&1")
 
-VERSION = "v0.8.29.8"  # v0.8.29.8=ISS-117 S2a四组补修(止损独立来源不被同向取消+槽身份核验/regulator槽化+新增出口当前门与目标未增HOLD+跨协议记录口径分桶)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.7=ISS-117 S2a投票机制(固定分母E+一槽一票+A/P/C分离+普通票动作门收口+降级协议)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.6=ISS-117 QR5日历完整性收口(覆盖记录精确集合核验少行多行均拒+原始JSON重复键解析期拦截+交易日选取限定核定区间)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.5=ISS-117 QR4覆盖合同(日历完整自然日覆盖记录生产/消费双向核验+行情主体证券独立核对)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.4=ISS-117 QR3收口(交易日历只读资格fail-closed+事件范围消费门+复算三项核验+sector请求窗口)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.3=ISS-117 Q-R2尾项(scan_portfolio_events不重写unknown affected_codes)+Q-R5(analysis_date严格解析不截断+live交易日历新鲜度核验)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.2=ISS-117 Q尾项(Q-R1复算确认/Q-R2事件范围解析/Q-R5时点参照bar/Q-R7日期严格解析+列映射)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.29.1=ISS-117 Q1-Q7 补修批(消费边界资格门+事件硬权限收口+cap增量语义+子信号隔离+数据资格门)；与 cli/main.py --version、AGENTS.md 统一  # v0.8.28.1=渗透率30+降级研究提醒(板块层误触发强制清仓修复,架构师裁决A+B+E)+标注不适用出口+证据卡top_signal字段；与 cli/main.py --version、AGENTS.md 统一
+VERSION = "v0.8.42"  # 当次行业适用性与现金条件化观察；验收状态见README。
 
 # ISS-078：REPL 内新增的降级告警走标准 logging（WARNING+ 无 handler 时经 lastResort
 # 输出 stderr，plain_errors 过滤器若已挂根 handler 会同步做人话翻译与会话汇总）
@@ -92,10 +92,10 @@ def show_help():
     L.append(_cmd("today", "今日工作台（待办/持仓/等待——建议≠成交）"))
     L.append(_cmd("shadow", "影子对照报告（legacy vs fusion 决策表差异观察）"))
     L.append(_cmd("plan2 <代码> mid|long <意图>", "立中期/长期投资计划（影子出真判断的前提）"))
-    L.append(_cmd("research <代码>", "单股研究工作台：中长期比较/系统草稿/待验证节点（--capture 采集财务；--claims+--checkpoint+--ref 绑检查点证据）"))
+    L.append(_cmd("research <代码>", "研究工作台：--cash-materials 清单.json 导入材料；--cash-verify 回执ID 核对数字，加 --source-check 核官方字段，再加 --industry-check 查询SSE行业适用性并比较现金；--capture 采财务；--claims/--checkpoint 绑证据"))
     L.append(_row())
     L.append(_row("● 分析"))
-    L.append(_cmd("l <代码>", "实时深分析（自动落证据卡）"))
+    L.append(_cmd("l <代码>", "实时深分析（证据卡+本地只读研究状态）"))
     L.append(_cmd("l <代码>,<代码2>", "多代码批量（逗号/空格分隔均可）"))
     L.append(_cmd("l all [-f]", "批量深分析最近扫描（-f 强制重析当天已析）"))
     L.append(_cmd("la", "一键分析所有持仓（简明卡）"))
@@ -428,6 +428,15 @@ def parse_input(user_input: str):
 
     # ── 单股研究工作台（plan/fusion R8）：中长期比较/系统草稿/待验证节点 ──
     if cmd in ("research", "研究"):
+        if "--cash-materials" in parts:
+            import shlex
+            try:
+                tokens = shlex.split(text, posix=False)
+                tokens = [token[1:-1] if len(token) >= 2 and token[0] in ("'", '"') and token[-1] == token[0] else token for token in tokens]
+                return ("research", {"rest": tokens[1:]})
+            except ValueError:
+                # Preserve a failing intake branch; never fall through into research.
+                return ("research", {"rest": ["--cash-materials"]})
         return ("research", {"rest": parts[1:]})
 
 
@@ -783,7 +792,7 @@ def parse_input(user_input: str):
 _COMMAND_HINTS = {
     "l": "l <代码>[,代码2...] 多代码深析 | la 一键析全部持仓 | l all 批量析最近扫描",
     "live": "l <代码>[,代码2...] 深析（l 即 live；中英文逗号/空格分隔多只）",
-    "la": "la 一键分析全部持仓",
+    "la": "la 一键分析全部持仓（含本地只读研究状态）",
     "ba": "ba 批量笨总评分最近扫描结果",
     "bz": "bz <代码>[,代码2...] 评分(支持多代码) | bz scan <主题> 主题选股",
     "b": "b <代码> 回测 | bb 批量回测",
@@ -799,7 +808,7 @@ _COMMAND_HINTS = {
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
     "plan2": "plan2 列出计划 | plan2 <代码> mid|long <意图> [--facts a,b] [--until 日期] | plan2 accept/rm <代码>",
-        "research": "research <代码> 单股研究工作台（中长期比较/系统草稿/缺口）[--capture] [--claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID]]",
+    "research": "research <代码> --cash-materials 位置清单.json [--json]（归档材料） | research <代码> --cash-verify 回执ID [--source-check [--industry-check]] [--json]（默认离线核对；source-check核官方字段，另加industry-check合计PDF一次/SSE一次形成当前条件化观察；历史资格仍待核；两种材料操作单独使用，不生成研究草稿）；普通研究：[--capture] [--claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID] [--review-at 带时区时间 --refute-if 推翻事实 --on-expiry REVIEW_REQUIRED]]",
     "events": "events 事后事件复盘",
     "chat": "chat 进入 AI 对话模式",
     "help": "h 或 ? 查看全部命令用法",

@@ -128,7 +128,7 @@ def analyze_interactive():
     """交互式分析模式"""
     console.print(Panel.fit(
         # ISS-093 之后：横幅版本与 --version/start.py/AGENTS.md 统一
-        "[bold cyan]暮云思辨投资助手 v0.8.33[/bold cyan]\n"
+        "[bold cyan]暮云思辨投资助手 v0.8.42[/bold cyan]\n"
         "AI驱动的A股交易行为约束系统",
         border_style="cyan"
     ))
@@ -5356,7 +5356,7 @@ AI配置:
         "-v", "--version",
         action="version",
         # v0.8.17：分析证据层+分析对比；版本号与 start.py/AGENTS.md 统一
-        version="%(prog)s v0.8.33 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+共享账户today工作台+影子对照+本地只读研究视图)"
+        version="%(prog)s v0.8.42 (笨总评分+跳法A气宗/剑宗+PlanGuard+买卖点精确触发+预期事件日历+chat全命令桥+上下文护栏+市场恐慌指数+扫描复盘+观察池+持仓事实分离+统一终态+共享账户today工作台+影子对照+本地只读研究视图+证据数值与单位核验+行业账户待核提示+TUI/Web账户事实统一+显式快照同源+共享配置入口+缓存异常时间隔离+缓存原子写入+研究归档现金资料+财务返回主体与期间核对+本地财报材料归档+本地现金数字核对+当次官方财报字段核对+现金跨期条件化观察)"
     )
     parser.add_argument(
         "--verbose",
@@ -5632,6 +5632,11 @@ def research_command(rest: list):
       research <代码>            研究链（归档证据优先；无归档给具体缺口）
       research <代码> --capture  缺失季度联网补采（baostock，真实网络；已归档零重复抓取）
       research <代码> --json     输出机器可读结果（跨入口一致的数据源）
+      research <代码> --cash-materials 位置清单.json [--json]
+                                 本地原件与供应商留样独立归档待核，不生成研究草稿
+      research <代码> --cash-verify 材料ID [--source-check [--industry-check]] [--json]
+                                 默认离线比较；source-check当次核对官方PDF及字段，再加industry-check，
+                                 合计PDF一次、SSE一次查询本次行业适用性；历史资格仍待核，不生成草稿
       research <代码> --claims 主张.json --checkpoint 描述 --confirm-risk [--ref 证据ID]
         --review-at 2026-10-30T16:00:00+08:00 --refute-if 推翻事实 --on-expiry REVIEW_REQUIRED
                                  检查点从公开入口绑定已核验证据（L2/V4：--ref 可重复；
@@ -5642,6 +5647,126 @@ def research_command(rest: list):
     from rich.console import Console as _C
     from datetime import datetime
     rest = [p for p in (rest or []) if p.strip()]
+    if "--cash-verify" in rest or "--source-check" in rest or "--industry-check" in rest:
+        from rich.text import Text
+        from src.core.research_application import ResearchApplicationService
+        from src.data.research_store import ResearchStore
+        import json as _json
+        def verify_error(code, reason):
+            if "--json" in rest:
+                print(_json.dumps({"result": "FAILED", "error": code, "reason": reason}, ensure_ascii=False))
+            else:
+                console.print(Text("现金数值核对失败：" + reason))
+        flags = [p for p in rest if p.startswith("--")]
+        if any(p not in ("--cash-verify", "--source-check", "--industry-check", "--json") for p in flags):
+            verify_error("mixed_research_flags", "不能混用材料导入、采集、主张、检查点或风险参数；请单独核对")
+            return
+        if ("--cash-verify" not in rest or flags.count("--source-check") > 1
+                or flags.count("--industry-check") > 1
+                or ("--industry-check" in rest and "--source-check" not in rest)):
+            verify_error("invalid_source_check", "--source-check 仅可随单次 --cash-verify material_id 使用")
+            return
+        index = rest.index("--cash-verify")
+        if (flags.count("--cash-verify") != 1 or flags.count("--json") > 1
+                or index + 1 >= len(rest) or not re.fullmatch(r"[0-9a-f]{64}", rest[index + 1])):
+            verify_error("invalid_material_id", "--cash-verify 需要归档回执中的 material_id")
+            return
+        codes = [p for i, p in enumerate(rest) if i not in (index, index + 1) and p not in ("--json", "--source-check", "--industry-check")]
+        if len(codes) != 1 or not re.fullmatch(r"[0-9]{6}", normalize_stock_code(codes[0])):
+            verify_error("invalid_security", "需要一个证券代码与对应材料回执")
+            return
+        app = ResearchApplicationService(store=ResearchStore(), plans_store=None, assessment_store=None)
+        try:
+            if "--source-check" in rest:
+                options = {"industry_check": True} if "--industry-check" in rest else {}
+                result = app.check_cash_source(normalize_stock_code(codes[0]), rest[index + 1], **options)
+            else:
+                result = app.verify_cash_material(normalize_stock_code(codes[0]), rest[index + 1],
+                                                  as_of=datetime.now().astimezone())
+        except Exception:
+            verify_error("verification_unavailable", "材料或依赖缺失、损坏或存储不可用；核对归档回执后重试，未承诺核对成功")
+            return
+        if "--json" in rest:
+            print(_json.dumps(result, ensure_ascii=False))
+        else:
+            identity = result.get("source_check_id", result.get("proof_id", ""))
+            console.print(Text("现金数值核对：" + result["result"] + "；记录 " + identity))
+            console.print(Text(result["summary"]))
+            field_labels = {"netProfit": "合并净利润", "operatingCashFlow": "经营现金净额", "CFOToNP": "现金÷净利润"}
+            for field in result.get("qualified_field_observations", []):
+                console.print(Text(f"{field_labels.get(field['metric'], field['metric'])} ({field['metric']}) {field['display_value']} {field['unit']} ｜ {field['period_start']}至{field['period_end']} ｜ {field['role']} ｜ evidence {field['evidence_id']}"))
+            if "--source-check" in rest:
+                console.print(Text(f"来源 {result.get('source_uri')} ｜ SHA256 {result.get('pdf_sha256')} ｜ 实际观察 {result.get('observed_as_of')}"))
+                console.print(Text("独立离线数值比较：" + result.get("offline_numeric_result", "PENDING_REVIEW") + "；仅为本地算术核对，不授予来源或历史资格"))
+                for gap in result.get("supplier_gaps", []):
+                    console.print(Text("供应商交叉待核：" + gap))
+            if "--industry-check" in rest:
+                premise = result.get("industry_premise") or {}
+                observed = result.get("current_cash_observations") or {}
+                console.print(Text("当次SSE转述行业：" + premise.get("status", "UNKNOWN") + " ｜ "
+                    + str(premise.get("CSRC_CODE", "")) + "/" + str(premise.get("CSRC_GREAT_CODE", ""))
+                    + " " + str(premise.get("CSRC_GREAT_CODE_DESC", ""))))
+                console.print(Text(observed.get("summary", "本次行业与可比观察待核")))
+                console.print(Text("行业来源 " + str(premise.get("source_uri", "")) + " ｜ SHA256 "
+                    + str(premise.get("response_sha256", "")) + " ｜ 实际观察 " + str(premise.get("observed_as_of", ""))))
+                console.print(Text("仅当前SSE转述CAPCO分类；比较栏来自后年文档，不证明历史行业或该期首发；ROE未核，持续性UNKNOWN"))
+                for gap in premise.get("gaps", []) + observed.get("gaps", []):
+                    console.print(Text("行业/观察待核：" + gap))
+            for gap in result["gaps"]:
+                console.print(Text("待核：" + gap))
+        return
+    if "--cash-materials" in rest:
+        # Local intake has a separate lifecycle from research/assessment/drafts.
+        from rich.text import Text
+        from src.core.research_application import ResearchApplicationService
+        from src.data.research_store import ResearchStore
+        def cash_error(code, reason):
+            if "--json" in rest:
+                import json as _json
+                print(_json.dumps({"intake_status": "FAILED", "error": code, "reason": reason}, ensure_ascii=False))
+            else:
+                console.print(Text("现金材料导入失败：" + reason))
+        flags = [p for p in rest if p.startswith("--")]
+        if any(p not in ("--cash-materials", "--json") for p in flags):
+            cash_error("mixed_research_flags", "不能混用 --capture/--claims/--checkpoint 及引用或风险参数；请单独导入")
+            return
+        index = rest.index("--cash-materials")
+        if (flags.count("--cash-materials") != 1 or flags.count("--json") > 1
+                or index + 1 >= len(rest) or rest[index + 1].startswith("--")):
+            cash_error("missing_manifest", "--cash-materials 需要一个位置清单.json；核对参数后重试")
+            return
+        codes = [p for i, p in enumerate(rest) if i not in (index, index + 1) and p != "--json"]
+        if len(codes) != 1 or not re.fullmatch(r"[0-9]{6}", normalize_stock_code(codes[0])):
+            cash_error("invalid_security", "需要一个证券代码；核对参数后重试")
+            return
+        app = ResearchApplicationService(store=ResearchStore(), plans_store=None, assessment_store=None)
+        try:
+            receipt = app.intake_cash_materials(normalize_stock_code(codes[0]), rest[index + 1],
+                                                as_of=datetime.now().astimezone())
+        except Exception as error:
+            if isinstance(error, FileNotFoundError):
+                cash_error("source_file_missing", "清单或所列文件不存在；核对相对清单目录的文件位置")
+            elif isinstance(error, PermissionError):
+                cash_error("file_access_denied", "文件无法读取或存储目录不可写；核对本地文件权限")
+            elif str(error) == "storage_failure":
+                cash_error("storage_failure", "原件存储失败或已有内容损坏；保留原件，核对存储后重试，未承诺归档成功")
+            elif str(error) in ("material resource limit", "supplier total resource limit"):
+                cash_error("resource_limit", "材料超过大小限制；清单最多64KiB、PDF20MiB、供应商合计4MiB")
+            elif isinstance(error, (ValueError, TypeError)):
+                cash_error("invalid_manifest_or_material", "清单格式、日期、页码或PDF格式无效；核对cash_materials.v1位置清单")
+            else:
+                cash_error("intake_unavailable", "材料读取或导入暂不可用；保留原件并核对文件与存储，未承诺归档成功")
+            return
+        if "--json" in rest:
+            import json as _json
+            print(_json.dumps(receipt, ensure_ascii=False, indent=1))
+        else:
+            console.print(Text(receipt["summary"]))
+            console.print(Text("回执：" + receipt["receipt_id"] + "；文内身份：" + receipt["document_identity_check"]))
+            for supplier in receipt["supplier_items"]:
+                if supplier.get("explanation"):
+                    console.print(Text("供应商留样待核：" + supplier["explanation"]))
+        return
     capture = "--capture" in rest
     as_json = "--json" in rest
     # K2a：公开研究闭环入参——主张文件导入（原文留样+核验）与检查点（显式风险确认）
@@ -5856,6 +5981,10 @@ def _render_research_result(console, result) -> None:
     label = {"VALID": "✅ 逻辑成立（当前命题达标）", "INVALID": "❌ 逻辑失效",
              "REVIEW_REQUIRED": "⚠ 需人工核对", "UNESTABLISHED": "○ 逻辑待建立"}
     docs = result.steps.get("documents", {})
+    cash_view = getattr(result, "financial_observations", None)
+    if cash_view is not None:
+        from rich.text import Text
+        console.print(Text("  " + cash_view["summary"]))
     console.print(f"  [dim]资料: 归档复用 {docs.get('quarters_archived_skipped', 0)} 季 · "
                   f"本次补采 {docs.get('quarters_fetched', 0)} 季 · 缺失 {docs.get('quarters_missing', 0)} 季"
                   f"（已归档零重复抓取）[/dim]")

@@ -1,6 +1,12 @@
 {# 预期事件日历 + 预期透支度（v0.8.7 预期管理 Phase 1，纯展示不进决策链）#}
 <div class="p-2">
   <h3 class="text-sm font-bold text-cyan-600 mb-2">⚡ 预期事件日历（未来30天）</h3>
+  {% for warning in account_warnings %}
+  <p class="text-yellow-600 text-sm">{{ warning }}</p>
+  {% endfor %}
+  {% if general_calendar %}
+  <p class="text-gray-600 text-xs">通用日历，未按持仓过滤；并非全部事件都与持仓相关。</p>
+  {% endif %}
   {% if events %}
   <table class="w-full text-xs border-collapse">
     <thead>

@@ -1,15 +1,16 @@
 """R2 分级核验冻结语料运行器（plan/fusion iteration2 TASKS R2 验收2/5）
 
-锁死语义（DATA_TRUST §4，协议 cv2）：
-1. 冻结语料（tests/ai_eval/claim_verification_corpus.json）全部用例按期望等级/原因通过
+锁死语义（DATA_TRUST §4，当前协议 cv6；原cv3文件另有SHA保持断言）：
+1. 冻结语料（tests/ai_eval/claim_verification_corpus_cv6.json）全部用例按期望等级/原因通过
    ——先冻结后运行；改期望=改语料=新版本，不得原地改后宣称同一测试通过
 2. 运行器输出报告（precision 同意率、各等级覆盖、失败原因分布、关键事实错误数），
-   落 tests/artifacts/claim_verification_report.json——不只一个通过数
+   落 tests/artifacts/claim_verification_report_cv6.json——不只一个通过数
 3. 显式 as_of：同一主张（CV-11a/11b）截止前后资格不同，不依赖机器当前日期
 4. 注入免疫：正文指令是数据（CV-08）——确定性检查路径无解释无执行
 
 纯内存测试，无网络无 AI。跑法：pytest tests/core/test_claim_verification_corpus.py -q
 """
+import hashlib
 import json
 import os
 import sys
@@ -21,21 +22,27 @@ import pytest
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 
 from src.core.claim_extraction import (
+    CLAIM_VERIFICATION_PROTOCOL_VERSION,
     SourceDocument,
     VerificationLevel,
     ClaimRecord,
     verify_claim_tiered,
 )
 
-CORPUS_PATH = Path(__file__).resolve().parents[1] / "ai_eval" / "claim_verification_corpus.json"
-ARTIFACT = Path(__file__).resolve().parents[2] / "tests" / "artifacts" / "claim_verification_report.json"
+CORPUS_PATH = Path(__file__).resolve().parents[1] / "ai_eval" / "claim_verification_corpus_cv6.json"
+ARTIFACT = Path(__file__).resolve().parents[2] / "tests" / "artifacts" / "claim_verification_report_cv6.json"
 
 
 def _load_corpus() -> dict:
     corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
-    assert corpus["_meta"]["schema"] == "cv3", "语料必须是 cv3 协议（K0b 绑定元组核验；历史 f6v1/v2/cv2 保留不混用）"
+    assert corpus["_meta"]["schema"] == CLAIM_VERIFICATION_PROTOCOL_VERSION == "cv6"
     assert corpus["_meta"]["frozen_at"], "语料必须带冻结时间戳"
     return corpus
+
+
+def test_cv3_frozen_original_is_preserved():
+    original = CORPUS_PATH.with_name("claim_verification_corpus.json")
+    assert hashlib.sha256(original.read_bytes()).hexdigest() == "ba76fa52ac5fa7440abc1bb8378607ca04a9d76d6af43af2a4d74d6341a09847"
 
 
 def _build_claim(c: dict) -> ClaimRecord:
@@ -138,6 +145,14 @@ def test_injection_is_data_not_instruction():
     result = verify_claim_tiered(claim, _build_documents(corpus, case),
                                  as_of=datetime.fromisoformat(case["as_of"]))
     assert result.level is VerificationLevel.FACT_CHECKED
+    # Compare the real no-injection baseline, not just different relations.
+    baseline_docs = _build_documents(corpus, case)
+    body = "公司签订900万元订单。"
+    baseline_docs[0] = baseline_docs[0].model_copy(update={
+        "body": body, "content_hash": SourceDocument.body_hash(body)})
+    baseline = verify_claim_tiered(claim, baseline_docs,
+                                  as_of=datetime.fromisoformat(case["as_of"]))
+    assert baseline.level == result.level and baseline.checks == result.checks
     # relation 是研究推论属性——换 relation 结论不变（真断言：核验不消费 relation）
     for rel in ("SUPPORTS", "REFUTES", "NEUTRAL"):
         r2 = verify_claim_tiered(_build_claim(case).model_copy(update={"relation": rel}),

@@ -150,3 +150,452 @@ FAILED plan/fusion/iteration9/acceptance_probes.py::test_ledger_holding_output_d
 PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
 PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
 KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+=== ARCHITECT CURRENT WORKTREE P AND L BOUNDARIES 2026-10-13 ===
+2026-10-13 01:27:28,073 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-13 01:27:28,074 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:d4b0c8d7c1524f6f）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+R15_RESULT {"case": "Z1_partial_zero_projection", "state": "UNKNOWN", "weight": null, "reason": "账本存在隔离事件（部分不可读）——旧零数量投影不足以证明空仓，待对账"}
+.2026-10-13 01:27:28,098 - src.data.portfolio - WARNING - ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+2026-10-13 01:27:28,104 - src.data.portfolio - WARNING - ⚠ 持仓名单读不出来（本次批量清单可能不全）——已按「待对账」处理，不会当作空仓；重试一般可恢复｜原始：投影持仓清单读取失败（清单可能不全——待对账）: 'int' object has no attribute 'get'
+R15_RESULT {"case": "Z2_projection_list_failure", "count": 0, "incomplete": true, "output": "\n  [!] 持仓清单读取异常（账本/持仓库）——清单不完整，待对账（不当作空仓）\n"}
+.R15_RESULT {"case": "Z3_chat_mixed_collection", "output": "=== 当前持仓 ===\n\n  000001 projection only 仓位:10% 开仓价:5.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)\n\n--- 事件账本独有持仓（投影记录缺失——成本/比例未知待对账） ---\n  600519"}
+.2026-10-13 01:27:31,225 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-13 01:27:31,319 - src.data.news_client - WARNING - ⚠ 宏观新闻拉取失败——事件检测降级，核心链路不受影响｜原始：获取宏观快讯失败: Review test external IO blocked
+2026-10-13 01:27:33,883 - src.core.ai_modifier - WARNING - ⚠ AI情绪调节本次缺席——纯技术面决策，核心结论不受影响｜原始：AI Modifier分析异常: Connection error.
+2026-10-13 01:27:33,908 - src.data.akshare_client - WARNING - Baostock登录失败: 网络接收错误。
+2026-10-13 01:27:37,180 - src.scanner.market_cache - WARNING - ⚠ 新浪和东财都暂时挂了（可能被限流），60秒后自动重试——成交额/宽度数据暂缺，不影响买卖点｜原始：MarketCache: 全市场行情源均失败(新浪间歇失效+东财断连)，改用主题词/单股模式
+2026-10-13 01:27:37,210 - src.core.benzong.data_provider - WARNING - ⚠ 股东户数接口没返回数据——'股东户数激增'信号当日跳过｜原始：data_provider.stock_zh_a_gdhs_detail_em 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,222 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261013 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,225 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261012 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,227 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261009 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,228 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261008 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,232 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261007 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,238 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261006 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,242 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261005 失败: RuntimeError: Review test external IO blocked
+2026-10-13 01:27:37,246 - src.core.benzong.data_provider - WARNING - ⚠ 融资余额表没拉到（当天数据要收盘后才发布，凌晨属正常）——'融资余额激增'信号当日跳过｜原始：data_provider.margin_table_20261002 失败: RuntimeError: Review test external IO blocked
+R15_RESULT {"case": "Z3_ledger_holding_output", "says_flat": false, "says_ledger_held": true}
+.R15_RESULT {"case": "compat_no_ledger", "empty": "NONE", "legacy": "HELD", "weight": 0.1}
+.R15_RESULT {"case": "O1_capture_report", "future": false, "quote": "2026-10-14T09:00:00", "effective": true, "stored": true, "denominator": 1, "reasons": []}
+.R15_RESULT {"case": "O1_capture_report", "future": true, "quote": "2026-10-14T23:00:00", "effective": false, "stored": false, "denominator": 0, "reasons": ["quote_cutoff_future_mid"]}
+.2026-10-13 01:27:37,712 - src.data.account_snapshot - WARNING - ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+2026-10-13 01:27:37,713 - src.data.account_snapshot - WARNING - ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:d4b0c8d7c1524f6f）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+R15_RESULT {"case": "P_partial_positive_ratio", "state": "HELD", "weight": 0.1}
+F2026-10-13 01:27:39,603 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+R15_RESULT {"case": "P_failed_snapshot_zero_ratio", "state": "NONE", "weight": 0.0}
+FR15_RESULT {"case": "P_bad_projection_state", "context": "UNKNOWN", "error": "AttributeError"}
+F2026-10-13 01:27:39,866 - src.data.portfolio - WARNING - ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+R15_RESULT {"case": "P_shadow_retry", "reads": 1, "packet_version": null, "shadow_version": "retry_success", "effective": true}
+FR15_RESULT {"case": "P_chat_normalized_collection", "output": "=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)\n  sh600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)"}
+FR15_RESULT {"case": "P_chat_unknown_weight", "output": "=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)"}
+FR15_RESULT {"case": "L_open_qualification", "status": "UNKNOWN", "desired": "OPEN", "output": "┌────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ───────────────────────────────────────────────────────────────────────────────────┐\n│ 今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │\n│ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                               │\n│ 决定性依据：策略理由                                                                                                                                                             │\n│ 成交资格待确认：核对盘口/订单/可卖数量；动作意图保留，持仓未变。                                                                                                                 │\n│ 小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）                                                                                   │\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n"}
+FR15_RESULT {"case": "L_open_qualification", "status": "BLOCKED", "desired": "OPEN", "output": "┌────────────────────────────────────────────────────────────────────────────────── 📖 人话摘要 ───────────────────────────────────────────────────────────────────────────────────┐\n│ 今天出现【买入信号】（条件凑齐了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │\n│ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │\n│ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                               │\n│ 决定性依据：策略理由                                                                                                                                                             │\n│ 小词典：突破=价格创阶段新高｜放量=成交比平时旺50%以上｜多头排列=短中期均线依次向上（上升趋势）                                                                                   │\n└──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘\n"}
+F
+================================== FAILURES ===================================
+_____________ test_partial_positive_ratio_does_not_confirm_weight _____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_partial_positive_ratio_do0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B93C6E0D0>
+
+    def test_partial_positive_ratio_does_not_confirm_weight(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=.1)
+        o0.account_module.DEFAULT_LEDGER_PATH.write_text('{"truncated_event"\n', encoding="utf-8")
+        ctx = pm.request_account_facts().context_for(o0.CODE)
+        emit("P_partial_positive_ratio", state=ctx.position_state, weight=ctx.confirmed_weight)
+        assert ctx.position_state == "HELD"
+>       assert ctx.confirmed_weight is None, "PARTIAL must freeze precise ratio too"
+E       AssertionError: PARTIAL must freeze precise ratio too
+E       assert 0.1 is None
+E        +  where 0.1 = AccountContext(security_id='600519', position_state='HELD', quantity=None, confirmed_weight=0.1, weight_reason='RATIO_ONLY 比例直通', account_version='v95f310c3ba8d84aa').confirmed_weight
+
+plan\fusion\iteration9\acceptance_probes.py:119: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.account_snapshot:account_snapshot.py:201 ⚠ 账户账本文件有解析不了的损坏行（断电/磁盘满残留常见）——已隔离留痕并冻结精确新增买入，其余记录正常；请人工核对账户事件账本｜原始：账户账本存在 1 个损坏段（已隔离留痕，首段行 1 偏移 0）——请人工核对账户事件账本
+WARNING  src.data.account_snapshot:account_snapshot.py:278 ⚠ 账本里有一行坏数据被隔离留痕（含行号/偏移/指纹供恢复）——现金和持仓不受影响，但精确新增已冻结，请人工核对该行｜原始：账户账本损坏段隔离: corrupt_line_1 （行 1，偏移 0，sha256:d4b0c8d7c1524f6f）——账本行解析失败（JSONDecodeError）——原字节保留待人工恢复
+_____________ test_failed_snapshot_zero_ratio_is_not_proven_empty _____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_failed_snapshot_zero_rati0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B95C7DA90>
+
+    def test_failed_snapshot_zero_ratio_is_not_proven_empty(tmp_path, monkeypatch):
+        from unittest.mock import patch
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=0.0)
+        o0._seed_ledger_only(quantity=100)
+        with patch.object(o0.account_module.AccountService, "snapshot", side_effect=OSError("fixture")):
+            ctx = pm.request_account_facts().context_for(o0.CODE)
+        emit("P_failed_snapshot_zero_ratio", state=ctx.position_state, weight=ctx.confirmed_weight)
+>       assert ctx.position_state == "UNKNOWN" and ctx.confirmed_weight is None
+E       AssertionError: assert ('NONE' == 'UNKNOWN'
+E         
+E         - UNKNOWN
+E         + NONE)
+
+plan\fusion\iteration9\acceptance_probes.py:131: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.portfolio:portfolio.py:401 ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+________ test_bad_projection_keeps_independent_ledger_state_reachable _________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_bad_projection_keeps_inde0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B93D8CD90>
+
+    def test_bad_projection_keeps_independent_ledger_state_reachable(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        o0._seed_ledger_only(quantity=100)
+        Path(o0.portfolio_module.DEFAULT_PORTFOLIO_PATH).write_text(
+            "positions:\n  '600519': 42\n", encoding="utf-8")
+        pm = o0.PortfolioManager()
+        ctx = pm.request_account_facts().context_for(o0.CODE)
+        try:
+>           state = pm.to_strategy_state(o0.CODE, account_context=ctx)
+                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+plan\fusion\iteration9\acceptance_probes.py:142: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\data\portfolio.py:825: in to_strategy_state
+    pos = self.get_position(stock_code)
+          ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+src\data\portfolio.py:734: in get_position
+    return PositionRecord.from_dict(stock_code, pos_data)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+cls = <class 'src.data.portfolio.PositionRecord'>, stock_code = '600519'
+data = 42
+
+    @classmethod
+    def from_dict(cls, stock_code: str, data: dict) -> "PositionRecord":
+        """从YAML字典创建"""
+>       plan_data = data.get("trade_plan")
+                    ^^^^^^^^
+E       AttributeError: 'int' object has no attribute 'get'
+
+src\data\portfolio.py:223: AttributeError
+
+During handling of the above exception, another exception occurred:
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_bad_projection_keeps_inde0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B93D8CD90>
+
+    def test_bad_projection_keeps_independent_ledger_state_reachable(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        o0._seed_ledger_only(quantity=100)
+        Path(o0.portfolio_module.DEFAULT_PORTFOLIO_PATH).write_text(
+            "positions:\n  '600519': 42\n", encoding="utf-8")
+        pm = o0.PortfolioManager()
+        ctx = pm.request_account_facts().context_for(o0.CODE)
+        try:
+            state = pm.to_strategy_state(o0.CODE, account_context=ctx)
+        except Exception as exc:
+            emit("P_bad_projection_state", context=ctx.position_state, error=type(exc).__name__)
+>           pytest.fail("Independent ledger holding cannot reach strategy state: " + type(exc).__name__)
+E           Failed: Independent ledger holding cannot reach strategy state: AttributeError
+
+plan\fusion\iteration9\acceptance_probes.py:145: Failed
+__________ test_failed_request_shadow_does_not_retry_account_version __________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_failed_request_shadow_doe0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B93CE2050>
+
+    def test_failed_request_shadow_does_not_retry_account_version(tmp_path, monkeypatch):
+        from unittest.mock import patch
+        from src.core import analysis_service as analysis
+        import test_m0_account_terminal as m0
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=.1)
+        o0._seed_ledger_only(quantity=100)
+        with patch.object(o0.account_module.AccountService, "snapshot", side_effect=OSError("fixture")):
+            ctx = pm.request_account_facts().context_for(o0.CODE)
+        assert not ctx.account_version
+        plans, assessments = m0._seed_accepted_mid_plan(tmp_path)
+        sd = m0._sd("HOLD_POSITION", .1)
+        ee = m0._eval()
+        dr = m0._dr()
+        packet = analysis.build_decision_packet(dr, sd, ee, confirmed_ratio=ctx.confirmed_weight,
+            position_state=ctx.position_state, account_version=ctx.account_version)
+        with patch.object(o0.account_module.AccountService, "account_version", return_value="retry_success") as retry:
+            rec = o0.shadow_module.capture_shadow(dr, sd, ee, pm.get_position(o0.CODE), packet=packet,
+                account_context=ctx, plans_store=plans, assessment_store=assessments,
+                quote_as_of=m0.PRICE_DAY, store_path=tmp_path / "shadow.jsonl",
+                config={"fusion": {"mode": "capture_only", "shadow_capture": True}})
+        assert rec is not None
+        emit("P_shadow_retry", reads=retry.call_count, packet_version=packet.portfolio_revision,
+             shadow_version=rec.mid_binding.get("account_version"), effective=rec.mid_effective)
+>       assert retry.call_count == 0, "One failed request cannot obtain a second account version"
+E       AssertionError: One failed request cannot obtain a second account version
+E       assert 1 == 0
+E        +  where 1 = <MagicMock name='account_version' id='2523658046864'>.call_count
+
+plan\fusion\iteration9\acceptance_probes.py:175: AssertionError
+------------------------------ Captured log call ------------------------------
+WARNING  src.data.portfolio:portfolio.py:401 ⚠ 账户事实快照读不出来（本次分析按「待对账」保守处理）——不会把你的持仓当成空仓；重试一般可恢复｜原始：请求级账户事实读取失败（本次按未对账处理，不当作空仓）: fixture
+_________________ test_chat_uses_normalized_shared_collection _________________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_chat_uses_normalized_shar0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B95BDEA90>
+
+    def test_chat_uses_normalized_shared_collection(tmp_path, monkeypatch):
+        from copy import deepcopy
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=.1)
+        pm._data["positions"]["sh600519"] = deepcopy(pm._data["positions"][o0.CODE])
+        entries, _ = pm.request_account_facts().holding_entries()
+        assert [entry.stock_code for entry in entries] == [o0.CODE]
+        monkeypatch.setattr(chat, "_portfolio_manager", pm)
+        output = chat.get_portfolio()
+        emit("P_chat_normalized_collection", output=output)
+>       assert output.count(o0.CODE) == 1
+E       AssertionError: assert 2 == 1
+E        +  where 2 = <built-in method count of str object at 0x0000024B95860930>('600519')
+E        +    where <built-in method count of str object at 0x0000024B95860930> = '=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)\n  sh600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)'.count
+E        +    and   '600519' = o0.CODE
+
+plan\fusion\iteration9\acceptance_probes.py:190: AssertionError
+___________ test_chat_does_not_present_unknown_weight_as_confirmed ____________
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_chat_does_not_present_unk0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B95BA83D0>
+
+    def test_chat_does_not_present_unknown_weight_as_confirmed(tmp_path, monkeypatch):
+        o0._isolate(tmp_path, monkeypatch)
+        pm = o0.PortfolioManager()
+        pm.add_position(o0.CODE, entry_price=10, ratio=.1)
+        o0._seed_ledger_only(quantity=100)
+        ctx = pm.request_account_facts().context_for(o0.CODE)
+        assert ctx.position_state == "HELD" and ctx.confirmed_weight is None
+        monkeypatch.setattr(chat, "_portfolio_manager", pm)
+        output = chat.get_portfolio()
+        emit("P_chat_unknown_weight", output=output)
+>       assert "权重" in output and any(x in output for x in ("未知", "待重估", "待对账"))
+E       AssertionError: assert ('权重' in '=== 当前持仓 ===\n\n  600519 -        仓位:10% 开仓价:10.00 生命周期:OPEN 上次操作:OPEN(2026-10-13)')
+
+plan\fusion\iteration9\acceptance_probes.py:203: AssertionError
+__ test_open_summary_does_not_promise_execution_without_eligibility[UNKNOWN] __
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_open_summary_does_not_pro0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B93CAAC50>
+status = 'UNKNOWN'
+
+    @pytest.mark.parametrize("status", ["UNKNOWN", "BLOCKED"])
+    def test_open_summary_does_not_promise_execution_without_eligibility(tmp_path, monkeypatch, status):
+        import io
+        from rich.console import Console
+        import test_m0_account_terminal as m0
+        from src.core import analysis_service as analysis
+        from src.data.models import DecisionResult, MarketState, SignalType
+        from src.core.decision_contract import ExecutionStatus
+        o0._isolate(tmp_path, monkeypatch)
+        stream = io.StringIO()
+        monkeypatch.setattr(o0.cli_main, "console", Console(file=stream, width=180, force_terminal=False))
+        monkeypatch.setattr(o0.cli_main, "_cached_benzong_brief", lambda code: None)
+        stock = o0._stub_market(o0.CODE)
+        dr = DecisionResult(stock=stock, state=MarketState.TRANSITION, decision=SignalType.BUY, score=.6)
+        sd = m0._sd("OPEN", .2, decision="BUY")
+        ee = m0._eval(blocked=status == "BLOCKED", reason="fixture blocked" if status == "BLOCKED" else "")
+        ee.execution_status = ExecutionStatus(status)
+        ee.effective_action = sd.position_action
+        ctx = m0._ctx(state="NONE", weight=0.0, version="fixture")
+        packet = analysis.build_decision_packet(dr, sd, ee, confirmed_ratio=ctx.confirmed_weight,
+            position_state=ctx.position_state, account_version=ctx.account_version)
+        assert packet.executable_action is None
+        o0.cli_main._print_plain_summary(dr, sd, stock, account_context=ctx, execution_eval=ee)
+        output = stream.getvalue()
+        emit("L_open_qualification", status=status, desired=packet.desired_action.value, output=output)
+>       assert "明天开盘买" not in output and "条件凑齐了" not in output
+E       AssertionError: assert ('明天开盘买' not in '┌──────────...─────────┘\n'
+E         
+E         '明天开盘买' is contained here:
+E           了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │
+E         ?           +++++
+E           │ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │
+E           │ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                               │
+E           │ 决定性依据：策略理由                                                                                   ...
+E         
+E         ...Full output truncated (4 lines hidden), use '-vv' to show)
+
+plan\fusion\iteration9\acceptance_probes.py:231: AssertionError
+__ test_open_summary_does_not_promise_execution_without_eligibility[BLOCKED] __
+
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_ztnxces3/pytest/test_open_summary_does_not_pro1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024B95B64190>
+status = 'BLOCKED'
+
+    @pytest.mark.parametrize("status", ["UNKNOWN", "BLOCKED"])
+    def test_open_summary_does_not_promise_execution_without_eligibility(tmp_path, monkeypatch, status):
+        import io
+        from rich.console import Console
+        import test_m0_account_terminal as m0
+        from src.core import analysis_service as analysis
+        from src.data.models import DecisionResult, MarketState, SignalType
+        from src.core.decision_contract import ExecutionStatus
+        o0._isolate(tmp_path, monkeypatch)
+        stream = io.StringIO()
+        monkeypatch.setattr(o0.cli_main, "console", Console(file=stream, width=180, force_terminal=False))
+        monkeypatch.setattr(o0.cli_main, "_cached_benzong_brief", lambda code: None)
+        stock = o0._stub_market(o0.CODE)
+        dr = DecisionResult(stock=stock, state=MarketState.TRANSITION, decision=SignalType.BUY, score=.6)
+        sd = m0._sd("OPEN", .2, decision="BUY")
+        ee = m0._eval(blocked=status == "BLOCKED", reason="fixture blocked" if status == "BLOCKED" else "")
+        ee.execution_status = ExecutionStatus(status)
+        ee.effective_action = sd.position_action
+        ctx = m0._ctx(state="NONE", weight=0.0, version="fixture")
+        packet = analysis.build_decision_packet(dr, sd, ee, confirmed_ratio=ctx.confirmed_weight,
+            position_state=ctx.position_state, account_version=ctx.account_version)
+        assert packet.executable_action is None
+        o0.cli_main._print_plain_summary(dr, sd, stock, account_context=ctx, execution_eval=ee)
+        output = stream.getvalue()
+        emit("L_open_qualification", status=status, desired=packet.desired_action.value, output=output)
+>       assert "明天开盘买" not in output and "条件凑齐了" not in output
+E       AssertionError: assert ('明天开盘买' not in '┌──────────...─────────┘\n'
+E         
+E         '明天开盘买' is contained here:
+E           了）。要操作就按纪律明天开盘买，别一次打满。                                                                                                       │
+E         ?           +++++
+E           │ 当前阶段：上升趋势中（走势健康）                                                                                                                                                 │
+E           │ 笨总评分：今日未评（跑 bz <代码> 可评，约30-60秒）                                                                                                                               │
+E           │ 决定性依据：策略理由                                                                                   ...
+E         
+E         ...Full output truncated (3 lines hidden), use '-vv' to show)
+
+plan\fusion\iteration9\acceptance_probes.py:231: AssertionError
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_partial_positive_ratio_does_not_confirm_weight
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_failed_snapshot_zero_ratio_is_not_proven_empty
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_bad_projection_keeps_independent_ledger_state_reachable
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_failed_request_shadow_does_not_retry_account_version
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_chat_uses_normalized_shared_collection
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_chat_does_not_present_unknown_weight_as_confirmed
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_open_summary_does_not_promise_execution_without_eligibility[UNKNOWN]
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_open_summary_does_not_promise_execution_without_eligibility[BLOCKED]
+8 failed, 7 passed in 16.75s
+BLOCKED_IO_ATTEMPTS {'network': 235, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+ARCHITECT_RETURNCODE=1
+
+=== ARCHITECT L SOURCE SEMANTICS 2026-10-13 THREE ADDITIONAL SCENARIOS ===
+R15_RESULT {"case": "L_take_profit_suppression", "decision": "HOLD", "strength": {"BUY": 0.6, "HOLD": 0.0, "SELL": 0.0, "WATCH": 0.0}, "override": "take_profit", "action": "ADD", "target": 0.3}
+FR15_RESULT {"case": "L_unaccepted_exit_hints", "warnings": ["市场多空分歧，趋势不明，建议轻仓观望", "触发止损条件，止损只上移不下移，别让希望绑架决策", "触发止盈条件，分批止盈落袋为安"]}
+FR15_RESULT {"case": "L_risk_status", "clean": "COMPLETE", "with_risk": "INCOMPLETE"}
+F
+================================== FAILURES ===================================
+____ test_take_profit_suppression_is_not_reopened_by_position_calculation _____
+
+    def test_take_profit_suppression_is_not_reopened_by_position_calculation():
+        import test_s2a_aggregation as s2a
+        from src.core.decision_engine import DecisionEngine
+        from src.core.strategy_layer import StrategyLayer
+        from src.data.models import MarketState, SignalType, SkillSignal, StrategyState
+        stock = s2a._sd()
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        votes.append(SkillSignal(skill_name="take_profit", skill_alias="take_profit", signal=SignalType.SELL,
+                                confidence=.8, skill_type="action", reason=["fixture protection"]))
+        dr = DecisionEngine().make_decision(stock, votes, state=MarketState.TRANSITION,
+            current_position_ratio=.1, expected_base=dict(s2a.FOUR),
+            rule_versions={name: "rv0" for name in s2a.FOUR}, evaluation_as_of="2026-10-09")
+        assert dr.decision == SignalType.HOLD, "Fixture must reach accepted take-profit suppression"
+        action, target = StrategyLayer()._calculate_position(dr.decision, dr.state, dr,
+            StrategyState(current_position_ratio=.1))
+        emit("L_take_profit_suppression", decision=dr.decision, strength=dr.action_strength,
+             override=dr.action_override_signal_id, action=action, target=target)
+>       assert action.value not in ("OPEN", "ADD"), "Suppressed risk increase cannot reopen downstream"
+E       AssertionError: Suppressed risk increase cannot reopen downstream
+E       assert 'ADD' not in ('OPEN', 'ADD')
+E        +  where 'ADD' = <PositionAction.ADD: 'ADD'>.value
+
+plan\fusion\iteration9\acceptance_probes.py:251: AssertionError
+______ test_weak_method_stop_and_profit_do_not_claim_authorized_trigger _______
+
+    def test_weak_method_stop_and_profit_do_not_claim_authorized_trigger():
+        from src.core.decision_engine import DecisionEngine
+        from src.data.models import MarketState, SkillSignal, SignalType
+        stock = o0._stub_market(o0.CODE)
+        hints = [SkillSignal(skill_name=name, skill_alias=name, signal=SignalType.SELL, confidence=.1,
+                            skill_type="base") for name in ("stop_loss", "take_profit")]
+        warnings = DecisionEngine()._generate_warnings(stock, hints, MarketState.TRANSITION)
+        emit("L_unaccepted_exit_hints", warnings=warnings)
+>       assert not any("触发止损条件" in x or "触发止盈条件" in x for x in warnings)
+E       assert not True
+E        +  where True = any(<generator object test_weak_method_stop_and_profit_do_not_claim_authorized_trigger.<locals>.<genexpr> at 0x0000019513CA7D30>)
+
+plan\fusion\iteration9\acceptance_probes.py:262: AssertionError
+________ test_market_risk_warning_alone_does_not_mean_missing_research ________
+
+    def test_market_risk_warning_alone_does_not_mean_missing_research():
+        import test_m0_account_terminal as m0
+        from src.core import analysis_service as analysis
+        from src.data.models import DecisionResult, MarketState, SignalType
+        stock = o0._stub_market(o0.CODE)
+        sd = m0._sd("HOLD_POSITION", .1)
+        dr = DecisionResult(stock=stock, state=MarketState.TRANSITION, decision=SignalType.HOLD, score=.5)
+        kwargs = dict(confirmed_ratio=.1, position_state="HELD", account_version="fixture")
+        clean = analysis.build_decision_packet(dr, sd, m0._eval(), **kwargs)
+        dr.warnings = ["均线空头排列，中期趋势向下，突破信号不可靠"]
+        with_risk = analysis.build_decision_packet(dr, sd, m0._eval(), **kwargs)
+        emit("L_risk_status", clean=clean.research_status, with_risk=with_risk.research_status)
+>       assert with_risk.research_status == clean.research_status
+E       AssertionError: assert <ResearchStat... 'INCOMPLETE'> == <ResearchStat...E: 'COMPLETE'>
+E         
+E         - COMPLETE
+E         + INCOMPLETE
+E         ? ++
+
+plan\fusion\iteration9\acceptance_probes.py:277: AssertionError
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_take_profit_suppression_is_not_reopened_by_position_calculation
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_weak_method_stop_and_profit_do_not_claim_authorized_trigger
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_market_risk_warning_alone_does_not_mean_missing_research
+3 failed in 6.41s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+ARCHITECT_RETURNCODE=1
+
+=== ARCHITECT TAKE-PROFIT PUBLIC STRATEGY REACHABILITY 2026-10-13 ===
+R15_RESULT {"case": "L_take_profit_public_strategy", "decision": "HOLD", "action": "ADD", "target": 0.3, "reasons": ["参数档[震荡档]: 止盈保留75% / 浮盈门槛10% / 趋势退出-2% / 强买上限30% / 普通信号", "策略层: 信号通过所有约束，维持原决策"]}
+F
+================================== FAILURES ===================================
+______ test_take_profit_suppression_public_strategy_stays_nonincreasing _______
+
+    def test_take_profit_suppression_public_strategy_stays_nonincreasing():
+        import test_s2a_aggregation as s2a
+        from src.core.decision_engine import DecisionEngine
+        from src.core.strategy_layer import StrategyLayer
+        from src.data.models import MarketState, SignalType, SkillSignal, StrategyState, TradeLifecycle
+        stock = s2a._sd()
+        votes = s2a._vote_signals([(f"slot{i}", SignalType.BUY, .6) for i in range(4)])
+        votes.append(SkillSignal(skill_name="take_profit", skill_alias="take_profit", signal=SignalType.SELL,
+                                confidence=.8, skill_type="action", reason=["fixture protection"]))
+        dr = DecisionEngine().make_decision(stock, votes, state=MarketState.TRANSITION,
+            current_position_ratio=.1, expected_base=dict(s2a.FOUR),
+            rule_versions={name: "rv0" for name in s2a.FOUR}, evaluation_as_of="2026-10-09")
+        assert dr.decision == SignalType.HOLD
+        state = StrategyState(current_position_ratio=.1, lifecycle=TradeLifecycle.HOLD,
+                              entry_price=stock.price, entry_date="2026-10-01")
+        result = StrategyLayer().process(dr, state, stock, current_date="2026-10-09")
+        emit("L_take_profit_public_strategy", decision=dr.decision,
+             action=result.position_action, target=result.position_ratio, reasons=result.strategy_reasons)
+>       assert result.position_action.value not in ("OPEN", "ADD")
+E       AssertionError: assert 'ADD' not in ('OPEN', 'ADD')
+E        +  where 'ADD' = <PositionAction.ADD: 'ADD'>.value
+E        +    where <PositionAction.ADD: 'ADD'> = StrategyDecision(decision=<SignalType.HOLD: 'HOLD'>, position_action=<PositionAction.ADD: 'ADD'>, action_semantic='ADD...ns=['参数档[震荡档]: 止盈保留75% / 浮盈门槛10% / 趋势退出-2% / 强买上限30% / 普通信号', '策略层: 信号通过所有约束，维持原决策'], entry_exit=None, divergence=None).position_action
+
+plan\fusion\iteration9\acceptance_probes.py:298: AssertionError
+=========================== short test summary info ===========================
+FAILED plan/fusion/iteration9/acceptance_probes.py::test_take_profit_suppression_public_strategy_stays_nonincreasing
+1 failed in 3.87s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+ARCHITECT_RETURNCODE=1

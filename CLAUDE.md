@@ -84,19 +84,16 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 
 ## Context Management & Memory
 
-- **Context reset > compression.** When a long task nears the limit, write a handoff doc and start a fresh session rather than compressing in place.
-- **Read order at session start:** [AGENTS.md](AGENTS.md) → [ISSUES.md](ISSUES.md) → latest `docs/*_交接.md` → `git log --oneline -10`.
+- **Reuse the existing handoff.** Before a context reset, update `plan/fusion/RESUME.md`; do not create another per-session handoff or duplicate archive.
+- **Read order at session start:** [AGENTS.md](AGENTS.md) → [MILESTONES.md](MILESTONES.md) → [STATUS](plan/fusion/STATUS.md) → [RESUME](plan/fusion/RESUME.md) → the current acceptance/plan and Git worktree. `ISSUES.md` provides issue detail; old handoffs are historical evidence only.
 - Auto-memory (`~/.claude/projects/.../memory/`) is injected automatically; consult `MEMORY.md` for user preferences and project direction — no need to read memory files manually.
 - When a lesson, constraint, or decision matters for future work, persist it as a memory file (one fact per file, with frontmatter) and add a one-line pointer in `MEMORY.md`. Record the root cause, the fix, and the guardrail that prevents recurrence — do not repeat the same mistake.
 - Revisit the current plan before making changes so prior decisions are not lost. Use the `neat-freak` skill to sync docs and memory at phase transitions or session end, preventing knowledge rot.
 
 ## Subagent Usage
 
-- **Code location / broad search:** Explore (read-only, fast).
-- **New features / refactor landing:** code-developer.
-- **PR gatekeeping / finding issues:** code-reviewer (read-only).
-- **Architecture design:** code-architect or Plan.
-- Prefer subagents for independent subtasks to protect the main context window. Run independent searches as parallel Agent calls in a single message.
+- The user requests proactive delegation: before substantive work, identify bounded independent tasks that reduce the parent context or provide necessary verification, and dispatch the minimum useful set without waiting for another reminder. Keep short/dependent steps in the parent.
+- Follow [AGENTS.md](AGENTS.md) and [agent-routing](docs/agent-routing.md), using roles and model IDs supported by this client; Codex model IDs are not Claude aliases. Assign file ownership, preserve others' work and verify actual model metadata rather than an agent's self-report. No recursive delegation or duplicate reviewers.
 
 ## Quality Bar
 

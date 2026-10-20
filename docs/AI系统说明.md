@@ -197,12 +197,14 @@ AI调节层和事件层都通过**三层调节机制**影响系统，这是AI对
 
 ### Layer 1：信号调节（Signal Adjustment）
 
-**作用**：调节买入信号的强度（buy_score）
+**作用**：生成综合展示分的软调节值；普通动作授权仍读取具名动作强度A。
+
+以下为默认权重、无叙事加强时的展示分调节：
 
 | 情况 | 公式 | 效果 | 最大影响 |
 |------|------|------|---------|
-| bearish + confidence>0.3 | `buy_score *= (1 - confidence × sentiment_weight)` | 压制买入信号 | score最多削弱30% |
-| bullish + confidence>0.5 | `buy_score *= (1 + confidence × sentiment_weight × 0.3)` | 轻微增强买入 | score最多增强9% |
+| bearish + confidence>0.3 | `score_adjustment = -confidence × sentiment_weight` | 降低综合展示分 | 最多减0.30 |
+| bullish + confidence>0.5 | `score_adjustment = confidence × sentiment_weight × 0.3` | 提高综合展示分 | 最多加0.09 |
 | neutral | 不调节 | 无影响 | 0% |
 
 **关键设计**：
@@ -210,41 +212,33 @@ AI调节层和事件层都通过**三层调节机制**影响系统，这是AI对
 - **bullish需要更高置信度(>0.5)才触发**，bearish只需>0.3，防止AI过度乐观
 - 叙事转变(narrative_shift)会额外放大1.5倍调节力度
 
-### Layer 2：仓位调节（Position Cap）
+### Layer 2：新增风险软上限（Position Cap）
 
-**作用**：限制最大仓位比例
+**作用**：按置信度限制新增仓位，不把AI风险标签当成硬清仓依据。
 
-| 风险等级 | 仓位上限 | 效果 |
-|---------|---------|------|
-| low | 100%（不限制） | 无影响 |
-| medium | 85% | 轻微限制 |
-| high | 70% | 显著限制 |
+| 风险等级 | 软上限（c=confidence，默认risk_position_cap=0.7） |
+|---------|---------|
+| low | 1.0 |
+| medium | `1 - 0.15*c` |
+| high | `1 - 0.30*c` |
 
-**关键设计**：
-- 仓位调节**只降不升**，AI永远不会建议加大仓位
-- 叙事转变时仓位上限再打85折（high risk → 70% × 85% ≈ 60%）
+叙事转变且c>0.5时，软上限再乘0.85。上限在策略结果后只限制新增：`delta=max(0,min(target,cap)-current)`；零增量转HOLD，REDUCE不参与，当前仓位未知不伪造增量。它不是对已有仓位直接打折。
 
-### Layer 3：状态干预（State Override）
+### Layer 3：黑天鹅候选的软调节
 
-**作用**：在极端情况下强制改变市场状态
+AI的`black_swan`标签只作待核验研究提醒，不强制PANIC、不产生专属30%硬上限。其`score_adjustment=-0.5*c`，叙事转变且c>0.5时再乘1.5；c=0时没有数值效果。市场状态及合法独立止损/ST/期限保护仍由各自规则决定。
 
-| 触发条件 | 强制状态 | 仓位上限 | 信号压制 |
-|---------|---------|---------|---------|
-| black_swan事件 | PANIC | 30% | -0.5（强力压制买入） |
+### 调节示例
 
-**关键设计**：
-- 状态干预**仅限黑天鹅事件**，是AI最激进的干预手段
-- PANIC状态下：SELL门槛降至0.20，仓位上限0%，极端行情"先跑再说"
-- 即使是黑天鹅，也只是改变市场状态，**不直接执行卖出**——最终的交易执行仍需人工确认
+以下均无叙事加强；调节值加到综合展示分，clamp到[0,1]。默认方向感知阻止负调节削弱SELL，普通新增授权仍读A，AI加分不能制造基础买入资格。
 
-### 三层调节的累积效果示例
-
-| 场景 | 信号调节 | 仓位调节 | 状态干预 | 综合效果 |
-|------|---------|---------|---------|---------|
-| 利空消息（bearish, conf=0.6, medium risk） | score×0.82 | cap=85% | 无 | 温和偏空 |
-| 地缘风险（bearish, conf=0.8, high risk） | score×0.76 | cap=70% | 无 | 显著偏空 |
-| 黑天鹅（black_swan, conf=0.9） | score×0.50 | cap=30% | →PANIC | 极端防御 |
-| 利好消息（bullish, conf=0.7, low risk） | score×1.06 | cap=100% | 无 | 温和偏多 |
+| 场景 | score_adjustment | 新增软上限 | 状态 |
+|------|---------|---------|---------|
+| bearish，c=0.6，medium risk | -0.18 | 0.91 | 不由标签强制改变 |
+| bearish，c=0.8，high risk | -0.24 | 0.76 | 同上 |
+| black_swan，c=0.9，low risk | -0.45 | 1.0 | 同上 |
+| bullish，c=0.7，low risk | +0.063 | 1.0 | 同上 |
+| black_swan，c=0 | 0 | 1.0 | 同上 |
 
 ---
 
@@ -419,7 +413,7 @@ Chat模式**不是**CLI的替代品，而是**补充**：
 │ 5. Strategy Layer（策略层）                                                │
 │    交易生命周期 + 惯性 + 确认 + 冷却 + 反转成本 + 仓位管理                   │
 │    ✅ 纯规则驱动，AI不参与                                                  │
-│    ⚠️ 接受AI的调节参数（score_adjustment/position_cap/force_state）          │
+│    ⚠️ 接受AI的调节参数（综合展示分/新增风险软上限）          │
 ├────────────────────────────────────────────────────────────────────────────┤
 │ 6. Execution Layer（执行层）                                               │
 │    波动率滑点 + 流动性 + 涨跌停 + 冲击成本                                  │
@@ -469,7 +463,7 @@ Chat模式**不是**CLI的替代品，而是**补充**：
 | 参数 | 配置位置 | 默认值 | 说明 |
 |------|---------|--------|------|
 | `ai.modifier.sentiment_weight` | settings.yaml | 0.3 | 情绪调节力度（越大→AI对信号影响越大） |
-| `ai.modifier.risk_position_cap` | settings.yaml | 0.7 | 高风险时仓位上限（0.7=打7折） |
+| `ai.modifier.risk_position_cap` | settings.yaml | 0.7 | 高风险新增软上限的满置信度端点（按confidence缩放） |
 | `ai.modifier.max_news_per_stock` | settings.yaml | 10 | 每只股票最多抓取新闻条数 |
 | `ai.modifier.cache_ttl` | settings.yaml | 3600 | 新闻缓存时间（秒） |
 | `ranking.weights.sentiment` | settings.yaml | 0.20 | 排名中AI情绪维度权重 |
@@ -560,11 +554,11 @@ AI完全可用
 
 | 场景 | 信号 | 仓位 | 状态 | 排名 |
 |------|------|------|------|------|
-| AI正常 | 可能被bearish削弱 | 可能被high risk限制 | 黑天鹅→PANIC | 4维评分 |
+| AI正常 | 可能被bearish削弱 | 可能被high risk限制 | 黑天鹅仅研究提醒 | 4维评分 |
 | AI降级 | 不受影响（纯技术面） | 不受限制 | 不被AI干预 | 3维评分（情绪=50） |
 | AI禁用 | 同上 | 同上 | 同上 | 3维评分（情绪=0权重） |
 
-> 💡 **关键理解**：AI降级/禁用 = 回退到v0.7.3的纯技术面系统。所有v0.7.3及之前的功能不受影响。
+> AI降级/禁用时跳过该软调节；当前固定分母、数据资格与独立硬保护仍保持。
 
 ---
 
@@ -577,7 +571,7 @@ AI完全可用
 | **新闻延迟** | 新闻抓取有缓存（个股同会话、宏观1小时），突发事件可能延迟 | 关注CLI中新闻数量和时间戳 |
 | **情绪误判** | AI可能将中性新闻判为bearish（或反之） | 调低sentiment_weight或用--no-ai对比 |
 | **置信度偏差** | AI可能对不确定事件给出过高置信度 | 系统对bullish需更高置信度(>0.5)才触发 |
-| **黑天鹅误报** | AI可能将正常波动标记为black_swan | 黑天鹅需同时满足关键词+AI+impact=5，三重确认 |
+| **黑天鹅误报** | AI可能将正常波动标记为black_swan | 候选标签不授予硬动作；需人工复核原件与主体/时点 |
 | **信息不完整** | AI仅看新闻文本，不理解技术面（指标/形态/量价） | TD-5已知技术债，后续版本改进 |
 | **API不稳定** | DeepSeek/Kimi API偶尔超时或返回空 | 自动降级为neutral，不中断分析 |
 
@@ -626,7 +620,7 @@ ai:
     model_pro: "kimi-k2.6"
   modifier:
     sentiment_weight: 0.3          # 情绪调节力度 (0-1, 推荐0.1-0.5)
-    risk_position_cap: 0.7         # 高风险仓位上限 (0-1)
+    risk_position_cap: 0.7         # 高风险新增软上限的满置信度端点
     max_news_per_stock: 10         # 每股最多新闻数
     cache_ttl: 3600                # 新闻缓存(秒)
 

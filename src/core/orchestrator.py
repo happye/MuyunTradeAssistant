@@ -193,6 +193,18 @@ class Orchestrator:
         开关：settings.yaml ai.direction_aware_adjustment（默认开；false=回 legacy 口径，
         供 A/B 对照——TASKS F2"改变行为的部分要A/B，不能混同等价适配"）。
         """
+        from src.data.models import DecisionTrace
+        blocked_adjustment = self.direction_aware_ai and decision_result.decision == SignalType.SELL and adjustment < 0
+        before = decision_result.score
+        after = before if blocked_adjustment else max(0.0, min(1.0, before + adjustment))
+        trace = getattr(decision_result, "trace", None)
+        if isinstance(trace, list):
+            decision_result.trace.append(DecisionTrace(step="信号作用留痕", description="综合展示分调节，不授予普通票买卖资格",
+                data={"signal_id": "modifier.ai.score" if source == "AI Modifier" else "modifier.event.score",
+                      "source": source, "security": getattr(getattr(decision_result, "stock", None), "stock_code", None),
+                      "evidence_as_of": None, "data_quality": "UNKNOWN", "verified": False,
+                      "action_scope": "display_score_only", "strategy_binding": "iss117-s3-v1",
+                      "before": before, "after": after, "applied": not blocked_adjustment}))
         if (self.direction_aware_ai
                 and decision_result.decision == SignalType.SELL
                 and adjustment < 0):
@@ -305,6 +317,7 @@ class Orchestrator:
             evaluation_as_of=_eval_asof,
             expected_regulators=expected_regulators,
             regulator_rule_versions=regulator_rule_versions,
+            evidence_resolver=getattr(self, "signal_evidence_resolver", None),
         )
         logger.info(f"Decision aggregate: {decision_result.decision} (score: {decision_result.score})")
 
@@ -370,7 +383,7 @@ class Orchestrator:
                 # 此处不再 min 现有仓位（HOLD+ADD/BUY+ADD/REDUCE 各方向语义见 :585）
 
                 # 应用状态干预
-                if ai_result.force_state:
+                if ai_result.force_state and ai_result.force_state.upper() in {"RISK_ON", "RISK_OFF", "TRANSITION"}:
                     force_state = ai_result.force_state
                     from src.data.models import MarketState
                     state = MarketState[force_state.upper()]
@@ -490,6 +503,7 @@ class Orchestrator:
         # ISS-117 S0：check_top_signals 返回 list[SignalFinding]——按 action_scope 分流：
         # exit（仅三倍定律等既有纪律）→ 强制清仓（P1 不变）；research → warnings（不清仓）。
         top_signal = None
+        _hard, _rejected = [], []
         if has_position:
             _findings = []
             try:
@@ -531,8 +545,8 @@ class Orchestrator:
 
         # v0.8.28.1（架构师裁决 2026-10-08）：渗透率 30+ 标注降级为研究提醒——
         # 不触发清仓，与强制退出原因分开展示（提醒进 warnings/风险提示）。
-        # 详见 docs/2026-10-08_决策简报_渗透率30+_误触发强制清仓.md。
-        if has_position and not top_signal:
+        # 详见 plan/fusion/signal_authority_review/IMPLEMENTATION_REPORT.md。
+        if has_position:
             try:
                 from src.core.exit_signals.sector import penetration_research_reminder
                 _reminder = penetration_research_reminder(trade_plan)
@@ -583,6 +597,38 @@ class Orchestrator:
         if entry_exit_result:
             strategy_decision.entry_exit = entry_exit_result.model_dump()
 
+        from src.data.models import SignalFinding
+        strategy_decision.analysis_as_of = _eval_asof
+        strategy_decision.signal_findings = list(_hard) + list(_rejected) + list(f_research or [])
+        a = decision_result.action_strength
+        if a and self.decision_engine._determine_final_signal({SignalType(k): v for k, v in a.items()}, state) == SignalType.SELL:
+            strategy_decision.signal_findings.append(SignalFinding(signal_id="technical.base_sell",
+                source="registered technical predicates/fixed-denominator votes",
+                securities=[data.stock_code], as_of=_eval_asof, data_quality="OK", verified=True,
+                action_scope="reduce", strategy_binding="accepted-base-vote-v1",
+                detail="合格普通技术卖出意见", reason=f"A_SELL={a.get('SELL', 0)}；不冒充硬退出"))
+        if f_hard:
+            strategy_decision.signal_findings.append(SignalFinding(
+                signal_id="exit.policy.st", source="stock_name/ST exclusion policy",
+                securities=[data.stock_code], as_of=_eval_asof, data_quality="OK",
+                action_scope="exit", verified=True, strategy_binding="accepted-st-policy-v1",
+                detail=f_hard, reason="确定的ST排除政策；预告和标题不进入此通道"))
+        if decision_result.action_override_signal_id:
+            selected = decision_result.action_override_signal_id
+            strategy_decision.signal_findings.append(SignalFinding(
+                signal_id="discipline." + selected, source="local_skill_engine",
+                securities=[data.stock_code], as_of=_eval_asof, data_quality="OK",
+                action_scope="exit" if strategy_decision.position_action == PositionAction.CLOSE_ALL else "reduce",
+                verified=True, strategy_binding="accepted-local-discipline-v1",
+                detail=selected, reason=f"实际选中独立纪律，强度={decision_result.action_override_confidence}"))
+        if entry_exit_result and entry_exit_result.exit_triggered:
+            strategy_decision.signal_findings.append(SignalFinding(
+                signal_id="technical." + str(entry_exit_result.exit_type), source="entry_exit_calculator",
+                securities=[data.stock_code], as_of=_eval_asof, data_quality="OK",
+                action_scope="exit" if entry_exit_result.override_action in ("EXIT", "STOP") else "reduce",
+                verified=True, strategy_binding="accepted-entry-exit-v1",
+                detail=entry_exit_result.exit_reason or "技术退出", reason="既有技术谓词触发"))
+
         # 跳法A 阶段2: 把大顶信号标到策略决策上，让 PlanGuard 按 P1 不可压处理
         if top_signal:
             strategy_decision.top_signal = top_signal
@@ -610,6 +656,8 @@ class Orchestrator:
                 strategy_decision.decision = SignalType.SELL
                 strategy_decision.strategy_reasons.insert(0, f"force_exit 救回: {entry_exit_result.exit_type}（覆盖 strategy_layer 降级）")
             strategy_decision.position_action = PositionAction.CLOSE_ALL
+            strategy_decision.decision_basis = [
+                f"已采用技术退出保护: {entry_exit_result.exit_type}；{entry_exit_result.exit_reason}"]
             # ISS-078：sell_path 残留 weak_sell 时必须覆写为 trend_exit——weak_sell 会被
             # PlanGuard 规则1 在剑宗也压制（CLOSE_ALL+weak_sell 组合已加守卫，双保险），
             # 且标注语义错误：这是技术安全网触发的清仓，不是策略层的弱卖出减仓。
@@ -655,6 +703,14 @@ class Orchestrator:
                 _cap = min(_cap, event_ai_result.position_cap)   # 软上限取更严者
             _new_tgt, _demote, _skipped = _soft_cap_target(
                 current_position_ratio, strategy_decision.position_ratio, _cap)
+            from src.data.models import DecisionTrace
+            decision_result.trace.append(DecisionTrace(step="信号作用留痕", description="仅限制新增风险；不减已有持仓",
+                data={"signal_id": "modifier.incremental_risk_cap", "source": "AI/event modifiers",
+                      "security": data.stock_code, "evidence_as_of": None, "data_quality": "UNKNOWN",
+                      "verified": False, "strategy_binding": "iss117-s3-v1",
+                      "action_scope": "limit_increment_only", "current": current_position_ratio,
+                      "before": strategy_decision.position_ratio, "after": _new_tgt,
+                      "cap": _cap, "applied": not _skipped, "rule": "max(0,min(target,cap)-current)"}))
             if _skipped and current_position_ratio is None:
                 decision_result.warnings.append(
                     "当前权重未知：AI/事件软上限未应用（不伪造增量），目标仓位保留待人工核对")
@@ -689,7 +745,8 @@ class Orchestrator:
             volume_ratio = data.volume / data.avg_volume_20
 
         execution_eval = self.execution_layer.evaluate(
-            data, strategy_decision.position_action, volume_ratio
+            data, strategy_decision.position_action, volume_ratio,
+            simulated=is_backtest, analysis_as_of=_eval_asof
         )
         if execution_eval.blocked:
             logger.info(f"Execution blocked: {execution_eval.block_reason}")

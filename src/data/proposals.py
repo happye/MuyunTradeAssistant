@@ -73,6 +73,7 @@ class Proposal(BaseModel):
     stock_name: str = ""
     created_at: str = Field(default_factory=lambda: datetime.now().isoformat(timespec="seconds"))
     source: str = ""                       # 触发来源：l / la / chat / web / tui
+    authority_protocol: Optional[str] = None  # None=历史建议未记录本协议，不补造依据
     position_action: str                   # OPEN/ADD/REDUCE/CLOSE_ALL（HOLD/STAY_OUT 不入账）
     action_semantic: Optional[str] = None
     sell_path: Optional[str] = None
@@ -237,9 +238,9 @@ class ProposalStore:
         now = datetime.now().isoformat(timespec="seconds")
         today = prop.created_at[:10]
         for old in self._proposals:
-            if old.status is not ProposalStatus.PROPOSED or old.stock_code != prop.stock_code:
+            if old.status not in (ProposalStatus.PROPOSED, ProposalStatus.PARTIAL) or old.stock_code != prop.stock_code:
                 continue
-            if old.position_action == prop.position_action and old.created_at[:10] == today:
+            if old.status == ProposalStatus.PROPOSED and old.position_action == prop.position_action and old.created_at[:10] == today and old.authority_protocol == prop.authority_protocol:
                 # 同日重复分析：幂等合并，保留原 proposal_id/created_at
                 old.target_ratio = prop.target_ratio
                 old.current_ratio = prop.current_ratio
@@ -255,6 +256,15 @@ class ProposalStore:
             old.note = "被新建议取代"
         self._proposals.append(prop)
         return prop
+
+    def expire_pending(self, stock_code, reason):
+        changed = False
+        for p in self.list_pending(stock_code):
+            p.status = ProposalStatus.EXPIRED
+            p.decided_at = datetime.now().isoformat(timespec="seconds")
+            p.note = reason
+            changed = True
+        return changed
 
     def get_pending(self, stock_code: str) -> Optional[Proposal]:
         """该股最新一条待办建议（PROPOSED 或 PARTIAL——部分成交的剩余待办仍可见）。"""

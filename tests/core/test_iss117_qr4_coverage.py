@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ISS-117 QR4 覆盖合同验收测试（v0.8.29.5，架构师 QR4_ACCEPTANCE.md）。
+"""ISS-117 QR4 覆盖合同验收测试（v0.8.29.5，冻结合同见 plan/fusion/signal_authority_review/S2_DESIGN.md）。
 
 固定验收矩阵 7 行 + 日历「生产→保存→读取→授权→最终 packet」全链 + Q-R1 行情
 主体证券独立核对：

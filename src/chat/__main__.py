@@ -20,7 +20,7 @@ def main():
 
     try:
         from src.chat.agent import run_chat_repl
-        from src.cli.main import load_config
+        from src.config import load_config
     except ImportError as e:
         print(f"\n  [!] Chat 依赖缺失: {e}")
         print("  [!] 请先安装依赖（事实源 requirements.txt）: pip install -r requirements.txt")

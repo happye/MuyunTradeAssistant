@@ -54,16 +54,30 @@ def _isolate_account_ledger(tmp_path, monkeypatch):
     yield
 
 
-def _dr(decision="HOLD", score=0.5, warnings=None):
+def _dr(decision="HOLD", score=0.5, warnings=None, data_gaps=()):
     return SimpleNamespace(
         decision=SimpleNamespace(value=decision), score=score,
         stock=SimpleNamespace(stock_code="601318"),
         warnings=warnings or [],
+        data_gaps=list(data_gaps) if data_gaps is not None else None,
     )
 
 
 def _sd(decision="HOLD", pos_action="HOLD_POSITION", ratio=0.0, sell_path=None):
+    from src.data.models import SignalFinding
+    from datetime import datetime
+    day = datetime.now().strftime("%Y-%m-%d")
+    facts = []
+    if sell_path in ("fundamental_alert", "top_signal", "trend_exit", "weak_sell"):
+        sid, binding = {"fundamental_alert": ("exit.policy.st", "accepted-st-policy-v1"),
+            "top_signal": ("exit.stock.triple_up", "jiaoxue6-8/mode-rule（既有周期策略纪律）"),
+            "trend_exit": ("technical.trend_break", "accepted-entry-exit-v1"),
+            "weak_sell": ("technical.base_sell", "accepted-base-vote-v1")}[sell_path]
+        facts = [SignalFinding(signal_id=sid, source="explicit qualified test evidence",
+            securities=["601318"], as_of=day, data_quality="OK", verified=True,
+            strategy_binding=binding, action_scope="exit" if sid.startswith("exit.") else "reduce")]
     return StrategyDecision(
+        analysis_as_of=day, signal_findings=facts,
         decision=SignalType(decision),
         position_action=PositionAction(pos_action),
         position_ratio=ratio,
@@ -129,6 +143,7 @@ def test_hard_exit_maps_exit_in_both_horizons(tmp_path):
 def test_top_signal_is_hard_exit(tmp_path):
     rec = _capture(tmp_path, sd=_sd("SELL", "CLOSE_ALL", sell_path="top_signal"))
     assert rec.hard_exit is True
+    assert rec.execution_status == "UNKNOWN"  # No verified order facts, never action-name-as-permission.
     # legacy 已是退出族 → 无硬退出分歧；动作一致
     assert rec.fusion_mid_action == "EXIT"
     assert rec.delta_reasons == [REASON_AGREE]
@@ -165,7 +180,7 @@ def test_entry_condition_from_open_add(tmp_path):
 
 
 def test_research_gap_reason(tmp_path):
-    dr = _dr(warnings=["新闻获取失败"])
+    dr = _dr(warnings=["新闻获取失败"], data_gaps=["新闻获取失败"])
     rec = _capture(tmp_path, dr=dr)
     assert rec.research_status == "INCOMPLETE"
     assert REASON_RESEARCH in rec.delta_reasons
@@ -260,14 +275,17 @@ def test_non_holding_skipped(tmp_path):
 
 
 def test_switch_read_failure_disables_capture(tmp_path, monkeypatch):
-    import src.cli.main as cli_main
+    import src.config as config_module
+    calls = []
     def _boom():
+        calls.append("config")
         raise RuntimeError("config broken")
-    monkeypatch.setattr(cli_main, "load_config", _boom)
+    monkeypatch.setattr(config_module, "load_config", _boom)
     rec = capture_shadow(_dr(), _sd(), _eval(), _pos(), packet=_packet(),
                          source="test", config=None,
                          store_path=tmp_path / "shadow.jsonl")
     assert rec is None
+    assert calls == ["config"]
     assert not (tmp_path / "shadow.jsonl").exists()
 
 

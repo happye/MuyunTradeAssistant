@@ -1,4 +1,4 @@
-"""TradePlan 子系统单元测试（v0.8.5 阶段 1.5）
+r"""TradePlan 子系统单元测试（v0.8.5 阶段 1.5）
 
 覆盖：
 - TradePlan Pydantic 序列化往返
@@ -256,8 +256,8 @@ def test_adjuster_max_hold_warning():
 
 
 def test_adjuster_invalidate():
-    sd = _sd(price=9.5, ma60=10.0)
-    plan = _make_plan()
+    sd = _sd(price=9.5, ma60=10.0, quote_as_of="2026-06-19")
+    plan = _make_plan(when_sell_invalidate=["跌破 MA60"])
     sugs = TradePlanAdjuster().suggest(plan, sd)
     inval = next((s for s in sugs if s["trigger"] == "invalidate_triggered"), None)
     assert inval is not None

@@ -305,19 +305,10 @@ def _analyze_stock_single(stock_code: str) -> str:
         acct_facts = None
         if pm:
             acct_facts = pm.request_account_facts()
-            positions = pm.list_positions()
-            for p in positions:
-                if _normalize_code(p.stock_code) == norm_code:
-                    pos = p
-                    acct_ctx = acct_facts.context_for(
-                        p.stock_code, price=getattr(stock_data, "price", None),
-                        price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
-                    break
-            if acct_ctx is None:
-                # 无投影记录——ctx 仍按账本事实装配（代码形态归一匹配投影键）
-                acct_ctx = acct_facts.context_for(
-                    norm_code, price=getattr(stock_data, "price", None),
-                    price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
+            pos = acct_facts.projection_for(norm_code)
+            acct_ctx = acct_facts.context_for(
+                norm_code, price=getattr(stock_data, "price", None),
+                price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
             # N0：ctx 是策略状态的事实源（投影旧比例不再二次判读）
             strategy_state = pm.to_strategy_state(
                 pos.stock_code if pos is not None else norm_code,
@@ -343,7 +334,7 @@ def _analyze_stock_single(stock_code: str) -> str:
             has_position=has_position,
             entry_price=pos.entry_price if pos else None,
             high_since_entry=pos.high_since_entry if pos else None,
-            trade_plan=pos.trade_plan if pos else None,  # PlanGuard 守卫
+            trade_plan=acct_ctx.trade_plan if acct_ctx is not None else None,
         )
 
         # v0.8.12: 观察池——WATCH 语义无持仓自动入池（与 CLI l 同一钩子；失败不影响分析）
@@ -399,7 +390,7 @@ def _analyze_stock_single(stock_code: str) -> str:
         from src.chat.formatter import format_analysis_result
         result = format_analysis_result(
             stock_data, decision_result, strategy_decision,
-            execution_eval, ai_result
+            execution_eval, ai_result, packet=_packet
         )
         # M1/N2（W2 用户收益）：降级行情如实说明来源时点（chat 与 l/la 同口径）
         if getattr(stock_data, "price_source", None) in ("baostock", "kline_only"):
@@ -417,7 +408,7 @@ def _analyze_stock_single(stock_code: str) -> str:
             # ISS-078 监督审查 P2：用 pos 的实际存储键（H05 规范化后匹配到的）查询
             # 与回写——AI 传 sh600519 式带前缀代码时 raw code 查询会误判"已被外部
             # 删除"，update 还会按 raw code 创建重复键
-            _key = pos.stock_code
+            _key = getattr(pos, "raw_storage_key", None) or pos.stock_code
             try:
                 # ISS-078：回写前重读一次并确认持仓仍在——分析期间用户可能在外部
                 # 编辑器改过 portfolio.yaml，陈旧 _data 整文件写回会静默回滚外部修改
@@ -522,17 +513,16 @@ def get_portfolio() -> str:
         # P1/Z3：所有路径读同一共享清单（holding_entries）——投影独有/账本独有/
         # 重叠混合不漏不重；投影细节保留，账本独有条目标注元数据缺口；
         # 清单不完整显式提示（不谎报空仓）
-        entries, incomplete = pm.request_account_facts().holding_entries()
+        facts = pm.request_account_facts()
+        entries, incomplete = facts.holding_entries()
         ledger_only = [e for e in entries if e.from_ledger]
-        try:
-            positions = pm.list_positions()
-        except Exception:
-            # Z2 同源：投影解码失败时投影明细不可用（entries 侧已空、incomplete=True）
-            positions = []
+        positions = [facts.projection_for(e.stock_code) for e in entries if not e.from_ledger]
+        positions = [p for p in positions if p is not None]
+        contexts = {p.stock_code: facts.context_for(p.stock_code) for p in positions}
 
         parts = []
         if positions:
-            parts.append(format_portfolio(positions))
+            parts.append(format_portfolio(positions, contexts=contexts))
         if ledger_only:
             seg = ["--- 事件账本独有持仓（投影记录缺失——成本/比例未知待对账） ---"]
             seg += [f"  {e.stock_code}" for e in ledger_only]
@@ -637,10 +627,8 @@ def _industry_account_view(pm):
     facts = pm.request_account_facts()
     entries, incomplete = facts.holding_entries()
     positions = []
-    notes = []
+    pending = []
     seen = set()
-    if incomplete or facts._read_failed:
-        notes.append("账户待核：清单不完整或读取未完成，不能据此称为空仓")
     for entry in entries:
         norm = _normalize_stock_code(entry.stock_code) or str(entry.stock_code)
         if norm in seen:
@@ -650,10 +638,34 @@ def _industry_account_view(pm):
         if ctx.position_state == POSITION_HELD:
             positions.append({"stock_code": norm, "current_ratio": ctx.confirmed_weight})
             if ctx.confirmed_weight is None:
-                notes.append(f"账户待核：{norm} 权重待核（{ctx.weight_reason}）")
+                pending.append((norm, "权重待核", str(ctx.weight_reason or "原因未记录")))
         elif ctx.position_state == POSITION_UNKNOWN:
-            notes.append(f"账户待核：{norm} {ctx.weight_reason}")
-    return positions, notes
+            pending.append((norm, "UNKNOWN", str(ctx.weight_reason or "原因未记录")))
+    if not pending and not incomplete and not facts._read_failed:
+        return positions, ""
+
+    # Put qualification and exact omission counts before the bounded industry text.
+    # Group identical reasons without losing which state/code each sample belongs to.
+    groups = {}
+    for _, _, reason in pending:
+        groups[reason] = groups.get(reason, 0) + 1
+    reason_ids = {reason: i + 1 for i, reason in enumerate(groups)}
+    sample = pending if len(pending) <= 6 else pending[:3] + pending[-3:]
+    unknown = sum(state == "UNKNOWN" for _, state, _ in pending)
+    lines = ["【账户待核】"]
+    if incomplete or facts._read_failed:
+        lines.append("清单不完整或读取未完成，不能据此称为空仓；以下数量仅限已读取条目")
+    lines.append(f"UNKNOWN {unknown}只；已确认持有但权重待核 {len(pending) - unknown}只；"
+                 f"待核明细展示{len(sample)}只，明细省略{len(pending) - len(sample)}只")
+    for reason, count in list(groups.items())[:4]:
+        short = reason[:160] + ("...(原因已截短)" if len(reason) > 160 else "")
+        lines.append(f"原因{reason_ids[reason]} ({count}只): {short}")
+    lines.append(f"不同原因共{len(groups)}类，原因省略{max(0, len(groups) - 4)}类")
+    for code, state, reason in sample:
+        lines.append(f"{code[:24]} {state} [原因{reason_ids[reason]}]")
+    lines.append("账户清单可在chat请求查看持仓 (get_portfolio)；长清单也可能截断，"
+                 "完整明细须核对原账户记录，未展示条目不得视为已核定。")
+    return positions, "\n".join(lines)
 
 
 def analyze_industry(industry: str) -> str:
@@ -667,22 +679,30 @@ def analyze_industry(industry: str) -> str:
     from src.data.industry_data import build_industry_report
 
     positions = []
-    notes = []
+    account_summary = ""
     try:
         pm = _portfolio_manager or PortfolioManager()
-        positions, notes = _industry_account_view(pm)
+        positions, account_summary = _industry_account_view(pm)
     except Exception as e:
         logger.error(f"analyze_industry账户装配失败: {e}")
-        notes = [f"账户待核：持仓装配失败（{e}），行业数据仍返回"]
+        detail = str(e)
+        detail = detail[:200] + ("...(原因已截短)" if len(detail) > 200 else "")
+        account_summary = ("【账户待核】\n清单不完整：持仓装配失败，持仓/UNKNOWN及遗漏数量无法核定，"
+                           f"不能据此称为空仓。原因: {detail}\n行业数据仍返回。")
     try:
         report = build_industry_report(industry, positions, scanner_engine=_scanner_engine)
     except Exception as e:
         logger.error(f"analyze_industry失败: {e}")
         report = f"{TOOL_ERROR_MARK}行业分析时出错: {e}"
-    if notes:
-        # 附在末尾：既有工具结果截断保留首尾时，账户待核不被切掉。
-        report += "\n\n【账户待核】\n" + "\n".join(notes)
-    return report
+    prefix = account_summary + "\n\n" if account_summary else ""
+    # Preserve the existing failure marker for ChatAgent's failure accounting.
+    if prefix and report.startswith(TOOL_ERROR_MARK):
+        prefix = TOOL_ERROR_MARK + "\n" + prefix
+    budget = min(3500, 4000 - len(prefix))
+    if len(report) > budget:
+        marker = "\n...(行业正文已截短)..."
+        report = report[:budget - len(marker)] + marker
+    return prefix + report
 
 
 def get_main_business(stock_code: str) -> str:

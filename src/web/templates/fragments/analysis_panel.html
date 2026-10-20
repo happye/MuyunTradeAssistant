@@ -3,6 +3,17 @@
 {% else %}
 <div class="p-4">
     <h3 class="text-lg font-bold mb-2">{{ stock_data.stock_name }} ({{ stock_data.stock_code }})</h3>
+    {% if account_context %}
+    <p class="text-sm mb-1">账户持仓: {{ account_context.position_state }}
+        （{{ {'HELD':'持仓','NONE':'已知无持仓','UNKNOWN':'持仓待核'}.get(account_context.position_state, '持仓待核') }}）
+        | 数量: {{ account_context.quantity if account_context.quantity is not none else '待核' }}
+        | 当前确认权重: {% if account_context.confirmed_weight is none %}权重待对账/待重估{% else %}{{ '%.1f'|format(account_context.confirmed_weight * 100) }}%{% endif %}
+    </p>
+    <p class="text-xs text-gray-600">{{ account_context.weight_reason }} | 账户版本: {{ account_context.account_version or '待核' }}</p>
+    {% endif %}
+    {% for warning in account_warnings %}
+    <p class="text-yellow-600 text-sm">{{ warning }}</p>
+    {% endfor %}
     <p class="text-sm mb-1">价:{{ stock_data.price }} 涨跌:{{ stock_data.change_pct }}%</p>
     <p class="text-sm mb-1">市场:{{ dr.state.value }} 决策:{{ dr.decision.value }} 评分:{{ "%.2f"|format(dr.score) }}</p>
     {% set pa = sd.position_action.value %}

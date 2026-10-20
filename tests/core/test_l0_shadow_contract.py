@@ -175,7 +175,7 @@ def test_v1_full_fields_eligible_and_real_sources(tmp_path):
     mb = rec.mid_binding
     assert mb["eligible"] is True and rec.mid_effective is True
     assert mb["quote_cutoff"] == QUOTE_OK
-    assert mb["evidence_cutoff"] == asm.evaluated_as_of.isoformat(timespec="seconds"), \
+    assert mb["evidence_cutoff"] == asm.evaluated_as_of.isoformat(), \
         "证据截止必须来自被消费评估（非捕获墙钟 as_of）"
     assert mb["evidence_cutoff"] != rec.as_of
     assert mb["decision_rule_version"] == f"{POLICY_ID_MID}@{DECISION_TABLE_VERSION}"

@@ -1,8 +1,8 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-> **当前入口（2026-10-02）：[长期里程碑](../../MILESTONES.md) → [状态](STATUS.md) → [恢复](RESUME.md) → [R15审批](iteration9/R15_ACCEPTANCE.md) → [第九轮P0/P1与M2设计](iteration9/DELIVERY_PLAN.md)。O1/O2接收、O0部分接收；K1未冻结，M2生产未放行。**
+> **当前入口（2026-10-16）：[里程碑](../../MILESTONES.md) → [状态](STATUS.md) → [恢复](RESUME.md) → [R15](iteration9/R15_ACCEPTANCE.md) → [第九轮计划](iteration9/DELIVERY_PLAN.md)。v0.8.38新增财务采集身份门限定接收，未发布；2844全量通过，v37及此前验收保留。接续G4真实现金/行业资格及安全材料进入通道；真实MID、G4整体与V1未完成，v15/capture_only/default不变。
 
-日期：2026-09-25｜研究初查：`449bbfb` / v0.8.17；恢复核对HEAD：`bdebf13`｜状态：**设计交付 → F0–F9 已全部实施 VERIFIED**（v0.8.20，1121 tests；实施状态与证据见 [EXECUTION_RECORD.md](EXECUTION_RECORD.md)；**致架构师汇报与下一轮设计议题见 [ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)**）。
+初始方案日期：2026-09-25。以下为融合目标与第一轮F0–F9的历史设计/交付背景，不能当作当前全部完成保证；当前实现、验收与未完成能力以上方入口为准。第一轮记录仍见[EXECUTION_RECORD.md](EXECUTION_RECORD.md)和[ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)。
 
 两提交间仅`start.py`帮助菜单变化，本轮所查核心源码一致；已保留该外部改动。后续执行仍须复核最新HEAD与工作区。
 

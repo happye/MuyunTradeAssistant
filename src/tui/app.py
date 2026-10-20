@@ -70,7 +70,7 @@ class MuyunTUI(App):
             from src.chat.tools import _orchestrator, _scanner_engine, init_engines
             from src.data.portfolio import PortfolioManager
 
-            from src.cli.main import load_config
+            from src.config import load_config
 
             self._config = load_config()
             init_engines(self._config)
@@ -95,10 +95,26 @@ class MuyunTUI(App):
         table = self.query_one("#scan-table", DataTable)
         table.clear()
         self.sub_title = "扫描中（全市场行情，约4分钟）..."
+        exclude = set()
+        account_note = ""
         try:
-            exclude = {p.stock_code for p in self._portfolio.list_positions()}
-        except Exception:
-            exclude = set()
+            facts = self._portfolio.request_account_facts()
+            entries, incomplete = facts.holding_entries()
+            exclude = {entry.stock_code for entry in entries}
+            account_note = f"已知账户清单排除 {len(exclude)} 只"
+            if incomplete:
+                account_note += "；清单可能不全，候选可能仍含已有持仓"
+                if facts.account_snapshot is None:
+                    account_note += "；账户快照不可用或持仓记录不完整，待对账"
+            details = [self._account_text(facts.context_for(entry.stock_code))
+                       for entry in entries]
+            details.extend(f"{code}: {reason}" for code, reason in facts.projection_gaps.items())
+            self.query_one("#analysis-panel", RichLog).write(
+                "\n".join([account_note] + details))
+        except Exception as e:
+            account_note = (f"账户清单读取失败: {e}；已知排除 {len(exclude)} 只；"
+                            "清单可能不全，候选可能仍含已有持仓")
+            self.query_one("#analysis-panel", RichLog).write(account_note)
         try:
             candidates, info = await asyncio.to_thread(
                 self._scanner.quick_scan,
@@ -107,10 +123,10 @@ class MuyunTUI(App):
                 exclude_codes=exclude,
             )
         except Exception as e:
-            self.sub_title = f"扫描失败: {e}"
+            self.sub_title = f"扫描失败: {e}；{account_note}"
             return
         if not candidates:
-            self.sub_title = f"无候选股（{info.get('error', '可能非交易时段')}"
+            self.sub_title = f"无候选股（{info.get('error', '可能非交易时段')}）；{account_note}"
             return
         for i, c in enumerate(candidates, 1):
             table.add_row(
@@ -123,7 +139,7 @@ class MuyunTUI(App):
                 f"{c.volume_ratio:.2f}" if c.volume_ratio else "-",
                 key=c.stock_code,
             )
-        self.sub_title = f"扫描完成 {len(candidates)} 只（↑↓选股 Enter分析 a加仓）"
+        self.sub_title = f"扫描完成 {len(candidates)} 只（↑↓选股 Enter分析 a加仓）；{account_note}"
 
     @work
     async def action_analyze(self) -> None:
@@ -178,46 +194,43 @@ class MuyunTUI(App):
                 )
         if not stock_data:
             return None
-        pos = None
-        strategy_state = None
-        acct_ctx = None
         try:
-            # N0（R13 X1 同类点）：ctx 装配不以投影存在为前置
             acct_facts = self._portfolio.request_account_facts()
             acct_ctx = acct_facts.context_for(
                 code, price=getattr(stock_data, "price", None),
                 price_as_of=(str(getattr(stock_data, "quote_as_of", "") or "") or None))
-            for p in self._portfolio.list_positions():
-                if p.stock_code == code:
-                    pos = p
-                    strategy_state = self._portfolio.to_strategy_state(
-                        code, price=getattr(stock_data, "price", None),
-                        price_as_of=getattr(stock_data, "quote_as_of", None),
-                        nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
-                        account_context=acct_ctx)
-                    break
-            if strategy_state is None:
-                strategy_state = self._portfolio.to_strategy_state(
-                    code, price=getattr(stock_data, "price", None),
-                    price_as_of=getattr(stock_data, "quote_as_of", None),
-                    nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
-                    account_context=acct_ctx)
+            _, incomplete = acct_facts.holding_entries()
         except Exception as e:
-            # ISS-078：持仓读取失败按空仓分析是 fail-open——至少要让用户知道
-            logger.warning(f"持仓读取失败，{code} 本次按空仓分析（建议稍后重跑）: {e}")
-        # N0：有仓判定 ctx 三态（HELD/UNKNOWN 保守 True；无投影账本有仓不漏）
-        has_position = (acct_ctx.position_state in ("HELD", "UNKNOWN")
-                        if acct_ctx is not None else False)
+            raise RuntimeError(f"账户资格不可核，本次未生成分析建议: {e}") from e
+        pos = acct_ctx.projection
+        account_note = self._account_text(acct_ctx, incomplete=incomplete)
+        if acct_facts.projection_gaps:
+            account_note += "\n" + "\n".join(
+                f"{key}: {reason}" for key, reason in acct_facts.projection_gaps.items())
+        try:
+            strategy_state = self._portfolio.to_strategy_state(
+                code, price=getattr(stock_data, "price", None),
+                price_as_of=getattr(stock_data, "quote_as_of", None),
+                nav=acct_facts.nav, nav_as_of=acct_facts.nav_day,
+                account_context=acct_ctx)
+        except Exception as e:
+            # 元数据故障不撤销同请求独立核定的账户事实与计划保护。
+            from src.data.models import StrategyState, TradeLifecycle
+            strategy_state = StrategyState(
+                lifecycle=(TradeLifecycle.OPEN if acct_ctx.position_state == "HELD"
+                           else TradeLifecycle.FLAT),
+                current_position_ratio=acct_ctx.confirmed_weight)
+            account_note += f"\n策略元数据读取失败，保留账户事实与独立计划: {e}"
+        has_position = acct_ctx.position_state in ("HELD", "UNKNOWN")
         dr, sd, ee, ai = self._orchestrator.analyze(
             stock_data,
-            current_position_ratio=(strategy_state.current_position_ratio
-                                    if strategy_state is not None else 0.0),
+            current_position_ratio=acct_ctx.confirmed_weight,
             strategy_state=strategy_state,
             ai_enabled=True,
             has_position=has_position,
             entry_price=pos.entry_price if pos else None,
             high_since_entry=pos.high_since_entry if pos else None,
-            trade_plan=pos.trade_plan if pos else None,
+            trade_plan=acct_ctx.trade_plan,
         )
         # v0.8.9.5（彻查批 A-4）：持仓股回写观察量（chat/CLI/web 同款行为平价）
         # F1（plan/fusion ADR-F03）：不再把建议当持仓回写；只写观察量+建议入账
@@ -225,13 +238,14 @@ class MuyunTUI(App):
             try:
                 # M5：保存失败如实告警（record_analysis_observation 返回 bool）
                 if not self._portfolio.record_analysis_observation(
-                        pos.stock_code, stock_data.stock_name or pos.stock_code, sd, stock_data):
+                        pos.raw_storage_key or pos.stock_code,
+                        stock_data.stock_name or pos.stock_code, sd, stock_data):
                     logger.warning(f"TUI 观察量未落盘({pos.stock_code}): 持仓文件被外部修改或写入失败")
-                self._portfolio.record_proposal(pos.stock_code,
+                self._portfolio.record_proposal(pos.raw_storage_key or pos.stock_code,
                                                 stock_data.stock_name or pos.stock_code, sd, source="tui")
             except Exception as e:
                 logger.warning(f"TUI 回写策略状态失败({pos.stock_code}): {e}")
-        return stock_data, dr, sd, ee, ai
+        return stock_data, dr, sd, ee, ai, account_note
 
     @work
     async def action_add_pos(self) -> None:
@@ -257,10 +271,21 @@ class MuyunTUI(App):
         except Exception as e:
             panel.write(f"[red]加仓失败: {e}[/red]")
 
-    def _render_analysis(self, stock_data, dr, sd, ee, ai) -> str:
+    @staticmethod
+    def _account_text(ctx, *, incomplete=False) -> str:
+        weight = ("权重待核" if ctx.confirmed_weight is None
+                  else f"确认权重:{ctx.confirmed_weight:.1%}")
+        text = f"{ctx.security_id} 账户状态:{ctx.position_state}；{weight}；{ctx.weight_reason}"
+        if incomplete:
+            text += "；清单可能不全，不能证明其他股票空仓"
+        return text
+
+    def _render_analysis(self, stock_data, dr, sd, ee, ai, account_note="") -> str:
         """渲染分析结果（结构化字段 -> 文本，不走 formatter）"""
         lines = []
         lines.append(f"=== {stock_data.stock_name} ({stock_data.stock_code}) ===")
+        if account_note:
+            lines.append(account_note)
         lines.append(f"价:{stock_data.price}  涨跌:{stock_data.change_pct}%")
         lines.append(f"市场:{dr.state.value}  决策:{dr.decision.value}  评分:{dr.score:.2f}")
         pos_map = {

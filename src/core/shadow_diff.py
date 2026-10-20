@@ -188,7 +188,7 @@ class ShadowDiffRecord(BaseModel):
     snapshot_id: str = Field(default="", description="计划所依据的证据快照 id（接受计划时）")
     account_version: str = Field(default="", description="账户账本内容版本（缺失=不进有效比较——J4 合同）")
     policy_version: str = Field(default="", description="计划生成方版本（J4 合同 policy 字段——去重拼接）")
-    execution_status: str = Field(default="", description="legacy 执行层 effective_action（J4 合同「执行状态」）")
+    execution_status: str = Field(default="", description="legacy 规范包执行资格（ExecutionStatus）")
     execution_blocked: bool = Field(default=False, description="执行被阻（跌停/停牌等——J4 合同「阻塞」）")
     blocking_gates: list[str] = Field(default_factory=list, description="捕获时点融合模式未达的发布门")
     input_fingerprint: str = Field(default="", description="同输入指纹（计划/账户/评估/快照——同输入重复不是独立观察）")
@@ -229,7 +229,7 @@ def _load_capture_switch(config: Optional[dict]) -> Optional["FusionModeResoluti
     返回 FusionModeResolution；关闭（legacy_only）/读取失败 → None（不捕获）。"""
     if config is None:
         try:
-            from src.cli.main import load_config
+            from src.config import load_config
             config = load_config()
         except Exception as e:  # 配置读取失败按关闭处理（不捕获数据），并如实留痕
             logger.warning(f"影子捕获开关读取失败，本次不捕获（不影响分析）: {e}")
@@ -244,15 +244,29 @@ def _load_capture_switch(config: Optional[dict]) -> Optional["FusionModeResoluti
 
 def _derive_facts(strategy_decision, packet) -> dict:
     """末端 legacy 结果 + 终态包 → HorizonFacts 字段（映射规则见模块 docstring v1）。"""
-    sell_path = getattr(strategy_decision, "sell_path", None)
+    findings = getattr(strategy_decision, "signal_findings", []) or []
+    security = getattr(packet, "security_id", None)
+    from src.core.source_time import parse_source_time
+    cutoff = parse_source_time(getattr(strategy_decision, "analysis_as_of", None))
+    accepted = [f for f in findings if f.verified and f.data_quality == "OK"
+                and f.action_scope in ("exit", "reduce") and security in f.securities
+                and parse_source_time(f.as_of) is not None and cutoff is not None
+                and parse_source_time(f.as_of)[0].date() <= cutoff[0].date()
+                and (not cutoff[1] or not parse_source_time(f.as_of)[1] or parse_source_time(f.as_of)[0] <= cutoff[0])
+                and f.strategy_binding]
     pos_action = getattr(strategy_decision, "position_action", None)
     pos_action_val = getattr(pos_action, "value", pos_action)
     return {
-        "hard_exit_triggered": sell_path in _HARD_EXIT_PATHS,
-        "technical_exit_triggered": sell_path in _TECHNICAL_EXIT_PATHS,
+        "hard_exit_triggered": any(f.action_scope == "exit" and (
+            (f.signal_id == "exit.stock.triple_up" and f.strategy_binding == "jiaoxue6-8/mode-rule（既有周期策略纪律）")
+            or (f.signal_id == "exit.policy.st" and f.strategy_binding == "accepted-st-policy-v1")
+            or (f.signal_id in {"exit.plan.price_stop", "exit.plan.time_stop"} and f.strategy_binding.startswith("plan:"))
+            or (f.signal_id == "discipline.stop_loss" and f.strategy_binding == "accepted-local-discipline-v1")) for f in accepted),
+        "technical_exit_triggered": any(f.signal_id.startswith("technical.") and f.strategy_binding in {"accepted-entry-exit-v1", "accepted-base-vote-v1"} for f in accepted),
         "entry_condition_met": pos_action_val in ("OPEN", "ADD"),
         "research_status": getattr(packet, "research_status", None),
         "thesis_status": None,  # v1 恒 UNESTABLISHED（不拿评分冒充逻辑）
+        "qualified_exit_ids": [f.signal_id for f in accepted if f.action_scope == "exit"],
         "budget_available": None,  # 组合预算未接——组合信息未知不给精确目标
     }
 
@@ -367,10 +381,12 @@ def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[b
 
     必要字段缺失 / 时点不可解析或在未来 / 版本缺失 / 两臂不完整 → (False, drops)。
     缺字段如实缺省先 diagnostic——不为凑有效样本伪造时点或版本。"""
-    if not binding:
+    if not isinstance(binding, dict) or not binding:
         return False, ["no_binding"]
     h = str(binding.get("horizon", "")).lower()
     drops: list[str] = []
+    if h not in ("mid", "long"):
+        drops.append("invalid_binding_horizon")
     # 必要字段 → 缺失原因码（沿用 v6 既有约定：no_accepted_ref_X/no_assessment_X/
     # no_snapshot_X/no_account_version；L0 新增版本与时点码）
     for key, code in (
@@ -401,12 +417,12 @@ def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[b
     # 不改写历史计划的 policy_version 原值——历史来源只降级不追认）
     try:
         from src.core.research_service import (
-            ASSERTION_METHOD_VERSION, RESEARCH_SERVICE_VERSION,
+            current_method_version, RESEARCH_SERVICE_VERSION,
         )
         from src.core.decision_policy import DECISION_TABLE_VERSION
         if str(binding.get("policy_version") or "") != RESEARCH_SERVICE_VERSION:
             drops.append(f"unsupported_policy_version_{h}")
-        if str(binding.get("method_version") or "") != ASSERTION_METHOD_VERSION:
+        if str(binding.get("method_version") or "") != current_method_version():
             drops.append(f"unsupported_method_version_{h}")
         expected_rule = (f"{binding.get('policy_id', '')}@{DECISION_TABLE_VERSION}")
         if str(binding.get("decision_rule_version") or "") != expected_rule:
@@ -416,8 +432,8 @@ def _binding_eligibility(binding: Optional[dict], *, as_of: datetime) -> tuple[b
         drops.append(f"unsupported_version_combo_{h}")
     arms = binding.get("arms") or {}
     for arm in ("legacy", "fusion"):
-        a = arms.get(arm) or {}
-        if not all(k in a for k in _ARM_FIELDS):
+        a = arms.get(arm) if isinstance(arms, dict) else None
+        if not isinstance(a, dict) or not all(k in a for k in _ARM_FIELDS):
             drops.append(f"{arm}_arm_incomplete_{h}")
     # 去重保序
     seen: set[str] = set()
@@ -558,8 +574,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     if account_context is not None:
         ctx_weight = getattr(account_context, "confirmed_weight", None)
         ctx_state = getattr(account_context, "position_state", None)
-        if not account_version:
-            account_version = str(getattr(account_context, "account_version", "") or "")
+        account_version = str(getattr(account_context, "account_version", "") or "")
     else:
         ctx_weight = getattr(pos, "current_ratio", None)
         ctx_state = None  # 旧调用方：决策表/适配器按 ratio 推导（兼容语义）
@@ -625,7 +640,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
 
     # J4 有效观察绑定信息：接受计划的 revision/评估引用/快照；账户版本缺失 →
     # 只记 diagnostic（不进有效比较分母——「缺账户…保留诊断但不进有效比较」）
-    if not account_version:
+    if account_context is None and not account_version:
         try:
             from src.data.account_service import DEFAULT_LEDGER_PATH, AccountService
             if DEFAULT_LEDGER_PATH.exists():
@@ -658,7 +673,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
     hf_kwargs = dict(
         research_status=facts["research_status"] or ResearchStatus.INCOMPLETE,
         hard_exit_triggered=facts["hard_exit_triggered"],
-        hard_exit_detail=f"sell_path={getattr(strategy_decision, 'sell_path', None)}",
+        hard_exit_detail=", ".join(facts["qualified_exit_ids"]),
         technical_exit_triggered=facts["technical_exit_triggered"],
         entry_condition_met=facts["entry_condition_met"],
         budget_available=None,
@@ -678,16 +693,19 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         per_horizon_thesis[horizon.value] = thesis_status.value
         hf["thesis_status"] = thesis_status
         plan = up if up is not None else _derive_shadow_plan(
-            horizon, security_id, as_of, trade_plan=getattr(pos, "trade_plan", None))
+            horizon, security_id, as_of,
+            trade_plan=(getattr(account_context, "trade_plan", None) if account_context is not None
+                        else getattr(pos, "trade_plan", None)))
         horizon_packets.append(
             evaluate_horizon(plan, HorizonFacts(**hf), security_id,
                              confirmed_ratio=confirmed_ratio,
                              position_state=ctx_state))
-    # 同向卖出若 legacy 包已 BLOCKED，fusion 臂不另造可执行资格。
+    # Decision-table permission is an intent, never a verified fill permission.
+    # All arms share this analysis's execution facts; different order sizes need rechecking.
     from src.core.decision_contract import ExecutionStatus, DesiredAction, DecisionPacket
     needs_order = {DesiredAction.OPEN, DesiredAction.ADD, DesiredAction.REDUCE, DesiredAction.EXIT}
 
-    def _order_side(action):
+    def side(action):
         return "BUY" if action in {DesiredAction.OPEN, DesiredAction.ADD} else "SELL"
 
     for i, hp in enumerate(horizon_packets):
@@ -696,7 +714,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         status = ExecutionStatus.UNKNOWN
         blockers = []
         if (packet.desired_action in needs_order
-                and _order_side(hp.desired_action) == _order_side(packet.desired_action)):
+                and side(hp.desired_action) == side(packet.desired_action)):
             if packet.execution_status == ExecutionStatus.BLOCKED:
                 status, blockers = ExecutionStatus.BLOCKED, list(packet.blockers)
             elif (packet.execution_status == ExecutionStatus.ELIGIBLE
@@ -751,7 +769,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         quote_fetched = str(quote_fetched_at or "").strip() or None
         evidence_cutoff = None
         if asm is not None and asm.evaluated_as_of is not None:
-            evidence_cutoff = asm.evaluated_as_of.isoformat(timespec="seconds")
+            evidence_cutoff = asm.evaluated_as_of.isoformat()
         from src.core.decision_policy import DECISION_TABLE_VERSION
         policy_id = str(getattr(pkt, "policy_id", "") or "")
         # N1（X2）：两臂各投影自己的规范包——legacy 臂消费最终 legacy
@@ -817,7 +835,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
 
     record = ShadowDiffRecord(
         security_id=security_id,
-        as_of=as_of.isoformat(timespec="seconds"),
+        as_of=as_of.isoformat(),
         source=source,
         legacy_action=str(legacy_pos_action_val),
         legacy_desired=legacy_desired,
@@ -841,8 +859,7 @@ def capture_shadow(decision_result, strategy_decision, execution_eval, pos,
         snapshot_id=(";".join(sorted(snap_ids)) if snap_ids else ""),
         account_version=account_version,
         policy_version=";".join(policy_versions),
-        execution_status=str(getattr(getattr(execution_eval, "effective_action", None),
-                                     "value", "") or ""),
+        execution_status=packet.execution_status.value,
         execution_blocked=bool(getattr(execution_eval, "blocked", False)),
         blocking_gates=list(mode_res.blocking_gates),
         mid_binding=mid_binding, long_binding=long_binding,
@@ -964,7 +981,17 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
     if not store.exists():
         return {"total": 0, "stocks": 0, "since": None, "by_reason": {},
                 "records": [], "store": str(store)}
-    cutoff = (datetime.now() - timedelta(days=days)).isoformat(timespec="seconds")
+    since = datetime.now().astimezone() - timedelta(days=days)
+    cutoff = since.isoformat(timespec="seconds")
+
+    def _capture_time(record, *, require_aware=False):
+        try:
+            stamp = datetime.fromisoformat(record.get("as_of", ""))
+        except (TypeError, ValueError):
+            return None
+        if require_aware and (stamp.tzinfo is None or stamp.utcoffset() is None):
+            return None
+        return stamp.astimezone()
     by_reason: dict[str, int] = {}
     records = []
     stocks: set[str] = set()
@@ -977,7 +1004,11 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
                 r = json.loads(line)
             except json.JSONDecodeError:
                 continue
-            if str(r.get("as_of", "")) < cutoff:
+            if not isinstance(r, dict):
+                continue
+            captured_at = _capture_time(r)
+            # Unknown capture times cannot prove age or qualification: retain for diagnosis.
+            if captured_at is not None and captured_at < since:
                 continue
             records.append(r)
             stocks.add(r.get("security_id", ""))
@@ -991,33 +1022,35 @@ def build_shadow_report(store_path: Optional[Path] = None, days: int = 7) -> dic
     # v8（M1）：分桶通用化——当期协议 cur_*；全部旧版本（v7/v6/更早）进
     # older_versions 按记录原样只诊断不追认（不再随版本升级逐个改名键）。
     current_version = SHADOW_DERIVATION_VERSION
-    from src.core.research_service import current_method_version
-    method = current_method_version()
     cur_records = [r for r in records if r.get("derivation_version") == current_version]
 
-    def _horizon_current(record, horizon: str) -> bool:
-        """Stored effective flag plus the binding's method. Today's clock is not consulted."""
+    def _horizon_current(record, horizon: str) -> tuple[bool, list[str]]:
+        """Recheck the complete binding at its own capture time; never promote stored false."""
         if record.get(f"{horizon}_effective") is not True:
-            return False
+            return False, []
         binding = record.get(f"{horizon}_binding")
         if not isinstance(binding, dict) or not binding:
-            return False
-        return str(binding.get("method_version") or "") == method
+            return False, [f"no_binding_{horizon}"]
+        captured_at = _capture_time(record, require_aware=True)
+        if captured_at is None:
+            return False, ["capture_as_of_unparsable"]
+        if binding.get("horizon") != horizon.upper():
+            return False, [f"binding_horizon_mismatch_{horizon}"]
+        return _binding_eligibility(binding, as_of=captured_at)
 
     # ── 当期协议分别计分母 + 旧协议记录只诊断 ──
-    # 历史 true 不够：binding 必须是当前综合方法。旧方法、缺 binding、历史 false 不晋升。
-    cur_mid_effective = sum(1 for r in cur_records if _horizon_current(r, "mid"))
-    cur_long_effective = sum(1 for r in cur_records if _horizon_current(r, "long"))
-    effective_n = sum(1 for r in cur_records
-                      if _horizon_current(r, "mid") or _horizon_current(r, "long"))
-    cur_diagnostic = sum(1 for r in cur_records
-                         if not _horizon_current(r, "mid")
-                         and not _horizon_current(r, "long"))
+    # 历史 true 仍须满足完整绑定与当前版本组合；不重读评估或按今天重判检查条件。
+    qualifications = [(r, _horizon_current(r, "mid"), _horizon_current(r, "long"))
+                      for r in cur_records]
+    cur_mid_effective = sum(mid[0] for _, mid, _ in qualifications)
+    cur_long_effective = sum(long[0] for _, _, long in qualifications)
+    effective_n = sum(mid[0] or long[0] for _, mid, long in qualifications)
+    cur_diagnostic = len(cur_records) - effective_n
     cur_drop_counts: dict = {}
-    for r in cur_records:
+    for r, mid, long in qualifications:
         # K1 审查 P2-3：按记录去重（同一阻塞在 MID/LONG 双 binding 各记一次，
         # 计数按记录不按周期双倍）
-        for dr in sorted(set(r.get("v6_drop_reasons") or [])):
+        for dr in sorted(set((r.get("v6_drop_reasons") or []) + mid[1] + long[1])):
             cur_drop_counts[dr] = cur_drop_counts.get(dr, 0) + 1
     legacy_records = total - len(cur_records)
     older_versions: dict = {}
