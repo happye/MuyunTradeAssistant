@@ -20,6 +20,8 @@
 | 复杂架构设计 | task_architect | gpt-6-astra / low |
 | 专项规划、生成、独立评估 | harness_planner / harness_generator / harness_evaluator | gpt-6.1-sol / medium |
 
+Claude Code 不用上表的 Codex 型号，改用 `.claude/agents/` 的项目角色（各自钉死模型）：读资料/定位用 `muyun-explorer`(haiku)，跑命令/测试用 `muyun-runner`(haiku)，长任务监督用 `task-progress-monitor`(haiku)，实施用 `muyun-coder`(sonnet)，文档用 `muyun-doc-writer`(sonnet)，常规审查用 `muyun-reviewer`(sonnet)，拆工单用 `muyun-commander`(sonnet)；`muyun-architect` 和 `code-quality-guard`(opus) 只用于真正的设计决策与高风险审查。Claude Code 的每次派发都必须指定角色，不带角色会继承主模型，属于浪费。完整路由表见 `CLAUDE.md`「Claude Code role routing」。
+
 以上组合在本会话可用枚举内，不等于每个账号或客户端都支持。明确型号覆盖采用最小任务上下文；当前编排工具要求`fork_turns="none"`，完整历史fork会继承主模型。角色不可发现时用支持的default/worker，显式指定model/effort及职责，不替换成绑定其他厂商模型的预设。不支持或调用失败先如实说明，不能默默换回主模型。小模型不足时带证据升级一次，不反复尝试多轮。
 
 ## 直接触发的指令

@@ -95,6 +95,24 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 - The user requests proactive delegation: before substantive work, identify bounded independent tasks that reduce the parent context or provide necessary verification, and dispatch the minimum useful set without waiting for another reminder. Keep short/dependent steps in the parent.
 - Follow [AGENTS.md](AGENTS.md) and [agent-routing](docs/agent-routing.md), using roles and model IDs supported by this client; Codex model IDs are not Claude aliases. Assign file ownership, preserve others' work and verify actual model metadata rather than an agent's self-report. No recursive delegation or duplicate reviewers.
 
+### Claude Code role routing (mandatory — never spawn a bare/default agent)
+
+Every `Agent` call MUST name a project role via `subagent_type` (definitions in `.claude/agents/`, each pins its model). A call without a role inherits the main model (the most expensive) — that is a token-waste bug. If you must use a built-in type (`Explore`, `general-purpose`), pass an explicit `model` matching the table.
+
+| Work | Role (`subagent_type`) | Model |
+|---|---|---|
+| Read docs, locate code, summarize progress/ISSUES/milestones | `muyun-explorer` | haiku |
+| Run tests / commands / env checks, condense logs | `muyun-runner` | haiku |
+| Track a long background job | `task-progress-monitor` | haiku |
+| Write/edit code and tests per work order | `muyun-coder` | sonnet |
+| Write/update docs (plan, STATUS/RESUME, ISSUES, README, manual) | `muyun-doc-writer` | sonnet |
+| Routine diff review before commit | `muyun-reviewer` | sonnet |
+| Split an approved card into work orders | `muyun-commander` | sonnet |
+| Design decision / acceptance-contract design (rare) | `muyun-architect` | opus |
+| High-risk review: concurrency, persistence, data identity, cost | `code-quality-guard` | opus |
+
+Rules: opus roles only when the decision genuinely needs it, one at a time. Main agent = architect/integrator: owns plans, git commit/push, and final verification claims. Workers never commit. Each work order states goal, allowed files, reuse targets, acceptance command, and the three guard rules from `muyun-commander`.
+
 ## Quality Bar
 
 - Aim for correctness first, then clarity, then completeness.
