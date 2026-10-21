@@ -107,7 +107,7 @@
 | 反例与验收 | ① 先锁黄金：CLI `pos add`/`pos rm` 各分支（缺代码、已有持仓、负价、比例越界、保存失败、成功含总仓位 >80%/未知提示、无价跳过草稿提示；删仓缺代码、无持仓、保存失败、成功）输出与磁盘结果，以及 chat `manage_portfolio(action="remove")` 返回文本——须先在 HEAD 通过。② TUI 红灯：对已有持仓的股票执行加仓，旧实现显示「已加仓」（红），修复后显示失败原因（绿）；并断言 TUI 路径不向 stdout 写 CLI 输出。③ 服务单测覆盖各状态。④ 全量 0 failed。 |
 | 停止与回滚 | 黄金在 HEAD 不能稳定通过的分支不改；CLI/chat 任何文案差异 → 回滚。独立 commit，可 revert。 |
 
-## 卡片 BUG-FEE：pos confirm 负费用/非有限数值未在入口校验
+## 卡片 BUG-FEE（实现复验通过，9d13a3f）：pos confirm 负费用/非有限数值未在入口校验
 
 | 项 | 内容 |
 |---|---|
@@ -117,6 +117,16 @@
 | 告警同步裁决 | 新增的是 REPL `print` 提示，不是 `logger.warning`，按 AGENTS §5 不需要改 `src/cli/plain_errors.py` 映射表；`docs/报错速查手册.md` 补一条「--fee 不能为负 / 数值无效」的说明与旧版现象（pydantic 原始异常）。若实测旧版异常经由 logger.warning 呈现，则同步 plain_errors。 |
 | 反例与验收 | 接线测试走 `parse_input → run_cli` 全链（LRN-L005）：`pos confirm X --qty 100 --price 12 --fee -1` 在 HEAD 上产生原始异常或进入账本层（红），修复后返回提示且账本/投影未改动（绿）；`--fee nan`、`--qty nan`、`--price inf`、位置价 `inf` 同理；`--fee 0` 与正常费用路径不变。全量 0 failed。 |
 | 不改 | 服务层 `FillInput` 约束（保留为第二道防线）、正常路径文案、账本格式。 |
+
+## 卡片 BUG-FINITE（P1，下一张）：账户事件账本接受非有限数值
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G1（账户事实可信）；BUG-FEE 同类扫描发现 |
+| 实证 | BUG-FEE 红灯实测：旧版 `pos confirm X --qty 100 --price inf` 实际入账「BUY 100 股 @ ¥inf，现金变动 -inf」，投影 avg_cost=inf；`pos opening <现金>` 与 `pos openinglot` 成本价填 inf/nan 时，`AccountService.opening_import` 实测接受并写入账本（cash_delta=inf/nan）。入口（start.py）已在 BUG-FEE 拦住 confirm，但服务层 `FillInput.price` 无有限值约束，opening/openinglot 入口与服务层都无。 |
+| 修法 | 服务层第二道防线：`src/data/account_service.py` 的 `FillInput`（price、fee）与 `opening_import` 的现金/成本/数量拒非有限值（负数规则保持现状）；入口层 `start.py` opening/openinglot 解析补 `math.isfinite` 人话提示。账本读取侧对已存在的非有限事件如何处理须先调查（快照是否会把 inf 传播到 NAV/仓位），本卡只防新写入，并报告旧数据检测结果。 |
+| 反例 | 服务单测：FillInput(price=inf/nan) 与 opening_import(cash=inf/nan、cost=inf) 旧代码接受（红）→ 拒绝（绿）；接线测试 `pos opening inf` 等返回提示且账本不变。 |
+| 范围外 | `pos add` 价格/仓位、backtest/scan 资金的非有限值（P2/P3，另记）。 |
 
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
@@ -140,3 +150,4 @@
 | 2026-10-21 | T04-A 黄金 | 13 项锁定 confirm 数量路径输出与磁盘结果；commit `61a212f` |
 | 2026-10-21 | T04-A 下沉 | `confirm_quantity_from_proposal` + `QuantityConfirmOutcome`；复核 3 个 P2（异常时序/入账后丢行/投影崩溃状态）修复，新增 3 项异常时序黄金先在 HEAD 通过；黄金 16、服务 10、回归 96 passed；全量 3210 passed/0 failed/11 skipped（584.52s）；commit `c7fb92b` |
 | 2026-10-21 | T04-B | 黄金 20 项先在 HEAD 通过；TUI 4 项先红（stdout 被写入且显示「已加仓」）后绿；服务单测 18；定向回归 209；muyun-reviewer 无阻断；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）；commit `03cab94`（ISS-124） |
+| 2026-10-21 | BUG-FEE | 接线测试 HEAD 5 failed/2 passed → 7 passed；实测 `--price inf` 旧版实际入账（ISS-125）；定向回归 83 passed；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）；commit `9d13a3f`；同类 P1 转 BUG-FINITE |

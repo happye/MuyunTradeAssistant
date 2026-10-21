@@ -2291,3 +2291,11 @@ P3（已取消）:
 - **实证**：`src/tui/app.py`加仓经`asyncio.to_thread(manage_positions, "add")`后无条件显示「已加仓」；`manage_positions`遇已有持仓/参数非法/保存失败只打印并`return None`。新TUI pilot测试在HEAD上红：stdout被写入「⚠ 600519 已有持仓记录」且panel显示「已加仓 600519」。
 - **修复**：`src/data/portfolio.py` `add_position_checked`/`remove_position_checked`返回`PositionOpOutcome`；TUI加仓与chat删仓改调服务；CLI按状态渲染、文案逐字不变（20项黄金先在HEAD通过）。
 - **限制**：chat add/plan/overweight仍经CLI桥（TradePlan草稿交互，T04-C候选）；TUI分析面板旧行的字面markup见候选BUG-TUI-MARKUP。
+
+### ISS-125: pos confirm负手续费/非有限数值未在入口校验，inf成交价可入账
+
+- **状态/日期**：2026-10-21，第十轮BUG-FEE入口修复，commit `9d13a3f`；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）。服务层与opening/openinglot同类见BUG-FINITE（未关闭）。
+- **优先级/方向**：P1（--price inf实际污染账本），G1。
+- **实证**：HEAD接线实测：`--fee -1/nan`显示原始pydantic ValidationError；`--qty nan`显示`cannot convert float NaN to integer`；`--price inf`实际入账「BUY 100 股 @ ¥inf，现金变动 -inf」、投影avg_cost=inf。
+- **修复**：`start.py` pos confirm分支数值flag拒非有限、`--fee`拒负、位置仓位/成交价拒非有限；`docs/报错速查手册.md`补条目；plain_errors不改（非logger.warning）。
+- **同类剩余**：pos opening现金、pos openinglot成本价inf/nan服务层实测接受入账（P1，BUG-FINITE）；pos add价格/仓位（P2）；backtest/scan资金（P3）。
