@@ -19,6 +19,10 @@ all-cached) / benzong --check; pave for _dispatch_benzong_cli extract.
 
 T04-G0 extend: lock live_multi / live_all / live_scan_all dispatch (analyze_live
 compact batch + early exits); pave for _dispatch_live_cli extract.
+
+T04-H0 extend: lock rules / industries / concepts run_cli dispatch (ScannerEngine
+stubs + empty/keyword paths); pave for _dispatch_scan_cli extract of scan_market /
+rules / industries / concepts / events / scan_review / scan_review_import.
 Still skip scoring product / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
@@ -1173,3 +1177,87 @@ def test_run_cli_live_scan_all_force_confirm(monkeypatch):
     for c in spy.call_args_list:
         assert c.kwargs.get("compact") is True
         assert c.kwargs.get("account_facts") is facts
+
+
+def _patch_scanner_engine(monkeypatch, *, rules=None, industries=None, concepts=None):
+    """Stub ScannerEngine used by rules/industries/concepts CLI branches."""
+    import src.scanner.scanner_engine as se_mod
+
+    eng = MagicMock(name="ScannerEngine")
+    eng.get_available_rules.return_value = rules if rules is not None else [
+        {"name": "healthy_pullback", "display_name": "健康回踩", "description": "desc"},
+    ]
+    eng.get_industry_list.return_value = industries if industries is not None else []
+    eng.get_concept_list.return_value = concepts if concepts is not None else []
+    monkeypatch.setattr(se_mod, "ScannerEngine", MagicMock(return_value=eng))
+    return eng
+
+
+def test_run_cli_rules_lists_available_rules(monkeypatch):
+    """T04-H0: rules -> ScannerEngine.get_available_rules + console.print(table)."""
+    spies = _spy_env(monkeypatch)
+    eng = _patch_scanner_engine(monkeypatch)
+    printed = []
+    monkeypatch.setattr(cli_main.console, "print", lambda *a, **k: printed.append(a[0] if a else None))
+    monkeypatch.setattr(cli_main, "load_config", lambda: {"scanner": {"rules_path": "./src/scanner/scan_rules.yaml"}})
+
+    start_module.run_cli("rules", {})
+    eng.get_available_rules.assert_called_once_with()
+    assert printed, "expected console.print(table)"
+    assert not spies["scan_market"].called
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_industries_with_keyword(monkeypatch, capsys):
+    """T04-H0: industries keyword -> get_industry_list + print rows."""
+    spies = _spy_env(monkeypatch)
+    rows = [
+        {"name": "半导体", "change_pct": 1.25, "up_count": 10, "down_count": 3, "lead_stock": "600584"},
+        {"name": "软件开发", "change_pct": -0.5, "up_count": 2, "down_count": 8, "lead_stock": ""},
+    ]
+    eng = _patch_scanner_engine(monkeypatch, industries=rows)
+    start_module.run_cli("industries", {"keyword": "半导"})
+    eng.get_industry_list.assert_called_once_with(keyword="半导")
+    out = capsys.readouterr().out
+    assert "半导体" in out
+    assert "行业板块" in out
+    assert not spies["scan_market"].called
+
+
+def test_run_cli_industries_empty(monkeypatch, capsys):
+    """T04-H0: industries empty list -> failure / not-found message."""
+    spies = _spy_env(monkeypatch)
+    eng = _patch_scanner_engine(monkeypatch, industries=[])
+    start_module.run_cli("industries", {"keyword": None})
+    eng.get_industry_list.assert_called_once_with(keyword=None)
+    out = capsys.readouterr().out
+    assert "行业板块数据获取失败" in out
+    assert not spies["scan_events"].called
+
+
+def test_run_cli_concepts_with_keyword(monkeypatch, capsys):
+    """T04-H0: concepts keyword -> get_concept_list + print rows."""
+    spies = _spy_env(monkeypatch)
+    rows = [
+        {"name": "人工智能", "change_pct": 2.0, "lead_stock": "002230"},
+        {"name": "固态电池", "change_pct": 0.0, "lead_stock": ""},
+    ]
+    eng = _patch_scanner_engine(monkeypatch, concepts=rows)
+    start_module.run_cli("concepts", {"keyword": "AI"})
+    eng.get_concept_list.assert_called_once_with(keyword="AI")
+    out = capsys.readouterr().out
+    assert "人工智能" in out
+    assert "概念板块" in out
+    assert not spies["scan_review"].called
+
+
+def test_run_cli_concepts_empty_with_keyword(monkeypatch, capsys):
+    """T04-H0: concepts empty + keyword -> not-found message."""
+    spies = _spy_env(monkeypatch)
+    eng = _patch_scanner_engine(monkeypatch, concepts=[])
+    start_module.run_cli("concepts", {"keyword": "不存在概念"})
+    eng.get_concept_list.assert_called_once_with(keyword="不存在概念")
+    out = capsys.readouterr().out
+    assert "未找到包含" in out
+    assert "概念板块" in out
+    assert not spies["analyze_portfolio"].called
