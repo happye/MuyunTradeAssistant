@@ -16,6 +16,7 @@
 """
 import queue
 import threading
+import time
 
 _OK = "ok"
 _ERROR = "error"
@@ -51,3 +52,75 @@ def call_with_timeout(fn, *args, timeout: float, **kwargs):
     if status == _ERROR:
         raise payload
     return payload
+
+
+class ParallelTimeout(TimeoutError):
+    """``run_parallel_with_deadline`` 总预算到点；``completed`` 为已完成的任务数。"""
+
+    def __init__(self, completed: int, total: int):
+        super().__init__(f"parallel deadline expired ({completed}/{total} done)")
+        self.completed = completed
+        self.total = total
+
+
+def run_parallel_with_deadline(fns, *, max_workers: int, timeout: float):
+    """并行跑无参可调用对象，共用一个总等待预算（T05-D）。
+
+    契约：
+    - 起 ``min(max_workers, len(fns))`` 个 daemon 线程从任务队列取活，不使用 executor，
+      不 join，所以放弃等待后不会拖住解释器退出。
+    - 全部完成时按输入顺序返回结果列表。
+    - 总预算到点抛 ``ParallelTimeout``（``TimeoutError`` 子类，带 ``completed``）；
+      ``None`` 无限等待，负数或 NaN 按 0 处理（与 ``call_with_timeout`` 一致）。
+    - 任一任务抛出的异常按原实例在调用线程重抛（先到先抛）。
+    - 每次调用独立队列；迟到结果被丢弃。放弃后每个 worker 至多再开始一个任务
+      （放弃标记与取任务之间的窗口），其余未取走的任务不再开始。
+
+    限制同 ``call_with_timeout``：线程不能被强杀，已开始任务的副作用可能继续。
+    """
+    fns = list(fns)
+    total = len(fns)
+    if total == 0:
+        return []
+    budget = None if timeout is None else float(timeout)
+    if budget is not None and (budget < 0 or budget != budget):
+        budget = 0.0
+    tasks = queue.Queue()
+    for index, fn in enumerate(fns):
+        tasks.put((index, fn))
+    done = queue.Queue()
+    abandoned = threading.Event()
+
+    def _work():
+        while not abandoned.is_set():
+            try:
+                index, fn = tasks.get_nowait()
+            except queue.Empty:
+                return
+            try:
+                item = (index, _OK, fn())
+            except BaseException as error:
+                item = (index, _ERROR, error)
+            done.put(item)
+
+    for _ in range(max(1, min(int(max_workers), total))):
+        threading.Thread(target=_work, name="muyun-parallel-call", daemon=True).start()
+
+    deadline = None if budget is None else time.monotonic() + budget
+    results = [None] * total
+    completed = 0
+    try:
+        while completed < total:
+            wait = None if deadline is None else max(0.0, deadline - time.monotonic())
+            try:
+                index, status, payload = done.get(timeout=wait)
+            except queue.Empty:
+                raise ParallelTimeout(completed, total) from None
+            if status == _ERROR:
+                raise payload
+            results[index] = payload
+            completed += 1
+    finally:
+        if completed < total:
+            abandoned.set()
+    return results

@@ -259,6 +259,7 @@ class MarketCache:
     _shared_concept_stocks: dict = {}
     _shared_concept_stocks_ts: dict = {}
     CONCEPT_STOCKS_TTL = 1800   # 30分钟
+    SINA_PARALLEL_TIMEOUT_S = 45.0  # 新浪并行分页总预算（秒），调用时读类属性，测试可缩小
 
     def __init__(self, ttl_seconds: int = 0):
         """初始化缓存
@@ -423,7 +424,7 @@ class MarketCache:
             标准化后的DataFrame，失败返回None
         """
         import requests as _requests
-        from concurrent.futures import ThreadPoolExecutor, as_completed, TimeoutError as FuturesTimeoutError
+        from src.data.timeout_call import ParallelTimeout, run_parallel_with_deadline
 
         base_url = _get_sina_market_url()
         COMMON_PARAMS = "&sort=changepercent&asc=0&node=hs_a&symbol=&_s_r_a=init"
@@ -452,20 +453,20 @@ class MarketCache:
         all_stocks = []
 
         try:
-            # v0.8.7.5 审计修复 A41：不能用 with 块（shutdown(wait=True) 会 join 卡死线程），
-            # 且 as_completed 必须带总超时——73页×30s÷10并发最坏240s冻结，
+            # v0.8.7.5 审计修复 A41：必须带总超时——73页×30s÷10并发最坏240s冻结，
             # 与 data_provider.py 全市场拉取 45s 预算对齐。
-            executor = ThreadPoolExecutor(max_workers=10)
+            # T05-D：改 daemon 线程并行，超时放弃后不再被 executor 的退出 join 拖住。
             try:
-                futures = {executor.submit(_fetch_page, p): p for p in range(1, total_pages + 1)}
-                for future in as_completed(futures, timeout=45):
-                    result = future.result()
+                pages = run_parallel_with_deadline(
+                    [lambda p=p: _fetch_page(p) for p in range(1, total_pages + 1)],
+                    max_workers=10, timeout=MarketCache.SINA_PARALLEL_TIMEOUT_S)
+                for result in pages:
                     all_stocks.extend(result)
-            except FuturesTimeoutError:
+            except ParallelTimeout as e:
                 # v0.8.7.8 裁决（E 轮，原 R4 延后项 D-RG-2）：超时丢弃部分页是**特性**——
                 # _snapshot_quality_ok 只查">10 行有效价"，40/73 页的部分快照会通过校验
                 # 被当全市场快照缓存，静默偏置量比/涨幅排名；换源重拉才保完整性。
-                _done = sum(1 for f in futures if f.done())
+                _done = e.completed
                 logger.error(
                     f"MarketCache: 新浪API并行获取超时(45s)，放弃剩余页"
                     f"(已完成{_done}/{total_pages}页，将换efinance源重拉)"
@@ -474,8 +475,6 @@ class MarketCache:
             except Exception as e:
                 logger.error(f"MarketCache: 新浪API并行获取异常: {e}")
                 return None
-            finally:
-                executor.shutdown(wait=False)
         except Exception as e:
             logger.error(f"MarketCache: 新浪API并行获取异常: {e}")
             return None

@@ -18,6 +18,11 @@ keep their old wait semantics. The exit-window rule is also covered by a small
 pure function so a late parent observation can be rejected without another
 subprocess case.
 
+T05-D adds four exit cases for the old parallel-executor sites
+(data_provider.get_industry_metrics outer/chain-sections/commodity-sections and
+MarketCache._fetch_sina_market). Before the T05-D fix they are expected to fail
+at the EXIT ASSERTION, not at the call-duration or semantics assertions.
+
 The explicit subprocess case is skipped by default and only runs with
 MUYUN_T05_EXIT_PROBE=1. It is deliberately not executed through
 plan/fusion/iteration9/review_test_runner.py: that runner blocks subprocess and
@@ -121,9 +126,47 @@ elif CASE == "probe_t":
     from src.data import source_check
 elif CASE == "robust_call_timeout":
     from src.data import robust_fetch
+elif CASE in ("industry_outer", "industry_chain_sections", "industry_commodity_sections"):
+    from src.core.benzong import data_provider
+    from src.data import industry_data
+elif CASE == "sina_parallel":
+    import requests
+    from src.scanner import market_cache
 else:
     raise SystemExit("unknown case: " + CASE)
 emit("import_done")
+
+
+def slow_any(*args, **kwargs):
+    return slow_worker()
+
+
+# T05-D stubs are installed before the call; sockets are already blocked above.
+if CASE == "industry_outer":
+    data_provider.INDUSTRY_METRICS_TIMEOUT_S = 0.05
+    industry_data.load_chains = slow_any  # _pull itself hangs
+elif CASE == "industry_chain_sections":
+    data_provider.INDUSTRY_METRICS_TIMEOUT_S = 0.5  # long enough for _pull to reach the sections
+    # L1 hit: manual chain whose representative company is 600000
+    industry_data.load_chains = lambda: {
+        "t05链": {"sections": {"上游": [{"环节": "x", "代表公司": ["600000 测试(银行)"]}]}}
+    }
+    industry_data._graph_sources = {"t05链": "manual"}
+    industry_data.get_commodity_section = slow_any
+    industry_data.get_demand_section = slow_any
+    industry_data.format_macro = slow_any
+elif CASE == "industry_commodity_sections":
+    data_provider.INDUSTRY_METRICS_TIMEOUT_S = 0.5
+    # L3 hit: no chain, commodity keyword matches (chain_name, vars)
+    industry_data.load_chains = lambda: {}
+    industry_data.match_chain = lambda *args, **kwargs: None
+    industry_data.match_commodity = lambda query: ("t05商品", [])
+    industry_data.get_generic_commodity_section = slow_any
+    industry_data.format_macro = slow_any
+elif CASE == "sina_parallel":
+    market_cache.MarketCache.SINA_PARALLEL_TIMEOUT_S = 0.05
+    requests.Session.get = slow_any
+
 emit("call_started")
 call_t0 = time.monotonic()
 
@@ -144,6 +187,12 @@ elif CASE == "robust_call_timeout":
         outcome = {"timeout_error": True, "error_type": type(error).__name__}
     else:
         outcome = {"timeout_error": False, "value_repr": repr(value)}
+elif CASE in ("industry_outer", "industry_chain_sections", "industry_commodity_sections"):
+    metrics, status = data_provider.get_industry_metrics("600000", "测试行业")
+    outcome = {"metrics_is_none": metrics is None, "status": status}
+elif CASE == "sina_parallel":
+    value = market_cache.MarketCache()._fetch_sina_market()
+    outcome = {"value_is_none": value is None, "value_repr": repr(value)}
 else:
     result = source_check._probe_t("t05_probe", slow_worker, timeout=0.05)
     outcome = {"ok": result.get("ok"), "error": str(result.get("error"))}
@@ -215,6 +264,14 @@ def _assert_timeout_semantics(case, record):
     elif case in ("call_with_timeout", "robust_call_timeout"):
         assert record.get("timeout_error") is True, (
             "%s semantic precondition failed, not the exit assertion: %r" % (case, record)
+        )
+    elif case in ("industry_outer", "industry_chain_sections", "industry_commodity_sections"):
+        assert record.get("metrics_is_none") is True and record.get("status") == "failed", (
+            "%s semantic precondition failed, not the exit assertion: %r" % (case, record)
+        )
+    elif case == "sina_parallel":
+        assert record.get("value_is_none") is True, (
+            "sina_parallel semantic precondition failed, not the exit assertion: %r" % (record,)
         )
     else:
         error = str(record.get("error") or "")
@@ -515,9 +572,13 @@ def test_safe_call_fast_fail_breaker_after_timeout(monkeypatch):
 def test_default_timeout_budgets_unchanged():
     from src.core.benzong import data_provider
     from src.data import akshare_client, source_check
+    from src.scanner.market_cache import MarketCache
 
     assert akshare_client.DEFAULT_TIMEOUT == 30.0
     assert data_provider.DATA_CALL_TIMEOUT == 30.0
+    assert data_provider.INDUSTRY_METRICS_TIMEOUT_S == 150.0
+    assert data_provider.INDUSTRY_SECTION_TIMEOUT_S == 150.0
+    assert MarketCache.SINA_PARALLEL_TIMEOUT_S == 45.0
     assert signature(akshare_client._call_with_timeout).parameters["timeout"].default == 30.0
     assert signature(data_provider._safe_call).parameters["timeout"].default is None
     assert signature(source_check._probe_t).parameters["timeout"].default == 20.0
@@ -527,7 +588,14 @@ def test_default_timeout_budgets_unchanged():
     os.environ.get(PROBE_ENV) != "1",
     reason="requires explicit MUYUN_T05_EXIT_PROBE=1 isolated child-process run",
 )
-@pytest.mark.parametrize("case", ["safe_call", "call_with_timeout", "probe_t", "robust_call_timeout"])
+@pytest.mark.parametrize(
+    "case",
+    [
+        "safe_call", "call_with_timeout", "probe_t", "robust_call_timeout",
+        "industry_outer", "industry_chain_sections", "industry_commodity_sections",
+        "sina_parallel",
+    ],
+)
 def test_helper_returns_before_process_exit_deadline(case):
     """Helper returns fast, then the interpreter must exit within EXIT_DEADLINE_S."""
     if not VENV_PYTHON.is_file():

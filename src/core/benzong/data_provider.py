@@ -17,11 +17,10 @@
 
 import logging
 import os
-from concurrent.futures import ThreadPoolExecutor, TimeoutError as FuturesTimeout
 from datetime import datetime, timedelta
 from typing import Optional
 
-from src.data.timeout_call import call_with_timeout
+from src.data.timeout_call import call_with_timeout, run_parallel_with_deadline
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +28,9 @@ logger = logging.getLogger(__name__)
 # 一个接口卡住会挂起到 OS 报 WinError 10060；用线程级超时包住，超时放弃走降级。
 # 可由 settings.yaml 的 benzong.data_call_timeout 覆盖。
 DATA_CALL_TIMEOUT = 30.0
+# 行业景气 get_industry_metrics 的外层总预算与内层单节预算（秒），调用时读模块全局，测试可缩小。
+INDUSTRY_METRICS_TIMEOUT_S = 150.0
+INDUSTRY_SECTION_TIMEOUT_S = 150.0
 
 
 def _fix_curl_ssl_paths():
@@ -473,24 +475,14 @@ def get_industry_metrics(code: str, industry_name: str = "") -> tuple:
                 chain_name, chain_cfg = h
                 matched_via = "chain_name"
 
-        import concurrent.futures as cf
         if chain_name is not None:
             logger.info(f"industry_metrics 命中 {code}: 链[{chain_name}] via {matched_via}")
-            # 三节并行（禁 with 块——__exit__ 的 join 会让超时失效，显式 shutdown(wait=False)）
-            ex = cf.ThreadPoolExecutor(max_workers=3)
-            try:
-                futs = {
-                    "commodity": ex.submit(_safe_section, "commodity",
-                                           lambda: ind.get_commodity_section(chain_cfg)),
-                    "demand": ex.submit(_safe_section, "demand",
-                                        lambda: ind.get_demand_section(chain_cfg)),
-                    "macro": ex.submit(_safe_section, "macro", ind.format_macro),
-                }
-                commodity_text = futs["commodity"].result(timeout=150)
-                demand_text = futs["demand"].result(timeout=150)
-                macro_text = futs["macro"].result(timeout=150)
-            finally:
-                ex.shutdown(wait=False)
+            # 三节并行（T05-D：daemon 线程共用总预算，超时放弃后不拖住解释器退出）
+            commodity_text, demand_text, macro_text = run_parallel_with_deadline(
+                [lambda: _safe_section("commodity", lambda: ind.get_commodity_section(chain_cfg)),
+                 lambda: _safe_section("demand", lambda: ind.get_demand_section(chain_cfg)),
+                 lambda: _safe_section("macro", ind.format_macro)],
+                max_workers=3, timeout=INDUSTRY_SECTION_TIMEOUT_S)
             return {
                 "chain": chain_name,
                 "matched_via": matched_via,
@@ -504,15 +496,11 @@ def get_industry_metrics(code: str, industry_name: str = "") -> tuple:
         if not cm:
             raise _BridgeMiss()
         logger.info(f"industry_metrics 命中 {code}: 商品[{cm[0]}] via commodity_keyword")
-        ex = cf.ThreadPoolExecutor(max_workers=2)
-        try:
-            fcom = ex.submit(_safe_section, "commodity",
-                             lambda: ind.get_generic_commodity_section(industry_name or ""))
-            fmac = ex.submit(_safe_section, "macro", ind.format_macro)
-            commodity_text = fcom.result(timeout=150)
-            macro_text = fmac.result(timeout=150)
-        finally:
-            ex.shutdown(wait=False)
+        commodity_text, macro_text = run_parallel_with_deadline(
+            [lambda: _safe_section("commodity",
+                                   lambda: ind.get_generic_commodity_section(industry_name or "")),
+             lambda: _safe_section("macro", ind.format_macro)],
+            max_workers=2, timeout=INDUSTRY_SECTION_TIMEOUT_S)
         return {
             "chain": f"商品:{cm[0]}",
             "matched_via": "commodity_keyword",
@@ -520,13 +508,11 @@ def get_industry_metrics(code: str, industry_name: str = "") -> tuple:
             "demand": "",
             "macro": macro_text,
         }
-    ex = ThreadPoolExecutor(max_workers=1)
-    fut = ex.submit(_pull)
     try:
-        result = fut.result(timeout=150)
+        result = call_with_timeout(_pull, timeout=INDUSTRY_METRICS_TIMEOUT_S)
     except _BridgeMiss:
         return None, "not_matched"
-    except FuturesTimeout:
+    except TimeoutError:
         logger.warning(
             "industry_metrics 超时(>150s)，本次放弃走降级"
             "（已完成的节已入 industry_data 缓存，下次调用更快）")
@@ -534,8 +520,6 @@ def get_industry_metrics(code: str, industry_name: str = "") -> tuple:
     except Exception as e:
         logger.warning(f"industry_metrics 拉取失败: {type(e).__name__}: {str(e)[:80]}")
         return None, "failed"
-    finally:
-        ex.shutdown(wait=False)
     return result, "matched"
 
 
