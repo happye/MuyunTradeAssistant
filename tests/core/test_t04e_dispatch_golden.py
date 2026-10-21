@@ -27,6 +27,11 @@ rules / industries / concepts / events / scan_review / scan_review_import.
 T04-I0 extend: lock expect / fear / watch_pool run_cli arg passthrough
 (show_expect days kwarg incl. default 30; show_fear/watch_pool positional args);
 pave for _dispatch_observe_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
+
+T04-J0 extend: lock doctor / diff_evidence / diff_list / batch_tasks / today
+run_cli arg passthrough (doctor/diff_list/batch_tasks/today zero-arg;
+diff_evidence code positional + use_ai kwarg incl. ai True/False);
+pave for _dispatch_ops_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
 
@@ -1296,4 +1301,57 @@ def test_run_cli_watch_pool_passes_args_positional(monkeypatch):
     spies["watch_pool"].assert_called_once_with(args)
     assert not spies["show_expect"].called
     assert not spies["show_fear"].called
+
+
+def test_run_cli_doctor_zero_arg(monkeypatch):
+    """T04-J0: doctor -> doctor() with no args."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("doctor", {})
+    spies["doctor"].assert_called_once_with()
+    assert not spies["diff_evidence_cmd"].called
+    assert not spies["today_command"].called
+
+
+def test_run_cli_diff_evidence_passes_code_and_use_ai(monkeypatch):
+    """T04-J0: diff_evidence -> diff_evidence_cmd(code, use_ai=...); ai True/False."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("diff_evidence", {"code": "600519", "ai": False})
+    spies["diff_evidence_cmd"].assert_called_once_with("600519", use_ai=False)
+    assert not spies["diff_list_cmd"].called
+    assert not spies["doctor"].called
+
+    spies["diff_evidence_cmd"].reset_mock()
+    start_module.run_cli("diff_evidence", {"code": "000001", "ai": True})
+    spies["diff_evidence_cmd"].assert_called_once_with("000001", use_ai=True)
+
+    spies["diff_evidence_cmd"].reset_mock()
+    start_module.run_cli("diff_evidence", {})
+    spies["diff_evidence_cmd"].assert_called_once_with("", use_ai=False)
+
+
+def test_run_cli_diff_list_zero_arg(monkeypatch):
+    """T04-J0: diff_list -> diff_list_cmd() with no args."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("diff_list", {})
+    spies["diff_list_cmd"].assert_called_once_with()
+    assert not spies["diff_evidence_cmd"].called
+    assert not spies["batch_tasks_cmd"].called
+
+
+def test_run_cli_batch_tasks_zero_arg(monkeypatch):
+    """T04-J0: batch_tasks -> batch_tasks_cmd() with no args."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("batch_tasks", {})
+    spies["batch_tasks_cmd"].assert_called_once_with()
+    assert not spies["today_command"].called
+    assert not spies["doctor"].called
+
+
+def test_run_cli_today_zero_arg(monkeypatch):
+    """T04-J0: today -> today_command() with no args."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("today", {})
+    spies["today_command"].assert_called_once_with()
+    assert not spies["shadow_command"].called
+    assert not spies["doctor"].called
 
