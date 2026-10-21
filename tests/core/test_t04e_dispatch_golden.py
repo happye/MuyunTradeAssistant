@@ -13,6 +13,10 @@
 本卡第二提交抽出 pos_* 连贯分发助手 _dispatch_pos_cli；其余大分支仍待后续卡。
 
 跑法：pytest tests/core/test_t04e_dispatch_golden.py -q
+
+T04-F0 extend: lock benzong_multi (all-cached batch) / benzong_all (last-scan
+all-cached) / benzong --check; pave for _dispatch_benzong_cli extract.
+Still skip scoring product / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
 
@@ -974,3 +978,66 @@ def test_parse_then_run_cli_pos_confirm_chain(monkeypatch):
     assert spy.call_args.args[0] == "confirm"
     assert spy.call_args.kwargs["qty"] == 100.0
     assert spy.call_args.kwargs["fee"] == 5.0
+
+
+def test_run_cli_benzong_multi_all_cached(monkeypatch):
+    """T04-F0: benzong_multi all-dims cached -> benzong_batch_analyze, no y/N prompt."""
+    spies = _spy_env(monkeypatch)
+    import src.core.benzong.cache as bz_cache
+
+    monkeypatch.setattr(bz_cache, "get", lambda *a, **k: {"score": 1})
+    start_module.run_cli(
+        "benzong_multi",
+        {"codes": ["600519", "000001"], "refresh": False},
+    )
+    spy = spies["benzong_batch_analyze"]
+    assert spy.called, "benzong_multi should call benzong_batch_analyze"
+    items = spy.call_args.args[0]
+    assert [it["code"] for it in items] == ["600519", "000001"]
+    assert spy.call_args.kwargs.get("force_refresh") is False
+    assert not spies["run_benzong_scoring"].called
+    assert not spies["run_benzong_scan"].called
+
+
+def test_run_cli_benzong_all_all_cached(monkeypatch):
+    """T04-F0: benzong_all last-scan + all cached -> benzong_batch_analyze(src_label)."""
+    spies = _spy_env(monkeypatch)
+    from datetime import datetime
+    from src.cli import session_state
+    import src.core.benzong.cache as bz_cache
+
+    now = datetime.now().isoformat(timespec="seconds")
+    monkeypatch.setattr(
+        session_state,
+        "get_last_scan",
+        lambda: {
+            "items": [{"code": "600519"}, {"code": "000001"}],
+            "source": "bzscan",
+            "timestamp": now,
+        },
+    )
+    monkeypatch.setattr(bz_cache, "get", lambda *a, **k: {"score": 1})
+    start_module.run_cli("benzong_all", {})
+    spy = spies["benzong_batch_analyze"]
+    assert spy.called, "benzong_all should call benzong_batch_analyze"
+    items = spy.call_args.args[0]
+    assert [it["code"] for it in items] == ["600519", "000001"]
+    assert spy.call_args.kwargs.get("src_label") == "bzscan"
+    assert not spies["run_benzong_scoring"].called
+
+
+def test_run_cli_benzong_check(monkeypatch, capsys):
+    """T04-F0: benzong --check uses source_check; skips scoring entry."""
+    spies = _spy_env(monkeypatch)
+    import src.data.source_check as sc
+
+    monkeypatch.setattr(sc, "check_all_sources", lambda: {"ok": True})
+    monkeypatch.setattr(sc, "format_report", lambda r: "CHECK_OK_T04F")
+    start_module.run_cli(
+        "benzong",
+        {"check": True, "meta": "", "manual": False, "refresh": False},
+    )
+    out = capsys.readouterr().out
+    assert "CHECK_OK_T04F" in out
+    assert not spies["run_benzong_scoring"].called
+    assert not spies["benzong_batch_analyze"].called
