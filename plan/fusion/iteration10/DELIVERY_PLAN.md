@@ -165,7 +165,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 修法 | 仅改 `tests/conftest.py`：session 隔离改指临时目录 + 会话结束文件名集合守卫。不改 src 生产路径 |
 | 定测 | `tests/core/test_report_dir_isolation.py` 4 项（session 偏离生产路径 / 绿路径不碰仓库 / 未隔离红灯演示+清理 / 守卫差分） |
 | 全量 | 3323 passed/0 failed/11 skipped/1 deselected（339.82s） |
-| 下一张 | ~~CLI pos plan --update 再抽~~（T04-D 本提交关闭）/ T05-G7 剩余（不抢道）；不绑 G7/v43 |
+| 下一张 | ~~CLI pos plan --update 再抽~~（T04-D 本提交关闭）/ ~~T05-E~~（本提交关闭）/ T05-G7 仍待 Baostock·MID（不抢道）；不绑 G7/v43 |
 
 
 
@@ -191,6 +191,8 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
+2. ~~**T05-E 晚到缓存写抑制**~~（本提交已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过；不定 Baostock 会话/真实 MID。
+8. **T05-G7 仍待（需产品/实证）**：Baostock 会话重叠；真实 MID；其余内存字典逐点守卫（磁盘入口已统一）。缺有限反例前不扩修。
 
 ## 卡片 ISS-123-PROD：生产 RAG 索引路径相对 CWD（本提交关闭）
 
@@ -227,6 +229,19 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 定测文件 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s） |
 | 停止/回滚 | 定测或全量回红 → `git revert` 本提交 |
 
+## 卡片 T05-E（本提交）：晚到缓存写抑制（ISS-120 保留限制有界切片）
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G7 / T05；ISS-120「晚到写缓存」保留限制；不处理 Baostock 会话重叠 / 真实 MID |
+| 根因 | `call_with_timeout` / `run_parallel_with_deadline` 超时后 worker 不可强杀；`MarketCache` 磁盘/快照接受与 K 线磁盘写若在 worker 内继续执行，会把调用方已放弃的结果写入缓存，后续命中读到「迟到成功」 |
+| 用户收益 | 超时降级后，迟到的全市场/K 线写不再污染磁盘与 A 股共享快照；下一命令不会误把已放弃拉取当作成功缓存 |
+| 修复边界 | `src/data/timeout_call.py`（`is_call_abandoned` + 超时置位 abandoned 栈）；`src/scanner/market_cache.py`（`_disk_save` / `_accept_snapshot`）；`src/data/akshare_client.py`（`_kline_disk_save`）；定测 `tests/core/test_t05e_late_cache_write.py`；文档。不改默认超时预算、降级文案、CACHE_VERSION、评分/账户；不修 Baostock 会话重叠；不宣称关闭 G7/T05 整体 |
+| 设计 | 每次超时调用绑定 `threading.Event`；worker 线程 push 到线程局部栈；调用方超时 `set()`；`is_call_abandoned()` 在任一外层已放弃时为 True。写路径在落盘/接受快照前查询并跳过。并行 helper 复用既有 `abandoned` 事件并入栈 |
+| 反例与验收 | ① 定测：超时后 worker 内 `is_call_abandoned` 为 True；迟到 `_disk_save` / `_accept_snapshot` / `_kline_disk_save` 不落盘不写共享快照；未放弃路径仍写入。② 回归：`test_timeout_call_parallel` + `test_t05_timeout_exit`（默认可跳过退出探针）+ market/kline disk 计数。③ 全量见执行记录 |
+| 停止/回滚 | 定测或相关回归红 → `git revert` 本提交。若需改 Baostock 会话语义或扩大到全部内存字典写入 → 停，另开卡 |
+| 下一张 | T05-G7 剩余：Baostock 会话重叠 / 真实 MID（均需产品裁决，不抢道）；T04 大函数拆分（不急） |
+
 ## 执行记录
 
 | 日期 | 事项 | 结果 |
@@ -249,4 +264,5 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-21 | BUG-TUI-MARKUP | 修前定测 4 红（字面 `[red]`）；统一 `Text` 着色；定测 4 + 相关 TUI 8 = 12 passed；全量 3318 passed / 1 failed / 11 skipped / 1 deselected（341.62s）——唯一失败为 test_cash_material_intake 控制台折行（BUG-CASH-WRAP，与本卡无关）；关闭 ISS-127；下一张：测试写报告目录隔离 / BUG-CASH-WRAP / T05-G7 剩余（不抢道） |
 | 2026-10-21 | 测试写报告目录隔离 | conftest session 隔离 `_REPORT_DIR` + 文件名守卫；定测 4 passed；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；关闭 ISS-123 报告目录残余；下一张：CLI pos plan --update 再抽 / T05-G7 剩余（不抢道） |
 | 2026-10-21 | BUG-CASH-WRAP | 根因：Rich size 需 width+height；捕获补 height=40；断言去换行；定测 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s）；关闭 ISS-128；下一张：测试写报告目录隔离（evidence.py `_REPORT_DIR`）/ T05-G7 剩余（不抢道） |
-| 2026-10-22 | T04-D | 卡片落盘并实现：plan_update_prep + CLI 薄封装；定测 test_t04d_plan_update_prep；回归 iss117 plan update / T04-C 全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）；下一张：T05-G7 剩余（不抢道）/ T04 大函数拆分（不急） |
+| 2026-10-22 | T04-D | 卡片落盘并实现：plan_update_prep + CLI 薄封装；定测 test_t04d_plan_update_prep；回归 iss117 plan update / T04-C 全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）；下一张：~~T05-E 晚到缓存写~~（本提交关闭）/ T05-G7 仍待 Baostock 会话·真实 MID（不抢道）/ T04 大函数拆分（不急） |
+| 2026-10-22 | T05-E | 卡片落盘并实现：timeout_call abandoned 栈 + `is_call_abandoned`；`_disk_save`/`_accept_snapshot`/`_kline_disk_save` 跳过迟到写；定测 test_t05e_late_cache_write 8 passed；相关 371 passed/8 skipped；全量 3341 passed/0 failed/11 skipped/1 deselected（490.04s）；不绑 Baostock/MID/G7/v43 |

@@ -785,7 +785,15 @@ class AKShareClient:
 
     @classmethod
     def _kline_disk_save(cls, cache_key: str, df: pd.DataFrame) -> None:
-        """写当日 K 线磁盘缓存（tmp+原子替换；顺带清理同键旧日期文件）。"""
+        """写当日 K 线磁盘缓存（tmp+原子替换；顺带清理同键旧日期文件）。
+
+        T05-E：超时放弃的 worker 内跳过写入，避免迟到 K 线污染当日缓存
+        （ISS-120 保留限制之晚到写抑制）。
+        """
+        from src.data.timeout_call import is_call_abandoned
+        if is_call_abandoned():
+            logger.debug(f"K线磁盘缓存：调用已放弃，跳过写入 {cache_key}")
+            return
         try:
             cache_dir = cls._kline_cache_dir()
             path = cache_dir / f"{cache_key}.json"

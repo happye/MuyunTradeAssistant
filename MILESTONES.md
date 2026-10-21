@@ -2,6 +2,8 @@
 
 T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
 
+**2026-10-22 T05-E**：ISS-120 晚到写缓存有界切片已合入（`is_call_abandoned` + MarketCache/K线写抑制）。G7/T05 整体仍不关闭；Baostock 会话重叠与真实 MID 仍缺实证。详见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
+
 **唯一长期路线入口｜更新：2026-10-21｜当前限定接收：v0.8.42；本轮main整合，直接交付、无需PR｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
 
 **当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 BUG-TUI-MARKUP / ISS-127；先已关 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。

@@ -104,7 +104,15 @@ def _disk_load(key: str) -> Optional[dict]:
 
 
 def _disk_save(key: str, data) -> bool:
-    """写磁盘缓存。IO 失败只 debug 不抛（缓存永远不许阻塞主流程）。"""
+    """写磁盘缓存。IO 失败只 debug 不抛（缓存永远不许阻塞主流程）。
+
+    T05-E：若当前线程处于已被调用方放弃的超时 worker 中，跳过写入，
+    避免迟到成功污染后续缓存命中（ISS-120 保留限制之晚到写抑制）。
+    """
+    from src.data.timeout_call import is_call_abandoned
+    if is_call_abandoned():
+        logger.debug(f"MarketCache: 调用已放弃，跳过磁盘缓存写入({key})")
+        return False
     if not _disk_enabled() or data is None:
         return False
     temporary = None
@@ -323,7 +331,16 @@ class MarketCache:
         return len(df) <= 100
 
     def _accept_snapshot(self, df, source_label: str) -> bool:
-        """质量校验通过则写入类级共享缓存并返回 True，否则 False。"""
+        """质量校验通过则写入类级共享缓存并返回 True，否则 False。
+
+        T05-E：调用方已放弃等待时跳过内存与磁盘写入（ISS-120 晚到写抑制）。
+        """
+        from src.data.timeout_call import is_call_abandoned
+        if is_call_abandoned():
+            logger.info(
+                f"MarketCache: {source_label}结果在调用方已放弃后到达，跳过写入缓存"
+            )
+            return False
         if not self._snapshot_quality_ok(df):
             logger.warning(f"MarketCache: {source_label}返回无效行情(全零或缺价格列)，拒绝写入缓存")
             return False

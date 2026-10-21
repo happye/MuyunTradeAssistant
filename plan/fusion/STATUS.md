@@ -1,3 +1,5 @@
+**2026-10-22 T05-E（晚到缓存写抑制 / ISS-120 切片）本提交关闭**：`src/data/timeout_call.py` 增加 `is_call_abandoned`（超时置位 abandoned 线程栈；嵌套任一外层放弃即 True）；`MarketCache._disk_save`/`_accept_snapshot` 与 `AKShareClient._kline_disk_save` 在放弃后跳过写入。定测 `tests/core/test_t05e_late_cache_write.py` 8 项；相关回归 371 passed/8 skipped；全量 3341 passed/0 failed/11 skipped/1 deselected（490.04s）。不处理 Baostock 会话重叠 / 真实 MID，不宣称关闭 G7/T05 整体，不绑 v43。仍待：T05-G7 剩余（Baostock 会话/真实 MID 等，需产品裁决）（不抢道）。以下为既有第十轮状态。
+
 **2026-10-22 T04-D（CLI pos plan --update 再抽）本提交关闭**：`src/core/trade_plan/plan_update_prep.py` `prepare_generate_or_update_plan`→`PlanGenUpdateOutcome`（NO_POSITION/DATA_UNAVAILABLE/GENERATE_FAILED/READY_NEW/READY_UPDATE；无打印、无 input、不写盘）+ `accept_plan_update`；CLI `_generate_or_update_plan` 薄封装保留 Y/n；内部复用 `prepare_trade_plan_draft`。定测 `tests/core/test_t04d_plan_update_prep.py`；相关回归（iss117 plan update / T04-C）全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）。不绑 G7/v43。仍待：T05-G7 剩余（晚到缓存/Baostock 会话重叠/真实 MID 等）（不抢道）。以下为既有第十轮状态。
 
 # 融合项目当前实施与审批状态
