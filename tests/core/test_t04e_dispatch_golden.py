@@ -16,6 +16,9 @@
 
 T04-F0 extend: lock benzong_multi (all-cached batch) / benzong_all (last-scan
 all-cached) / benzong --check; pave for _dispatch_benzong_cli extract.
+
+T04-G0 extend: lock live_multi / live_all / live_scan_all dispatch (analyze_live
+compact batch + early exits); pave for _dispatch_live_cli extract.
 Still skip scoring product / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
@@ -1041,3 +1044,132 @@ def test_run_cli_benzong_check(monkeypatch, capsys):
     assert "CHECK_OK_T04F" in out
     assert not spies["run_benzong_scoring"].called
     assert not spies["benzong_batch_analyze"].called
+
+
+def _fake_acct_facts(entries=None, incomplete=False):
+    """Minimal request_account_facts stand-in for live_* golden."""
+    facts = MagicMock(name="acct_facts")
+    facts.holding_entries.return_value = (list(entries or []), incomplete)
+    return facts
+
+
+def _patch_portfolio_facts(monkeypatch, facts):
+    import src.data.portfolio as portfolio_mod
+
+    pm = MagicMock(name="PortfolioManager")
+    pm.return_value.request_account_facts.return_value = facts
+    monkeypatch.setattr(portfolio_mod, "PortfolioManager", pm)
+    return pm
+
+
+def test_run_cli_live_multi_dispatches_analyze_live(monkeypatch):
+    """T04-G0: live_multi codes -> prefetch + analyze_live(compact) per code."""
+    spies = _spy_env(monkeypatch)
+    from src.cli import session_state
+    import src.data.akshare_client as ak_mod
+
+    facts = _fake_acct_facts()
+    _patch_portfolio_facts(monkeypatch, facts)
+    monkeypatch.setattr(
+        ak_mod.AKShareClient, "prefetch_realtime_quotes", staticmethod(lambda codes: len(codes))
+    )
+    monkeypatch.setattr(session_state, "batch_task_start", MagicMock())
+    monkeypatch.setattr(session_state, "batch_task_mark", MagicMock())
+    monkeypatch.setattr(session_state, "mark_deep_analyzed", MagicMock())
+
+    start_module.run_cli("live_multi", {"codes": ["600519", "000001"]})
+    spy = spies["analyze_live"]
+    assert spy.call_count == 2
+    codes = [c.args[0] for c in spy.call_args_list]
+    assert codes == ["600519", "000001"]
+    for c in spy.call_args_list:
+        assert c.kwargs.get("compact") is True
+        assert c.kwargs.get("account_facts") is facts
+    assert not spies["manage_positions"].called
+    assert not spies["analyze_portfolio"].called
+
+
+def test_run_cli_live_multi_empty_codes(monkeypatch, capsys):
+    """T04-G0: live_multi empty codes -> early message, no analyze_live."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("live_multi", {"codes": []})
+    out = capsys.readouterr().out
+    assert "没有可分析的代码" in out
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_live_all_with_holdings(monkeypatch):
+    """T04-G0: live_all holdings -> analyze_live(compact) per entry."""
+    spies = _spy_env(monkeypatch)
+    from src.cli import session_state
+
+    e1 = MagicMock(stock_code="600519", stock_name="茅台", from_ledger=False)
+    e2 = MagicMock(stock_code="000001", stock_name="平安", from_ledger=False)
+    facts = _fake_acct_facts([e1, e2], incomplete=False)
+    _patch_portfolio_facts(monkeypatch, facts)
+    monkeypatch.setattr(session_state, "batch_task_start", MagicMock())
+    monkeypatch.setattr(session_state, "batch_task_mark", MagicMock())
+
+    start_module.run_cli("live_all", {})
+    spy = spies["analyze_live"]
+    assert spy.call_count == 2
+    assert [c.args[0] for c in spy.call_args_list] == ["600519", "000001"]
+    for c in spy.call_args_list:
+        assert c.kwargs.get("compact") is True
+        assert c.kwargs.get("account_facts") is facts
+
+
+def test_run_cli_live_all_no_holdings(monkeypatch, capsys):
+    """T04-G0: live_all empty complete list -> 当前无持仓; no analyze_live."""
+    spies = _spy_env(monkeypatch)
+    facts = _fake_acct_facts([], incomplete=False)
+    _patch_portfolio_facts(monkeypatch, facts)
+    start_module.run_cli("live_all", {})
+    out = capsys.readouterr().out
+    assert "当前无持仓记录" in out
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_live_scan_all_no_scan(monkeypatch, capsys):
+    """T04-G0: live_scan_all without last scan -> tip; no analyze_live."""
+    spies = _spy_env(monkeypatch)
+    from src.cli import session_state
+
+    monkeypatch.setattr(session_state, "get_last_scan", lambda: None)
+    start_module.run_cli("live_scan_all", {"force": False})
+    out = capsys.readouterr().out
+    assert "还没有扫描结果" in out
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_live_scan_all_force_confirm(monkeypatch):
+    """T04-G0: live_scan_all force + y -> analyze_live(compact) for scan items."""
+    spies = _spy_env(monkeypatch)
+    from datetime import datetime
+    from src.cli import session_state
+
+    now = datetime.now().isoformat(timespec="seconds")
+    monkeypatch.setattr(
+        session_state,
+        "get_last_scan",
+        lambda: {
+            "items": [{"code": "600519", "name": "茅台"}, {"code": "000001", "name": "平安"}],
+            "source": "bzscan",
+            "timestamp": now,
+        },
+    )
+    monkeypatch.setattr(session_state, "get_deep_analyzed", lambda: {})
+    monkeypatch.setattr(session_state, "batch_task_start", MagicMock())
+    monkeypatch.setattr(session_state, "batch_task_mark", MagicMock())
+    monkeypatch.setattr(session_state, "mark_deep_analyzed", MagicMock())
+    monkeypatch.setattr("builtins.input", lambda prompt="": "y")
+    facts = _fake_acct_facts()
+    _patch_portfolio_facts(monkeypatch, facts)
+
+    start_module.run_cli("live_scan_all", {"force": True})
+    spy = spies["analyze_live"]
+    assert spy.call_count == 2
+    assert [c.args[0] for c in spy.call_args_list] == ["600519", "000001"]
+    for c in spy.call_args_list:
+        assert c.kwargs.get("compact") is True
+        assert c.kwargs.get("account_facts") is facts
