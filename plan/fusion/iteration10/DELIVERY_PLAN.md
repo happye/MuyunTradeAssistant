@@ -190,7 +190,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 4. ~~**测试写仓库报告目录**~~（本提交已关闭 / ISS-123 残余）：`tests/conftest.py` session 隔离 `evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis` 文件名集合守卫；定测 `test_report_dir_isolation` 4 项；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不改生产路径。
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
-5. **T04 大函数拆分**：~~T04-E~~/~~T04-F benzong_*~~/~~T04-G live_*~~/~~T04-H scan_*~~/~~T04-I observe(expect/fear/watch_pool)~~（均已关闭）；其余 CLI 内联（scan / doctor / diff_* / today / shadow / plan2 / research / backtest / chat 等）仍待（不急）。
+5. **T04 大函数拆分**：~~T04-E~~/~~T04-F benzong_*~~/~~T04-G live_*~~/~~T04-H scan_*~~/~~T04-I observe(expect/fear/watch_pool)~~/~~T04-J ops(doctor/diff_*/batch_tasks/today)~~（均已关闭）；其余 CLI 内联（scan-portfolio / shadow / plan2 / research / backtest / chat 等，不急；部分需产品判断）。
 2. ~~**T05-E 晚到缓存写抑制**~~（已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过。
 2b. ~~**T05-E2 MarketCache 其余共享内存写**~~（本提交已关闭）：ETF/行业/概念写簇经 `_live_cache_write_allowed`；不定 Baostock/MID。
 8. **T05-G7 仍待（需产品/实证）**：Baostock 会话重叠；真实 MID；其余内存字典逐点守卫（磁盘入口已统一）。缺有限反例前不扩修。
@@ -299,6 +299,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-22 | T04-G | 黄金扩展（live_multi/all/scan_all）+ 抽出 `_dispatch_live_cli`；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）；不触 Baostock/MID/G7/v43；下一张：~~T04-H~~（已关闭）/ 其余 CLI 内联（不急）/ T05-G7 仍待（不抢道） |
 | 2026-10-22 | T04-H | 黄金扩展（rules/industries/concepts）+ 抽出 `_dispatch_scan_cli`；定测 132；相关 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s）；不做 Baostock/MID/G7/v43；下一张：~~T04-I~~（已关闭）/ 其余 CLI 内联（不急）/ T05-G7 仍待（不抢道） |
 | 2026-10-22 | T04-I | 黄金扩展（expect/fear/watch_pool 传参）+ 抽出 _dispatch_observe_cli；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）；不做 Baostock/MID/G7/v43。下一张：T04 其余 CLI 内联（doctor/diff/today/...，不急）/ T05-G7 仍待（不抢道） |
+| 2026-10-22 | T04-J | 黄金扩展（doctor/diff_evidence/diff_list/batch_tasks/today）+ 抽出 `_dispatch_ops_cli`；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected（289.83s）；跳过 Baostock/MID/G7/v43。下一张：其余薄内联视产品判断 / T05-G7 仍待（不抢道） |
 
 
 ## 切片 T04-F（本提交关闭）：抽出 benzong_* 分发助手
@@ -354,5 +355,19 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 定测 test_t04e_dispatch_golden 135 passed；相关回归 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s） |
 | 不做 | 评分/MID/G7/v43/Baostock；本轮不继续拆 doctor/diff/today/backtest 等 |
 | 停止/回滚 | 黄金或全量红 -> git revert 本提交 |
-| 下一张 | T04 其余 CLI 内联拆分（doctor/diff/today/shadow/plan2/research/backtest 等，不急）/ T05-G7 仍待（不抢道） |
+| 下一张 | ~~T04-J~~（已关闭）；其余 CLI 内联（shadow/plan2/research/backtest/scan/chat，不急）/ T05-G7 仍待（不抢道） |
+
+
+## 切片 T04-J（本提交关闭）：抽出 doctor/diff_*/batch_tasks/today 运维诊断类分发助手
+
+| 项 | 内容 |
+| --- | --- |
+| 对应 | G7 / T04（工程拆分续） |
+| 前置 | T04-I 已抽出 `_dispatch_observe_cli`；T04-J0 扩展黄金锁 doctor/diff_evidence/diff_list/batch_tasks/today 传参 |
+| 现状 | run_cli 内 doctor / diff_evidence / diff_list / batch_tasks / today 原为薄内联 |
+| 目标 | 抽出连贯一块 `_dispatch_ops_cli`（行为等价）；scan/shadow/plan2/research/backtest/chat 相邻内联不动 |
+| 验收 | 定测 `test_t04e_dispatch_golden` 140 passed；相关回归 290；全量 3483 passed/0 failed/11 skipped/1 deselected（289.83s） |
+| 不做 | 评分/MID/G7/v43/Baostock；本轮不继续抽 shadow/plan2/research/backtest/chat |
+| 停止/回滚 | 定测或全量红 -> git revert 本提交 |
+| 下一张 | 其余 CLI 薄内联（shadow/plan2/research/backtest/scan-portfolio/chat）若无产品判断可继续，否则停；T05-G7 仍待（不抢道） |
 

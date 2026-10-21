@@ -2171,6 +2171,51 @@ def _dispatch_observe_cli(
     return False
 
 
+
+def _dispatch_ops_cli(
+    mode: str,
+    args: dict,
+    *,
+    doctor,
+    diff_evidence_cmd,
+    diff_list_cmd,
+    batch_tasks_cmd,
+    today_command,
+) -> bool:
+    """T04-J：doctor/diff_*/batch_tasks/today 运维诊断类分发助手（从 run_cli 抽出，行为等价一挪）。
+
+    本助手执行后返回 True；非运维诊断类 mode 返回 False，交 run_cli 继续 elif。
+    承接：doctor / diff_evidence / diff_list / batch_tasks / today。
+    行为锁定见 test_t04e_dispatch_golden（含 T04-J0 扩展）。
+    """
+    if mode == "doctor":
+        # v0.8.16：运行诊断——只读零 AI 环境体检（plan/ M6）
+        doctor()
+        return True
+
+    if mode == "diff_evidence":
+        # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
+        diff_evidence_cmd(args.get("code", ""), use_ai=bool(args.get("ai")))
+        return True
+
+    if mode == "diff_list":
+        # 用户走查 2026-09-26：diff 无参数 → 可对比股票清单
+        diff_list_cmd()
+        return True
+
+    if mode == "batch_tasks":
+        # v0.8.17：批量任务账本——进度与失败项可见（plan/ C2）
+        batch_tasks_cmd()
+        return True
+
+    if mode == "today":
+        # v0.8.19：今日工作台——先持仓风险，再等条件（plan/fusion F7）
+        today_command()
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2215,25 +2260,16 @@ def run_cli(mode: str, args: dict):
     ):
         pass
 
-    elif mode == "doctor":
-        # v0.8.16：运行诊断——只读零 AI 环境体检（plan/ M6）
-        doctor()
-
-    elif mode == "diff_evidence":
-        # v0.8.17：分析对比——同股最近两次深分析的关键证据变化（plan/ C1）
-        diff_evidence_cmd(args.get("code", ""), use_ai=bool(args.get("ai")))
-
-    elif mode == "diff_list":
-        # 用户走查 2026-09-26：diff 无参数 → 可对比股票清单
-        diff_list_cmd()
-
-    elif mode == "batch_tasks":
-        # v0.8.17：批量任务账本——进度与失败项可见（plan/ C2）
-        batch_tasks_cmd()
-
-    elif mode == "today":
-        # v0.8.19：今日工作台——先持仓风险，再等条件（plan/fusion F7）
-        today_command()
+    elif _dispatch_ops_cli(
+        mode,
+        args,
+        doctor=doctor,
+        diff_evidence_cmd=diff_evidence_cmd,
+        diff_list_cmd=diff_list_cmd,
+        batch_tasks_cmd=batch_tasks_cmd,
+        today_command=today_command,
+    ):
+        pass
 
     elif mode == "shadow":
         # plan/fusion 影子阶段前置：legacy vs fusion_mid/long 决策表差异观察报告

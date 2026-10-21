@@ -1,5 +1,7 @@
 # 暮云长期路线与持续里程碑
 
+**2026-10-22 T04-J**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。其余 shadow/plan2/research/backtest/scan/chat 内联视产品判断；不触评分/MID/G7/v43/Baostock。
+
 **2026-10-22 T04-I**：抽出 `_dispatch_observe_cli`（expect/fear/watch_pool）；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）；不触 Baostock/MID/G7/v43。见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
 
 T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
