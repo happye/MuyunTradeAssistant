@@ -2553,66 +2553,26 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
         if qty_mode:
             # ── J2 数量级路径（K0a/D4：股数是事实，建议是意图）──
-            # 事件账本先入账（唯一事实源）→ 账户快照派生事实 → apply_quantity_fill
-            # 只把事实同步到比例视图（部分卖出保留记录+待重估；剩余 0 股才清仓）
-            if not price or price <= 0:
+            # T04-A：编排（事件账本入账 → 快照派生 → apply_quantity_fill 投影同步）
+            # 已下沉 account_service.confirm_quantity_from_proposal；此处只按结果渲染
+            from src.data.account_service import confirm_quantity_from_proposal
+            oc = confirm_quantity_from_proposal(
+                pm, target, stock_code, fill_action, qty, price,
+                fee=fee, trade_date=trade_date, note=note)
+            if oc.status == "MISSING_PRICE":
                 console.print("[red]✗ 数量级确认需成交价（--qty 与成交价成对给）——未入账[/red]")
                 return
-            from src.data.account_service import (
-                DEFAULT_LEDGER_PATH, AccountService, FillInput, pick_reusable_fill_id,
-            )
-            # K0c-5：数量确认连接计划库——主意图引用（account×security active_ref）
-            # 随事件保留；无 active_ref 时不虚构引用（真实成交照记）
-            from src.data.horizon_plans import HorizonPlanStore
-            plans_store = HorizonPlanStore()
-            active_ref = plans_store.get_active_ref(stock_code)
-            plan_ref = str((active_ref or {}).get("plan_id") or "")
-            if active_ref:
-                console.print(f"  [dim]主意图引用: {plan_ref[:16]}…"
-                              f"（{active_ref.get('horizon', '')} 计划）[/dim]")
-            svc = AccountService(DEFAULT_LEDGER_PATH, plans_store=plans_store)
-            snap_before = svc.snapshot()
-            held_before = next((h.quantity for h in snap_before.holdings
-                                if h.security_id == stock_code), 0)
-            # 稳定 fill_id（J2 审查 P0 修复 + J5 审查 P1-1 数字序号修正）：
-            # 前缀下已入账事件中**数字序号最大**者，指纹与本笔一致且账本/投影**均未
-            # 消费完**（任一缺失=上次未完成）→ 判定崩溃恢复态，复用同一 fill_id
-            # （账本 DUPLICATE + 投影补做）；否则新序号（逐笔部分成交）。
-            # 派生逻辑本体在 account_service.pick_reusable_fill_id（可单测）。
-            prefix = f"{target.proposal_id}#"
-            from datetime import datetime
-            eff_date = trade_date or datetime.now().strftime("%Y-%m-%d")
-            # 偏离判定（事实对建议）：建议清仓但本笔卖不完全部持仓 → 明确偏离
-            deviation = (fill_action == "SELL" and target.position_action == "CLOSE_ALL"
-                         and held_before > int(qty))
-            payload = FillInput(security_id=stock_code, action=fill_action,
-                                quantity=int(qty), price=float(price) if price and price > 0 else 0.0,
-                                fee=float(fee or 0.0), trade_date=eff_date,
-                                plan_ref=plan_ref,
-                                deviation_from_proposal=deviation,
-                                note=(note or f"proposal={target.proposal_id}")
-                                     + (f"；偏离：建议清仓，本笔卖出{int(qty)}/{held_before}股"
-                                        if deviation else ""))
-            fill_id = pick_reusable_fill_id(svc.log.events(), prefix,
-                                            payload.core_fingerprint(),
-                                            has_fill_fn=lambda rid: pm._proposals.has_fill(rid)
-                                            and pm.has_applied_fill(rid))
-            prior_events = [e for e in svc.log.events()
-                            if str(e.related_fill_id or "") == fill_id]
-            if fill_id in {str(e.related_fill_id) for e in prior_events}:
-                # K0a 审查 P1-1：恢复态从已入账事件回读 payload（deviation 位以在账
-                # 事件为准——崩溃后 held_before 变化会让重算翻转，回读保证完整指纹
-                # 一致 → DUPLICATE 而非 CONFLICT）
-                prior_ev = prior_events[-1]
-                pdump = prior_ev.model_dump()
-                payload = payload.model_copy(update={
-                    "deviation_from_proposal": bool(pdump.get("deviation_from_proposal")),
-                    "note": str(pdump.get("fill_note") or "") or payload.note,
-                    "plan_ref": str(pdump.get("plan_ref") or "") or payload.plan_ref})
+            if oc.has_active_ref:
+                console.print(f"  [dim]主意图引用: {oc.plan_ref[:16]}…"
+                              f"（{oc.active_horizon} 计划）[/dim]")
+            fill_id = oc.fill_id
+            receipt = oc.receipt
+            if oc.recovered:
                 console.print(f"[yellow]↩ 检测到未完成的确认（fill {fill_id} 已入账、"
                               "投影未同步）——按崩溃恢复补做，不重复入账[/yellow]")
-            receipt = svc.confirm_fill(fill_id, svc.account_version(), payload)
-            if not receipt.ok:
+            if oc.status == "ERROR_BEFORE_LEDGER":
+                raise oc.error  # 账本入账前出错：已发生的行已渲染，异常原样上抛
+            if oc.status == "LEDGER_FAILED":
                 if receipt.status == "PERSIST_UNKNOWN":
                     # K0a：fsync 失败≠未入账——写入状态待核对（可能已在盘上）
                     console.print(f"[red]⚠ 写入状态待核对（{receipt.status}）: {receipt.reason}[/red]")
@@ -2626,20 +2586,10 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             else:
                 console.print(f"[green]✓ 事件账本入账: {fill_action} {qty} 股 @ ¥{price}"
                               f" ｜ 现金变动 {receipt.cash_delta:+.2f} 元 ｜ 版本 {receipt.account_version}[/green]")
-            # 账户事实（股数是事实——来自事件账本快照，不受建议影响）
-            snap_after = svc.snapshot()
-            held_after = next((h.quantity for h in snap_after.holdings
-                               if h.security_id == stock_code), 0)
-            holding_after = next((h for h in snap_after.holdings
-                                  if h.security_id == stock_code), None)
-            # 投影同步（比例视图）——事实驱动：部分卖出保留记录、剩余 0 股才清仓
-            result = pm.apply_quantity_fill(
-                stock_code, fill_action, quantity=int(qty),
-                price=float(price) if price and price > 0 else None,
-                trade_date=eff_date, fill_id=fill_id,
-                proposal_id=target.proposal_id, note=note or "",
-                quantity_before=held_before, quantity_after=held_after,
-                avg_cost=(holding_after.avg_cost if holding_after else None))
+            if oc.status == "PROJECTION_ERROR":
+                raise oc.error  # 账本已入账、投影未完成：入账行已渲染，异常原样上抛
+            held_after = oc.held_after
+            result = oc.projection
             if fill_action == "SELL" and held_after <= 0:
                 console.print(f"[green]✓ 清仓完成（实际卖出 {int(qty)} 股）[/green]")
             elif fill_action == "SELL":
@@ -2648,8 +2598,8 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                     console.print("  [yellow]⚠ 建议（清仓）未完全达成——建议保持待确认，"
                                   "如继续卖出请再次执行确认[/yellow]")
             else:
-                cost_str = (f"，批次均价成本 ¥{holding_after.avg_cost:.2f}"
-                            if holding_after and holding_after.avg_cost else "")
+                cost_str = (f"，批次均价成本 ¥{oc.avg_cost_after:.2f}"
+                            if oc.avg_cost_after else "")
                 console.print(f"[green]✓ 已记录本笔成交：已成交 {int(qty)} 股 / "
                               f"现持有 {held_after} 股{cost_str}[/green]")
             if result.ok:

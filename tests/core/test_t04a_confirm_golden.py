@@ -514,3 +514,70 @@ def test_golden_missing_price_rejected_before_any_write(env, price):
     assert _disk_norm(env.disk()) == before == _disk(
         events=2, held=1000, avg=10.0, proj=_PROJ_UNTOUCHED, last=_OPENING_LAST_1000,
         applied=[], status="PROPOSED", note="")
+
+
+# ── 9. 异常时机（T04-A-2）：异常前已发生的行必须已渲染，异常原样上抛 ──────
+
+class _Interrupt(BaseException):
+    """代替真实 KeyboardInterrupt（后者会中断 pytest 本身）：同为 BaseException 且非 Exception，
+    用来锁定「except Exception 拦不住」的时机。"""
+
+
+def test_golden_exception_after_active_ref_before_ledger(env):
+    """9a 有 active plan_ref + fee=-1（FillInput fee ge=0）：打印「主意图引用」行后 pydantic
+    ValidationError 上抛，账本/投影均未动。真实路径。"""
+    from pydantic import ValidationError
+    env.seed(action="ADD", target_ratio=0.15, held=300)
+    env.seed_active_plan("p_mid_gold")
+    before = _disk_norm(env.disk())
+    with pytest.raises(ValidationError):
+        env.confirm(qty=100, price=15.0, fee=-1.0)
+    assert env.lines() == _HEAD + [
+        "  600519 测试股: BUY 100 股 @ ¥15.0（依据建议 ADD）",
+        "  主意图引用: p_mid_gold…（MID 计划）",
+    ]
+    assert _disk_norm(env.disk()) == before
+
+
+def test_golden_recovered_then_confirm_fill_raises(env, monkeypatch):
+    """9b 恢复态 + AccountService.confirm_fill 被桩为抛 OSError（非回执）：先打印「检测到未完成的
+    确认」行，再 OSError 上抛；账本/投影未再动。其余全真实。"""
+    from src.data.account_service import FillInput
+    env.seed(action="CLOSE_ALL", target_ratio=0.0, held=150)
+    assert env.svc().confirm_fill("gp#1", "", FillInput(
+        security_id=CODE, action="SELL", quantity=100, price=10.0, trade_date=TRADE_DATE,
+        deviation_from_proposal=True,
+        note="proposal=gp；偏离：建议清仓，本笔卖出100/150股")).status == "ACCEPTED"
+    before = env.disk()
+
+    def _boom(self, *a, **k):
+        raise OSError("模拟 confirm_fill 抛异常")
+    monkeypatch.setattr(AccountService, "confirm_fill", _boom)
+    with pytest.raises(OSError):
+        env.confirm(qty=100, price=10.0)
+    assert env.lines() == _HEAD + [
+        "  600519 测试股: SELL 100 股 @ ¥10.0（依据建议 CLOSE_ALL）",
+        "↩ 检测到未完成的确认（fill gp#1 已入账、投影未同步）——按崩溃恢复补做，不重复入账",
+    ]
+    assert env.disk() == before
+
+
+def test_golden_base_exception_in_projection_after_ledger_written(env, monkeypatch):
+    """9c 账本入账成功后 apply_quantity_fill 抛 BaseException 子类（代替 KeyboardInterrupt）：
+    「✓ 事件账本入账」行已打印，异常原样上抛；账本已入账、投影/水位未动。"""
+    env.seed(action="REDUCE", target_ratio=0.05, held=1000)
+
+    def _boom(self, *a, **k):
+        raise _Interrupt()
+    monkeypatch.setattr(PortfolioManager, "apply_quantity_fill", _boom)
+    with pytest.raises(_Interrupt):
+        env.confirm(qty=300, price=12.0)
+    assert env.lines() == _HEAD + [
+        "  600519 测试股: SELL 300 股 @ ¥12.0（依据建议 REDUCE）",
+        "✓ 事件账本入账: SELL 300 股 @ ¥12.0 ｜ 现金变动 +3600.00 元 ｜ 版本 <VER>",
+    ]
+    assert env.disk() == _disk(
+        events=3, held=700, avg=10.0, proj=_PROJ_UNTOUCHED,
+        last=_ev(event_id="fill_gp#1", type="SELL", quantity=300, price=12.0,
+                 cash_delta=3600.0, related_fill_id="gp#1"),
+        applied=[], status="PROPOSED", note="")

@@ -24,6 +24,7 @@ import hashlib
 import json
 import logging
 import threading
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Literal, Optional
@@ -516,6 +517,134 @@ def pick_reusable_fill_id(events: list, prefix: str, payload_fingerprint: str,
             return str(last.related_fill_id)
         return f"{prefix}{_fill_seq(last.related_fill_id) + 1}"
     return f"{prefix}1"
+
+
+@dataclass(frozen=True)
+class QuantityConfirmOutcome:
+    """T04-A：pos confirm 数量路径的结构化结果（CLI 只渲染，不再编排）。
+
+    **消费者必须先看 status**：
+    - MISSING_PRICE：缺成交价，未碰账本。
+    - LEDGER_FAILED：receipt 非 ok（含 PERSIST_UNKNOWN），账本/投影均未再动。
+    - APPLIED：账本已入账（或幂等 DUPLICATE），投影同步结果见 projection（其 ok 另判）。
+    - ERROR_BEFORE_LEDGER：账本入账前（含 confirm_fill 自身抛异常）出错——不保证未写；
+      error 为原异常，stage="before_ledger"。
+    - PROJECTION_ERROR：账本**已入账**、快照读取或投影同步抛异常（error，stage=
+      "after_ledger"）——投影未同步，重跑同一命令可幂等恢复（账本不会重复入账）。
+    服务捕获 BaseException 并带回已算出的字段，由调用方先渲染异常前已发生的行，再原样
+    重抛 error（同一实例，保持原有崩溃时的输出行序）；stage 其余情形为 "complete"。"""
+    status: str
+    fill_action: str
+    quantity: int
+    price: Optional[float]
+    fill_id: str = ""
+    plan_ref: str = ""
+    active_horizon: str = ""
+    has_active_ref: bool = False
+    recovered: bool = False
+    receipt: object = None
+    held_before: int = 0
+    held_after: int = 0
+    avg_cost_after: Optional[float] = None
+    projection: object = None
+    error: Optional[BaseException] = None
+    stage: str = "complete"
+
+
+def confirm_quantity_from_proposal(pm, target, stock_code, fill_action, qty, price, *,
+                                   fee=None, trade_date=None, note=None,
+                                   ledger_path=None,
+                                   plans_store=None) -> QuantityConfirmOutcome:
+    """数量级确认编排（J2/K0a/K0c-5，自 CLI manage_positions confirm 下沉，T04-A）。
+
+    事件账本先入账（唯一事实源）→ 账户快照派生事实 → pm.apply_quantity_fill 把事实
+    同步到比例视图。pm（PortfolioManager）依赖注入，本模块不 import portfolio/cli。
+    ledger_path/plans_store 缺省在**调用时**取模块 DEFAULT_LEDGER_PATH / 新建
+    HorizonPlanStore()。返回值语义见 QuantityConfirmOutcome（先看 status；
+    PROJECTION_ERROR=账本已入账、投影未同步，重跑同一命令可幂等恢复）。"""
+    if not price or price <= 0:
+        return QuantityConfirmOutcome(status="MISSING_PRICE", fill_action=fill_action,
+                                      quantity=int(qty), price=price)
+    base = dict(fill_action=fill_action, quantity=int(qty), price=price)
+    st: dict = {}            # 已算出的字段（异常时原样带回，供调用方渲染异常前的行）
+    stage = "before_ledger"
+    try:
+        # K0c-5：数量确认连接计划库——主意图引用（account×security active_ref）
+        # 随事件保留；无 active_ref 时不虚构引用（真实成交照记）
+        if plans_store is None:
+            from src.data.horizon_plans import HorizonPlanStore
+            plans_store = HorizonPlanStore()
+        active_ref = plans_store.get_active_ref(stock_code)
+        plan_ref = str((active_ref or {}).get("plan_id") or "")
+        st.update(plan_ref=plan_ref, has_active_ref=bool(active_ref),
+                  active_horizon=str(active_ref.get("horizon", "")) if active_ref else "")
+        svc = AccountService(DEFAULT_LEDGER_PATH if ledger_path is None else ledger_path,
+                             plans_store=plans_store)
+        snap_before = svc.snapshot()
+        held_before = next((h.quantity for h in snap_before.holdings
+                            if h.security_id == stock_code), 0)
+        st["held_before"] = held_before
+        # 稳定 fill_id（J2 审查 P0 修复 + J5 审查 P1-1 数字序号修正）：
+        # 前缀下已入账事件中**数字序号最大**者，指纹与本笔一致且账本/投影**均未
+        # 消费完**（任一缺失=上次未完成）→ 判定崩溃恢复态，复用同一 fill_id
+        # （账本 DUPLICATE + 投影补做）；否则新序号（逐笔部分成交）。
+        prefix = f"{target.proposal_id}#"
+        eff_date = trade_date or datetime.now().strftime("%Y-%m-%d")
+        # 偏离判定（事实对建议）：建议清仓但本笔卖不完全部持仓 → 明确偏离
+        deviation = (fill_action == "SELL" and target.position_action == "CLOSE_ALL"
+                     and held_before > int(qty))
+        payload = FillInput(security_id=stock_code, action=fill_action,
+                            quantity=int(qty), price=float(price) if price and price > 0 else 0.0,
+                            fee=float(fee or 0.0), trade_date=eff_date,
+                            plan_ref=plan_ref,
+                            deviation_from_proposal=deviation,
+                            note=(note or f"proposal={target.proposal_id}")
+                                 + (f"；偏离：建议清仓，本笔卖出{int(qty)}/{held_before}股"
+                                    if deviation else ""))
+        fill_id = pick_reusable_fill_id(svc.log.events(), prefix,
+                                        payload.core_fingerprint(),
+                                        has_fill_fn=lambda rid: pm._proposals.has_fill(rid)
+                                        and pm.has_applied_fill(rid))
+        st["fill_id"] = fill_id
+        prior_events = [e for e in svc.log.events()
+                        if str(e.related_fill_id or "") == fill_id]
+        if fill_id in {str(e.related_fill_id) for e in prior_events}:
+            # K0a 审查 P1-1：恢复态从已入账事件回读 payload（deviation 位以在账
+            # 事件为准——崩溃后 held_before 变化会让重算翻转，回读保证完整指纹
+            # 一致 → DUPLICATE 而非 CONFLICT）
+            prior_ev = prior_events[-1]
+            pdump = prior_ev.model_dump()
+            payload = payload.model_copy(update={
+                "deviation_from_proposal": bool(pdump.get("deviation_from_proposal")),
+                "note": str(pdump.get("fill_note") or "") or payload.note,
+                "plan_ref": str(pdump.get("plan_ref") or "") or payload.plan_ref})
+            st["recovered"] = True
+        receipt = svc.confirm_fill(fill_id, svc.account_version(), payload)
+        st["receipt"] = receipt
+        if not receipt.ok:
+            return QuantityConfirmOutcome(status="LEDGER_FAILED", **base, **st)
+        stage = "after_ledger"
+        # 账户事实（股数是事实——来自事件账本快照，不受建议影响）
+        snap_after = svc.snapshot()
+        held_after = next((h.quantity for h in snap_after.holdings
+                           if h.security_id == stock_code), 0)
+        holding_after = next((h for h in snap_after.holdings
+                              if h.security_id == stock_code), None)
+        avg_cost_after = holding_after.avg_cost if holding_after else None
+        st.update(held_after=held_after, avg_cost_after=avg_cost_after)
+        # 投影同步（比例视图）——事实驱动：部分卖出保留记录、剩余 0 股才清仓
+        result = pm.apply_quantity_fill(
+            stock_code, fill_action, quantity=int(qty),
+            price=float(price) if price and price > 0 else None,
+            trade_date=eff_date, fill_id=fill_id,
+            proposal_id=target.proposal_id, note=note or "",
+            quantity_before=held_before, quantity_after=held_after,
+            avg_cost=avg_cost_after)
+        return QuantityConfirmOutcome(status="APPLIED", projection=result, **base, **st)
+    except BaseException as e:  # 含 KeyboardInterrupt：调用方先渲染已发生的行再原样重抛
+        return QuantityConfirmOutcome(
+            status="PROJECTION_ERROR" if stage == "after_ledger" else "ERROR_BEFORE_LEDGER",
+            error=e, stage=stage, **base, **st)
 
 
 def _event_fingerprint(event: AccountEvent, *, include_deviation: bool = True) -> str:
