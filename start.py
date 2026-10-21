@@ -6,6 +6,7 @@
 
 import sys
 import os
+import math
 import subprocess
 
 # 确保工作目录为脚本所在目录
@@ -590,6 +591,12 @@ def parse_input(user_input: str):
                         except ValueError:
                             print(f"  [!] {tok} 值无效: '{val}'（需数字）")
                             return None
+                        if not math.isfinite(valf):
+                            print(f"  [!] {tok} 值无效: '{val}'（需有限数字）——确认取消")
+                            return None
+                        if tok == "--fee" and valf < 0:
+                            print(f"  [!] --fee 不能为负数（手续费填 0 或正数）: '{val}'——确认取消")
+                            return None
                         if tok == "--qty" and (valf <= 0 or valf != int(valf)):
                             print(f"  [!] --qty 须为正整数（股数）: '{val}'——确认取消")
                             return None
@@ -603,11 +610,17 @@ def parse_input(user_input: str):
                 except ValueError:
                     print(f"  [!] 仓位变化无效: '{positional[0]}'（需数字 0-1），pos confirm 取消")
                     return None
+                if not math.isfinite(args["ratio"]):
+                    print(f"  [!] 仓位变化无效: '{positional[0]}'（需有限数字 0-1），pos confirm 取消")
+                    return None
             if len(positional) >= 2:
                 try:
                     args["price"] = float(positional[1])
                 except ValueError:
                     print(f"  [!] 成交价无效: '{positional[1]}'（需数字），pos confirm 取消")
+                    return None
+                if not math.isfinite(args["price"]):
+                    print(f"  [!] 成交价无效: '{positional[1]}'（需有限数字），pos confirm 取消")
                     return None
             return ("pos_confirm", args)
         elif sub in ("opening", "openinglot"):
