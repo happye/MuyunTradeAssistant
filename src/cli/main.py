@@ -2188,113 +2188,71 @@ def _display_trade_plan(pos):
 def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     """为单只持仓生成或更新 TradePlan。返回是否成功。
 
-    - 生成（update=False 或无现有计划）：用 generator 按当前行情生成
-    - 更新（update=True 且有现有计划）：重新生成但保留 opened_at（建仓日期不变），
-      记录调整审计，current_stop 单向上移（不低于旧值）
+    T04-D：编排下沉 prepare_generate_or_update_plan；本函数只负责 rich 展示、
+    更新路径 Y/n 与 attach_plan。文案与旧实现对齐。
     """
-    from src.core.trade_plan import TradePlanGenerator
+    from src.core.trade_plan.plan_update_prep import (
+        prepare_generate_or_update_plan, accept_plan_update,
+        PU_NO_POSITION, PU_DATA_UNAVAILABLE, PU_GENERATE_FAILED,
+        PU_READY_NEW, PU_READY_UPDATE,
+    )
 
-    pos = pm.get_position(stock_code)
-    if pos is None:
+    oc = prepare_generate_or_update_plan(pm, stock_code, update=update)
+
+    if oc.status == PU_NO_POSITION:
         console.print(f"[red]✗ {stock_code} 无持仓记录[/red]")
         return False
 
-    old_plan = pos.trade_plan  # Existing accepted plan is never silently overwritten.
-    action_label = "更新" if (update and old_plan) else "生成"
+    action_label = oc.action_label or ("更新" if update else "生成")
 
-    # 拉当前行情（同 _try_attach_trade_plan）
-    stock_data = None
-    try:
-        from src.data.akshare_client import get_stock_data
-        stock_data = get_stock_data(stock_code)
-        if stock_data:
-            atr_str = f"{stock_data.atr_14:.2f}" if stock_data.atr_14 else "?"
-            console.print(f"   [green]✓[/green] 读取当前技术面（ATR={atr_str}, 价格=¥{stock_data.price:.2f}）")
-    except Exception as e:
-        console.print(f"   [red]✗ 技术面数据拉取失败: {type(e).__name__}: {str(e)[:80]}[/red]")
-        console.print(f"   [dim]检查网络/代理，或跑 bz --check 体检数据源[/dim]")
+    if oc.status == PU_DATA_UNAVAILABLE:
+        if oc.data_error:
+            console.print(f"   [red]✗ 技术面数据拉取失败: {oc.data_error[:80] if len(oc.data_error) > 80 else oc.data_error}[/red]")
+            console.print(f"   [dim]检查网络/代理，或跑 bz --check 体检数据源[/dim]")
+        else:
+            console.print(f"   [red]✗ 无法获取技术面数据，{action_label}已跳过[/red]")
         return False
 
-    if stock_data is None:
-        console.print(f"   [red]✗ 无法获取技术面数据，{action_label}已跳过[/red]")
-        return False
+    price = oc.price if oc.price is not None else 0.0
+    console.print(f"   [green]✓[/green] 读取当前技术面（ATR={oc.atr_str}, 价格=¥{price:.2f}）")
 
-    # 入场价：有持仓用持仓价，更新时用当前价重算止损基准
-    entry_price = pos.entry_price if pos.entry_price else stock_data.price
-    ratio = pos.current_ratio if pos.current_ratio else 0.20
-
-    rag_service = None
-    try:
-        from src.rag.service import get_rag_service
-        rag_service = get_rag_service()
-    except Exception:
-        pass
-
-    # 跳法A 阶段1.2：笨总评分定 mode。
-    # 更新模式下不重跑笨总评分（避免 mode 摇摆），由旧 mode 反推 grade 保持持有参数一致；
-    # 仅新生成时跑评分。
-    benzong_grade = None
-    industry_prosperity = None
-    is_self_reliance = False
-    flagbearer_code = None
-    penetration_stage = None
-    if old_plan:
-        benzong_grade = {"qizong": "A", "jianzong": "B"}.get(old_plan.mode)
-        # 报告2.1: 更新模式保留建仓时标注的旗手/渗透率（不重跑 AI 标注）
-        flagbearer_code = old_plan.flagbearer_code
-        penetration_stage = old_plan.penetration_stage
-        # 审查修复 chat-M1：原 industry_prosperity=None 绕过 _mode_from_grade 大前提守卫
-        # （ip<=0 检查被 None 跳过 -> prosperity 崩到 0 仍保持气宗压制 exit）。取今日缓存的景气度
-        # （不重跑评分，符合"更新不重跑"意图），让大前提守卫生效；缓存无则回退 None（原行为）。
-        try:
-            from src.core.benzong import cache as bz_cache
-            from datetime import datetime as _dt
-            cached_ip = bz_cache.get(stock_code, _dt.now().strftime("%Y-%m-%d"), "industry_prosperity")
-            if cached_ip and "score" in cached_ip:
-                industry_prosperity = cached_ip["score"]
-                console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑评分，景气度取缓存={industry_prosperity:.0f}）[/dim]")
-            else:
-                console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分，景气度未知）[/dim]")
-        except Exception:
-            console.print(f"   [dim]沿用旧计划 mode={old_plan.mode}（更新不重跑笨总评分）[/dim]")
+    if oc.is_update_path:
+        mode_disp = oc.reused_mode
+        if oc.prosperity_note == "cache" and oc.industry_prosperity is not None:
+            console.print(
+                f"   [dim]沿用旧计划 mode={mode_disp}（更新不重跑评分，景气度取缓存={oc.industry_prosperity:.0f}）[/dim]")
+        elif oc.prosperity_note == "bare":
+            console.print(f"   [dim]沿用旧计划 mode={mode_disp}（更新不重跑笨总评分）[/dim]")
+        else:
+            console.print(f"   [dim]沿用旧计划 mode={mode_disp}（更新不重跑笨总评分，景气度未知）[/dim]")
     else:
-        try:
-            from src.core.benzong.auto_scorer import auto_score
-            console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
-            bz = auto_score(stock_code, name=pos.stock_name or stock_code)
-            benzong_grade = bz.score.effective_grade()
-            industry_prosperity = bz.score.industry_prosperity
-            console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}）")
-            _src_line = _bz_industry_sources_line(bz.score)   # C6：行业景气数据来源透出
-            if _src_line:
-                console.print(_src_line)
-        except Exception as e:
-            logger.warning(f"{action_label}时笨总评分失败: {e}")
+        console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
+        if oc.score_failed:
             console.print(f"   [yellow]⚠ 笨总评分未获取，mode 不设定[/yellow]")
+        elif oc.score_normalized is not None:
+            ip = oc.industry_prosperity if oc.industry_prosperity is not None else 0
+            console.print(
+                f"   [green]✓[/green] 笨总评分 {oc.score_normalized:.0f}/100 级别 {oc.benzong_grade}"
+                f"（行业景气={ip:.0f}）")
+            src_line = _industry_sources_rich_line(oc.industry_sources)
+            if src_line:
+                console.print(src_line)
 
-    gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
-    # market_state 已不参与 mode 判定（ISS-051 回退阶段4牛市闸门，改用个股级 Weinstein stage，
-    # gen.generate 内部 _detect_weinstein_stage 自算）。原 _ms 计算与 StateMachine 调用是死代码，已删。
-    try:
-        plan, meta = gen.generate(
-            stock_code=stock_code, stock_name=pos.stock_name or stock_code,
-            entry_price=entry_price, ratio=ratio, stock_data=stock_data,
-            benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
-            is_self_reliance=is_self_reliance,
-            flagbearer_code=flagbearer_code, penetration_stage=penetration_stage,
-        )
-    except Exception as e:
-        console.print(f"   [red]✗ {action_label}失败: {e}[/red]")
+    if oc.status == PU_GENERATE_FAILED:
+        console.print(f"   [red]✗ {action_label}失败: {oc.generate_error}[/red]")
         return False
 
-    # A refresh is a proposal. Preserve accepted holding/stop policy, including legacy mode=None.
-    if old_plan:
-        proposed_stop = max(old_plan.current_stop, plan.current_stop)
-        plan = old_plan.model_copy(deep=True)
-        plan.current_stop = proposed_stop
-        console.print(f"   [cyan]更新预览：mode={old_plan.mode or '未设定'}、期限={old_plan.max_hold_days}天保持；"
-                      f"止损 ¥{old_plan.current_stop:.2f} → ¥{proposed_stop:.2f}[/cyan]")
-        # Match the existing chat confirmation bridge; an unknown Rich input would loop forever.
+    plan = oc.plan
+    meta = oc.meta or {}
+
+    if oc.status == PU_READY_UPDATE:
+        old_mode = oc.old_plan.mode if oc.old_plan else None
+        old_days = oc.old_plan.max_hold_days if oc.old_plan else None
+        old_stop = oc.old_stop
+        proposed_stop = oc.proposed_stop
+        console.print(
+            f"   [cyan]更新预览：mode={old_mode or '未设定'}、期限={old_days}天保持；"
+            f"止损 ¥{old_stop:.2f} → ¥{proposed_stop:.2f}[/cyan]")
         try:
             accepted = input("接受这次计划更新？（仅更新计划，不记成交）[y/N]: ").strip().lower() in ("y", "yes")
         except (EOFError, KeyboardInterrupt):
@@ -2302,21 +2260,19 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
         if not accepted:
             console.print("   [dim]未接受，原计划继续有效[/dim]")
             return False
-        from datetime import datetime
-        plan.adjustments.append({"date": datetime.now().strftime("%Y-%m-%d"),
-                                 "field": "current_stop", "old": old_plan.current_stop,
-                                 "new": proposed_stop, "source": "user",
-                                 "reason": "pos plan 更新预览明确接受；原模式/期限/初始止损保持"})
+        plan = accept_plan_update(plan, old_stop, proposed_stop)
+    elif oc.status != PU_READY_NEW:
+        console.print(f"   [red]✗ {action_label}失败: 未知状态 {oc.status}[/red]")
+        return False
 
-    # 写回
     if pm.attach_plan(stock_code, plan):
         console.print(f"   [green]✓ {action_label}成功[/green]")
         if meta.get("fallback_reasons"):
             console.print(f"   [dim]⚠ 降级提示: {' / '.join(meta['fallback_reasons'])}[/dim]")
         return True
-    else:
-        console.print(f"   [red]✗ 写回失败[/red]")
-        return False
+    console.print(f"   [red]✗ 写回失败[/red]")
+    return False
+
 
 
 def manage_positions(action: str, stock_code: str = "", name: str = "", price: float = 0.0,

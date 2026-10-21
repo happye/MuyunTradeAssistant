@@ -165,11 +165,27 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 修法 | 仅改 `tests/conftest.py`：session 隔离改指临时目录 + 会话结束文件名集合守卫。不改 src 生产路径 |
 | 定测 | `tests/core/test_report_dir_isolation.py` 4 项（session 偏离生产路径 / 绿路径不碰仓库 / 未隔离红灯演示+清理 / 守卫差分） |
 | 全量 | 3323 passed/0 failed/11 skipped/1 deselected（339.82s） |
-| 下一张 | CLI pos plan --update 再抽 / T05-G7 剩余（不抢道）；不绑 G7/v43 |
+| 下一张 | ~~CLI pos plan --update 再抽~~（T04-D 本提交关闭）/ T05-G7 剩余（不抢道）；不绑 G7/v43 |
+
+
+
+## 卡片 T04-D（本提交）：CLI pos plan --update 交互再抽
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G2（跨入口一致）/ G7 / T04；T04-C 留下的 CLI pos plan --update 尾巴 |
+| 现状 | _generate_or_update_plan 仍把拉行情/笨总评分或沿用旧 mode/Generator/更新预览合并/Y/n/attach 耦在 CLI；chat 无 --update，但服务无法单测更新预览与止损单向上移，后续 TUI/Web 也无法复用。 |
+| 用户收益 | 更新预览编排可直接单测；CLI 仍保留 Y/n；文案与「未接受则原计划有效」语义不变；为后续非 CLI 入口复用同一提案。 |
+| 设计 | ① src/core/trade_plan/plan_update_prep.py：prepare_generate_or_update_plan → PlanGenUpdateOutcome（NO_POSITION / DATA_UNAVAILABLE / GENERATE_FAILED / READY_NEW / READY_UPDATE；无打印、无 input、不写盘）；更新路径 skip 笨总评分、缓存景气度、止损 max(旧,新) 合并到旧 plan 深拷贝；`accept_plan_update` 追加 adjustments。内部复用 prepare_trade_plan_draft。② CLI _generate_or_update_plan 薄封装：按 status 渲染 + Y/n + attach。 |
+| 不改 | chat（无 --update）；持仓文件格式；TradePlan 字段语义；mode/期限/locked_initial_stop 保持规则；G7/v43；批量 all 循环仍在 CLI。 |
+| 反例与验收 | ① 服务单测 	ests/core/test_t04d_plan_update_prep.py（无持仓/数据失败/新生成跑评分/更新跳评分与止损合并/accept 审计/生成失败）。② 回归 	est_real_plan_update_keeps_old_policies_until_acceptance、T04-C draft_prep。③ 全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）。 |
+| 停止与回滚 | CLI 更新文案或「拒接受仍保留原计划」偏离 → 回滚；独立 commit，可 revert。 |
+
 
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
-1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（本提交已关闭）：prepare_trade_plan_draft + activate_overweight_checked；chat add/plan/overweight 改调服务。剩余可选：CLI pos plan --update 交互再抽（非阻塞）。
+1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（已关闭）：prepare_trade_plan_draft + activate_overweight_checked。
+1b. ~~**T04-D CLI pos plan --update 再抽**~~（本提交已关闭）：prepare_generate_or_update_plan + accept_plan_update；CLI 薄封装保留 Y/n。
 3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：**本提交已关闭**——相对路径锚仓库根 + faiss Unicode 安全 I/O；定测 `test_iss123_index_dir_repo_root`；Web/TUI/脚本经同一 `RAGService`/`get_rag_service` 受益，无需各入口 chdir。
 4. ~~**测试写仓库报告目录**~~（本提交已关闭 / ISS-123 残余）：`tests/conftest.py` session 隔离 `evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis` 文件名集合守卫；定测 `test_report_dir_isolation` 4 项；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不改生产路径。
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
@@ -233,3 +249,4 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-21 | BUG-TUI-MARKUP | 修前定测 4 红（字面 `[red]`）；统一 `Text` 着色；定测 4 + 相关 TUI 8 = 12 passed；全量 3318 passed / 1 failed / 11 skipped / 1 deselected（341.62s）——唯一失败为 test_cash_material_intake 控制台折行（BUG-CASH-WRAP，与本卡无关）；关闭 ISS-127；下一张：测试写报告目录隔离 / BUG-CASH-WRAP / T05-G7 剩余（不抢道） |
 | 2026-10-21 | 测试写报告目录隔离 | conftest session 隔离 `_REPORT_DIR` + 文件名守卫；定测 4 passed；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；关闭 ISS-123 报告目录残余；下一张：CLI pos plan --update 再抽 / T05-G7 剩余（不抢道） |
 | 2026-10-21 | BUG-CASH-WRAP | 根因：Rich size 需 width+height；捕获补 height=40；断言去换行；定测 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s）；关闭 ISS-128；下一张：测试写报告目录隔离（evidence.py `_REPORT_DIR`）/ T05-G7 剩余（不抢道） |
+| 2026-10-22 | T04-D | 卡片落盘并实现：plan_update_prep + CLI 薄封装；定测 test_t04d_plan_update_prep；回归 iss117 plan update / T04-C 全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）；下一张：T05-G7 剩余（不抢道）/ T04 大函数拆分（不急） |

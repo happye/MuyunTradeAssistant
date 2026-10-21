@@ -1,4 +1,4 @@
-"""TradePlan 子系统（v0.8.5）
+﻿"""TradePlan 子系统（v0.8.5）
 
 建仓时一次性定下交易计划（七要素），之后按计划执行，避免日常波动牵着走。
 
@@ -20,9 +20,17 @@ from src.core.trade_plan.draft_prep import (
     TradePlanDraftOutcome, prepare_trade_plan_draft,
     TP_DATA_UNAVAILABLE, TP_GENERATE_FAILED, TP_READY,
 )
+from src.core.trade_plan.plan_update_prep import (
+    PlanGenUpdateOutcome, prepare_generate_or_update_plan, accept_plan_update,
+    PU_NO_POSITION, PU_DATA_UNAVAILABLE, PU_GENERATE_FAILED,
+    PU_READY_NEW, PU_READY_UPDATE,
+)
 
 __all__ = [
     "TradePlanGenerator", "generate_plan_draft", "TradePlanAdjuster",
     "TradePlanDraftOutcome", "prepare_trade_plan_draft",
     "TP_DATA_UNAVAILABLE", "TP_GENERATE_FAILED", "TP_READY",
+    "PlanGenUpdateOutcome", "prepare_generate_or_update_plan", "accept_plan_update",
+    "PU_NO_POSITION", "PU_DATA_UNAVAILABLE", "PU_GENERATE_FAILED",
+    "PU_READY_NEW", "PU_READY_UPDATE",
 ]

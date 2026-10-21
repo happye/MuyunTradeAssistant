@@ -2291,7 +2291,7 @@ P3（已取消）:
 - **优先级/方向**：P2，G2跨入口一致/T04。
 - **实证**：`src/tui/app.py`加仓经`asyncio.to_thread(manage_positions, "add")`后无条件显示「已加仓」；`manage_positions`遇已有持仓/参数非法/保存失败只打印并`return None`。新TUI pilot测试在HEAD上红：stdout被写入「⚠ 600519 已有持仓记录」且panel显示「已加仓 600519」。
 - **修复**：`src/data/portfolio.py` `add_position_checked`/`remove_position_checked`返回`PositionOpOutcome`；TUI加仓与chat删仓改调服务；CLI按状态渲染、文案逐字不变（20项黄金先在HEAD通过）。
-- **限制**：T04-C已关闭chat add/plan/overweight的CLI桥（本提交）；CLI pos plan --update交互路径仍在CLI；TUI分析面板旧行字面markup已由本提交 ISS-127 / BUG-TUI-MARKUP 关闭。
+- **限制**：T04-C已关闭chat add/plan/overweight的CLI桥；T04-D（本提交）已将CLI pos plan --update编排下沉prepare_generate_or_update_plan，Y/n仍在CLI；TUI分析面板旧行字面markup已由ISS-127 / BUG-TUI-MARKUP 关闭。
 
 ### ISS-125: pos confirm负手续费/非有限数值未在入口校验，inf成交价可入账
 
@@ -2328,4 +2328,13 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **修复**：测试侧 `Console(..., width=220, height=40)` 固定捕获宽度；断言对 `getvalue()` 去换行后再匹配（按用户可读语义，不把正常折行当失败）。不改生产 `_render_research_result` 折行行为（窄终端折行合理）。
 - **验证**：定测文件 45 passed；全量见本提交（3319 passed/0 failed/11 skipped/1 deselected（361.80s））。
 - **限制**：其他仅设 `width=` 未设 `height=` 的 Console 捕获若遇超宽 CJK 文案仍可能折行；发现后再按同法修，不顺手扩。
+
+### ISS-129: CLI pos plan --update 编排耦在 UI（T04-D）
+
+- **状态/日期**：2026-10-22，第十轮 T04-D 本提交关闭。
+- **优先级/方向**：P2，G2/G7/T04；T04-C 留下的 CLI 更新尾巴。
+- **实证**：_generate_or_update_plan 将拉行情/评分或沿用旧 mode/生成/止损预览合并/Y/n/attach 耦在 CLI，更新预览无法直接单测。
+- **修复**：plan_update_prep.prepare_generate_or_update_plan（无打印/无 input/不写盘）+ `accept_plan_update；CLI 薄封装保留 Y/n 与文案；内部复用 prepare_trade_plan_draft。
+- **验证**：定测 	ests/core/test_t04d_plan_update_prep.py；回归 	est_real_plan_update_keeps_old_policies_until_acceptance。
+- **限制**：chat 无 --update；批量 pos plan all 循环仍在 CLI；不绑 G7/v43。
 
