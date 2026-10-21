@@ -2299,3 +2299,12 @@ P3（已取消）:
 - **实证**：HEAD接线实测：`--fee -1/nan`显示原始pydantic ValidationError；`--qty nan`显示`cannot convert float NaN to integer`；`--price inf`实际入账「BUY 100 股 @ ¥inf，现金变动 -inf」、投影avg_cost=inf。
 - **修复**：`start.py` pos confirm分支数值flag拒非有限、`--fee`拒负、位置仓位/成交价拒非有限；`docs/报错速查手册.md`补条目；plain_errors不改（非logger.warning）。
 - **同类剩余**：pos opening现金、pos openinglot成本价inf/nan服务层实测接受入账（P1，BUG-FINITE）；pos add价格/仓位（P2）；backtest/scan资金（P3）。
+
+### ISS-126: 账户事件账本接受非有限数值与超大数量（写侧）
+
+- **状态/日期**：2026-10-21，第十轮BUG-FINITE写侧修复，commit `7de1e59`；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）。读侧对旧数据的隔离见BUG-FINITE-READ（未关闭）。
+- **优先级/方向**：P1，G1账户事实可信。
+- **实证**：HEAD真实API：inf价BUY/SELL经confirm_fill ACCEPTED（cash_delta=±inf）；opening_import现金inf/nan、lot成本inf/nan入账；>309位整数数量入账后快照转float溢出；已写入nan成本使重放抛ValidationError，之后任何确认都写不进。
+- **修复**：`FillInput` price/fee `allow_inf_nan=False`；`opening_import`现金/成本拒非有限、数量拒溢出（ValueError，整批先校验后写）；`start.py` pos opening/openinglot入口校验；报错速查手册补条目。
+- **读侧现状（表征测试test_legacy_current_*锁定）**：snapshot对旧inf/nan不隔离且标QUANTITY_LEVEL；today显示「可用现金 inf 元」、-inf/nan吞成0；compute_nav现金非有限仍ok；nan成本重放崩溃。→BUG-FINITE-READ。
+- **同类剩余**：account_snapshot的AccountEvent/HoldingLot/FeeModel无有限约束（读模型，按卡片裁决不加约束改走隔离）；allocate_tradeable_budget的p<=0放过inf；pos add价格/仓位（P2）；backtest/scan资金（P3）。

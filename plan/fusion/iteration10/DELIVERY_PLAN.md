@@ -118,7 +118,7 @@
 | 反例与验收 | 接线测试走 `parse_input → run_cli` 全链（LRN-L005）：`pos confirm X --qty 100 --price 12 --fee -1` 在 HEAD 上产生原始异常或进入账本层（红），修复后返回提示且账本/投影未改动（绿）；`--fee nan`、`--qty nan`、`--price inf`、位置价 `inf` 同理；`--fee 0` 与正常费用路径不变。全量 0 failed。 |
 | 不改 | 服务层 `FillInput` 约束（保留为第二道防线）、正常路径文案、账本格式。 |
 
-## 卡片 BUG-FINITE（P1，下一张）：账户事件账本接受非有限数值
+## 卡片 BUG-FINITE（实现复验通过，7de1e59）：账户事件账本接受非有限数值
 
 | 项 | 内容 |
 |---|---|
@@ -127,6 +127,16 @@
 | 修法 | 服务层第二道防线：`src/data/account_service.py` 的 `FillInput`（price、fee）与 `opening_import` 的现金/成本/数量拒非有限值（负数规则保持现状）；入口层 `start.py` opening/openinglot 解析补 `math.isfinite` 人话提示。账本读取侧对已存在的非有限事件如何处理须先调查（快照是否会把 inf 传播到 NAV/仓位），本卡只防新写入，并报告旧数据检测结果。 |
 | 反例 | 服务单测：FillInput(price=inf/nan) 与 opening_import(cash=inf/nan、cost=inf) 旧代码接受（红）→ 拒绝（绿）；接线测试 `pos opening inf` 等返回提示且账本不变。 |
 | 范围外 | `pos add` 价格/仓位、backtest/scan 资金的非有限值（P2/P3，另记）。 |
+
+## 卡片 BUG-FINITE-READ（P1，设计未验证）：账本读侧对旧非有限事件的隔离
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G1（账户事实可信）；BUG-FINITE 调查发现（表征测试 `tests/core/test_bug_finite_ledger.py` 中 `test_legacy_current_*` 锁定现状） |
+| 实证 | HEAD 用真实 API 写入后读取：`AccountService.snapshot()` 对 inf/nan 现金、inf 价 BUY/SELL、inf fee、inf 成本不隔离，快照标 QUANTITY_LEVEL 且现金/均价为 inf/nan；lot 成本 nan 使重放抛 `ValidationError`（`HoldingLot` gt=0 拒 nan，回放 `cost <= 0` 放过 nan）——之后 `confirm_fill` 内无条件 `replay()` 失败，**任何确认都无法再写入**；today 显示「可用现金 inf 元」，-inf/nan 被 `max(0.0, x)` 吞成「0 元」；`compute_nav` 只查行情价有限，现金非有限仍返回 `"ok"`。 |
+| 裁决 | 不给读取模型 `AccountEvent` 加约束（会让已有账本直接解析失败）。重放遇到非有限 `cash_delta`/价格/成本/费用时走现有 `_isolate` 隔离并使快照降为 PARTIAL（与「坏事件隔离、不冒充完整」的既有语义一致）；`compute_nav` 与 today 现金展示对非有限值给 UNKNOWN，不显示 inf、不吞成 0。 |
+| 反例 | 翻转 `test_legacy_current_*` 表征测试：nan 成本账本可读（PARTIAL）且后续确认可写；inf 现金 today 显示未知；NAV 非 ok。 |
+| 不改 | 写侧约束（BUG-FINITE 已加）、账本文件格式、无非有限事件的正常账本行为（全量回归锁定）。 |
 
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
@@ -151,3 +161,4 @@
 | 2026-10-21 | T04-A 下沉 | `confirm_quantity_from_proposal` + `QuantityConfirmOutcome`；复核 3 个 P2（异常时序/入账后丢行/投影崩溃状态）修复，新增 3 项异常时序黄金先在 HEAD 通过；黄金 16、服务 10、回归 96 passed；全量 3210 passed/0 failed/11 skipped（584.52s）；commit `c7fb92b` |
 | 2026-10-21 | T04-B | 黄金 20 项先在 HEAD 通过；TUI 4 项先红（stdout 被写入且显示「已加仓」）后绿；服务单测 18；定向回归 209；muyun-reviewer 无阻断；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）；commit `03cab94`（ISS-124） |
 | 2026-10-21 | BUG-FEE | 接线测试 HEAD 5 failed/2 passed → 7 passed；实测 `--price inf` 旧版实际入账（ISS-125）；定向回归 83 passed；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）；commit `9d13a3f`；同类 P1 转 BUG-FINITE |
+| 2026-10-21 | BUG-FINITE | HEAD 18 failed/15 passed → 35 passed（含复核新增超大整数 2 项先红后绿）；调查确认读侧对旧非有限事件不隔离且 nan 成本使重放崩溃（→BUG-FINITE-READ）；code-quality-guard 可合入、2 P2 已处理；定向 465；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）；commit `7de1e59`（ISS-126） |
