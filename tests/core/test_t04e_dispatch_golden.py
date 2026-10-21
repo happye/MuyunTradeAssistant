@@ -32,6 +32,11 @@ T04-J0 extend: lock doctor / diff_evidence / diff_list / batch_tasks / today
 run_cli arg passthrough (doctor/diff_list/batch_tasks/today zero-arg;
 diff_evidence code positional + use_ai kwarg incl. ai True/False);
 pave for _dispatch_ops_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
+
+T04-K0 extend: lock shadow / plan2 / research run_cli arg passthrough
+(shadow zero-arg; plan2/research rest list positional incl. empty/missing
+and non-empty; parse plan2 rest + research --cash-materials shlex path);
+pave for _dispatch_fusion_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
 
@@ -510,6 +515,54 @@ PARSE_CASES = [
             {
                 "rest": [
                     "600519"
+                ]
+            }
+        ]
+    },
+    {
+        "in": "plan2 600519 mid thesis-text",
+        "out": [
+            "plan2",
+            {
+                "rest": [
+                    "600519",
+                    "mid",
+                    "thesis-text"
+                ]
+            }
+        ]
+    },
+    {
+        "in": "research",
+        "out": [
+            "research",
+            {
+                "rest": []
+            }
+        ]
+    },
+    {
+        "in": "research 600519 --cash-materials bag.json",
+        "out": [
+            "research",
+            {
+                "rest": [
+                    "600519",
+                    "--cash-materials",
+                    "bag.json"
+                ]
+            }
+        ]
+    },
+    {
+        "in": "research 600519 --cash-materials \"path with space.json\"",
+        "out": [
+            "research",
+            {
+                "rest": [
+                    "600519",
+                    "--cash-materials",
+                    "path with space.json"
                 ]
             }
         ]
@@ -1354,4 +1407,47 @@ def test_run_cli_today_zero_arg(monkeypatch):
     spies["today_command"].assert_called_once_with()
     assert not spies["shadow_command"].called
     assert not spies["doctor"].called
+
+
+def test_run_cli_shadow_zero_arg(monkeypatch):
+    """T04-K0: shadow -> shadow_command() with no args."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("shadow", {})
+    spies["shadow_command"].assert_called_once_with()
+    assert not spies["plan2_command"].called
+    assert not spies["research_command"].called
+
+
+def test_run_cli_plan2_passes_rest_positional(monkeypatch):
+    """T04-K0: plan2 -> plan2_command(rest); empty/missing -> []."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("plan2", {"rest": ["600519", "mid", "thesis-text"]})
+    spies["plan2_command"].assert_called_once_with(["600519", "mid", "thesis-text"])
+    assert not spies["shadow_command"].called
+    assert not spies["research_command"].called
+
+    spies["plan2_command"].reset_mock()
+    start_module.run_cli("plan2", {"rest": []})
+    spies["plan2_command"].assert_called_once_with([])
+
+    spies["plan2_command"].reset_mock()
+    start_module.run_cli("plan2", {})
+    spies["plan2_command"].assert_called_once_with([])
+
+
+def test_run_cli_research_passes_rest_positional(monkeypatch):
+    """T04-K0: research -> research_command(rest); empty/missing -> []."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("research", {"rest": ["600519", "--capture"]})
+    spies["research_command"].assert_called_once_with(["600519", "--capture"])
+    assert not spies["shadow_command"].called
+    assert not spies["plan2_command"].called
+
+    spies["research_command"].reset_mock()
+    start_module.run_cli("research", {"rest": []})
+    spies["research_command"].assert_called_once_with([])
+
+    spies["research_command"].reset_mock()
+    start_module.run_cli("research", {})
+    spies["research_command"].assert_called_once_with([])
 
