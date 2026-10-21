@@ -296,7 +296,8 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-22 | T05-E2 | MarketCache ETF/行业/概念共享内存写经 `_live_cache_write_allowed` 抑制；定测 10 passed；相关 354 passed/8 skipped；全量 3343 passed/0 failed/11 skipped/1 deselected（489.00s）；不绑 Baostock/MID |
 | 2026-10-22 | T04-E | 分发黄金 `test_t04e_dispatch_golden`（parse 表 + run_cli 桩路由）；抽出 `_dispatch_pos_cli`（pos_* 九模式行为等价）；定测 118；相关 145；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s）；不定 Baostock/MID/G7/v43；下一张：T04 其余大分支 / T05-G7 剩余（不抢道） |
 | 2026-10-22 | T04-F | 黄金扩展（benzong_multi/all/--check）+ 抽出 `_dispatch_benzong_cli`；定测 121；相关 222；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）；不触 Baostock/MID/G7/v43；下一张：T04 其余 live_*/scan（不急）/ T05-G7 仍待（不抢道） |
-| 2026-10-22 | T04-G | 黄金扩展（live_multi/all/scan_all）+ 抽出 `_dispatch_live_cli`；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）；不触 Baostock/MID/G7/v43；下一张：T04 其余 scan 内联（不急）/ T05-G7 仍待（不抢道） |
+| 2026-10-22 | T04-G | 黄金扩展（live_multi/all/scan_all）+ 抽出 `_dispatch_live_cli`；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）；不触 Baostock/MID/G7/v43；下一张：~~T04-H~~（已关闭）/ 其余 CLI 内联（不急）/ T05-G7 仍待（不抢道） |
+| 2026-10-22 | T04-H | 黄金扩展（rules/industries/concepts）+ 抽出 `_dispatch_scan_cli`；定测 132；相关 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s）；不做 Baostock/MID/G7/v43；下一张：T04 其余 CLI 内联（不急）/ T05-G7 仍待（不抢道） |
 
 
 ## 切片 T04-F（本提交关闭）：抽出 benzong_* 分发助手
@@ -324,4 +325,19 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 定测 `test_t04e_dispatch_golden` 127 passed；相关回归 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s） |
 | 不触 | 评分/MID/G7/v43/Baostock；不一次抽完 scan_market 等其余大分支 |
 | 停止/回滚 | 黄金或全量红 → `git revert` 本提交 |
-| 下一张 | T04 其余 scan 内联拆分（不急）/ T05-G7 仍待（不抢道） |
+| 下一张 | ~~T04-H~~（已关闭）/ 其余 CLI 内联（不急）/ T05-G7 仍待（不抢道） |
+
+
+## 卡片 T04-H（本提交关闭）：抽出 scan_* 分发助手
+
+| 项 | 内容 |
+| --- | --- |
+| 对应 | G7 / T04（可测试性前置） |
+| 前置 | T04-G 已抽出 `_dispatch_live_cli`；T04-H0 扩展黄金锁 rules/industries/concepts |
+| 现状 | `run_cli` 内 scan_market / rules / industries / concepts / events / scan_review* 仍为内联 |
+| 目标 | 抽出连贯一块 `_dispatch_scan_cli`（行为等价）；`scan`/expect/fear/watch_pool 等相邻内联不动 |
+| 验收 | 定测 `test_t04e_dispatch_golden` 132 passed；相关回归 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s） |
+| 不做 | 评分/MID/G7/v43/Baostock；本轮不继续拆 expect/fear/watch 等 |
+| 停止/回滚 | 黄金或全量红 → `git revert` 本提交 |
+| 下一张 | T04 其余 CLI 内联拆分（不急）/ T05-G7 仍待（不抢道） |
+

@@ -2031,6 +2031,115 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
 
     return False
 
+def _dispatch_scan_cli(
+    mode: str,
+    args: dict,
+    *,
+    scan_market,
+    scan_events,
+    scan_review,
+    scan_review_import,
+    load_config,
+    console,
+) -> bool:
+    """T04-H：scan_* 相关分发助手（从 run_cli 抽出，行为等价一挪）。
+
+    本助手执行后返回 True；非 scan 相关 mode 返回 False，交 run_cli 继续 elif。
+    承接：scan_market / rules / industries / concepts / events /
+    scan_review / scan_review_import。
+    行为锁定见 test_t04e_dispatch_golden（含 T04-H0 扩展）。
+    """
+    global _ai_debug, _no_ai
+
+    if mode == "scan_market":
+        scan_market(
+            rule_name=args.get("rule_name", "healthy_pullback"),
+            market_query=args.get("market_query"),
+            ai_debug=_ai_debug,
+            deep=args.get("deep", False),
+            ai_enabled=not _no_ai,
+        )
+        return True
+
+    if mode == "rules":
+        from src.scanner.scanner_engine import ScannerEngine
+        from rich.table import Table
+        config = load_config()
+        scanner_cfg = config.get("scanner", {})
+        engine = ScannerEngine(rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"))
+        rules = engine.get_available_rules()
+        table = Table(title="可用扫描规则")
+        table.add_column("规则名", style="cyan")
+        table.add_column("中文名", style="white")
+        table.add_column("描述")
+        for r in rules:
+            table.add_row(r["name"], r["display_name"], r["description"])
+        console.print(table)
+        return True
+
+    if mode == "industries":
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        keyword = args.get("keyword")
+        industries = engine.get_industry_list(keyword=keyword)
+        if industries:
+            label = f"搜索 \"{keyword}\", " if keyword else ""
+            print(f"\n  行业板块 ({label}{len(industries)}个):")
+            for ind in industries[:50]:
+                change = ind.get("change_pct", 0)
+                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+                up = ind.get("up_count", "?")
+                down = ind.get("down_count", "?")
+                lead = ind.get("lead_stock", "")
+                lead_str = f" 领涨:{lead}" if lead else ""
+                print(f"    {ind['name']:12s} {change:+6.2f}% {arrow}  涨{up}/跌{down}{lead_str}")
+            if len(industries) > 50:
+                print(f"    ... 共{len(industries)}个，仅显示前50个")
+            print()
+        else:
+            msg = f"未找到包含 \"{keyword}\" 的行业板块" if keyword else "行业板块数据获取失败"
+            print(f"  {msg}")
+        return True
+
+    if mode == "concepts":
+        from src.scanner.scanner_engine import ScannerEngine
+        engine = ScannerEngine()
+        keyword = args.get("keyword")
+        concepts = engine.get_concept_list(keyword=keyword)
+        if concepts:
+            label = f"搜索 \"{keyword}\", " if keyword else ""
+            print(f"\n  概念板块 ({label}{len(concepts)}个):")
+            for concept in concepts[:50]:
+                change = concept.get("change_pct", 0)
+                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
+                lead = concept.get("lead_stock", "")
+                lead_str = f" 领涨:{lead}" if lead else ""
+                print(f"    {concept['name']:16s} {change:+6.2f}% {arrow}{lead_str}")
+            if len(concepts) > 50:
+                print(f"    ... 共{len(concepts)}个，仅显示前50个")
+            print()
+        else:
+            msg = f"未找到包含 \"{keyword}\" 的概念板块" if keyword else "概念板块数据获取失败"
+            print(f"  {msg}")
+        return True
+
+    if mode == "events":
+        scan_events(ai_debug=_ai_debug)
+        return True
+
+    if mode == "scan_review":
+        # v0.8.11：扫描复盘——近N天扫描历史的涨跌验证（零AI调用，仅行情数据）
+        scan_review(days=args.get("days", 7))
+        return True
+
+    if mode == "scan_review_import":
+        # v0.8.11：旧扫描报告（分析报告/scan/*.md）一次性导入历史
+        scan_review_import()
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2054,90 +2163,23 @@ def run_cli(mode: str, args: dict):
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
 
-    elif mode == "scan_market":
-        scan_market(
-            rule_name=args.get("rule_name", "healthy_pullback"),
-            market_query=args.get("market_query"),
-            ai_debug=_ai_debug,
-            deep=args.get("deep", False),
-            ai_enabled=not _no_ai,
-        )
-
-    elif mode == "rules":
-        from src.scanner.scanner_engine import ScannerEngine
-        from rich.table import Table
-        config = load_config()
-        scanner_cfg = config.get("scanner", {})
-        engine = ScannerEngine(rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"))
-        rules = engine.get_available_rules()
-        table = Table(title="可用扫描规则")
-        table.add_column("规则名", style="cyan")
-        table.add_column("中文名", style="white")
-        table.add_column("描述")
-        for r in rules:
-            table.add_row(r["name"], r["display_name"], r["description"])
-        console.print(table)
-
-    elif mode == "industries":
-        from src.scanner.scanner_engine import ScannerEngine
-        engine = ScannerEngine()
-        keyword = args.get("keyword")
-        industries = engine.get_industry_list(keyword=keyword)
-        if industries:
-            label = f"搜索 \"{keyword}\", " if keyword else ""
-            print(f"\n  行业板块 ({label}{len(industries)}个):")
-            for ind in industries[:50]:
-                change = ind.get("change_pct", 0)
-                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
-                up = ind.get("up_count", "?")
-                down = ind.get("down_count", "?")
-                lead = ind.get("lead_stock", "")
-                lead_str = f" 领涨:{lead}" if lead else ""
-                print(f"    {ind['name']:12s} {change:+6.2f}% {arrow}  涨{up}/跌{down}{lead_str}")
-            if len(industries) > 50:
-                print(f"    ... 共{len(industries)}个，仅显示前50个")
-            print()
-        else:
-            msg = f"未找到包含 \"{keyword}\" 的行业板块" if keyword else "行业板块数据获取失败"
-            print(f"  {msg}")
-
-    elif mode == "concepts":
-        from src.scanner.scanner_engine import ScannerEngine
-        engine = ScannerEngine()
-        keyword = args.get("keyword")
-        concepts = engine.get_concept_list(keyword=keyword)
-        if concepts:
-            label = f"搜索 \"{keyword}\", " if keyword else ""
-            print(f"\n  概念板块 ({label}{len(concepts)}个):")
-            for concept in concepts[:50]:
-                change = concept.get("change_pct", 0)
-                arrow = "↑" if change > 0 else "↓" if change < 0 else "→"
-                lead = concept.get("lead_stock", "")
-                lead_str = f" 领涨:{lead}" if lead else ""
-                print(f"    {concept['name']:16s} {change:+6.2f}% {arrow}{lead_str}")
-            if len(concepts) > 50:
-                print(f"    ... 共{len(concepts)}个，仅显示前50个")
-            print()
-        else:
-            msg = f"未找到包含 \"{keyword}\" 的概念板块" if keyword else "概念板块数据获取失败"
-            print(f"  {msg}")
-
-    elif mode == "events":
-        scan_events(ai_debug=_ai_debug)
+    elif _dispatch_scan_cli(
+        mode,
+        args,
+        scan_market=scan_market,
+        scan_events=scan_events,
+        scan_review=scan_review,
+        scan_review_import=scan_review_import,
+        load_config=load_config,
+        console=console,
+    ):
+        pass
 
     elif mode == "expect":
         show_expect(days=args.get("days", 30))
 
     elif mode == "fear":
         show_fear(args)
-
-    elif mode == "scan_review":
-        # v0.8.11：扫描复盘——近N天扫描历史的涨跌验证（零AI调用，仅行情数据）
-        scan_review(days=args.get("days", 7))
-
-    elif mode == "scan_review_import":
-        # v0.8.11：旧扫描报告（分析报告/scan/*.md）一次性导入历史
-        scan_review_import()
 
     elif mode == "watch_pool":
         # v0.8.12：观察池——WATCH 自动入池，watch 复盘引擎看入池以来表现

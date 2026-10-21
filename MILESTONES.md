@@ -145,6 +145,7 @@ V1结项必须同时满足：R01–R09都有验收证据；G1–G7达到明示�
 
 - 2026-10-22 第十轮 T04-E（parse_input/run_cli 分发黄金 + `_dispatch_pos_cli` pos_* 抽出）合入；定测 test_t04e_dispatch_golden 118 passed；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s）；不绑 G7/v43；其余大分支拆分仍待；下一张候选 T05-G7 剩余（不抢道）。
 - 2026-10-22 第十轮 T04-G：抽出 `_dispatch_live_cli`（live/live_multi/live_all/live_scan_all）；定测 test_t04e_dispatch_golden 127 passed；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）；不触 G7/v43；下一张候选 T04 其余 scan 内联拆分 / T05-G7 仍待（不抢道）。
+- 2026-10-22 T04-H：抽出 `_dispatch_scan_cli`（scan_market/rules/industries/concepts/events/scan_review*）；定测 132；相关 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s）。
 - 2026-10-22 第十轮 T04-F：抽出 `_dispatch_benzong_cli`（benzong/benzong_all/benzong_multi/benzong_scan）；定测 test_t04e_dispatch_golden 121 passed；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）；不触 G7/v43；下一张候选 T04 其余 live_*/scan 拆分或 T05-G7 仍待（不抢道）。
 - 2026-10-22 第十轮 T04-D（CLI pos plan --update 再抽）合入：prepare_generate_or_update_plan/`accept_plan_update；CLI 薄封装保留 Y/n；定测	est_t04d_plan_update_prep；不绑 G7/v43；下一张候选 T05-G7 剩余（不抢道）。
 - 2026-10-21 第十轮 测试写报告目录隔离（ISS-123 残余）合入：conftest session 隔离`evidence._REPORT_DIR` + 仓库分析报告/analysis 文件名守卫；定测`test_report_dir_isolation` 4 passed；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不绑 G7/v43；下一张候选 CLI pos plan --update 再抽；T05/G7 不抢道。
