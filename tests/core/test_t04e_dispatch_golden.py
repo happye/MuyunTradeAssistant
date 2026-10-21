@@ -37,6 +37,11 @@ T04-K0 extend: lock shadow / plan2 / research run_cli arg passthrough
 (shadow zero-arg; plan2/research rest list positional incl. empty/missing
 and non-empty; parse plan2 rest + research --cash-materials shlex path);
 pave for _dispatch_fusion_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
+
+T04-L0 extend: lock backtest / batch_backtest run_cli arg passthrough
+(explicit start/end/capital; missing dates -> now-365/now defaults; capital
+default 100000.0; empty-string dates fall back via or; mutual exclusion);
+pave for _dispatch_backtest_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
 
@@ -1451,3 +1456,115 @@ def test_run_cli_research_passes_rest_positional(monkeypatch):
     start_module.run_cli("research", {})
     spies["research_command"].assert_called_once_with([])
 
+def _freeze_datetime_now(monkeypatch, fixed):
+    """Patch datetime.datetime so local `from datetime import datetime` sees frozen now."""
+    import datetime as dt_mod
+
+    class FrozenDateTime(dt_mod.datetime):
+        @classmethod
+        def now(cls, tz=None):
+            if tz is not None:
+                return fixed.replace(tzinfo=tz) if fixed.tzinfo is None else fixed.astimezone(tz)
+            return fixed
+
+    monkeypatch.setattr(dt_mod, "datetime", FrozenDateTime)
+
+
+def test_run_cli_backtest_passes_explicit_kwargs(monkeypatch):
+    """T04-L0: backtest with explicit dates/capital -> run_backtest kwargs as-is."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli(
+        "backtest",
+        {
+            "stock_code": "600519",
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+            "capital": 200000.0,
+        },
+    )
+    spies["run_backtest"].assert_called_once_with(
+        stock_code="600519",
+        start_date="2024-01-01",
+        end_date="2024-12-31",
+        capital=200000.0,
+    )
+    assert not spies["run_batch_validation"].called
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_backtest_defaults_dates_and_capital(monkeypatch):
+    """T04-L0: missing dates -> now-365/now; capital default 100000.0; empty str falls back."""
+    import datetime as dt_mod
+
+    fixed = dt_mod.datetime(2026, 10, 22, 15, 30, 0)
+    _freeze_datetime_now(monkeypatch, fixed)
+    spies = _spy_env(monkeypatch)
+
+    start_module.run_cli("backtest", {"stock_code": "600519"})
+    spies["run_backtest"].assert_called_once_with(
+        stock_code="600519",
+        start_date="2025-10-22",
+        end_date="2026-10-22",
+        capital=100000.0,
+    )
+
+    spies["run_backtest"].reset_mock()
+    start_module.run_cli(
+        "backtest",
+        {"stock_code": "000001", "start_date": "", "end_date": "", "capital": 50000.0},
+    )
+    spies["run_backtest"].assert_called_once_with(
+        stock_code="000001",
+        start_date="2025-10-22",
+        end_date="2026-10-22",
+        capital=50000.0,
+    )
+    assert not spies["run_batch_validation"].called
+
+
+def test_run_cli_batch_backtest_passes_explicit_kwargs(monkeypatch):
+    """T04-L0: batch_backtest with explicit dates -> run_batch_validation kwargs."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli(
+        "batch_backtest",
+        {
+            "codes": ["600519", "000001"],
+            "start_date": "2024-01-01",
+            "end_date": "2024-12-31",
+        },
+    )
+    spies["run_batch_validation"].assert_called_once_with(
+        stock_codes=["600519", "000001"],
+        start_date="2024-01-01",
+        end_date="2024-12-31",
+    )
+    assert not spies["run_backtest"].called
+    assert not spies["analyze_live"].called
+
+
+def test_run_cli_batch_backtest_defaults_dates(monkeypatch):
+    """T04-L0: batch_backtest missing/empty dates -> now-365/now defaults."""
+    import datetime as dt_mod
+
+    fixed = dt_mod.datetime(2026, 10, 22, 15, 30, 0)
+    _freeze_datetime_now(monkeypatch, fixed)
+    spies = _spy_env(monkeypatch)
+
+    start_module.run_cli("batch_backtest", {"codes": ["600519"]})
+    spies["run_batch_validation"].assert_called_once_with(
+        stock_codes=["600519"],
+        start_date="2025-10-22",
+        end_date="2026-10-22",
+    )
+
+    spies["run_batch_validation"].reset_mock()
+    start_module.run_cli(
+        "batch_backtest",
+        {"codes": ["600519", "000001"], "start_date": "", "end_date": ""},
+    )
+    spies["run_batch_validation"].assert_called_once_with(
+        stock_codes=["600519", "000001"],
+        start_date="2025-10-22",
+        end_date="2026-10-22",
+    )
+    assert not spies["run_backtest"].called
