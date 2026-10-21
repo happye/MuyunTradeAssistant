@@ -2249,6 +2249,47 @@ def _dispatch_fusion_cli(
     return False
 
 
+
+def _dispatch_backtest_cli(
+    mode: str,
+    args: dict,
+    *,
+    run_backtest,
+    run_batch_validation,
+) -> bool:
+    """T04-L：backtest/batch_backtest 回测类分发助手，从 run_cli 抽出行为等价一块。
+
+    命中并执行后返回 True；非回测类 mode 返回 False，交 run_cli 继续 elif。
+    衔接：backtest / batch_backtest。
+    行为锁定：test_t04e_dispatch_golden（含 T04-L0 扩展）。
+    """
+    if mode == "backtest":
+        from datetime import datetime, timedelta
+        start_date = args.get("start_date") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end_date = args.get("end_date") or datetime.now().strftime("%Y-%m-%d")
+        capital = args.get("capital", 100000.0)
+        run_backtest(
+            stock_code=args["stock_code"],
+            start_date=start_date,
+            end_date=end_date,
+            capital=capital,
+        )
+        return True
+
+    if mode == "batch_backtest":
+        from datetime import datetime, timedelta
+        start_date = args.get("start_date") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+        end_date = args.get("end_date") or datetime.now().strftime("%Y-%m-%d")
+        run_batch_validation(
+            stock_codes=args["codes"],
+            start_date=start_date,
+            end_date=end_date,
+        )
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2323,27 +2364,13 @@ def run_cli(mode: str, args: dict):
         status = "开启" if _ai_debug else "关闭"
         print(f"  AI调试模式: {status}")
 
-    elif mode == "backtest":
-        from datetime import datetime, timedelta
-        start_date = args.get("start_date") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        end_date = args.get("end_date") or datetime.now().strftime("%Y-%m-%d")
-        capital = args.get("capital", 100000.0)
-        run_backtest(
-            stock_code=args["stock_code"],
-            start_date=start_date,
-            end_date=end_date,
-            capital=capital,
-        )
-
-    elif mode == "batch_backtest":
-        from datetime import datetime, timedelta
-        start_date = args.get("start_date") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
-        end_date = args.get("end_date") or datetime.now().strftime("%Y-%m-%d")
-        run_batch_validation(
-            stock_codes=args["codes"],
-            start_date=start_date,
-            end_date=end_date,
-        )
+    elif _dispatch_backtest_cli(
+        mode,
+        args,
+        run_backtest=run_backtest,
+        run_batch_validation=run_batch_validation,
+    ):
+        pass
 
     elif _dispatch_pos_cli(mode, args, manage_positions):
         pass

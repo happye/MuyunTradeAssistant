@@ -1,3 +1,4 @@
+> **2026-10-22 T04-L 本提交关闭**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected（323.53s）。**下一张**：T04 剩余主要为更厚项（scan-portfolio/chat/noai-debug）需判断，停；T05-G7 仍待产品裁决。
 > **2026-10-22 T04-K 本提交关闭**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected（321.44s）。**下一张**：T04 其余薄内联（backtest/batch_backtest）可继续；scan-portfolio/chat/noai-debug 更厚则停；T05-G7 仍待（不抢道）。
 
 > **2026-10-22 T04-J 本提交关闭**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。**下一张**：T04 其余薄内联（shadow/plan2/research/backtest/scan/chat）若无产品判断则可继续，否则停；T05-G7 仍待（不抢道）。
