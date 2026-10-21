@@ -2273,3 +2273,13 @@ P3（已取消）:
 - **修复**：`src/cli/main.py`约2775-2791行：补开标签、收窄`try`只包数据获取与倍数计算，展示与`return`移出`try`。数据获取失败「继续但提示人工核实」的既有裁决不变；未新增/改动`logger.warning`。
 - **验证**：新增`tests/core/test_overweight_rise_guard.py`，修复后3 passed，连同overweight相关测试共42 passed。同类扫描：ast遍历`src/`与`start.py`共544处`console.print`/`rprint`首个字符串参数，MarkupError 0处。
 - **限制**：扫描局限，变量传入的文案扫不到；离线测试通过不等于真实持仓路径与投资效果。其他文件如有发现须另记ISSUES，不顺手修。
+
+
+### ISS-123: 离线全量测试改写受保护的knowledge/index
+
+- **状态/日期**：2026-10-21，第十轮BUG-IDX测试侧修复；全量3184 passed/0 failed/11 skipped/1 deselected（593.66s），守卫开启且索引未被改写。
+- **优先级/方向**：P1（测试隔离破坏受保护文件），G7。
+- **实证**：干净克隆跑离线全量后`knowledge/index/config.json`由512维变5000维，index.faiss 1.7MB→16.7MB（TF-IDF兜底重建并save）。写入链：`tests/core/test_cli_smoke_paths.py::test_pipeline_runs`→`scripts/pipeline.py` `init_engines`→`src/chat/tools.py` `_rag_service.initialize()`→`src/rag/service.py` `_store.save(index_dir)`；`tests/core/test_l2_public_checkpoint.py`的`l CODE`→`get_cli_rag_service`→同一save。
+- **修复**：仅`tests/conftest.py`：session级根因隔离（包装`RAGService.__init__`，index_dir等于仓库索引时改指临时副本）+sha256与mtime兜底守卫（会话结束若被写则失败）。不改src。
+- **反例**：只有守卫无隔离时`test_pipeline_runs`报「测试改写了受保护的knowledge/index」；加隔离后13 passed、mtime不变。
+- **登记不修**：①生产`index_dir`为相对CWD的`./knowledge/index`，从其他目录启动会在别处建索引；②`src/cli/evidence.py` `_REPORT_DIR`使测试每次在仓库`分析报告/analysis/`新增文件（已gitignore，非受保护）。

@@ -16,6 +16,8 @@ import shutil
 import sys
 import tempfile
 
+import pytest
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 # ── 测试用户目录隔离（必须在任何 src import 之前，无条件下最安全）──
@@ -38,3 +40,67 @@ if os.environ.get("MUYUN_RUN_EXTERNAL") != "1":
 if os.environ.get("MUYUN_TESTS_REAL_HOME") != "1":
     from src.data import portfolio as _portfolio_module
     _portfolio_module.DEFAULT_PORTFOLIO_PATH = os.path.join(_TEST_HOME, "portfolio.yaml")
+
+
+# ── knowledge/index 受保护文件守卫（BUG-IDX）────────────────────
+# 仓库内 knowledge/index 是受保护的真实知识库索引，测试不得写。
+# 此前 pipeline/CLI 路径经 get_rag_service()/init_engines 读 settings 的
+# 相对 index_dir 建索引并 save，TF-IDF 兜底会把真实索引覆盖成 5000 维。
+_REAL_INDEX_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "knowledge", "index")
+
+
+def _index_digest() -> dict:
+    import hashlib
+    out = {}
+    if os.path.isdir(_REAL_INDEX_DIR):
+        for name in sorted(os.listdir(_REAL_INDEX_DIR)):
+            path = os.path.join(_REAL_INDEX_DIR, name)
+            if os.path.isfile(path):
+                with open(path, "rb") as handle:
+                    # 带 mtime：字节相同的重写（TF-IDF 确定性重建）也算违规
+                    out[name] = (hashlib.sha256(handle.read()).hexdigest(), os.stat(path).st_mtime_ns)
+    return out
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _protect_knowledge_index():
+    """兜底断言：会话结束时受保护索引的 sha256+mtime 必须与开跑前一致（不得被写）。"""
+    before = _index_digest()
+    yield
+    after = _index_digest()
+    if after != before:
+        changed = sorted(k for k in set(before) | set(after) if before.get(k) != after.get(k))
+        pytest.fail(f"测试改写了受保护的 knowledge/index: {changed}", pytrace=False)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_rag_index_dir():
+    """根因隔离：RAGService 的 index_dir 若落在仓库 knowledge/index，改指临时副本。
+
+    index_dir 来自 settings 的相对路径（./knowledge/index），src/rag 没有环境变量
+    覆盖点；pipeline 的 init_engines、CLI 的 get_cli_rag_service 等真实接线会据此
+    save 回仓库。就地包装 RAGService.__init__（不替换类，不影响 by-value 导入与
+    测试自己的 monkeypatch 替身）；副本含原索引文件，只读加载行为不变，写落临时目录。
+    """
+    from src.rag.service import RAGService
+
+    original_init = RAGService.__init__
+    state = {}
+
+    def _init(self, config):
+        original_init(self, config)
+        index_dir = getattr(self, "index_dir", None)
+        if index_dir is None or os.path.normcase(os.path.abspath(index_dir)) != os.path.normcase(_REAL_INDEX_DIR):
+            return
+        if "dir" not in state:
+            state["dir"] = tempfile.mkdtemp(prefix="muyun-test-rag-index-")
+            if os.path.isdir(_REAL_INDEX_DIR):
+                shutil.copytree(_REAL_INDEX_DIR, state["dir"], dirs_exist_ok=True)
+        self.index_dir = state["dir"]
+
+    RAGService.__init__ = _init
+    yield
+    RAGService.__init__ = original_init
+    if "dir" in state:
+        shutil.rmtree(state["dir"], ignore_errors=True)
