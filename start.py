@@ -2216,6 +2216,39 @@ def _dispatch_ops_cli(
     return False
 
 
+
+def _dispatch_fusion_cli(
+    mode: str,
+    args: dict,
+    *,
+    shadow_command,
+    plan2_command,
+    research_command,
+) -> bool:
+    """T04-K：shadow/plan2/research fusion 类分发助手（从 run_cli 抽出，行为等价一挪）。
+
+    本助手执行后返回 True；非 fusion 类 mode 返回 False，交 run_cli 继续 elif。
+    承接：shadow / plan2 / research。
+    行为锁定见 test_t04e_dispatch_golden（含 T04-K0 扩展）。
+    """
+    if mode == "shadow":
+        # plan/fusion 影子阶段前置：legacy vs fusion_mid/long 决策表差异观察报告
+        shadow_command()
+        return True
+
+    if mode == "plan2":
+        # plan/fusion F5/F7：中期/长期投资计划（草稿→确认激活）
+        plan2_command(args.get("rest") or [])
+        return True
+
+    if mode == "research":
+        # plan/fusion R8：单股研究工作台——中长期比较/系统草稿/待验证节点
+        research_command(args.get("rest") or [])
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2271,18 +2304,14 @@ def run_cli(mode: str, args: dict):
     ):
         pass
 
-    elif mode == "shadow":
-        # plan/fusion 影子阶段前置：legacy vs fusion_mid/long 决策表差异观察报告
-        shadow_command()
-
-    elif mode == "plan2":
-        # plan/fusion F5/F7：中期/长期投资计划（草稿→确认激活）
-        plan2_command(args.get("rest") or [])
-
-    elif mode == "research":
-        # plan/fusion R8：单股研究工作台——中长期比较/系统草稿/待验证节点
-        research_command(args.get("rest") or [])
-
+    elif _dispatch_fusion_cli(
+        mode,
+        args,
+        shadow_command=shadow_command,
+        plan2_command=plan2_command,
+        research_command=research_command,
+    ):
+        pass
 
     elif mode == "noai":
         _no_ai = not _no_ai
