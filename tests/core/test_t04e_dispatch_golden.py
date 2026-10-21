@@ -23,7 +23,10 @@ compact batch + early exits); pave for _dispatch_live_cli extract.
 T04-H0 extend: lock rules / industries / concepts run_cli dispatch (ScannerEngine
 stubs + empty/keyword paths); pave for _dispatch_scan_cli extract of scan_market /
 rules / industries / concepts / events / scan_review / scan_review_import.
-Still skip scoring product / MID / G7 / v43 / Baostock.
+
+T04-I0 extend: lock expect / fear / watch_pool run_cli arg passthrough
+(show_expect days kwarg incl. default 30; show_fear/watch_pool positional args);
+pave for _dispatch_observe_cli extract. Still skip scoring / MID / G7 / v43 / Baostock.
 """
 from __future__ import annotations
 
@@ -1261,3 +1264,36 @@ def test_run_cli_concepts_empty_with_keyword(monkeypatch, capsys):
     assert "未找到包含" in out
     assert "概念板块" in out
     assert not spies["analyze_portfolio"].called
+
+def test_run_cli_expect_passes_days(monkeypatch):
+    """T04-I0: expect -> show_expect(days=...) kwargs; default 30 when days absent."""
+    spies = _spy_env(monkeypatch)
+    start_module.run_cli("expect", {"days": 60})
+    spies["show_expect"].assert_called_once_with(days=60)
+    assert not spies["show_fear"].called
+    assert not spies["watch_pool"].called
+
+    spies["show_expect"].reset_mock()
+    start_module.run_cli("expect", {})
+    spies["show_expect"].assert_called_once_with(days=30)
+
+
+def test_run_cli_fear_passes_args_positional(monkeypatch):
+    """T04-I0: fear -> show_fear(args) as first positional (not kwargs-only)."""
+    spies = _spy_env(monkeypatch)
+    args = {"action": "history", "scope": "", "refresh": True, "chart": False}
+    start_module.run_cli("fear", args)
+    spies["show_fear"].assert_called_once_with(args)
+    assert not spies["show_expect"].called
+    assert not spies["watch_pool"].called
+
+
+def test_run_cli_watch_pool_passes_args_positional(monkeypatch):
+    """T04-I0: watch_pool -> watch_pool(args) as first positional."""
+    spies = _spy_env(monkeypatch)
+    args = {"action": "add", "code": "600519", "name": "maotai", "price": 1800.0}
+    start_module.run_cli("watch_pool", args)
+    spies["watch_pool"].assert_called_once_with(args)
+    assert not spies["show_expect"].called
+    assert not spies["show_fear"].called
+
