@@ -1,6 +1,6 @@
 ---
 name: task-progress-monitor
-description: 长任务进度监督员。启动长耗时任务（回测/批量评分/大扫描）后调用：持续跟踪日志文件与进程状态，定期报告完成百分比、当前正在处理哪只、预计剩余时间、异常告警。
+description: 长任务进度监督员。主 Agent 或 muyun-runner 已在后台启动长耗时任务（回测/批量评分/大扫描/全量 pytest）后调用：只跟踪日志文件与进程状态，定期报告完成百分比、当前正在处理哪只、预计剩余时间、异常告警。不启动、不重跑任务（那是 muyun-runner 的职责）。
 tools: Read, Grep, Glob, Bash
 model: haiku
 ---

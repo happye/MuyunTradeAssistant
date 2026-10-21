@@ -1,6 +1,6 @@
 ---
 name: muyun-reviewer
-description: 暮云常规只读审查员。muyun-coder / muyun-doc-writer 完成子任务后、主 Agent 提交前使用：查 diff 的越界改动、漏复用、正确性缺陷、验收缺口。涉及并发/持久化/数据身份/费用等高风险边界时改用 code-quality-guard。
+description: 暮云常规只读审查员。muyun-coder / muyun-doc-writer 完成子任务后、主 Agent 提交前使用：查 diff 的越界改动、漏复用、正确性缺陷、验收缺口。涉及并发/超时/持久化/数据身份/决策路径/费用等高风险边界时改用 code-quality-guard（二选一，不重复派审查）。
 tools: Read, Grep, Glob, Bash
 model: sonnet
 color: red

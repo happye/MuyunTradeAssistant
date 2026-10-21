@@ -1,6 +1,6 @@
 ---
 name: code-quality-guard
-description: 对抗性代码质量监督员。功能实现完成后、commit 前调用：逐行审查本次改动，专抓真实缺陷与项目红线违规。只读不改。
+description: 对抗性代码质量监督员（高风险专用，opus，贵）。仅当改动触及并发/超时/线程、缓存与持久化、数据身份与账户事实、决策路径、费用/AI 调用等高风险边界时，在 commit 前调用：逐行证伪本次改动，专抓真实缺陷与项目红线违规。常规改动的审查用 muyun-reviewer，不要两者都派。只读不改。
 tools: Read, Grep, Glob, Bash
 model: opus
 ---
