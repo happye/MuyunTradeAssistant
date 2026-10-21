@@ -29,7 +29,10 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from src.data.models import StockData, SignalType, MarketState, StrategyState, TradeLifecycle, AIModifierResult, MarketEvent
 from src.core.runtime import build_live_orchestrator
-from src.data.portfolio import PortfolioManager
+from src.data.portfolio import (
+    POS_ALREADY_HELD, POS_INVALID_PRICE, POS_INVALID_RATIO, POS_MISSING_CODE, POS_NOT_HELD,
+    POS_SAVE_FAILED, PortfolioManager, add_position_checked, remove_position_checked,
+)
 
 # 配置日志（默认WARNING，只显示警告及以上；--verbose 开启INFO；--debug 开启DEBUG）
 # 注意：必须在 import 其他模块前设置，否则子模块的 getLogger 会继承根 logger 级别
@@ -2636,29 +2639,22 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             console.print(f"[red]✗ 确认失败: {result.message}[/red]")
 
     elif action == "add":
-        if ratio is None:
-            ratio = 0.20  # 建仓缺省仓位（原签名默认值，confirm 语义区分见 docstring）
-        if not stock_code:
+        # T04-B：校验与写入下沉到 add_position_checked；此处只按状态渲染
+        oc = add_position_checked(pm, stock_code, name=name, price=price, ratio=ratio)
+        ratio = oc.ratio
+        if oc.status == POS_MISSING_CODE:
             console.print("[red]请指定股票代码[/red]")
             return
-        if pm.has_position(stock_code):
+        if oc.status == POS_ALREADY_HELD:
             console.print(f"[yellow]⚠ {stock_code} 已有持仓记录，请先 --pos-remove 删除[/yellow]")
             return
-
-        # ISS-078：CLI 入口同样校验（数据层 add_position 也会拦，这里给友好报错并 return）
-        if price is not None and price < 0:
+        if oc.status == POS_INVALID_PRICE:
             console.print("[red]开仓价不能为负数（不设置请留空）[/red]")
             return
-        if ratio is not None and not (0 <= ratio <= 1):
+        if oc.status == POS_INVALID_RATIO:
             console.print("[red]仓位比例需在 0-1 之间（0%-100%）[/red]")
             return
-
-        if not pm.add_position(
-            stock_code=stock_code,
-            stock_name=name or stock_code,
-            entry_price=price if price > 0 else None,
-            ratio=ratio,
-        ):
+        if oc.status == POS_SAVE_FAILED:
             # M5：保存失败（文件被其他会话修改/磁盘异常，详见上方告警）——不报假成功
             console.print(f"[red]✗ 持仓保存失败：{name or stock_code} ({stock_code}) 未写入"
                           f"——请看上方告警，处理后重试[/red]")
@@ -2668,15 +2664,12 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
 
         # 报告2.3 笨总教学十"永不满仓留底牌"：总仓位>80% 警告留底牌
         # L1：None=存在权重待重估持仓——总仓位未知，不冒充判断
-        try:
-            _total_ratio = pm.get_total_position_ratio()
-            if _total_ratio is None:
+        if not oc.total_ratio_error:
+            if oc.total_ratio is None:
                 console.print(f"  [yellow]⚠ 存在权重待重估持仓（数量账户比例视图过期）——"
                               f"总仓位未知，暂无法判断80%底牌线；重估后再看[/yellow]")
-            elif _total_ratio > 0.80:
-                console.print(f"  [yellow]⚠ 总仓位 {_total_ratio:.0%}>80%，笨总教学十：任何时候给自己留一张底牌（建议≤80%，预留20%应对突发/抄底）[/yellow]")
-        except Exception:
-            pass
+            elif oc.total_ratio > 0.80:
+                console.print(f"  [yellow]⚠ 总仓位 {oc.total_ratio:.0%}>80%，笨总教学十：任何时候给自己留一张底牌（建议≤80%，预留20%应对突发/抄底）[/yellow]")
 
         # v0.8.5 阶段 1.2：AI 辅助建仓引导器
         # 入场价存在时自动生成 TradePlan 草稿，缺失则跳过（用户可后续手动补）
@@ -2688,20 +2681,20 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             console.print("  [dim]草稿需要入场价算止损位；可补价格重跑 pos add，或事后 pos plan <代码> 生成[/dim]")
 
     elif action == "remove":
-        if not stock_code:
+        # T04-B：校验与写入下沉到 remove_position_checked；此处只按状态渲染
+        oc = remove_position_checked(pm, stock_code)
+        if oc.status == POS_MISSING_CODE:
             console.print("[red]请指定股票代码[/red]")
             return
-        if not pm.has_position(stock_code):
+        if oc.status == POS_NOT_HELD:
             console.print(f"[yellow]⚠ {stock_code} 无持仓记录[/yellow]")
             return
-
-        pos = pm.get_position(stock_code)
-        if not pm.remove_position(stock_code):
+        if oc.status == POS_SAVE_FAILED:
             # M5：保存失败不报假成功
             console.print(f"[red]✗ 持仓删除失败：{stock_code} 仍在持仓中"
                           f"（文件可能被其他会话修改，详见上方告警）[/red]")
             return
-        console.print(f"[green]✓ 已删除持仓: {pos.stock_name or stock_code} ({stock_code})[/green]")
+        console.print(f"[green]✓ 已删除持仓: {oc.removed_name} ({stock_code})[/green]")
 
     elif action == "overweight":
         # 报告3.1 笨总教学十超配策略：事件驱动临时加倍+止盈降本

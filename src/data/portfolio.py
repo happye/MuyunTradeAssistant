@@ -1802,3 +1802,90 @@ class PortfolioManager:
         return bool(self._proposals.mark_rejected(target.proposal_id)
                     and self._proposals._save())
 
+
+# ===== T04-B：持仓增删的非 UI 服务（CLI / TUI / chat 共用，只返回结果不打印）=====
+
+POS_MISSING_CODE = "MISSING_CODE"
+POS_ALREADY_HELD = "ALREADY_HELD"
+POS_NOT_HELD = "NOT_HELD"
+POS_INVALID_PRICE = "INVALID_PRICE"
+POS_INVALID_RATIO = "INVALID_RATIO"
+POS_SAVE_FAILED = "SAVE_FAILED"
+POS_ADDED = "ADDED"
+POS_REMOVED = "REMOVED"
+
+
+@dataclass(frozen=True)
+class PositionOpOutcome:
+    """T04-B：add/remove 持仓的结构化结果（调用方按 status 渲染）。
+
+    **消费者必须先看 status**：
+    - add：MISSING_CODE / ALREADY_HELD / INVALID_PRICE / INVALID_RATIO（均未写盘）；
+      SAVE_FAILED（保存失败，持仓未落盘）；ADDED（已落盘）。
+    - remove：MISSING_CODE / NOT_HELD（均未写盘）；SAVE_FAILED（仍在持仓中）；REMOVED。
+    ADDED 时 total_ratio 为添加后的总仓位（None=存在权重待重估持仓，总仓位未知）；
+    total_ratio_error=True 表示总仓位计算抛异常（调用方按原 CLI 语义静默跳过提示）。
+    数据层校验异常（add_position 的 ValueError 等）不吞，原样抛给调用方。"""
+    status: str
+    stock_code: str
+    display_name: str = ""
+    ratio: Optional[float] = None
+    price: Optional[float] = None
+    total_ratio: Optional[float] = None
+    total_ratio_error: bool = False
+    removed_name: str = ""
+
+
+def add_position_checked(pm, stock_code: str, name: str = "", price: float = 0.0,
+                         ratio: Optional[float] = None) -> PositionOpOutcome:
+    """手动添加持仓（校验与写入顺序同 CLI `pos add`；不打印、不生成 TradePlan 草稿）。"""
+    if ratio is None:
+        ratio = 0.20  # 建仓缺省仓位（与 CLI add 一致）
+    display = name or stock_code
+
+    def _out(status, **kw):
+        return PositionOpOutcome(status=status, stock_code=stock_code,
+                                 display_name=display, ratio=ratio, price=price, **kw)
+
+    if not stock_code:
+        return _out(POS_MISSING_CODE)
+    if pm.has_position(stock_code):
+        return _out(POS_ALREADY_HELD)
+    # ISS-078：入口同样校验（数据层 add_position 也会拦，这里给结构化状态）
+    if price is not None and price < 0:
+        return _out(POS_INVALID_PRICE)
+    if ratio is not None and not (0 <= ratio <= 1):
+        return _out(POS_INVALID_RATIO)
+
+    if not pm.add_position(
+        stock_code=stock_code,
+        stock_name=name or stock_code,
+        entry_price=price if price > 0 else None,
+        ratio=ratio,
+    ):
+        # M5：保存失败——不报假成功
+        return _out(POS_SAVE_FAILED)
+
+    # 报告2.3 笨总教学十"永不满仓留底牌"：调用方据总仓位给 >80% 警告
+    # L1：None=存在权重待重估持仓——总仓位未知，不冒充判断
+    try:
+        total = pm.get_total_position_ratio()
+    except Exception:
+        return _out(POS_ADDED, total_ratio_error=True)
+    return _out(POS_ADDED, total_ratio=total)
+
+
+def remove_position_checked(pm, stock_code: str) -> PositionOpOutcome:
+    """删除持仓（校验与写入顺序同 CLI `pos rm`；不打印）。"""
+    if not stock_code:
+        return PositionOpOutcome(status=POS_MISSING_CODE, stock_code=stock_code)
+    if not pm.has_position(stock_code):
+        return PositionOpOutcome(status=POS_NOT_HELD, stock_code=stock_code)
+    pos = pm.get_position(stock_code)
+    removed_name = pos.stock_name or stock_code
+    if not pm.remove_position(stock_code):
+        # M5：保存失败不报假成功
+        return PositionOpOutcome(status=POS_SAVE_FAILED, stock_code=stock_code,
+                                 removed_name=removed_name)
+    return PositionOpOutcome(status=POS_REMOVED, stock_code=stock_code,
+                             removed_name=removed_name)

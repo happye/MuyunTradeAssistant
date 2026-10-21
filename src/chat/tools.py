@@ -1094,7 +1094,18 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
                     buf.write(f"✓ 已更新 {code}：仓位 {pos.current_ratio:.0%}"
                               f" / 开仓价 {pos.entry_price or '-'} / 名称 {pos.stock_name or '-'}\n")
                 elif action == "remove":
-                    manage_positions("remove", stock_code=code)
+                    # T04-B：改调非 UI 服务；文本与原 CLI 输出逐字一致（纯文本写入 buf）
+                    from src.data.portfolio import PortfolioManager, remove_position_checked
+                    oc = remove_position_checked(PortfolioManager(), code)
+                    if oc.status == "MISSING_CODE":
+                        buf.write("请指定股票代码\n")
+                    elif oc.status == "NOT_HELD":
+                        buf.write(f"⚠ {code} 无持仓记录\n")
+                    elif oc.status == "SAVE_FAILED":
+                        buf.write(f"✗ 持仓删除失败：{code} 仍在持仓中"
+                                  f"（文件可能被其他会话修改，详见上方告警）\n")
+                    else:
+                        buf.write(f"✓ 已删除持仓: {oc.removed_name} ({code})\n")
                 elif action == "plan":
                     manage_positions("plan", stock_code=code)
                 elif action == "overweight":

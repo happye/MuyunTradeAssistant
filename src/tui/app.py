@@ -5,7 +5,7 @@
 复用 chat/tools.py 调引擎模式（不重构 CLI/引擎）：
 - scan: _scanner_engine.quick_scan -> DataTable
 - analyze: _orchestrator.analyze -> 侧栏 rich 渲染（结构化字段，不走 formatter 字符串）
-- add_pos: manage_positions
+- add_pos: add_position_checked（portfolio 服务）
 
 长任务（scan 4分钟 / analyze 30-60s）用 @work + asyncio.to_thread，UI 不卡。
 和 start.py REPL 共存（start_tui.py 入口）。
@@ -261,13 +261,35 @@ class MuyunTUI(App):
         panel = self.query_one("#analysis-panel", RichLog)
         panel.write(f"\n加仓 {code}（默认 20%）...")
         try:
-            from src.cli.main import manage_positions
+            from rich.text import Text
 
-            await asyncio.to_thread(
-                manage_positions, "add",
-                stock_code=code, name="", price=0.0, ratio=0.20,
+            from src.data.portfolio import (
+                POS_ADDED, POS_ALREADY_HELD, POS_INVALID_PRICE, POS_INVALID_RATIO,
+                POS_MISSING_CODE, POS_SAVE_FAILED, PortfolioManager, add_position_checked,
             )
-            panel.write(f"[green]已加仓 {code}[/green]")
+
+            # T04-B：改调非 UI 服务（不经 CLI 打印、拿得到失败状态）；仍放线程避免阻塞 UI
+            oc = await asyncio.to_thread(
+                lambda: add_position_checked(PortfolioManager(), code, name="", price=0.0, ratio=0.20))
+            if oc.status == POS_ADDED:
+                panel.write(Text(f"已加仓 {code}（仓位 {oc.ratio:.0%}）", style="green"))
+                if not oc.total_ratio_error:
+                    if oc.total_ratio is None:
+                        panel.write(Text("⚠ 存在权重待重估持仓（数量账户比例视图过期）——"
+                                         "总仓位未知，暂无法判断80%底牌线；重估后再看", style="yellow"))
+                    elif oc.total_ratio > 0.80:
+                        panel.write(Text(f"⚠ 总仓位 {oc.total_ratio:.0%}>80%，建议留一张底牌"
+                                         "（建议≤80%，预留20%应对突发/抄底）", style="yellow"))
+                panel.write(Text("未带价格，跳过 TradePlan 草稿；可用 pos plan <代码> 生成", style="yellow"))
+            else:
+                reasons = {
+                    POS_MISSING_CODE: "未指定股票代码",
+                    POS_ALREADY_HELD: f"{code} 已有持仓记录，请先删除",
+                    POS_INVALID_PRICE: "开仓价不能为负数",
+                    POS_INVALID_RATIO: "仓位比例需在 0-1 之间",
+                    POS_SAVE_FAILED: f"持仓保存失败：{code} 未写入——持仓文件可能正被其他会话修改，关闭其他窗口后重试",
+                }
+                panel.write(Text(f"加仓失败: {reasons.get(oc.status, oc.status)}", style="red"))
         except Exception as e:
             panel.write(f"[red]加仓失败: {e}[/red]")
 
