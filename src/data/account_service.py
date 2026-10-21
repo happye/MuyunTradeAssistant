@@ -23,6 +23,7 @@
 import hashlib
 import json
 import logging
+import math
 import threading
 from dataclasses import dataclass
 from datetime import datetime
@@ -95,8 +96,9 @@ class FillInput(BaseModel):
     security_id: str = Field(description="证券代码（6 位数字）")
     action: Literal["BUY", "SELL"]
     quantity: int = Field(gt=0, description="成交股数（正整数）")
-    price: float = Field(gt=0, description="成交价（元）")
-    fee: float = Field(default=0.0, ge=0.0, description="本笔费用（元，已含在 cash_delta 内）")
+    price: float = Field(gt=0, allow_inf_nan=False, description="成交价（元，须有限）")
+    fee: float = Field(default=0.0, ge=0.0, allow_inf_nan=False,
+                       description="本笔费用（元，已含在 cash_delta 内，须有限）")
     trade_date: str = Field(description="成交日期 YYYY-MM-DD")
     plan_ref: str = Field(default="", description="关联持仓主计划 plan_id（空=未关联）")
     deviation_from_proposal: bool = Field(
@@ -379,6 +381,8 @@ class AccountService:
             raise ValueError(f"期初日期非法: {td!r}（须 YYYY-MM-DD）")
         if opening_cash is not None:
             oc = float(opening_cash)
+            if not math.isfinite(oc):
+                raise ValueError(f"期初现金须为有限数字: {opening_cash!r}")
             if oc < 0:
                 raise ValueError(f"期初现金不能为负: {opening_cash!r}")
         validated_lots: list[dict] = []
@@ -389,14 +393,19 @@ class AccountService:
             raw_qty = lot.get("quantity")
             try:
                 qty = int(raw_qty)
-            except (TypeError, ValueError):
+            except (TypeError, ValueError, OverflowError):  # int(inf) 抛 OverflowError
                 raise ValueError(
                     f"期初批次数量缺失/非法: {raw_qty!r}——缺字段必须显式补录，不得折算为 0")
             if qty <= 0:
                 raise ValueError(f"期初批次数量须为正整数，收到 {raw_qty!r}")
+            try:
+                float(qty)  # 超大整数（>309 位）入账后快照转 float 会溢出，账本变不可读
+            except OverflowError:
+                raise ValueError(f"期初批次数量过大: {raw_qty!r}（须为有限正整数）") from None
             cost = lot.get("cost_price")
-            if not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost <= 0:
-                raise ValueError(f"期初批次成本价缺失/非法: {cost!r}")
+            if not isinstance(cost, (int, float)) or isinstance(cost, bool) or cost <= 0 \
+                    or not math.isfinite(cost):
+                raise ValueError(f"期初批次成本价缺失/非法: {cost!r}（须为有限正数）")
             acq = str(lot.get("acquired_at") or td)
             try:
                 datetime.strptime(acq, "%Y-%m-%d")

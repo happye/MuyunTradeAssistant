@@ -635,6 +635,9 @@ def parse_input(user_input: str):
                 except ValueError:
                     print(f"  [!] 期初现金无效: '{parts[2]}'（需数字）")
                     return None
+                if not math.isfinite(cash):
+                    print(f"  [!] 期初现金无效: '{parts[2]}'（需有限数字）——期初导入取消")
+                    return None
                 return ("pos_opening", {"cash": cash})
             # openinglot
             if len(parts) < 5:
@@ -647,6 +650,14 @@ def parse_input(user_input: str):
                 lot_args["cost_price"] = float(parts[4])
             except ValueError:
                 print("  [!] 数量/成本价无效（数量须正整数）")
+                return None
+            if not math.isfinite(lot_args["cost_price"]):
+                print(f"  [!] 成本价无效: '{parts[4]}'（需有限数字）——期初导入取消")
+                return None
+            try:
+                float(lot_args["quantity"])
+            except OverflowError:
+                print(f"  [!] 数量过大: '{parts[3][:20]}…'（需合理正整数）——期初导入取消")
                 return None
             if len(parts) >= 6:
                 lot_args["acquired_at"] = parts[5]
