@@ -95,7 +95,7 @@
 | 停止条件 | 黄金测试无法在离线隔离下稳定构造某分支 → 该分支不下沉，记录原因；任何文案/顺序差异 → 回滚。 |
 | 提交形式 | 单独 commit，message 注明「内部重构无行为变化」（AGENTS 用户可感知条款的纯重构例外）。 |
 
-## 卡片 T04-B：TUI 加仓与 chat 删仓改调非 UI 服务（含 TUI 假成功修复）
+## 卡片 T04-B（实现复验通过，03cab94）：TUI 加仓与 chat 删仓改调非 UI 服务（含 TUI 假成功修复）
 
 | 项 | 内容 |
 |---|---|
@@ -113,6 +113,7 @@
 2. **BUG-FEE 负费用未校验**：REPL `pos confirm ... --fee -1` 只在 `FillInput(fee ge=0)` 处抛 pydantic ValidationError（start.py 约 587-596 只校验 --qty），用户看到原始异常。入口层补校验并给人话提示（同步 plain_errors 与报错速查手册）。
 3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：`./knowledge/index` 随启动目录漂移；改为基于仓库根解析，或显式配置。需确认对 Web/TUI/脚本入口的影响。
 4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
+6. **BUG-TUI-MARKUP**：`src/tui/app.py` 分析面板 `RichLog(id="analysis-panel")` 未开 markup，约 85、163、168 行的 `[red]`/`[green]` 提示原样显示为字面标签（T04-B 实施时发现；新行已用 `rich.Text`）。小修：开 markup 或统一改 `Text`，需 TUI pilot 测试锁定。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
 
 ## 执行记录
@@ -128,3 +129,4 @@
 | 2026-10-21 | BUG-IDX | 仅改 `tests/conftest.py`（根因隔离 + sha256/mtime 守卫）；先红后绿；全量 3184 passed/0 failed/11 skipped，索引未被改写；commit `28b7e68` |
 | 2026-10-21 | T04-A 黄金 | 13 项锁定 confirm 数量路径输出与磁盘结果；commit `61a212f` |
 | 2026-10-21 | T04-A 下沉 | `confirm_quantity_from_proposal` + `QuantityConfirmOutcome`；复核 3 个 P2（异常时序/入账后丢行/投影崩溃状态）修复，新增 3 项异常时序黄金先在 HEAD 通过；黄金 16、服务 10、回归 96 passed；全量 3210 passed/0 failed/11 skipped（584.52s）；commit `c7fb92b` |
+| 2026-10-21 | T04-B | 黄金 20 项先在 HEAD 通过；TUI 4 项先红（stdout 被写入且显示「已加仓」）后绿；服务单测 18；定向回归 209；muyun-reviewer 无阻断；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）；commit `03cab94`（ISS-124） |

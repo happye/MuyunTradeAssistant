@@ -2283,3 +2283,11 @@ P3（已取消）:
 - **修复**：仅`tests/conftest.py`：session级根因隔离（包装`RAGService.__init__`，index_dir等于仓库索引时改指临时副本）+sha256与mtime兜底守卫（会话结束若被写则失败）。不改src。
 - **反例**：只有守卫无隔离时`test_pipeline_runs`报「测试改写了受保护的knowledge/index」；加隔离后13 passed、mtime不变。
 - **登记不修**：①生产`index_dir`为相对CWD的`./knowledge/index`，从其他目录启动会在别处建索引；②`src/cli/evidence.py` `_REPORT_DIR`使测试每次在仓库`分析报告/analysis/`新增文件（已gitignore，非受保护）。
+
+### ISS-124: TUI加仓失败仍显示「已加仓」且CLI输出污染界面
+
+- **状态/日期**：2026-10-21，第十轮T04-B修复，commit `03cab94`；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）。
+- **优先级/方向**：P2，G2跨入口一致/T04。
+- **实证**：`src/tui/app.py`加仓经`asyncio.to_thread(manage_positions, "add")`后无条件显示「已加仓」；`manage_positions`遇已有持仓/参数非法/保存失败只打印并`return None`。新TUI pilot测试在HEAD上红：stdout被写入「⚠ 600519 已有持仓记录」且panel显示「已加仓 600519」。
+- **修复**：`src/data/portfolio.py` `add_position_checked`/`remove_position_checked`返回`PositionOpOutcome`；TUI加仓与chat删仓改调服务；CLI按状态渲染、文案逐字不变（20项黄金先在HEAD通过）。
+- **限制**：chat add/plan/overweight仍经CLI桥（TradePlan草稿交互，T04-C候选）；TUI分析面板旧行的字面markup见候选BUG-TUI-MARKUP。
