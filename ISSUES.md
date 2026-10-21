@@ -2320,3 +2320,12 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **验证**：定测 4 passed；相关 TUI（test_t04b_tui_add + test_tui）8 passed；全量 3318 passed/1 failed（BUG-CASH-WRAP 折行无关）/11 skipped/1 deselected（341.62s）。
 - **限制**：离线 pilot 不等于真实长任务/真引擎路径；其他入口若再写 markup 字符串须另记，不顺手扩。
 
+### ISS-128: 现金材料回执文案断言被 Rich 折行拆断（BUG-CASH-WRAP）
+
+- **状态/日期**：2026-10-21，第十轮 BUG-CASH-WRAP 修复，本提交关闭。
+- **优先级/方向**：P2（全量唯一红；产品折行属 80 列终端正常行为），测试捕获。
+- **实证**：`test_public_repl_intake_restart_normal_research_text_json` 断言连续串「本地现金材料回执1条，均已归档待核」。`Console(file=..., width=220)` 未同时给 `height` 时 Rich `Console.size` 回落到终端 80 列，在「回执1条」后插入换行，断言失败。全量此前 3318 passed/1 failed（本项）。
+- **修复**：测试侧 `Console(..., width=220, height=40)` 固定捕获宽度；断言对 `getvalue()` 去换行后再匹配（按用户可读语义，不把正常折行当失败）。不改生产 `_render_research_result` 折行行为（窄终端折行合理）。
+- **验证**：定测文件 45 passed；全量见本提交（3319 passed/0 failed/11 skipped/1 deselected（361.80s））。
+- **限制**：其他仅设 `width=` 未设 `height=` 的 Console 捕获若遇超宽 CJK 文案仍可能折行；发现后再按同法修，不顺手扩。
+

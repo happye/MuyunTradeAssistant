@@ -70,7 +70,7 @@ def test_public_repl_intake_restart_normal_research_text_json(tmp_path, monkeypa
     monkeypatch.setattr(plans, "PLANS_FILE", tmp_path / "plans.json")
     monkeypatch.setattr(material, "_extract_pdf", lambda data, pages: TEXT)
     output = io.StringIO()
-    monkeypatch.setattr(cli, "console", Console(file=output, width=220))
+    monkeypatch.setattr(cli, "console", Console(file=output, width=220, height=40))
     mode, args = start.parse_input(f'research 600519 --cash-materials "{manifest}" --json')
     start.run_cli(mode, args)
     result = json.loads(capsys.readouterr().out)
@@ -88,7 +88,9 @@ def test_public_repl_intake_restart_normal_research_text_json(tmp_path, monkeypa
     assert view["cash_materials"]["receipts"][0]["receipt_id"] == result["receipt_id"]
     assert tree(root) == before
     cli.research_command(["600519"])
-    assert "本地现金材料回执1条，均已归档待核" in output.getvalue()
+    # Rich Console.size 仅在 width+height 同时给定时才采用显式宽度；否则回落到终端 80 列，
+    # 会在「回执1条」后折行。断言按用户可读语义去掉换行，避免把正常折行当失败。
+    assert "本地现金材料回执1条，均已归档待核" in output.getvalue().replace("\n", "")
     cli.research_command(["600519", "--json"])
     ordinary = json.loads(capsys.readouterr().out)
     assert ordinary["financial_observations"]["cash_materials"]["receipts"][0]["receipt_id"] == result["receipt_id"]

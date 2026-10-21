@@ -160,7 +160,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（本提交已关闭）：prepare_trade_plan_draft + activate_overweight_checked；chat add/plan/overweight 改调服务。剩余可选：CLI pos plan --update 交互再抽（非阻塞）。
 3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：**本提交已关闭**——相对路径锚仓库根 + faiss Unicode 安全 I/O；定测 `test_iss123_index_dir_repo_root`；Web/TUI/脚本经同一 `RAGService`/`get_rag_service` 受益，无需各入口 chdir。
 4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
-7. **BUG-CASH-WRAP**（可选 follow-up）：	est_cash_material_intake 控制台折行把「回执1条，均已」拆成两行导致断言失败；与账户/持仓桥无关，宜单独小卡放宽断言或固定 Console width。
+7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
 
@@ -187,6 +187,18 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 修前 4 红（panel 含字面 `[red]`）→ 修后 4 绿；相关 TUI 回归绿；全量见执行记录 |
 | 停止/回滚 | TUI pilot 红或加仓路径回退 → `git revert` 本提交 |
 
+
+## 卡片 BUG-CASH-WRAP / ISS-128：现金材料回执折行断言（本提交关闭）
+
+| 项 | 内容 |
+|---|---|
+| 对应 | 全量唯一红 / ISS-128；与账户桥无关 |
+| 根因 | Rich `Console.size` 仅在 width+height 同时给定时采用显式宽度；测试只设 width=220 仍回落终端 80 列，在「回执1条」后折行拆断连续断言 |
+| 用户收益 | 全量 0 failed；窄终端下折行仍属正常可读，测试不再误伤 |
+| 修复边界 | 仅 `tests/core/test_cash_material_intake.py`：Console 补 height + 断言去换行。不改生产 `_render_research_result`，不绑 G7/v43 |
+| 验收 | 定测文件 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s） |
+| 停止/回滚 | 定测或全量回红 → `git revert` 本提交 |
+
 ## 执行记录
 
 | 日期 | 事项 | 结果 |
@@ -207,3 +219,4 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-21 | ISS-123 生产残余 | 相对 `index_dir`/`knowledge_dir` 锚仓库根（`resolve_under_root`）；`_faiss_path_call` 规避 Windows faiss 中文绝对路径 ENOENT；定测 6 项；smoke 绝对路径加载真实索引 837 docs/512 dim；下一张按候选：测试写报告目录隔离 / BUG-CASH-WRAP / T05-G7 剩余（不抢道）；BUG-TUI-MARKUP 本提交已关 |
 | 2026-10-21 | BUG-FINITE-READ | 设计验证=按卡片裁决（隔离非有限、不加 AccountEvent 约束）；修前 legacy_current 6 passed 锁坏行为 → 翻转后 test_bug_finite_ledger.py 35 passed；相关账户套件 161 passed；全量 3293 passed / 1 failed / 11 skipped / 1 deselected（453.89s）——唯一失败为 test_cash_material_intake 控制台折行把「回执1条，均已」拆成两行，与本卡 src 改动无关（既有展示断言脆弱）；关闭 ISS-126 读侧；下一张曾推荐 T04-C（本提交已交付；再下一张见候选队列，不抢 T05/G7） |
 | 2026-10-21 | BUG-TUI-MARKUP | 修前定测 4 红（字面 `[red]`）；统一 `Text` 着色；定测 4 + 相关 TUI 8 = 12 passed；全量 3318 passed / 1 failed / 11 skipped / 1 deselected（341.62s）——唯一失败为 test_cash_material_intake 控制台折行（BUG-CASH-WRAP，与本卡无关）；关闭 ISS-127；下一张：测试写报告目录隔离 / BUG-CASH-WRAP / T05-G7 剩余（不抢道） |
+| 2026-10-21 | BUG-CASH-WRAP | 根因：Rich size 需 width+height；捕获补 height=40；断言去换行；定测 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s）；关闭 ISS-128；下一张：测试写报告目录隔离（evidence.py `_REPORT_DIR`）/ T05-G7 剩余（不抢道） |
