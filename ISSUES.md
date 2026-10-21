@@ -2255,7 +2255,7 @@ P3（已取消）:
   - **修复**：`src/data/timeout_call.py`新增`ParallelTimeout`/`run_parallel_with_deadline`（共享daemon线程并行helper，结果按输入顺序，总预算到点抛带`completed`计数的超时）；`get_industry_metrics`外层改`call_with_timeout`、内层两处改`run_parallel_with_deadline`，新增常量`INDUSTRY_METRICS_TIMEOUT_S`/`INDUSTRY_SECTION_TIMEOUT_S`=150.0；`_fetch_sina_market`改`run_parallel_with_deadline`，类属性`SINA_PARALLEL_TIMEOUT_S`=45.0。默认预算、三态返回、告警文案不变。新浪超时后不再开始剩余页（旧实现`shutdown(wait=False)`不取消排队任务，剩余约63页仍会继续请求），行为更好。
   - **验证**：`MUYUN_T05_EXIT_PROBE=1`下8/8退出case通过（exit_after约0.13-0.30s）；定向`tests/core/test_timeout_call_parallel.py`+`tests/core/test_t05_timeout_exit.py`为46 passed/8 skipped（8 skipped即默认跳过的退出case）；helper单测18项。同类扫描：`src/`中`ThreadPoolExecutor`/`as_completed`为0（仅`akshare_client.py:54`一处注释）；所有`threading.Thread`均`daemon=True`；`scripts/measure_timeout_overhead.py`为测量脚本，不在产品路径。全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）。独立复核：code-quality-guard（opus）结论「可合入」，3个P2已处理。
 - **保留限制**：MarketCache/K线晚到写已由 T05-E 抑制（磁盘与 A 股快照接受）；其余内存字典逐点仍可能晚到；Baostock会话与后续重试仍可能重叠（本卡未处理）；线程不能强杀，已开始的请求/缓存写可能晚到；单槽不限制总线程/内存。无真实外联、账户迁移、策略/研究资格或效果晋级。G7/T05整体仍不关闭。
-- **2026-10-22 T05-E 晚到写抑制（本提交）**：`timeout_call.is_call_abandoned` + `MarketCache._disk_save`/`_accept_snapshot` + `AKShareClient._kline_disk_save` 在超时放弃的 worker 内跳过缓存写；定测 `tests/core/test_t05e_late_cache_write.py`。不覆盖 Baostock 会话重叠、真实 MID。G7/T05 整体仍不关闭。
+- **2026-10-22 T05-E 晚到写抑制（本提交）**：`timeout_call.is_call_abandoned` + `MarketCache._disk_save`/`_accept_snapshot` + `AKShareClient._kline_disk_save` 在超时放弃的 worker 内跳过缓存写；定测 `tests/core/test_t05e_late_cache_write.py`。不覆盖 Baostock 会话重叠、真实 MID。T05-E2 补齐 ETF/行业/概念共享内存写抑制。G7/T05 整体仍不关闭。
 
 
 ### ISS-121: 远端免费源与扫描增量的边界回退

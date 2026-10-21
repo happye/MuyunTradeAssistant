@@ -191,7 +191,8 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
-2. ~~**T05-E 晚到缓存写抑制**~~（本提交已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过；不定 Baostock 会话/真实 MID。
+2. ~~**T05-E 晚到缓存写抑制**~~（已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过。
+2b. ~~**T05-E2 MarketCache 其余共享内存写**~~（本提交已关闭）：ETF/行业/概念写簇经 `_live_cache_write_allowed`；不定 Baostock/MID。
 8. **T05-G7 仍待（需产品/实证）**：Baostock 会话重叠；真实 MID；其余内存字典逐点守卫（磁盘入口已统一）。缺有限反例前不扩修。
 
 ## 卡片 ISS-123-PROD：生产 RAG 索引路径相对 CWD（本提交关闭）
@@ -242,6 +243,16 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 停止/回滚 | 定测或相关回归红 → `git revert` 本提交。若需改 Baostock 会话语义或扩大到全部内存字典写入 → 停，另开卡 |
 | 下一张 | T05-G7 剩余：Baostock 会话重叠 / 真实 MID（均需产品裁决，不抢道）；T04 大函数拆分（不急） |
 
+## 卡片 T05-E2（本提交）：MarketCache 其余共享内存写抑制
+
+| 项 | 内容 |
+|---|---|
+| 对应 | T05-E 后继；ISS-120 晚到写剩余内存入口 |
+| 目标 | ETF/行业/概念列表与成分股成功写路径在调用方已放弃时跳过共享内存写入（磁盘已由 `_disk_save` 统一拦截） |
+| 修复边界 | `src/scanner/market_cache.py`（`_live_cache_write_allowed` + 五处写簇）；定测扩 `test_t05e_late_cache_write`；文档。不改 Baostock/MID/G7/v43 |
+| 验收 | 定测含 ETF 真路径迟到写抑制；相关 market/etf/industry/concept 计数回归绿；全量见执行记录 |
+| 下一张 | T05-G7 仍待 Baostock 会话·真实 MID（不抢道）；T04 大函数拆分（不急） |
+
 ## 执行记录
 
 | 日期 | 事项 | 结果 |
@@ -266,3 +277,4 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-21 | BUG-CASH-WRAP | 根因：Rich size 需 width+height；捕获补 height=40；断言去换行；定测 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s）；关闭 ISS-128；下一张：测试写报告目录隔离（evidence.py `_REPORT_DIR`）/ T05-G7 剩余（不抢道） |
 | 2026-10-22 | T04-D | 卡片落盘并实现：plan_update_prep + CLI 薄封装；定测 test_t04d_plan_update_prep；回归 iss117 plan update / T04-C 全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）；下一张：~~T05-E 晚到缓存写~~（本提交关闭）/ T05-G7 仍待 Baostock 会话·真实 MID（不抢道）/ T04 大函数拆分（不急） |
 | 2026-10-22 | T05-E | 卡片落盘并实现：timeout_call abandoned 栈 + `is_call_abandoned`；`_disk_save`/`_accept_snapshot`/`_kline_disk_save` 跳过迟到写；定测 test_t05e_late_cache_write 8 passed；相关 371 passed/8 skipped；全量 3341 passed/0 failed/11 skipped/1 deselected（490.04s）；不绑 Baostock/MID/G7/v43 |
+| 2026-10-22 | T05-E2 | MarketCache ETF/行业/概念共享内存写经 `_live_cache_write_allowed` 抑制；定测 10 passed；相关 354 passed/8 skipped；全量 3343 passed/0 failed/11 skipped/1 deselected（489.00s）；不绑 Baostock/MID |

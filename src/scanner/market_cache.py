@@ -109,8 +109,7 @@ def _disk_save(key: str, data) -> bool:
     T05-E：若当前线程处于已被调用方放弃的超时 worker 中，跳过写入，
     避免迟到成功污染后续缓存命中（ISS-120 保留限制之晚到写抑制）。
     """
-    from src.data.timeout_call import is_call_abandoned
-    if is_call_abandoned():
+    if not _live_cache_write_allowed():
         logger.debug(f"MarketCache: 调用已放弃，跳过磁盘缓存写入({key})")
         return False
     if not _disk_enabled() or data is None:
@@ -135,6 +134,14 @@ def _disk_save(key: str, data) -> bool:
                 temporary.unlink(missing_ok=True)
             except OSError as exc:
                 logger.debug(f"MarketCache: 临时缓存清理失败({key}): {exc}")
+
+
+
+
+def _live_cache_write_allowed() -> bool:
+    """T05-E/E2：超时放弃的 worker 内禁止写入共享内存/磁盘缓存。"""
+    from src.data.timeout_call import is_call_abandoned
+    return not is_call_abandoned()
 
 
 def _get_sina_market_url() -> str:
@@ -335,8 +342,7 @@ class MarketCache:
 
         T05-E：调用方已放弃等待时跳过内存与磁盘写入（ISS-120 晚到写抑制）。
         """
-        from src.data.timeout_call import is_call_abandoned
-        if is_call_abandoned():
+        if not _live_cache_write_allowed():
             logger.info(
                 f"MarketCache: {source_label}结果在调用方已放弃后到达，跳过写入缓存"
             )
@@ -657,6 +663,9 @@ class MarketCache:
             with self._without_proxy():
                 df = ak.fund_etf_spot_em()
             if df is not None and not df.empty:
+                if not _live_cache_write_allowed():
+                    logger.info("MarketCache: ETF结果在调用方已放弃后到达，跳过写入缓存")
+                    return df
                 MarketCache._shared_etf_df = df
                 MarketCache._shared_etf_ts = time.time()
                 MarketCache._shared_etf_count = len(df)
@@ -803,6 +812,9 @@ class MarketCache:
                 df = ak.stock_board_industry_name_ths()
             if df is not None and not df.empty:
                 df = df.rename(columns={"name": "板块名称"})
+                if not _live_cache_write_allowed():
+                    logger.info("MarketCache: 行业板块结果在调用方已放弃后到达，跳过写入缓存")
+                    return df
                 MarketCache._shared_industry_df = df
                 MarketCache._shared_industry_ts = time.time()
                 logger.info(f"MarketCache: 行业板块获取成功(THS, {len(df)}个)")
@@ -876,6 +888,11 @@ class MarketCache:
                 raise _err[0]
             codes = _res[0]
             if codes:
+                if not _live_cache_write_allowed():
+                    logger.info(
+                        f"MarketCache: 行业成分股结果在调用方已放弃后到达，跳过写入缓存({industry_name})"
+                    )
+                    return codes
                 MarketCache._shared_industry_stocks[industry_name] = codes
                 MarketCache._shared_industry_stocks_ts[industry_name] = time.time()
                 _disk_save(f"industry_stocks_{industry_name}", codes)  # 磁盘 L2
@@ -913,6 +930,9 @@ class MarketCache:
                              stale_max=30 * 86400, timeout=12, retries=1)
             if df is not None and not df.empty:
                 df = df.rename(columns={"name": "板块名称"})
+                if not _live_cache_write_allowed():
+                    logger.info("MarketCache: 概念板块结果在调用方已放弃后到达，跳过写入缓存")
+                    return df
                 MarketCache._shared_concept_df = df
                 MarketCache._shared_concept_ts = time.time()
                 logger.info(f"MarketCache: 概念板块获取成功(THS, {len(df)}个)")
@@ -960,6 +980,11 @@ class MarketCache:
                 raise _err2[0]
             codes = _res2[0]
             if codes:
+                if not _live_cache_write_allowed():
+                    logger.info(
+                        f"MarketCache: 概念成分股结果在调用方已放弃后到达，跳过写入缓存({concept_name})"
+                    )
+                    return codes
                 MarketCache._shared_concept_stocks[concept_name] = codes
                 MarketCache._shared_concept_stocks_ts[concept_name] = time.time()
                 _disk_save(f"concept_stocks_{concept_name}", codes)  # 磁盘 L2

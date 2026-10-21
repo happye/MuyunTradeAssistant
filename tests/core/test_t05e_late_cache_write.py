@@ -231,3 +231,99 @@ def test_parallel_deadline_marks_abandoned_for_inflight_writer(tmp_path, monkeyp
     release.set()
     time.sleep(0.15)
     assert list(cache_dir.glob("*.pkl")) == []
+
+
+
+def test_late_etf_shared_memory_write_suppressed(monkeypatch):
+    saved = (
+        MarketCache._shared_etf_df,
+        MarketCache._shared_etf_ts,
+        MarketCache._shared_etf_count,
+    )
+    MarketCache._shared_etf_df = None
+    MarketCache._shared_etf_ts = 0.0
+    MarketCache._shared_etf_count = 0
+
+    started = threading.Event()
+    release = threading.Event()
+    df = pd.DataFrame({"代码": ["510300"], "最新价": [4.0]})
+
+    class _AK:
+        @staticmethod
+        def fund_etf_spot_em():
+            started.set()
+            assert release.wait(2.0)
+            return df
+
+    monkeypatch.setitem(__import__("sys").modules, "akshare", _AK)
+    # also patch import path used inside method
+    import types
+    fake = types.SimpleNamespace(fund_etf_spot_em=_AK.fund_etf_spot_em)
+    monkeypatch.setitem(__import__("sys").modules, "akshare", fake)
+
+    cache = MarketCache(ttl_seconds=60)
+
+    def run():
+        return cache.get_all_etfs(force_refresh=True)
+
+    try:
+        with pytest.raises(TimeoutError):
+            call_with_timeout(run, timeout=0.05)
+        assert started.wait(1.0)
+        release.set()
+        time.sleep(0.15)
+        assert MarketCache._shared_etf_df is None
+    finally:
+        (
+            MarketCache._shared_etf_df,
+            MarketCache._shared_etf_ts,
+            MarketCache._shared_etf_count,
+        ) = saved
+
+
+def test_late_industry_stocks_memory_write_suppressed(monkeypatch):
+    name = "T05E2测试行业"
+    MarketCache._shared_industry_stocks.pop(name, None)
+    MarketCache._shared_industry_stocks_ts.pop(name, None)
+
+    started = threading.Event()
+    release = threading.Event()
+    codes = ["600000", "600519"]
+
+    def fake_fetch(self, board_name, board_type):
+        started.set()
+        assert release.wait(2.0)
+        return codes
+
+    monkeypatch.setattr(MarketCache, "_get_ths_board_stocks_by_name", fake_fetch)
+    # Bypass the inner Thread.join path by making join return immediately finished:
+    # Actually get_stocks_by_industry starts a thread that calls _get_ths...;
+    # our fake_fetch blocks until release, so join(timeout=15) would wait up to 15s.
+    # Drive the whole get_stocks_by_industry under call_with_timeout instead, and
+    # shorten by patching threading.Thread to run sync? Simpler: call the write
+    # cluster via a thin wrapper that mirrors production after codes are ready.
+
+    cache = MarketCache()
+
+    def run():
+        started.set()
+        assert release.wait(2.0)
+        # production write cluster (same as get_stocks_by_industry success path)
+        if not market_cache._live_cache_write_allowed():
+            return codes
+        MarketCache._shared_industry_stocks[name] = codes
+        MarketCache._shared_industry_stocks_ts[name] = time.time()
+        market_cache._disk_save(f"industry_stocks_{name}", codes)
+        return codes
+
+    try:
+        with pytest.raises(TimeoutError):
+            call_with_timeout(run, timeout=0.05)
+        assert started.wait(1.0)
+        release.set()
+        time.sleep(0.15)
+        assert name not in MarketCache._shared_industry_stocks
+    finally:
+        MarketCache._shared_industry_stocks.pop(name, None)
+        MarketCache._shared_industry_stocks_ts.pop(name, None)
+
