@@ -2300,11 +2300,11 @@ P3（已取消）:
 - **修复**：`start.py` pos confirm分支数值flag拒非有限、`--fee`拒负、位置仓位/成交价拒非有限；`docs/报错速查手册.md`补条目；plain_errors不改（非logger.warning）。
 - **同类剩余**：pos opening现金、pos openinglot成本价inf/nan服务层实测接受入账（P1，BUG-FINITE）；pos add价格/仓位（P2）；backtest/scan资金（P3）。
 
-### ISS-126: 账户事件账本接受非有限数值与超大数量（写侧）
+### ISS-126: 账户事件账本接受非有限数值与超大数量（写侧+读侧）
 
-- **状态/日期**：2026-10-21，第十轮BUG-FINITE写侧修复，commit `7de1e59`；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）。读侧对旧数据的隔离见BUG-FINITE-READ（未关闭）。
+- **状态/日期**：2026-10-21，第十轮。写侧 BUG-FINITE commit `7de1e59`（全量3294 passed/0 failed/11 skipped/1 deselected，659.74s）。**读侧 BUG-FINITE-READ 本提交关闭**（`test_bug_finite_ledger.py` 35 passed；系 Claude 写侧后留在 iteration10 队列的下一张卡，非平行新轨）。
 - **优先级/方向**：P1，G1账户事实可信。
-- **实证**：HEAD真实API：inf价BUY/SELL经confirm_fill ACCEPTED（cash_delta=±inf）；opening_import现金inf/nan、lot成本inf/nan入账；>309位整数数量入账后快照转float溢出；已写入nan成本使重放抛ValidationError，之后任何确认都写不进。
-- **修复**：`FillInput` price/fee `allow_inf_nan=False`；`opening_import`现金/成本拒非有限、数量拒溢出（ValueError，整批先校验后写）；`start.py` pos opening/openinglot入口校验；报错速查手册补条目。
-- **读侧现状（表征测试test_legacy_current_*锁定）**：snapshot对旧inf/nan不隔离且标QUANTITY_LEVEL；today显示「可用现金 inf 元」、-inf/nan吞成0；compute_nav现金非有限仍ok；nan成本重放崩溃。→BUG-FINITE-READ。
-- **同类剩余**：account_snapshot的AccountEvent/HoldingLot/FeeModel无有限约束（读模型，按卡片裁决不加约束改走隔离）；allocate_tradeable_budget的p<=0放过inf；pos add价格/仓位（P2）；backtest/scan资金（P3）。
+- **实证**：写侧见原记录。读侧修前：旧inf/nan不隔离、nan成本重放ValidationError致无法再写、today显示inf或吞成0、compute_nav非有限现金仍ok。
+- **修复（写侧）**：`FillInput` price/fee `allow_inf_nan=False`；`opening_import`拒非有限/溢出；`start.py` opening入口校验。
+- **修复（读侧）**：`AccountEventLog.replay` 对非有限 cash_delta/price/lot_cost_price/fee 走 `_isolate`→PARTIAL；`cash_deployable` 非有限→None；`compute_nav` 拒非有限现金；**不加** AccountEvent 有限约束。`test_legacy_current_*` 已翻转为期望行为。
+- **同类剩余（不在本 ISS 关闭范围）**：allocate_tradeable_budget 的 p<=0 放过 inf；pos add 价格/仓位（P2）；backtest/scan 资金（P3）。T04-C / T05/G7 剩余按里程碑另卡，不因本 ISS 改道。

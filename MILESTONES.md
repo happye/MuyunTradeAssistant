@@ -55,7 +55,7 @@ flowchart LR
 | ID | 能力里程碑 | 当前状态（2026-10-17） | 已有基础 | 达成标准与关键剩余 |
 |---|---|---|---|---|
 | G0 | 目标、基线和长期路线可持续恢复 | 框架已建立；随批维护 | 早期ADR、验证规范、本文件、R15 | 需求都有里程碑和验证；每次审批同步状态、证据和下阶段；读入口无冲突 |
-| G1 | 事实与账户可信 | 指定账户事实业务读出口已通过，整体部分完成 | P0历史、同请求ctx及原计划、v35显式快照结构边界 | T01登记范围关闭不代表全部成交/并发或组合事实完成；其余按G5与验收范围继续 |
+| G1 | 事实与账户可信 | 指定账户事实业务读出口已通过，整体部分完成；ISS-126 写侧+读侧（BUG-FINITE / BUG-FINITE-READ）已合入：新写入拒非有限，旧毒事件重放隔离为 PARTIAL | P0历史、同请求ctx及原计划、v35显式快照结构边界；7de1e59 写侧 + 本提交读侧 | T01登记范围关闭不代表全部成交/并发或组合事实完成；其余按G5与验收范围继续；本读侧卡为 iteration10 队列续作，不替代 T04/T05/G7 |
 | G2 | 统一的日常工作流 | M2有限查询、T01登记业务读出口已验 | l/la只读研究、today、chat、行业、TUI/Web指定账户读取 | 完整跨端packet/研究视图与T02/T04仍待；管理投影明确豁免 |
 | G3 | 中期证据研究与复核闭环 | 本批工程合同通过；真实样板未成立 | cv6/binding_v4、完整条件、幂等存储、综合method、公开链及v15报告隔离已验 | 002957官方完整段为EXCERPT，MID UNESTABLISHED；还缺完整三命题支撑。不改原文/重复计证，未来新能力独立合同与版本化 |
 | G4 | 长期企业研究与估值能力 | 部分完成；v37至v42限定范围逐步接收，长期判据与数据资格未完成 | LONG模板、既有两期规则、L3负债率六点原件、cash_materials安全进入及只读回读 | v42仅接收当前SSE转述C15条件下的1组2期现金观察；历史行业/PIT、ROE、现金持续性仍UNKNOWN，不能称长期TRUE/MID。G4整体不关闭，不得填values_by_period激活旧TRUE |
@@ -141,4 +141,5 @@ V1结项必须同时满足：R01–R09都有验收证据；G1–G7达到明示�
 - 2026-10-17 v0.8.42：`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未提交发布；父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）。460项源码/测试/材料指纹稳定，7保护hash/知识库集合不变；network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅重跑受影响组1 passed（2.19s），实际worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），产品退出专用case最终SHA复核1 passed。真实PDF/SSE各一次，产1个当前条件化组2期，行业仅当次SSE转述C15非金融。历史行业/PIT、ROE、现金持续性仍UNKNOWN，真实MID NO_VALID、G4整体/V1未完成。批次完成后暂停等待新指派。
 - 2026-10-20 原生DSH只读协作限定通过（非产品迭代）：同session分析/追问/追加量化自评三请求完成，原两轮21/21工具结果成功，用户认证后代传0次；主控纠正方案边界与自评缓存分母。初版27项本地回归另记，未称全功能或节省费用。用户明确重大改动验收后集中commit+push，当时v31–v42快照曾由`codex/v42-native-collab`交付，后按用户要求更正为main直接集成；7项远端增量由本轮最新记录承接。量化及便携夹具复验见第九轮计划末节，不计G7修复、v43或产品整体完成。
 
+- 2026-10-21 第十轮 ISS-126 读侧（BUG-FINITE-READ）合入：Claude 在 BUG-FINITE 写侧 `7de1e59` 后留在 iteration10 队列的下一张 P1（非平行新轨）。重放隔离非有限事件→PARTIAL；nan 成本账本可读可再写；today/NAV 未知语义。本轮 Claude 已接受主线（T05-D/BUG-OW/BUG-IDX/T04-A/T04-B/BUG-FEE/写侧）保持；下一张推荐 T04-C；T05/G7 剩余（晚到缓存、Baostock、真实 MID 等）仍按本表推进。证据见 `tests/core/test_bug_finite_ledger.py` 35 passed 与 plan/fusion/iteration10/DELIVERY_PLAN 执行记录。
 - 2026-10-20 main整合收尾：`ACCEPTED_MAIN_INTEGRATION_SCOPE_ONLY`。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 NAV纯查询与pipeline数量边界补修；双仓库分开交付。具体指纹、分轮失败及限制见第九轮最新验收，不重算历史各批数字。

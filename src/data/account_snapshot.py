@@ -23,6 +23,7 @@
 import hashlib
 import json
 import logging
+import math
 from datetime import datetime
 from enum import Enum
 from pathlib import Path
@@ -98,8 +99,12 @@ class AccountSnapshot(BaseModel):
         """可用于新增买入的现金——K0a/D7 口径统一：cash_available 按合同已是
         扣冻结后的净可用额，reserved 仅解释展示、不再二次扣减（旧实现在此再减
         一次 reserved，与本字段声明合同矛盾）。
-        拟卖未确认的钱**不在** cash_available 里（卖出确认入账后才出现）。"""
+        拟卖未确认的钱**不在** cash_available 里（卖出确认入账后才出现）。
+        非有限现金按未知处理（None）：不把 inf 当可用额，也不把 -inf/nan 吞成 0
+        （BUG-FINITE-READ / ISS-126 读侧）。"""
         if self.cash_available is None:
+            return None
+        if not math.isfinite(self.cash_available):
             return None
         return max(0.0, self.cash_available)
 
@@ -281,6 +286,24 @@ class AccountEventLog:
 
         for e in events:
             q = e.quantity
+            # ── 非有限数值整事件隔离（BUG-FINITE-READ / ISS-126 读侧）──
+            # 不给 AccountEvent 加有限约束（会让旧毒账本直接解析失败）；重放时
+            # 对 cash_delta/price/lot_cost_price/fee 走既有 _isolate，快照降 PARTIAL。
+            # nan 成本若放行，HoldingLot(gt=0) 会让整本 ValidationError，之后无法再写。
+            bad_fields: list[str] = []
+            if not math.isfinite(e.cash_delta):
+                bad_fields.append(f"cash_delta={e.cash_delta!r}")
+            if e.price is not None and not math.isfinite(e.price):
+                bad_fields.append(f"price={e.price!r}")
+            if e.lot_cost_price is not None and not math.isfinite(e.lot_cost_price):
+                bad_fields.append(f"lot_cost_price={e.lot_cost_price!r}")
+            if not math.isfinite(e.fee):
+                bad_fields.append(f"fee={e.fee!r}")
+            if bad_fields:
+                _isolate(e, "事件含非有限数值（"
+                            + "、".join(bad_fields)
+                            + "）——整事件隔离，待人工核对账本")
+                continue
             # ── 业务校验（全过才应用——现金与份额不可分离，J2/N5）──
             if e.event_type in (EventType.BUY, EventType.SELL):
                 if not e.security_id:

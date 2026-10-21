@@ -10,8 +10,8 @@
   账本事件数不变
 - 入口层：parse_input 返回 None、打印「  [!] … 需有限数字 …」、账本事件数不变（走 parse_input -> run_cli 全链）
 - 已绿记录：FillInput(price=nan / fee=nan) 由 gt=0 / ge=0 已拒；lot 数量 nan 已是 ValueError
-- 旧数据（TestLegacyNonfiniteEvents）：账本里**已存在**的非有限事件在快照/出口的现状——本卡不改快照层，
-  现状表征测试仅作证据，快照层若另卡修复，这些断言应随之翻转
+- 旧数据（test_legacy_current_*）：账本里**已存在**的非有限事件由 BUG-FINITE-READ 读侧重放隔离
+  （PARTIAL + isolated_events）；nan 成本可读可再写；today/NAV 对非有限给未知语义
 
 隔离：持久化路径全部指向 tmp_path；零网络零 AI。
 跑法：pytest tests/core/test_bug_finite_ledger.py -q
@@ -226,12 +226,13 @@ def test_valid_opening_and_openinglot_still_book(acct):
     assert _n_events() == n0 + 2
 
 
-# ───────────────────────── 旧数据：账本里已存在的非有限事件（现状表征）─────────────────────────
-# 注意：以下断言锁定「当前快照层/出口」对旧非有限事件的实际表现（HEAD 实测），不是期望行为。
-# 快照层（account_snapshot.py）不在本卡范围——需主 Agent 另卡裁决；修复后这些断言应翻转。
+# ───────────────────────── 旧数据：账本里已存在的非有限事件（读侧期望）─────────────────────────
+# BUG-FINITE-READ：重放对非有限 cash_delta/price/lot_cost_price/fee 走 _isolate → PARTIAL；
+# nan 成本账本可读且后续 confirm 可写；today 现金不显示 inf、不把 -inf/nan 吞成 0；
+# compute_nav 遇 PARTIAL/非有限现金不返回 "ok"。写侧约束见 BUG-FINITE（7de1e59），本卡不改。
 
 def _inject(**kw):
-    """绕过服务层，直接把事件写进账本（模拟修复前已落盘的旧毒数据）。"""
+    """绕过写侧约束，直接把事件写入账本（模拟修复前已落盘的旧毒数据）。"""
     ev = AccountEvent(**kw)
     with account_module.DEFAULT_LEDGER_PATH.open("a", encoding="utf-8") as f:
         f.write(json.dumps(ev.model_dump(mode="json"), ensure_ascii=False) + "\n")
@@ -261,57 +262,68 @@ def _quotes(codes):
     return {c: {"price": 10.0, "effective_at": "2026-09-21 10:00:00"} for c in codes}
 
 
-@pytest.mark.parametrize("kind, cash_check", [
-    ("cash_inf", math.isinf),
-    ("cash_nan", math.isnan),
-    ("buy_price_inf", math.isinf),
-])
-def test_legacy_current_nonfinite_cash_propagates_to_snapshot_and_exits(acct, kind, cash_check):
-    """现状：非有限现金不被隔离——快照 QUANTITY_LEVEL、today 显示金额、NAV 估值给出非有限『ok』。"""
+@pytest.mark.parametrize("kind", ["cash_inf", "cash_nan", "buy_price_inf"])
+def test_legacy_current_nonfinite_cash_propagates_to_snapshot_and_exits(acct, kind):
+    """读侧：非有限现金事件整事件隔离 → PARTIAL；好事件现金仍有限；today 不显示 inf / 不吞成 0；NAV 非 ok。"""
     _legacy(kind)
     snap = _svc().snapshot()
-    assert cash_check(snap.cash_available)
-    assert snap.data_completeness == "QUANTITY_LEVEL" and not snap.isolated_events
+    assert snap.data_completeness == "PARTIAL"
+    assert snap.isolated_events, "非有限事件必须进 isolated_events"
+    assert any(e.get("event_id", "").startswith("fill_legacy") for e in snap.isolated_events)
+    assert snap.cash_available is not None and math.isfinite(snap.cash_available)
+    assert snap.cash_available == 100000.0  # 毒事件隔离后保留期初现金
 
     pm = PortfolioManager()
     facts = pm.request_account_facts()
-    assert facts.read_failed is False and facts._ledger_partial is False
+    assert facts.read_failed is False and facts._ledger_partial is True
     view = build_today_view(pm, account_facts=facts)
     text = render_today(view)
-    if kind == "cash_inf":
-        assert "可用现金 inf 元" in text            # inf 作为金额显示
-    else:
-        assert "可用现金 0 元" in text              # -inf/nan 被 max(0.0, x) 吞成 0，亦非「未知」
+    assert "可用现金 inf 元" not in text
+    # 毒事件被隔离后可用现金仍是期初有限值；不得出现「把 -inf/nan 吞成 0」的假象
+    assert "可用现金 0 元" not in text
+    assert "可用现金" in text and "100" in text  # 100000 / 100,000
     nav, _, reason = compute_nav(facts.snapshot, _quotes, as_of=datetime(2026, 9, 22, 10, 0))
-    assert reason == "ok" and not math.isfinite(nav)
+    assert reason != "ok" and nav is None
 
 
 @pytest.mark.parametrize("kind", ["lot_cost_inf", "buy_price_inf"])
 def test_legacy_current_inf_cost_propagates_to_avg_cost_display(acct, kind):
+    """读侧：inf 成本/买价事件隔离，不产 inf 均价，today 不展示「平均成本 inf」。"""
     _legacy(kind)
     snap = _svc().snapshot()
-    h = next(x for x in snap.holdings if x.security_id == OTHER)
-    assert math.isinf(h.avg_cost)
+    assert snap.data_completeness == "PARTIAL" and snap.isolated_events
+    other = [x for x in snap.holdings if x.security_id == OTHER]
+    assert not other or (other[0].avg_cost is None or math.isfinite(other[0].avg_cost))
     pm = PortfolioManager()
     text = render_today(build_today_view(pm, account_facts=pm.request_account_facts()))
-    assert f"{OTHER} 持有 100 股，平均成本 inf" in text
+    assert f"{OTHER} 持有 100 股，平均成本 inf" not in text
 
 
 def test_legacy_current_nan_cost_crashes_snapshot_but_request_facts_fail_safe(acct):
-    """现状：nan 成本使整本重放抛 ValidationError（账本被毒化）；
-    RequestAccountFacts 捕获后走 read_failed（UNKNOWN，不当空仓）；写侧 confirm_fill 回执前同样崩溃。"""
+    """读侧：nan 成本事件隔离后快照可读（PARTIAL）；request_facts 非 read_failed；后续 confirm_fill 可写。"""
     _legacy("lot_cost_nan")
-    with pytest.raises(ValidationError):
-        _svc().snapshot()
+    snap = _svc().snapshot()
+    assert snap.data_completeness == "PARTIAL"
+    assert snap.isolated_events
+    assert any(e.get("event_id") == "fill_legacy_lot" for e in snap.isolated_events)
+    other = [x for x in snap.holdings if x.security_id == OTHER]
+    assert not other  # 毒 OPENING lot 未入持仓
+
     pm = PortfolioManager()
     facts = pm.request_account_facts()
-    assert facts.read_failed is True
-    assert facts.context_for(OTHER).position_state == "UNKNOWN"   # 无投影的代码：未对账，不当空仓
-    ctx = facts.context_for(CODE)                                 # 有旧比例投影：仅保留持仓方向，权重待对账
-    assert (ctx.position_state, ctx.confirmed_weight) == ("HELD", None)
-    with pytest.raises(ValidationError):
-        _svc().confirm_fill("after-poison", "", FillInput(
-            security_id=CODE, action="BUY", quantity=100, price=12.0, trade_date="2026-09-21"))
+    assert facts.read_failed is False
+    assert facts._ledger_partial is True
+    # 毒代码无账本持仓 → 无数量；投影仍可能标 HELD（RATIO），权重因 PARTIAL 冻结
+    ctx_other = facts.context_for(OTHER)
+    assert ctx_other.position_state in ("NONE", "UNKNOWN", "HELD")
+    ctx = facts.context_for(CODE)
+    assert ctx.position_state == "HELD"
+
+    n0 = _n_events()
+    receipt = _svc().confirm_fill("after-poison", "", FillInput(
+        security_id=CODE, action="BUY", quantity=100, price=12.0, trade_date="2026-09-21"))
+    assert receipt.ok is True, f"毒账本隔离后应可再写: {receipt}"
+    assert _n_events() == n0 + 1
 
 
 # ── 复核 P2：超大整数数量（>309 位）可写入但快照转 float 溢出，同类毒化 ──

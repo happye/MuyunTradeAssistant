@@ -53,7 +53,12 @@ def compute_nav(snapshot, quote_fn: QuoteFn, *, as_of: Optional[datetime] = None
         return None, None, "账本存在隔离事件/PARTIAL——NAV 不估"
     if snapshot.cash_available is None:
         return None, None, "现金未知"
-    cash = float(snapshot.cash_available) + float(snapshot.cash_reserved or 0.0)
+    if not math.isfinite(float(snapshot.cash_available)):
+        return None, None, "现金非有限（未知）"
+    reserved = float(snapshot.cash_reserved or 0.0)
+    if not math.isfinite(reserved):
+        return None, None, "冻结现金非有限（未知）"
+    cash = float(snapshot.cash_available) + reserved
     held = [(h.security_id, int(h.quantity or 0)) for h in snapshot.holdings if int(h.quantity or 0) > 0]
     if not held:
         return None, None, "无数量持仓（NAV 无需估值）"

@@ -128,15 +128,17 @@
 | 反例 | 服务单测：FillInput(price=inf/nan) 与 opening_import(cash=inf/nan、cost=inf) 旧代码接受（红）→ 拒绝（绿）；接线测试 `pos opening inf` 等返回提示且账本不变。 |
 | 范围外 | `pos add` 价格/仓位、backtest/scan 资金的非有限值（P2/P3，另记）。 |
 
-## 卡片 BUG-FINITE-READ（P1，设计未验证）：账本读侧对旧非有限事件的隔离
+## 卡片 BUG-FINITE-READ（实现复验通过，本提交）：账本读侧对旧非有限事件的隔离
+
+> **队列位置（给其他 Agent）**：本卡是 Claude Code 在第十轮交付 BUG-FINITE 写侧（`7de1e59` / ISS-126）后，**明确留在 iteration10 队列里的下一张 P1**——不是另开平行轨道，也不替代 T04/T05/G7。本轮 Claude 已接受的主线（T05-D、BUG-OW、BUG-IDX、T04-A、T04-B、BUG-FEE、BUG-FINITE 写侧）保持不变；本提交只关闭 ISS-126 的读侧尾巴。
 
 | 项 | 内容 |
 |---|---|
-| 对应 | G1（账户事实可信）；BUG-FINITE 调查发现（表征测试 `tests/core/test_bug_finite_ledger.py` 中 `test_legacy_current_*` 锁定现状） |
-| 实证 | HEAD 用真实 API 写入后读取：`AccountService.snapshot()` 对 inf/nan 现金、inf 价 BUY/SELL、inf fee、inf 成本不隔离，快照标 QUANTITY_LEVEL 且现金/均价为 inf/nan；lot 成本 nan 使重放抛 `ValidationError`（`HoldingLot` gt=0 拒 nan，回放 `cost <= 0` 放过 nan）——之后 `confirm_fill` 内无条件 `replay()` 失败，**任何确认都无法再写入**；today 显示「可用现金 inf 元」，-inf/nan 被 `max(0.0, x)` 吞成「0 元」；`compute_nav` 只查行情价有限，现金非有限仍返回 `"ok"`。 |
-| 裁决 | 不给读取模型 `AccountEvent` 加约束（会让已有账本直接解析失败）。重放遇到非有限 `cash_delta`/价格/成本/费用时走现有 `_isolate` 隔离并使快照降为 PARTIAL（与「坏事件隔离、不冒充完整」的既有语义一致）；`compute_nav` 与 today 现金展示对非有限值给 UNKNOWN，不显示 inf、不吞成 0。 |
-| 反例 | 翻转 `test_legacy_current_*` 表征测试：nan 成本账本可读（PARTIAL）且后续确认可写；inf 现金 today 显示未知；NAV 非 ok。 |
-| 不改 | 写侧约束（BUG-FINITE 已加）、账本文件格式、无非有限事件的正常账本行为（全量回归锁定）。 |
+| 对应 | G1（账户事实可信）；BUG-FINITE 调查发现（`test_legacy_current_*` 曾锁定坏现状） |
+| 实证（修前） | `snapshot()` 对旧 inf/nan 现金/价/成本不隔离且标 QUANTITY_LEVEL；lot 成本 nan 使重放 `ValidationError`，之后任何 `confirm_fill` 写不进；today「可用现金 inf 元」或把 -inf/nan 吞成「0 元」；`compute_nav` 现金非有限仍 `"ok"`。 |
+| 修法 | `AccountEventLog.replay`：事件含非有限 `cash_delta`/`price`/`lot_cost_price`/`fee` → 既有 `_isolate`，快照 `PARTIAL`；**不加** AccountEvent 有限约束（旧毒账本仍可解析）。`cash_deployable` 非有限 → `None`（未知）。`compute_nav` 拒非有限现金/冻结现金。today 走既有「现金未知」分支，不再显示 inf、不再吞成 0。 |
+| 反例（已翻转） | `test_legacy_current_*`：隔离+PARTIAL；nan 成本可读且后续 confirm 可写；today 无 inf/假 0；NAV 非 ok。写侧 35 项整文件保持绿。 |
+| 不改 | 写侧 BUG-FINITE（`7de1e59`）；正常有限账本行为；T04/T05/G7 主线。 |
 
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
@@ -162,3 +164,4 @@
 | 2026-10-21 | T04-B | 黄金 20 项先在 HEAD 通过；TUI 4 项先红（stdout 被写入且显示「已加仓」）后绿；服务单测 18；定向回归 209；muyun-reviewer 无阻断；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）；commit `03cab94`（ISS-124） |
 | 2026-10-21 | BUG-FEE | 接线测试 HEAD 5 failed/2 passed → 7 passed；实测 `--price inf` 旧版实际入账（ISS-125）；定向回归 83 passed；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）；commit `9d13a3f`；同类 P1 转 BUG-FINITE |
 | 2026-10-21 | BUG-FINITE | HEAD 18 failed/15 passed → 35 passed（含复核新增超大整数 2 项先红后绿）；调查确认读侧对旧非有限事件不隔离且 nan 成本使重放崩溃（→BUG-FINITE-READ）；code-quality-guard 可合入、2 P2 已处理；定向 465；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）；commit `7de1e59`（ISS-126） |
+| 2026-10-21 | BUG-FINITE-READ | 设计验证=按卡片裁决（隔离非有限、不加 AccountEvent 约束）；修前 legacy_current 6 passed 锁坏行为 → 翻转后 test_bug_finite_ledger.py 35 passed；相关账户套件 161 passed；全量 3293 passed / 1 failed / 11 skipped / 1 deselected（453.89s）——唯一失败为 test_cash_material_intake 控制台折行把「回执1条，均已」拆成两行，与本卡 src 改动无关（既有展示断言脆弱）；关闭 ISS-126 读侧；下一张推荐 T04-C（不抢 T05/G7） |
