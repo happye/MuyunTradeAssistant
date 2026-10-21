@@ -1741,6 +1741,116 @@ def _dispatch_pos_cli(mode: str, args: dict, manage_positions) -> bool:
 
 
 
+def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
+    """T04-F：benzong_* 连贯分发助手（从 run_cli 抽出行为等价一块）。
+
+    命中并执行后返回 True；非 benzong_* mode 返回 False，由 run_cli 继续 elif。
+    行为锁定靠 test_t04e_dispatch_golden（含 T04-F0 扩展）。
+    """
+    if mode == "benzong":
+        # v0.8.6.2: bz <code> 默认自动 AI 评分；--manual 走旧交互式
+        # v0.8.6.3: bz --check 数据源连通性体检（ISS-043）
+        if args.get("check"):
+            from src.data.source_check import check_all_sources, format_report
+            print(format_report(check_all_sources()))
+            return True
+        run_benzong_scoring(
+            meta=args.get("meta", ""),
+            manual=args.get("manual", False),
+            refresh=args.get("refresh", False),
+        )
+        return True
+
+    if mode == "benzong_all":
+        from src.cli import session_state
+        from src.core.benzong import cache as bz_cache
+        from datetime import datetime as _dt
+        last = session_state.get_last_scan()
+        if not last or not last.get("items"):
+            print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market")
+            return True
+        items = last["items"]
+        src_label = last.get("source", "?")
+        when = (last.get("timestamp") or "")[:16].replace("T", " ")
+        try:
+            _age_min = max(0, round((_dt.now() - _dt.fromisoformat(last.get("timestamp") or "")).total_seconds() / 60))
+        except Exception:
+            _age_min = None
+        if _age_min is not None and _age_min > 30:
+            print(f"  [!] 注意：该扫描已是 {_age_min} 分钟前的结果，行情可能已变化")
+        today = _dt.now().strftime("%Y-%m-%d")
+        dims = ["industry_prosperity", "business_purity", "valuation_position",
+                "industry_leader", "market_recognition", "risk_deduction"]
+        uncached = sum(
+            1 for it in items
+            if isinstance(it, dict) and it.get("code")
+            and any(bz_cache.get(it["code"], today, d) is None for d in dims)
+        )
+        print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
+        if uncached:
+            est_min = max(1, round(uncached * 0.5))
+            try:
+                ans = input(f"  其中 {uncached} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            except (EOFError, KeyboardInterrupt):
+                print("  已取消")
+                return True
+            if ans.strip().lower() not in ("y", "yes"):
+                print("  已取消")
+                return True
+        else:
+            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）\n")
+        from src.cli.main import benzong_batch_analyze
+        benzong_batch_analyze(items, src_label=src_label)
+        return True
+
+    if mode == "benzong_multi":
+        # v0.8.9.0 ISS-087: bz 多代码批量评分——复用 ba 同款管道
+        # （auto_score_batch：AI client 建一次、整批共享全市场成交额、串行防
+        # baostock 登录态竞争、单只失败不阻塞、同日缓存优先不重算）
+        from src.cli.main import benzong_batch_analyze
+        from src.core.benzong import cache as bz_cache
+        from datetime import datetime as _dt
+        codes = [c for c in args.get("codes", []) if c]
+        if not codes:
+            print("  [!] 没有可评分的代码")
+            return True
+        today = _dt.now().strftime("%Y-%m-%d")
+        dims = ["industry_prosperity", "business_purity", "valuation_position",
+                "industry_leader", "market_recognition", "risk_deduction"]
+        uncached = [
+            c for c in codes
+            if any(bz_cache.get(c, today, d) is None for d in dims)
+        ]
+        print(f"\n  笨总批量评分 {len(codes)} 只：{'、'.join(codes)}"
+              + ("（--refresh 强制重算）" if args.get("refresh") else ""))
+        if args.get("refresh"):
+            est_min = max(1, round(len(codes) * 0.5))
+            print(f"  每只 6 维 AI（约 {est_min} 分钟/只），共约 {est_min * len(codes)} 分钟")
+        elif uncached:
+            est_min = max(1, round(len(uncached) * 0.5))
+            try:
+                ans = input(
+                    f"  其中 {len(uncached)} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
+            except (EOFError, KeyboardInterrupt):
+                print("  已取消")
+                return True
+            if ans.strip().lower() not in ("y", "yes"):
+                print("  已取消")
+                return True
+        else:
+            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）")
+        items = [{"code": c} for c in codes]
+        benzong_batch_analyze(items, force_refresh=args.get("refresh", False))
+        return True
+
+    if mode == "benzong_scan":
+        # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
+        run_benzong_scan(args)
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -1922,47 +2032,6 @@ def run_cli(mode: str, args: dict):
         print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
 
-    elif mode == "benzong_all":
-        from src.cli import session_state
-        from src.core.benzong import cache as bz_cache
-        from datetime import datetime as _dt
-        last = session_state.get_last_scan()
-        if not last or not last.get("items"):
-            print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market")
-            return
-        items = last["items"]
-        src_label = last.get("source", "?")
-        when = (last.get("timestamp") or "")[:16].replace("T", " ")
-        try:
-            _age_min = max(0, round((_dt.now() - _dt.fromisoformat(last.get("timestamp") or "")).total_seconds() / 60))
-        except Exception:
-            _age_min = None
-        if _age_min is not None and _age_min > 30:
-            print(f"  [!] 注意：该扫描已是 {_age_min} 分钟前的结果，行情可能已变化")
-        today = _dt.now().strftime("%Y-%m-%d")
-        dims = ["industry_prosperity", "business_purity", "valuation_position",
-                "industry_leader", "market_recognition", "risk_deduction"]
-        uncached = sum(
-            1 for it in items
-            if isinstance(it, dict) and it.get("code")
-            and any(bz_cache.get(it["code"], today, d) is None for d in dims)
-        )
-        print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
-        if uncached:
-            est_min = max(1, round(uncached * 0.5))
-            try:
-                ans = input(f"  其中 {uncached} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
-            except (EOFError, KeyboardInterrupt):
-                print("  已取消")
-                return
-            if ans.strip().lower() not in ("y", "yes"):
-                print("  已取消")
-                return
-        else:
-            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）\n")
-        from src.cli.main import benzong_batch_analyze
-        benzong_batch_analyze(items, src_label=src_label)
-
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
 
@@ -2141,61 +2210,8 @@ def run_cli(mode: str, args: dict):
                 return
             run_chat_repl(load_config())
 
-    elif mode == "benzong":
-        # v0.8.6.2: bz <code> 默认自动 AI 评分；--manual 走旧交互式
-        # v0.8.6.3: bz --check 数据源连通性体检（ISS-043）
-        if args.get("check"):
-            from src.data.source_check import check_all_sources, format_report
-            print(format_report(check_all_sources()))
-            return
-        run_benzong_scoring(
-            meta=args.get("meta", ""),
-            manual=args.get("manual", False),
-            refresh=args.get("refresh", False),
-        )
-
-    elif mode == "benzong_multi":
-        # v0.8.9.0 ISS-087: bz 多代码批量评分——复用 ba 同款管道
-        # （auto_score_batch：AI client 建一次、整批共享全市场成交额、串行防
-        # baostock 登录态竞争、单只失败不阻塞、同日缓存优先不重算）
-        from src.cli.main import benzong_batch_analyze
-        from src.core.benzong import cache as bz_cache
-        from datetime import datetime as _dt
-        codes = [c for c in args.get("codes", []) if c]
-        if not codes:
-            print("  [!] 没有可评分的代码")
-            return
-        today = _dt.now().strftime("%Y-%m-%d")
-        dims = ["industry_prosperity", "business_purity", "valuation_position",
-                "industry_leader", "market_recognition", "risk_deduction"]
-        uncached = [
-            c for c in codes
-            if any(bz_cache.get(c, today, d) is None for d in dims)
-        ]
-        print(f"\n  笨总批量评分 {len(codes)} 只：{'、'.join(codes)}"
-              + ("（--refresh 强制重算）" if args.get("refresh") else ""))
-        if args.get("refresh"):
-            est_min = max(1, round(len(codes) * 0.5))
-            print(f"  每只 6 维 AI（约 {est_min} 分钟/只），共约 {est_min * len(codes)} 分钟")
-        elif uncached:
-            est_min = max(1, round(len(uncached) * 0.5))
-            try:
-                ans = input(
-                    f"  其中 {len(uncached)} 只今天未评分，将调用 AI（约 {est_min} 分钟）。继续?(y/N) ")
-            except (EOFError, KeyboardInterrupt):
-                print("  已取消")
-                return
-            if ans.strip().lower() not in ("y", "yes"):
-                print("  已取消")
-                return
-        else:
-            print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）")
-        items = [{"code": c} for c in codes]
-        benzong_batch_analyze(items, force_refresh=args.get("refresh", False))
-
-    elif mode == "benzong_scan":
-        # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
-        run_benzong_scan(args)
+    elif _dispatch_benzong_cli(mode, args):
+        pass
 
     else:
         # 防御兜底：mode 名是 chat run_command 桥 + confirm 硬门的协议，

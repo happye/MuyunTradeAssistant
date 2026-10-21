@@ -144,6 +144,7 @@ V1结项必须同时满足：R01–R09都有验收证据；G1–G7达到明示�
 - 2026-10-20 原生DSH只读协作限定通过（非产品迭代）：同session分析/追问/追加量化自评三请求完成，原两轮21/21工具结果成功，用户认证后代传0次；主控纠正方案边界与自评缓存分母。初版27项本地回归另记，未称全功能或节省费用。用户明确重大改动验收后集中commit+push，当时v31–v42快照曾由`codex/v42-native-collab`交付，后按用户要求更正为main直接集成；7项远端增量由本轮最新记录承接。量化及便携夹具复验见第九轮计划末节，不计G7修复、v43或产品整体完成。
 
 - 2026-10-22 第十轮 T04-E（parse_input/run_cli 分发黄金 + `_dispatch_pos_cli` pos_* 抽出）合入；定测 test_t04e_dispatch_golden 118 passed；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s）；不绑 G7/v43；其余大分支拆分仍待；下一张候选 T05-G7 剩余（不抢道）。
+- 2026-10-22 第十轮 T04-F：抽出 `_dispatch_benzong_cli`（benzong/benzong_all/benzong_multi/benzong_scan）；定测 test_t04e_dispatch_golden 121 passed；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）；不触 G7/v43；下一张候选 T04 其余 live_*/scan 拆分或 T05-G7 仍待（不抢道）。
 - 2026-10-22 第十轮 T04-D（CLI pos plan --update 再抽）合入：prepare_generate_or_update_plan/`accept_plan_update；CLI 薄封装保留 Y/n；定测	est_t04d_plan_update_prep；不绑 G7/v43；下一张候选 T05-G7 剩余（不抢道）。
 - 2026-10-21 第十轮 测试写报告目录隔离（ISS-123 残余）合入：conftest session 隔离`evidence._REPORT_DIR` + 仓库分析报告/analysis 文件名守卫；定测`test_report_dir_isolation` 4 passed；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不绑 G7/v43；下一张候选 CLI pos plan --update 再抽；T05/G7 不抢道。
 - 2026-10-21 第十轮 BUG-CASH-WRAP（ISS-128）合入：现金材料回执断言适配 Rich 折行（捕获 Console 补 height 固定宽度；断言去换行）；定测 `test_cash_material_intake.py` 45 passed；不改生产折行；下一张候补测试写报告目录隔离（`evidence.py` `_REPORT_DIR`）；T05/G7 不抢道。

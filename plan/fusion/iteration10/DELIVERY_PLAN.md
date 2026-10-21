@@ -190,7 +190,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 4. ~~**测试写仓库报告目录**~~（本提交已关闭 / ISS-123 残余）：`tests/conftest.py` session 隔离 `evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis` 文件名集合守卫；定测 `test_report_dir_isolation` 4 项；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不改生产路径。
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
-5. **T04 大函数拆分**：~~T04-E 分发黄金 + pos_* 抽出~~（本提交关闭）：`test_t04e_dispatch_golden` 锁 parse/run_cli；`_dispatch_pos_cli` 抽出 pos_*。其余 live_multi/benzong_*/scan 内联等仍待，不急。
+5. **T04 大函数拆分**：~~T04-E 分发黄金 + pos_* 抽出~~（本提交关闭）：`test_t04e_dispatch_golden` 锁 parse/run_cli；`_dispatch_pos_cli` 抽出 pos_*。其余 ~~T04-F benzong_* 助手~~（本提交关闭）：`_dispatch_benzong_cli` 承接 benzong/benzong_all/benzong_multi/benzong_scan。其余 live_multi/live_*/scan 内联等仍待，不急。
 2. ~~**T05-E 晚到缓存写抑制**~~（已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过。
 2b. ~~**T05-E2 MarketCache 其余共享内存写**~~（本提交已关闭）：ETF/行业/概念写簇经 `_live_cache_write_allowed`；不定 Baostock/MID。
 8. **T05-G7 仍待（需产品/实证）**：Baostock 会话重叠；真实 MID；其余内存字典逐点守卫（磁盘入口已统一）。缺有限反例前不扩修。
@@ -266,7 +266,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 定测全绿；相关回归不红；全量 0 failed；抽出前后黄金逐字段相等 |
 | 不做 | 评分/MID/G7/v43/Baostock；不一次拆完 live_multi 等内联大块 |
 | 停止/回滚 | 黄金红或全量红 → `git revert` 本卡提交 |
-| 下一张 | T04 其余大分支拆分（不急）/ T05-G7 剩余（不抢道） |
+| 下一张 | ~~T04-F benzong_*~~（本提交关闭）/ T04 其余 live_*/scan（不急）/ T05-G7 剩余（不抢道） |
 
 
 ## 执行记录
@@ -295,3 +295,19 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-22 | T05-E | 卡片落盘并实现：timeout_call abandoned 栈 + `is_call_abandoned`；`_disk_save`/`_accept_snapshot`/`_kline_disk_save` 跳过迟到写；定测 test_t05e_late_cache_write 8 passed；相关 371 passed/8 skipped；全量 3341 passed/0 failed/11 skipped/1 deselected（490.04s）；不绑 Baostock/MID/G7/v43 |
 | 2026-10-22 | T05-E2 | MarketCache ETF/行业/概念共享内存写经 `_live_cache_write_allowed` 抑制；定测 10 passed；相关 354 passed/8 skipped；全量 3343 passed/0 failed/11 skipped/1 deselected（489.00s）；不绑 Baostock/MID |
 | 2026-10-22 | T04-E | 分发黄金 `test_t04e_dispatch_golden`（parse 表 + run_cli 桩路由）；抽出 `_dispatch_pos_cli`（pos_* 九模式行为等价）；定测 118；相关 145；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s）；不定 Baostock/MID/G7/v43；下一张：T04 其余大分支 / T05-G7 剩余（不抢道） |
+| 2026-10-22 | T04-F | 黄金扩展（benzong_multi/all/--check）+ 抽出 `_dispatch_benzong_cli`；定测 121；相关 222；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）；不触 Baostock/MID/G7/v43；下一张：T04 其余 live_*/scan（不急）/ T05-G7 仍待（不抢道） |
+
+
+## 切片 T04-F（本提交关闭）：抽出 benzong_* 分发助手
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G7 / T04（大函数拆分续） |
+| 前置 | T04-E 已锁分发黄金并抽出 `_dispatch_pos_cli`；T04-F0 扩展黄金锁 benzong_multi/benzong_all/--check |
+| 现状 | `run_cli` 内 benzong_all 与 benzong/benzong_multi/benzong_scan 分居两处内联大块 |
+| 目标 | 抽出连贯一块 `_dispatch_benzong_cli`（行为等价）；live_multi/live_*/scan 内联不动 |
+| 验收 | 定测 `test_t04e_dispatch_golden` 121 passed；相关回归 222；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s） |
+| 不触 | 评分/MID/G7/v43/Baostock；不一次抽完所有大分支 |
+| 停止/回滚 | 黄金或全量红 → `git revert` 本提交 |
+| 下一张 | T04 其余 live_multi/live_*/scan 内联拆分（不急）/ T05-G7 仍待（不抢道） |
+
