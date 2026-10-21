@@ -2773,19 +2773,22 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
             console.print(f"  [dim]如需新超配，等新质变事件并先 pos plan {stock_code} --update 重置[/dim]")
             return
         # 铁律1: 涨幅3-10倍标的禁入（笨总"短期3到10倍的标的我肯定自动pass"）
+        # BUG-OW：try 只包数据获取与倍数计算；展示/return 在 try 外，展示异常不再被当作数据失败吞掉（fail-open）
+        multiple = None
         try:
             from src.data.akshare_client import get_stock_data
             sd = get_stock_data(stock_code)
             if sd and sd.price and getattr(sd, "low_60d", None) and sd.low_60d > 0:
                 multiple = sd.price / sd.low_60d
-                if multiple >= 3.0:
-                    console.print(f"[red]✗ 拒绝超配：{stock_code} 近60日已涨 {multiple:.1f} 倍[/red]")
-                    console.print(f"  笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）[/red]")
-                    return
-                console.print(f"  [green]✓[/green] 涨幅检查通过（近60日 {multiple:.1f} 倍 < 3x）")
         except Exception as e:
             logger.warning(f"超配涨幅检查失败({stock_code}): {e}")
             console.print(f"  [yellow]⚠ 涨幅检查数据获取失败，继续但建议人工核实未超3倍[/yellow]")
+        if multiple is not None:
+            if multiple >= 3.0:
+                console.print(f"[red]✗ 拒绝超配：{stock_code} 近60日已涨 {multiple:.1f} 倍[/red]")
+                console.print(f"  [red]笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）[/red]")
+                return
+            console.print(f"  [green]✓[/green] 涨幅检查通过（近60日 {multiple:.1f} 倍 < 3x）")
         # 激活超配
         from datetime import datetime, timedelta
         basis = name if name else "事件驱动质变（用户未填依据，建议补）"
