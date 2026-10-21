@@ -104,3 +104,52 @@ def _isolate_rag_index_dir():
     RAGService.__init__ = original_init
     if "dir" in state:
         shutil.rmtree(state["dir"], ignore_errors=True)
+
+
+# ── 分析报告/analysis 测试隔离（ISS-123 残余 / 测试写报告目录）────────
+# evidence._REPORT_DIR 锚仓库根下「分析报告/analysis」（非 HOME），HOME 隔离无效。
+# 深分析路径（l/la/pipeline→record_evidence）未逐测 monkeypatch 时会往生产目录
+# 落人话证据卡（已 gitignore，非受保护，但仍污染仓库工作树）。同 BUG-IDX 手法：
+# session 根因隔离 + 会话结束文件名集合守卫。
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_REAL_REPORT_DIR = os.path.join(_REPO_ROOT, "分析报告", "analysis")
+
+
+def _report_dir_names() -> set:
+    if not os.path.isdir(_REAL_REPORT_DIR):
+        return set()
+    return {name for name in os.listdir(_REAL_REPORT_DIR)
+            if os.path.isfile(os.path.join(_REAL_REPORT_DIR, name))}
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _isolate_evidence_report_dir():
+    """根因隔离：evidence._REPORT_DIR 改指临时目录，测试不写仓库分析报告/analysis。
+
+    就地改模块属性（不替换函数）；单测自己的 monkeypatch 仍优先，结束时恢复到
+    本会话临时目录（而非生产路径）。
+    """
+    from pathlib import Path as _Path
+    from src.cli import evidence as evidence_module
+
+    tmp = tempfile.mkdtemp(prefix="muyun-test-analysis-report-")
+    evidence_module._REPORT_DIR = _Path(tmp)
+    yield
+    # 不恢复生产路径：会话末仍可能有慢测/teardown 写卡；临时目录随进程结束清理
+    shutil.rmtree(tmp, ignore_errors=True)
+
+
+@pytest.fixture(scope="session", autouse=True)
+def _protect_evidence_report_dir():
+    """兜底断言：会话结束时仓库 分析报告/analysis 文件名集合不得新增（不得被测写）。"""
+    before = _report_dir_names()
+    yield
+    after = _report_dir_names()
+    added = sorted(after - before)
+    if added:
+        preview = added[:8]
+        more = f" 等{len(added)}个" if len(added) > 8 else ""
+        pytest.fail(
+            f"测试写入了仓库分析报告/analysis（应隔离到临时目录）: {preview}{more}",
+            pytrace=False,
+        )

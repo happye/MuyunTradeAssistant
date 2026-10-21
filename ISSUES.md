@@ -2283,7 +2283,7 @@ P3（已取消）:
 - **修复（测试侧，BUG-IDX）**：仅`tests/conftest.py`：session级根因隔离（包装`RAGService.__init__`，index_dir等于仓库索引时改指临时副本）+sha256与mtime兜底守卫。
 - **修复（生产残余，本提交）**：`src/config.resolve_under_root`；`RAGService`相对路径锚`PROJECT_ROOT`；`src/rag/store._faiss_path_call`避免faiss C fopen吃中文绝对路径（LRN-20260905-004）；定测`tests/rag/test_iss123_index_dir_repo_root.py`。
 - **反例**：只有守卫无隔离时`test_pipeline_runs`报「测试改写了受保护的knowledge/index」；加隔离后13 passed、mtime不变。生产侧：外国cwd下相对`./knowledge/index`原先会在cwd旁建空索引；修复后锚仓库根且不建旁路目录。
-- **仍登记不修**：`src/cli/evidence.py` `_REPORT_DIR`使测试每次在仓库`分析报告/analysis/`新增文件（已gitignore，非受保护）——另卡候选。
+- **测试写报告目录（本提交关闭）**：`tests/conftest.py` session 隔离`evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis`文件名集合守卫；定测`tests/core/test_report_dir_isolation.py`；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）。ISS-123 该项残余关闭；扫描报告目录（`_REVIEW_REPORT_DIR` / session_state）未纳入本卡。
 
 ### ISS-124: TUI加仓失败仍显示「已加仓」且CLI输出污染界面
 

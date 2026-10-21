@@ -1,5 +1,7 @@
 # 融合项目当前实施与审批状态
 
+**2026-10-21 测试写报告目录隔离（ISS-123 残余）本提交关闭**：`tests/conftest.py` session 隔离 `src.cli.evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis` 文件名集合守卫（同 BUG-IDX 手法）；定测 `tests/core/test_report_dir_isolation.py` 4 项（含未隔离红灯演示+清理）。不改生产路径语义。定测 4 passed；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）。不绑 G7/v43。仍待：CLI pos plan --update 再抽 / T05-G7 剩余（不抢道）。以下为既有第十轮状态。
+
 **2026-10-21 BUG-CASH-WRAP（ISS-128）本提交关闭**：`tests/core/test_cash_material_intake.py` 捕获 Console 补 `height=40` 使 `width=220` 生效（Rich `size` 需 width+height 同时给定，否则回落终端 80 列）；回执文案断言去换行匹配用户可读语义。不改生产折行。定测文件 45 passed；全量 3319 passed/0 failed/11 skipped/1 deselected（361.80s）。不绑 G7/v43。仍待：测试写报告目录隔离（`evidence.py` `_REPORT_DIR`）/CLI pos plan --update 再抽 / T05-G7 剩余（不抢道）。以下为既有第十轮状态。
 
 **2026-10-21 BUG-TUI-MARKUP（ISS-127）本提交关闭**：`src/tui/app.py` 分析面板四处失败提示由字面 `[red]...[/red]` 改为 `rich.Text(..., style="red")`（与 T04-B 加仓路径一致；未开 RichLog markup）。修前定测 4 红 → 修后 4 绿；相关 TUI 12 passed；全量 3318 passed/1 failed（BUG-CASH-WRAP 折行）/11 skipped/1 deselected（341.62s）。不捆绑 BUG-CASH-WRAP。仍待：测试写报告目录隔离 / BUG-CASH-WRAP / CLI pos plan --update 再抽 / T05-G7 剩余（不抢道）。以下为既有第十轮状态。
