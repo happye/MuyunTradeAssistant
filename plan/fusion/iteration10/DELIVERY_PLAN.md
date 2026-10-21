@@ -107,10 +107,20 @@
 | 反例与验收 | ① 先锁黄金：CLI `pos add`/`pos rm` 各分支（缺代码、已有持仓、负价、比例越界、保存失败、成功含总仓位 >80%/未知提示、无价跳过草稿提示；删仓缺代码、无持仓、保存失败、成功）输出与磁盘结果，以及 chat `manage_portfolio(action="remove")` 返回文本——须先在 HEAD 通过。② TUI 红灯：对已有持仓的股票执行加仓，旧实现显示「已加仓」（红），修复后显示失败原因（绿）；并断言 TUI 路径不向 stdout 写 CLI 输出。③ 服务单测覆盖各状态。④ 全量 0 failed。 |
 | 停止与回滚 | 黄金在 HEAD 不能稳定通过的分支不改；CLI/chat 任何文案差异 → 回滚。独立 commit，可 revert。 |
 
+## 卡片 BUG-FEE：pos confirm 负费用/非有限数值未在入口校验
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G1（账户事实可信）/ G2 体验；T04-A 复核中发现 |
+| 实证 | `start.py` `parse_input` 的 `pos confirm` 分支（约 566-608 行）只校验 `--qty` 为正整数；`--fee -1`、`--fee nan`、`--price inf` 等均放行，直到 `account_service.FillInput(fee ge=0)` 抛 pydantic `ValidationError`，用户看到原始异常（具体呈现以红灯测试实测为准）。CLI argparse 无 `--fee`，chat 不走 confirm——REPL 是唯一入口。 |
+| 修法 | 入口层：所有数值 flag（`--qty`/`--fee`/`--price`）先拒非有限值（nan/inf）；`--fee` 拒负数；位置参数成交价同样拒非有限值。提示沿用该分支现有格式「  [!] … ——确认取消」并给出正确示例，返回 None 不进入 run_cli。 |
+| 告警同步裁决 | 新增的是 REPL `print` 提示，不是 `logger.warning`，按 AGENTS §5 不需要改 `src/cli/plain_errors.py` 映射表；`docs/报错速查手册.md` 补一条「--fee 不能为负 / 数值无效」的说明与旧版现象（pydantic 原始异常）。若实测旧版异常经由 logger.warning 呈现，则同步 plain_errors。 |
+| 反例与验收 | 接线测试走 `parse_input → run_cli` 全链（LRN-L005）：`pos confirm X --qty 100 --price 12 --fee -1` 在 HEAD 上产生原始异常或进入账本层（红），修复后返回提示且账本/投影未改动（绿）；`--fee nan`、`--qty nan`、`--price inf`、位置价 `inf` 同理；`--fee 0` 与正常费用路径不变。全量 0 failed。 |
+| 不改 | 服务层 `FillInput` 约束（保留为第二道防线）、正常路径文案、账本格式。 |
+
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
 1. **T04-C chat add/plan/overweight 去 CLI 桥**：需先把 `_try_attach_trade_plan`（TradePlan 草稿与 Y/n 交互）拆成「生成草稿（服务）+ 确认交互（各入口）」，再让 chat 改调服务。
-2. **BUG-FEE 负费用未校验**：REPL `pos confirm ... --fee -1` 只在 `FillInput(fee ge=0)` 处抛 pydantic ValidationError（start.py 约 587-596 只校验 --qty），用户看到原始异常。入口层补校验并给人话提示（同步 plain_errors 与报错速查手册）。
 3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：`./knowledge/index` 随启动目录漂移；改为基于仓库根解析，或显式配置。需确认对 Web/TUI/脚本入口的影响。
 4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
 6. **BUG-TUI-MARKUP**：`src/tui/app.py` 分析面板 `RichLog(id="analysis-panel")` 未开 markup，约 85、163、168 行的 `[red]`/`[green]` 提示原样显示为字面标签（T04-B 实施时发现；新行已用 `rich.Text`）。小修：开 markup 或统一改 `Text`，需 TUI pilot 测试锁定。
