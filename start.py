@@ -1851,27 +1851,21 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
     return False
 
 
-def run_cli(mode: str, args: dict):
-    """调用 CLI 主程序执行分析"""
-    global _ai_debug, _no_ai
 
-    from src.cli.main import (
-        analyze_live, run_backtest, run_batch_validation,
-        manage_positions, load_config, analyze_portfolio,
-        console, scan_market, scan_events, show_expect, show_fear,
-        scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
-        diff_list_cmd, batch_tasks_cmd, today_command, shadow_command, plan2_command,
-        research_command,
-    )
+def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) -> bool:
+    """T04-G：live_* 连贯分发助手（从 run_cli 抽出行为等价一块）。
 
-    ai_overrides = {}
-    if _no_ai:
-        ai_overrides["disable_ai"] = True
+    命中并执行后返回 True；非 live_* mode 返回 False，由 run_cli 继续 elif。
+    承接：live / live_multi / live_all / live_scan_all。
+    行为锁定：test_t04e_dispatch_golden（含 T04-G0 扩展）。
+    """
+    global _ai_debug
 
     if mode == "live":
         analyze_live(args["stock_code"], ai_overrides=ai_overrides, ai_debug=_ai_debug)
+        return True
 
-    elif mode == "live_multi":
+    if mode == "live_multi":
         # v0.8.9.0 ISS-087: 多代码一次性批量深分析（l 600519,000001 / l 600519 000001）。
         # 模式对齐 l all：compact 卡片 + 单只失败跳过不拖垮批次 + 成功记当日已析
         # （后续 l all 自动跳过，缓存化省钱）。显式点名的代码全部重析，不做当日跳过。
@@ -1879,7 +1873,7 @@ def run_cli(mode: str, args: dict):
         codes = [c for c in args.get("codes", []) if c]
         if not codes:
             print("  [!] 没有可分析的代码")
-            return
+            return True
         print(f"\n  批量深分析 {len(codes)} 只（每只约0.5~1分钟，含AI调用）：{'、'.join(codes)}")
         # ISS-088：批量预取行情（新浪批量/东财全市场 1 次请求），逐只分析时
         # get_realtime_quote 直接命中预取映射——N 只行情从 N 次请求压成 1 次
@@ -1918,8 +1912,9 @@ def run_cli(mode: str, args: dict):
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(codes)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
+        return True
 
-    elif mode == "live_all":
+    if mode == "live_all":
         from src.data.portfolio import PortfolioManager
         pm = PortfolioManager()
         # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
@@ -1932,7 +1927,7 @@ def run_cli(mode: str, args: dict):
                 print("\n  [!] 持仓清单读取异常（账本/持仓库）——清单不完整，待对账（不当作空仓）")
             else:
                 print("\n  当前无持仓记录")
-            return
+            return True
         print(f"\n  一键分析所有持仓（{len(_entries)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
         if _incomplete:
             print("  [!] ⚠ 账本/持仓库读取异常——持仓清单可能不完整，待对账（不当作空仓）\n")
@@ -1957,8 +1952,9 @@ def run_cli(mode: str, args: dict):
                 # 下一行取 .stock_code 即 AttributeError 且从 handler 传播跳出整批
                 print(f"  [!] 分析失败: {ex}")
                 _ss_la.batch_task_mark("la", _tk_la, e.stock_code, False, str(ex)[:120])
+        return True
 
-    elif mode == "live_scan_all":
+    if mode == "live_scan_all":
         # v0.8.7.9: l all —— 对最近一次扫描结果（bz scan / scan market）批量深度分析
         # 模式对齐 ba（读 session_state + 过期提示 + y/N 确认）与 la（compact 卡 + 单只失败跳过）
         # 去重：当天已深分析的默认跳过（session_state 当日记录），-f/--force 强制重析
@@ -1968,11 +1964,11 @@ def run_cli(mode: str, args: dict):
         last = session_state.get_last_scan()
         if not last or not last.get("items"):
             print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market [规则]")
-            return
+            return True
         items = [it for it in last["items"] if isinstance(it, dict) and it.get("code")]
         if not items:
             print("\n  [!] 最近扫描结果里没有可用代码")
-            return
+            return True
         done = {} if force else session_state.get_deep_analyzed()
         new_items = [it for it in items if it["code"] not in done]
         skipped = [it for it in items if it["code"] in done]
@@ -1991,16 +1987,16 @@ def run_cli(mode: str, args: dict):
             print(f"  ⏭ 今天已深分析 {len(skipped)} 只，默认跳过：{_sk}{_more}")
         if not new_items:
             print("  ✓ 这批今天全都分析过了（不重复花AI费用）。强制重分析：l all -f")
-            return
+            return True
         print(f"  将深分析 {len(new_items)} 只，每只一张简明卡（同 la），详情再单独 l <代码>")
         try:
             ans = input(f"  批量深度分析 {len(new_items)} 只（每只约0.5~1分钟，含AI调用）。继续?(y/N) ")
         except (EOFError, KeyboardInterrupt):
             print("\n  已取消")
-            return
+            return True
         if ans.strip().lower() not in ("y", "yes"):
             print("  已取消")
-            return
+            return True
         src_label = last.get("source", "?")
         failed = []
         ok = 0
@@ -2031,6 +2027,29 @@ def run_cli(mode: str, args: dict):
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
+        return True
+
+    return False
+
+def run_cli(mode: str, args: dict):
+    """调用 CLI 主程序执行分析"""
+    global _ai_debug, _no_ai
+
+    from src.cli.main import (
+        analyze_live, run_backtest, run_batch_validation,
+        manage_positions, load_config, analyze_portfolio,
+        console, scan_market, scan_events, show_expect, show_fear,
+        scan_review, scan_review_import, watch_pool, doctor, diff_evidence_cmd,
+        diff_list_cmd, batch_tasks_cmd, today_command, shadow_command, plan2_command,
+        research_command,
+    )
+
+    ai_overrides = {}
+    if _no_ai:
+        ai_overrides["disable_ai"] = True
+
+    if _dispatch_live_cli(mode, args, analyze_live, ai_overrides):
+        pass
 
     elif mode == "scan":
         analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)

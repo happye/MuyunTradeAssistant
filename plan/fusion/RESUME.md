@@ -1,3 +1,5 @@
+> **2026-10-22 T04-G 本提交关闭**：抽出 `_dispatch_live_cli`（live/live_multi/live_all/live_scan_all）；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）。**下一张**：T04 其余 scan 内联拆分（不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
+
 > **2026-10-22 T04-F 本提交关闭**：抽出 `_dispatch_benzong_cli`（benzong_*）；定测 121；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）。**下一张**：T04 其余大分支拆分（live_multi/live_*/scan 内联，不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
 
 > **2026-10-22 T04-E 本提交关闭**：parse_input/run_cli 分发黄金锁 + `_dispatch_pos_cli` 抽出（定测 118；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s））。**下一张**：T04 其余大分支拆分（不急）；T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）。
