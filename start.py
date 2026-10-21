@@ -2140,6 +2140,37 @@ def _dispatch_scan_cli(
     return False
 
 
+
+def _dispatch_observe_cli(
+    mode: str,
+    args: dict,
+    *,
+    show_expect,
+    show_fear,
+    watch_pool,
+) -> bool:
+    """T04-I：expect/fear/watch_pool 观察类分发助手（从 run_cli 抽出，行为等价一挪）。
+
+    本助手执行后返回 True；非观察类 mode 返回 False，交 run_cli 继续 elif。
+    承接：expect / fear / watch_pool。
+    行为锁定见 test_t04e_dispatch_golden（含 T04-I0 扩展）。
+    """
+    if mode == "expect":
+        show_expect(days=args.get("days", 30))
+        return True
+
+    if mode == "fear":
+        show_fear(args)
+        return True
+
+    if mode == "watch_pool":
+        # v0.8.12：观察池——WATCH 自动入池，watch 复盘引擎看入池以来表现
+        watch_pool(args)
+        return True
+
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2175,15 +2206,14 @@ def run_cli(mode: str, args: dict):
     ):
         pass
 
-    elif mode == "expect":
-        show_expect(days=args.get("days", 30))
-
-    elif mode == "fear":
-        show_fear(args)
-
-    elif mode == "watch_pool":
-        # v0.8.12：观察池——WATCH 自动入池，watch 复盘引擎看入池以来表现
-        watch_pool(args)
+    elif _dispatch_observe_cli(
+        mode,
+        args,
+        show_expect=show_expect,
+        show_fear=show_fear,
+        watch_pool=watch_pool,
+    ):
+        pass
 
     elif mode == "doctor":
         # v0.8.16：运行诊断——只读零 AI 环境体检（plan/ M6）
