@@ -1,6 +1,6 @@
 # 融合项目当前实施与审批状态
 
-**2026-10-21 第十轮开工**：Claude Code 主控，卡 T05-D（ISS-120 剩余 4 处 executor 退出界）合同已落盘，见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)；实施中，未验收。以下为第九轮末状态。
+**2026-10-21 第十轮**：Claude Code 主控，合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。T05-D（ISS-120 剩余 4 处 executor 退出界）与 BUG-OW（ISS-122 超配涨幅禁入被 rich 未配对标签绕过）已实施完成：T05-D 修复前 4 个新退出 case 全红、修复后 8/8 退出 case 通过，定向 46 passed/8 skipped；BUG-OW 修复后新文件 3 passed、overweight 相关共 42 passed；独立复核（code-quality-guard）结论可合入。全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）；commit T05-D `ac6ce8a`、BUG-OW `c67b85e`。另发现离线全量会改写仓库内受保护的 `knowledge/index`（BUG-IDX，定位中）。下一张卡 T04-A（持仓确认账本编排下沉，设计未验证）。以下为第九轮末状态。
 
 T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
 

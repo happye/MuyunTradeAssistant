@@ -12,7 +12,8 @@
 | 方向 | 尚缺能力 / 下一步 | 门槛与入口 |
 |---|---|---|
 | G3/G4 研究资格 | 真实MID仍NO_VALID；历史行业/PIT、ROE、现金持续性未知 | 已验当前C15条件化观察不追认历史资格；第九轮现有合同 |
-| G7/T05 外源退出与成本 | 3个共享超时helper已有只读定位，缺专用退出及晚到副作用实证 | 下一产品批先固定有限反例；本次收尾不启动v43 |
+| G7/T05 外源退出与成本 | 3个共享超时helper及第十轮ISS-120剩余4处并行executor（T05-D，2026-10-21，commit `ac6ce8a`）已有专用退出反例并修复；晚到写缓存/Baostock会话重叠仍缺实证 | 下一产品批先固定有限反例；本次收尾不启动v43 |
+| G5/T04 超配涨幅禁入 | ISS-122（2026-10-21第十轮BUG-OW）rich未配对标签使3倍禁入被绕过，已修复，commit `c67b85e`；其余超配自动执行见下行低优先级 | 另见第十轮[DELIVERY_PLAN](plan/fusion/iteration10/DELIVERY_PLAN.md) |
 | G7/T06 AI/RAG质量 | 独立质量集、引用/提取正确率与成本配对基准 | 费用和范围另按合同，不从工程测试推导收益 |
 | G4/G6/T07 证据便携 | 公开财报测试依赖补齐；supplier.raw、更正检索、历史PIT及异机迁移仍缺 | SHA与原件清单核对不能代替财务资格核定 |
 | G1/G2/G5/G7 | 成交与组合预算、管理投影豁免、新消费者等未验范围 | T01已验读取合同不扩为全账户/并发/投资效果通过 |
@@ -2244,12 +2245,16 @@ P3（已取消）:
 
 ### ISS-120: 三个共享超时包装器返回后仍阻塞解释器退出
 
-- **状态/日期/基线**：2026-10-21，基线main@bd9e5d0、整合父4cc3bf6；本批限定验收通过，交付commit见main实际日志。G7/T05部分范围，不关闭整体。
+- **状态/日期/基线**：2026-10-21，基线main@bd9e5d0、整合父4cc3bf6；本批限定验收通过，交付commit见main实际日志。G7/T05部分范围，不关闭整体。**同日第十轮T05-D补修剩余4处，commit `ac6ce8a`**（见下「第十轮T05-D已修」）。
 - **反例**：`tests/core/test_t05_timeout_exit.py`，三个实际helper均已超时返回但子进程1秒后仍存活；T05-A 3红/9正例绿，T05-B加强夹具后旧源码3红，再补后三退出绿。各轮证据见现有iteration9/TARGETED与第九轮末节，数字不混算。
 - **原因/修复范围**：`shutdown(wait=False)`不解除线程池解释器退出join；仅三个包装器共用独立daemon线程和单槽结果，保留异常、重试、熔断。Codex审查发现NaN/负预算新回退及父迟读marker假绿窗口，均已先红后绿并通过最终独立验收。
 - **用户可见**：REPL帮助与超时诊断显示停止等待、数据降级和底层请求可能继续，提示避免连续重试；不承诺全CLI总退出期限。
-- **同类剩余4处（本批不修）**：`src/core/benzong/data_provider.py`的industry_metrics内3个executor构造（当前422/449/465行）；`src/scanner/market_cache.py:458`新浪并行1处。仅为静态风险定位，未有本批专用反例，不称已复现/修复。
-- **保留限制**：_safe_call内MarketCache/K线仍可晚到写缓存，Baostock会话与后续重试仍可能重叠；线程不能强杀，单槽不限制总线程/内存。无真实外联、账户迁移、策略/研究资格或效果晋级。
+- **同类剩余4处（第九轮登记，原「本批不修」）**：`src/core/benzong/data_provider.py`的industry_metrics内3个executor构造；`src/scanner/market_cache.py`新浪并行1处。原登记的422/449/465/458行号仅为第九轮静态定位，不再作依据，以函数名`get_industry_metrics`/`MarketCache._fetch_sina_market`定位（修复后：`data_provider.py:426`起，内层`:481`、`:499`，外层`:512`；`market_cache.py:460`；helper `timeout_call.py:66`）。
+- **2026-10-21第十轮T05-D已修（commit `ac6ce8a`）**：
+  - **反例**：`tests/core/test_t05_timeout_exit.py`新增4个子进程退出case（industry_outer / industry_chain_sections / industry_commodity_sections / sina_parallel，需`MUYUN_T05_EXIT_PROBE=1`）。修复前4个全部红在EXIT ASSERTION（调用已返回、子进程1s后仍存活），原4个case绿。四处均复现，无「未复现」站点。
+  - **修复**：`src/data/timeout_call.py`新增`ParallelTimeout`/`run_parallel_with_deadline`（共享daemon线程并行helper，结果按输入顺序，总预算到点抛带`completed`计数的超时）；`get_industry_metrics`外层改`call_with_timeout`、内层两处改`run_parallel_with_deadline`，新增常量`INDUSTRY_METRICS_TIMEOUT_S`/`INDUSTRY_SECTION_TIMEOUT_S`=150.0；`_fetch_sina_market`改`run_parallel_with_deadline`，类属性`SINA_PARALLEL_TIMEOUT_S`=45.0。默认预算、三态返回、告警文案不变。新浪超时后不再开始剩余页（旧实现`shutdown(wait=False)`不取消排队任务，剩余约63页仍会继续请求），行为更好。
+  - **验证**：`MUYUN_T05_EXIT_PROBE=1`下8/8退出case通过（exit_after约0.13-0.30s）；定向`tests/core/test_timeout_call_parallel.py`+`tests/core/test_t05_timeout_exit.py`为46 passed/8 skipped（8 skipped即默认跳过的退出case）；helper单测18项。同类扫描：`src/`中`ThreadPoolExecutor`/`as_completed`为0（仅`akshare_client.py:54`一处注释）；所有`threading.Thread`均`daemon=True`；`scripts/measure_timeout_overhead.py`为测量脚本，不在产品路径。全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）。独立复核：code-quality-guard（opus）结论「可合入」，3个P2已处理。
+- **保留限制**：_safe_call内MarketCache/K线仍可晚到写缓存，Baostock会话与后续重试仍可能重叠（本卡未处理）；线程不能强杀，已开始的请求/缓存写可能晚到；单槽不限制总线程/内存。无真实外联、账户迁移、策略/研究资格或效果晋级。G7/T05整体仍不关闭。
 
 
 ### ISS-121: 远端免费源与扫描增量的边界回退
@@ -2258,3 +2263,13 @@ P3（已取消）:
 - **范围**：robust_fetch::_call_timeout复用共享等待，缓存shape/时间门及唯一临时提交；scanner::_kline_metrics批截止在调用线程建立、严格日期窗口及返回code完整匹配，缺指标不跳条件；board_members_alt精确静态主题/动态单向包含；fear.history保TTL展示兼容。原剩余4executor见ISS-120，不扩修。
 - **正式证据**：test_remote_integration_boundaries.py、test_t05_timeout_exit.py第四case及修正后的trial用例；D/E/F各轮先红后绿，最终全量/独立审查只见iteration9/R15、REVIEW_INDEX及原始日志。不用通过计数代替真实网络、性能或投资效果。
 - **限制**：底层调用及会话/缓存晚到副作用仍可能继续；无产品AI/账户迁移/评分或阈值改动。
+
+
+### ISS-122: 超配涨幅禁入被rich未配对标签异常静默绕过
+
+- **状态/日期**：2026-10-21，第十轮BUG-OW实现复验通过；commit `c67b85e`；全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）。
+- **优先级/映射**：P1，G5（组合约束/纪律）/T04质量；笨总教学十「涨幅3-10倍禁入」铁律。
+- **实证**：`src/cli/main.py` `manage_positions` overweight分支，倍数>=3时第二行`console.print`的`[/red]`无对应开标签，rich抛`MarkupError`；外层宽`except Exception`把它当作「数据获取失败」吞掉并继续激活超配。修复前新测试`test_rise_3x_or_more_rejects_overweight`红，日志「超配涨幅检查失败(600519): closing tag '[/red]' ... doesn't match any open tag」，输出「拒绝超配」后紧接「超配已激活」。拒绝路径实际不可达。
+- **修复**：`src/cli/main.py`约2775-2791行：补开标签、收窄`try`只包数据获取与倍数计算，展示与`return`移出`try`。数据获取失败「继续但提示人工核实」的既有裁决不变；未新增/改动`logger.warning`。
+- **验证**：新增`tests/core/test_overweight_rise_guard.py`，修复后3 passed，连同overweight相关测试共42 passed。同类扫描：ast遍历`src/`与`start.py`共544处`console.print`/`rprint`首个字符串参数，MarkupError 0处。
+- **限制**：扫描局限，变量传入的文案扫不到；离线测试通过不等于真实持仓路径与投资效果。其他文件如有发现须另记ISSUES，不顺手修。

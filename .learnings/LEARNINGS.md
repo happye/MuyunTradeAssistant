@@ -2661,3 +2661,17 @@ Future.result换Queue.get须比较边界预算：NaN能让Queue的剩余时间�
 ### LRN-20261021-INTEGRATION-TYPED-BOUNDARIES
 
 Status: applied。本地补丁已过全量仍须fetch核远端；新增源会绕开原已修helper，缓存、日期、主体与必需字段门须沿新可达消费者重验。D/E/F只追已证实缺口：worker内新建deadline会在迟启动后续发请求；非法as_of退不过滤会洗白时点；re.search六位能接受超串；按模块名豁免shim缺code则让请求自证复活。统一调用方截止、严格窗口及完整词元，所有来源同门；fixture兼容不能覆盖合同。主控可中止自己的过期测试，保留原始日志，不把中止称失败/通过。
+
+
+### LRN-20261021-T05-PARALLEL-EXIT｜并行超时用daemon helper，退出探针才是验证
+
+Status: applied / 第十轮T05-D（commit `ac6ce8a`）。`ThreadPoolExecutor.shutdown(wait=False)`只让调用方不等，不解除解释器退出时`concurrent.futures`的atexit join；旧4处并行executor（industry_metrics三处、新浪并行一处）均实测调用已返回、子进程1s后仍存活。并行场景用`run_parallel_with_deadline`（daemon线程、总预算、异常原实例重抛），单槽用`call_with_timeout`；不要用`with ThreadPoolExecutor`。子进程退出探针（`MUYUN_T05_EXIT_PROBE=1`）是唯一可靠验证，调用返回或单测通过都不能证明能退出。
+
+新实现附带收益：超时后不再开始剩余新浪页，旧`shutdown(wait=False)`不取消排队任务，剩余页仍会请求。线程不能强杀，已开始的请求/缓存写可能晚到，Baostock会话重叠仍待办；结果按输入顺序，不依赖完成顺序的代码才可换用。
+
+
+### LRN-20261021-RICH-MARKUP-FAILOPEN｜展示异常不能落进数据失败的宽except
+
+Status: applied / 第十轮BUG-OW（ISS-122，commit `c67b85e`）。rich文案里未配对的`[/red]`在运行时才抛`MarkupError`；它放进「数据获取失败则继续」的宽`except Exception`的`try`内，就把展示异常变成fail-open：「拒绝超配」打出后被吞，随后「超配已激活」，3倍涨幅禁入形同虚设。规则：`try`只包数据获取与计算，展示与`return`等控制流放在`try`外；新增`console.print`文案要成对核开闭标签，并用含该分支的测试从磁盘回读最终状态，不只看输出文字。
+
+同类扫描用ast遍历`src/`与`start.py`共544处`console.print`/`rprint`首个字符串参数，MarkupError 0处；局限是变量传入的文案扫不到，不称全仓无此类问题。

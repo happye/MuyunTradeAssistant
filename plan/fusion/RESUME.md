@@ -1,6 +1,6 @@
 # 融合项目恢复入口
 
-> **第十轮（2026-10-21 起，Claude Code 主控）**：用户指派 Claude Code 接手迭代并兼任架构师，方案落盘即推送。当前卡 T05-D（ISS-120 剩余 4 个旧并行 executor 的退出界），合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。Claude Code 分工按 `CLAUDE.md`「Claude Code role routing」。下方 DSH 身份段仅适用于 Codex 那台机器。
+> **第十轮（2026-10-21 起，Claude Code 主控）**：用户指派 Claude Code 接手迭代并兼任架构师，方案落盘即推送。T05-D（ISS-120 剩余 4 个旧并行 executor 的退出界）与 BUG-OW（ISS-122 超配涨幅禁入被 rich 未配对标签绕过）已实施完成并过独立复核，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s），commit T05-D `ac6ce8a`、BUG-OW `c67b85e`；BUG-IDX（离线全量改写受保护 knowledge/index）定位中；下一张卡 T04-A（持仓确认账本编排下沉，设计未验证，须先补七种黄金输出测试）。合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。Claude Code 分工按 `CLAUDE.md`「Claude Code role routing」。下方 DSH 身份段仅适用于 Codex 那台机器。
 
 更新2026-10-21。读AGENTS/CODEX→MILESTONES→STATUS→本文件。T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
 
@@ -8,7 +8,7 @@
 
 裁决`ACCEPTED_SHARED_TIMEOUT_AND_REMOTE_INTEGRATION_SCOPE_ONLY`。Git由Codex负责，默认直接main、无新命名分支/PR；最终交付SHA以实际main与origin/main日志核对，不沿用旧bd9e5d0。远端4cc3bf6的13文件增量已在临时detached树与本批补丁整合验收，最终全量和指纹见第九轮R15、REVIEW_INDEX及FULL/TARGETED原始日志。T05自身基线3119结果与最终整合分轮保留，E全量因F新发现由主控中止，不作产品失败或完整通过。
 
-用户可见：start.py帮助显示超时等待/底层请求仍可能运行；缓存坏时间不复活、写失败保旧；扫描补算超时/缺必需指标不绕过条件，日期/期间窗口及返回证券同门核验；主题不把电力设备误作发电行业，fear旧TTL展示不强制联网。底层调用不能强杀，缓存/会话等晚到副作用未被本批证明消失；剩余4个旧executor站点见ISS-120/121，G7/T05整体不关闭。
+用户可见：start.py帮助显示超时等待/底层请求仍可能运行；缓存坏时间不复活、写失败保旧；扫描补算超时/缺必需指标不绕过条件，日期/期间窗口及返回证券同门核验；主题不把电力设备误作发电行业，fear旧TTL展示不强制联网。底层调用不能强杀，缓存/会话等晚到副作用未被本批证明消失；原剩余4个旧executor站点已由第十轮T05-D修复（ISS-120），晚到写缓存/Baostock会话重叠仍待办，G7/T05整体不关闭。
 
 下一产品动作先按既有G/T路线选必要缺口，固定有限合同与停止条件；不追加泛计数探针、不改评分阈值或替代真实研究。v42当次C15现金观察及此前cv6/binding_v4/assertion_v2、shadow_v15/capture_only/default保持；历史行业/PIT、ROE、现金持续性UNKNOWN，真实MID NO_VALID，G4及V1未完成。
 

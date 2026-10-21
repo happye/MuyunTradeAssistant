@@ -79,7 +79,8 @@ grep -rn "0\.8\.7\.[0-9]" start.py src/cli/main.py AGENTS.md README.md docs/
 
 | 模式 | 意思 |
 |---|---|
-| `with ThreadPoolExecutor` | `__exit__` 的 `shutdown(wait=True)` 会 join 卡死线程使超时失效，必须显式 `shutdown(wait=False)` |
+| `ThreadPoolExecutor`（含 `with` 块） | `with` 的 `shutdown(wait=True)` 会 join 卡死线程使超时失效；`shutdown(wait=False)` 也**不够**——卡住的 worker 仍会在解释器退出时被 atexit join（ISS-120）。产品路径一律用 `src/data/timeout_call.py`：单槽 `call_with_timeout`、并行 `run_parallel_with_deadline`（daemon），并用子进程退出探针验证 |
+| `console.print` 文案里 rich 标签 `[x]…[/x]` 未配对 | 抛 `MarkupError`；若在宽 `except` 的 try 内，会把展示异常变成「数据失败继续」（fail-open，ISS-122）。try 只包数据获取；扫描用 ast + `rich.markup.render` |
 | `except.*:` + `pass` / `logger.debug` + `continue` | 静默 fail-open，条件不计入分母 → 规则**降档触发**（比不触发更危险） |
 | `os.environ[...] = ` | 全局污染且通常不还原 → 测试顺序依赖 |
 | `if <DataFrame>:` | DataFrame 真值判断抛 ambiguous |
