@@ -82,7 +82,7 @@
 | 反例 | 只有守卫无隔离时跑 `test_pipeline_runs` → error「测试改写了受保护的 knowledge/index」；加隔离后 13 passed、mtime 不变。 |
 | 登记不修 | ① 生产 `index_dir` 为相对 CWD 路径，从其他目录启动会在别处建索引（产品问题，另卡）；② `src/cli/evidence.py` `_REPORT_DIR` 使测试每次在仓库 `分析报告/analysis/` 新增文件（已 gitignore，非受保护，另卡用同手法隔离）。 |
 
-## 卡片 T04-A（设计未验证，排在 T05-D、BUG-OW 之后）：持仓确认账本编排下沉
+## 卡片 T04-A（实现复验通过，c7fb92b）：持仓确认账本编排下沉
 
 | 项 | 内容 |
 |---|---|
@@ -95,6 +95,14 @@
 | 停止条件 | 黄金测试无法在离线隔离下稳定构造某分支 → 该分支不下沉，记录原因；任何文案/顺序差异 → 回滚。 |
 | 提交形式 | 单独 commit，message 注明「内部重构无行为变化」（AGENTS 用户可感知条款的纯重构例外）。 |
 
+## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
+
+1. **T04-B 持仓命令桥去 stdout 捕获**：T04-A 落地后，chat（`src/chat/tools.py` 约 1071-1110 `redirect_stdout` 调 `manage_positions`）与 TUI（`src/tui/app.py:264` 直接调 CLI，console 写 stdout 可能与 Textual 冲突）改调非 UI 服务并自行渲染。先从 TUI `add` 与 chat `update/remove` 这类单次 pm 调用开始。
+2. **BUG-FEE 负费用未校验**：REPL `pos confirm ... --fee -1` 只在 `FillInput(fee ge=0)` 处抛 pydantic ValidationError（start.py 约 587-596 只校验 --qty），用户看到原始异常。入口层补校验并给人话提示（同步 plain_errors 与报错速查手册）。
+3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：`./knowledge/index` 随启动目录漂移；改为基于仓库根解析，或显式配置。需确认对 Web/TUI/脚本入口的影响。
+4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
+5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
+
 ## 执行记录
 
 | 日期 | 事项 | 结果 |
@@ -105,3 +113,6 @@
 | 2026-10-21 | T05-D 扫描与复核 | `src/` 中 `ThreadPoolExecutor`/`as_completed` 为 0（仅 `akshare_client.py:54` 一处注释）；所有 `threading.Thread` 均 `daemon=True`；`scripts/measure_timeout_overhead.py` 为测量脚本不在产品路径。code-quality-guard（opus）结论「可合入」，3 个 P2 已处理。新浪超时后不再开始剩余页（优于旧实现）。保留限制：线程不能强杀，已开始的请求/缓存写可能晚到；Baostock 会话重叠未处理。全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）；commit `ac6ce8a` |
 | 2026-10-21 | BUG-OW 红 | 修复前新测试 `test_rise_3x_or_more_rejects_overweight` 红；日志「超配涨幅检查失败(600519): closing tag '[/red]' ... doesn't match any open tag」，输出「拒绝超配」后紧接「超配已激活」（登记 ISS-122） |
 | 2026-10-21 | BUG-OW 绿与扫描 | 修复点 `src/cli/main.py` 约 2775-2791（补开标签、收窄 try、展示与 return 移出 try）；新文件 `tests/core/test_overweight_rise_guard.py` 3 passed，连同 overweight 相关测试共 42 passed。ast 检查 `src/` 与 `start.py` 共 544 处 `console.print`/`rprint` 首个字符串参数，MarkupError 0 处；局限：变量传入的文案扫不到。未新增/改动 `logger.warning`。全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）；commit `c67b85e` |
+| 2026-10-21 | BUG-IDX | 仅改 `tests/conftest.py`（根因隔离 + sha256/mtime 守卫）；先红后绿；全量 3184 passed/0 failed/11 skipped，索引未被改写；commit `28b7e68` |
+| 2026-10-21 | T04-A 黄金 | 13 项锁定 confirm 数量路径输出与磁盘结果；commit `61a212f` |
+| 2026-10-21 | T04-A 下沉 | `confirm_quantity_from_proposal` + `QuantityConfirmOutcome`；复核 3 个 P2（异常时序/入账后丢行/投影崩溃状态）修复，新增 3 项异常时序黄金先在 HEAD 通过；黄金 16、服务 10、回归 96 passed；全量 3210 passed/0 failed/11 skipped（584.52s）；commit `c7fb92b` |

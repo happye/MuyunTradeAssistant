@@ -1,6 +1,6 @@
 # 融合项目恢复入口
 
-> **第十轮（2026-10-21 起，Claude Code 主控）**：用户指派 Claude Code 接手迭代并兼任架构师，方案落盘即推送。T05-D（ISS-120 剩余 4 个旧并行 executor 的退出界）与 BUG-OW（ISS-122 超配涨幅禁入被 rich 未配对标签绕过）已实施完成并过独立复核，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s），commit T05-D `ac6ce8a`、BUG-OW `c67b85e`；BUG-IDX（离线全量改写受保护 knowledge/index）定位中；下一张卡 T04-A（持仓确认账本编排下沉，设计未验证，须先补七种黄金输出测试）。合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。Claude Code 分工按 `CLAUDE.md`「Claude Code role routing」。下方 DSH 身份段仅适用于 Codex 那台机器。
+> **第十轮（2026-10-21 起，Claude Code 主控）**：用户指派 Claude Code 接手迭代并兼任架构师，方案落盘即推送。T05-D（ISS-120 剩余 4 个旧并行 executor 的退出界）与 BUG-OW（ISS-122 超配涨幅禁入被 rich 未配对标签绕过）已实施完成并过独立复核，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s），commit T05-D `ac6ce8a`、BUG-OW `c67b85e`；BUG-IDX 测试侧修复 `28b7e68`；T04-A 账本编排下沉 `c7fb92b`（全量 3210 passed/0 failed/11 skipped）。下一步从第十轮计划「候选队列」取卡，首选 T04-B。合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。Claude Code 分工按 `CLAUDE.md`「Claude Code role routing」。下方 DSH 身份段仅适用于 Codex 那台机器。
 
 更新2026-10-21。读AGENTS/CODEX→MILESTONES→STATUS→本文件。T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
 
