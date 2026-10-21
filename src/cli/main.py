@@ -32,6 +32,8 @@ from src.core.runtime import build_live_orchestrator
 from src.data.portfolio import (
     POS_ALREADY_HELD, POS_INVALID_PRICE, POS_INVALID_RATIO, POS_MISSING_CODE, POS_NOT_HELD,
     POS_SAVE_FAILED, PortfolioManager, add_position_checked, remove_position_checked,
+    OW_MISSING_CODE, OW_NOT_HELD, OW_NO_PLAN, OW_ALREADY_EXECUTED, OW_RISE_REJECTED,
+    OW_SAVE_FAILED, OW_ACTIVATED, activate_overweight_checked,
 )
 
 # 配置日志（默认WARNING，只显示警告及以上；--verbose 开启INFO；--debug 开启DEBUG）
@@ -1563,38 +1565,24 @@ def display_backtest_result(result, backtest_mode: str = "framework_strict", lay
 
 
 def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: float, ratio: float):
-    """v0.8.5 阶段 1.2：建仓后调用 TradePlanGenerator 生成草稿 + Y/n 交互。
+    """v0.8.5 阶段 1.2：建仓后生成 TradePlan 草稿 + Y/n 交互。
 
-    设计（E1-B1 强化）：
-    - 优先尝试拉实时 StockData（akshare），让 generator 用真实 ATR/MA 算
-    - **拉数据失败 → 默认跳过 plan 生成**（兜底数据不能用作真实交易依据）
-      （v0.8.7.5 审计删除 --force-plan-fallback 说明：该 flag 从未实现，勿照抄）
-    - 用户 n 跳过 → 不附加 plan，提示 pos plan 命令后续手动补
+    T04-C：草稿编排下沉 `prepare_trade_plan_draft`；本函数只负责 rich 展示与确认落盘。
+    设计保持：
+    - 优先拉实时 StockData；失败则跳过（兜底值不作真实交易依据）
+    - 用户 n 跳过 → 不附加 plan
     """
-    from src.core.trade_plan import TradePlanGenerator
+    from src.core.trade_plan.draft_prep import (
+        prepare_trade_plan_draft, TP_DATA_UNAVAILABLE, TP_GENERATE_FAILED, TP_READY,
+    )
 
     console.print(f"\n[bold cyan]🤖 正在为 {stock_code} {stock_name} 生成交易计划草稿...[/bold cyan]")
+    oc = prepare_trade_plan_draft(stock_code, stock_name, entry_price, ratio)
 
-    # 尝试拉实时数据（含 ATR/MA）
-    stock_data = None
-    data_error = None
-    try:
-        from src.data.akshare_client import get_stock_data
-        stock_data = get_stock_data(stock_code)
-        if stock_data:
-            atr_str = f"{stock_data.atr_14:.2f}" if stock_data.atr_14 else "?"
-            ma20_str = f"{stock_data.ma20:.2f}" if stock_data.ma20 else "?"
-            ma60_str = f"{stock_data.ma60:.2f}" if stock_data.ma60 else "?"
-            console.print(f"   [green]✓[/green] 读取技术面（ATR={atr_str}, MA20={ma20_str}, MA60={ma60_str}）")
-    except Exception as e:
-        data_error = e
-        logger.warning(f"TradePlan 数据拉取失败: {e}")
-
-    # E1-B1：数据不可用时强警告 + 直接跳过（不再用兜底值生成误导性 plan）
-    if stock_data is None:
+    if oc.status == TP_DATA_UNAVAILABLE:
         console.print(f"\n[bold red]⚠ 无法获取技术面数据[/bold red]")
-        if data_error:
-            console.print(f"   错误: [red]{type(data_error).__name__}: {str(data_error)[:100]}[/red]")
+        if oc.data_error:
+            console.print(f"   错误: [red]{oc.data_error}[/red]")
         console.print(f"\n[bold yellow]TradePlan 自动生成已跳过[/bold yellow]")
         console.print(f"   原因：没有 ATR / MA / 趋势数据时生成的 plan 全是硬编码兜底值（8% 止损 / 10%-20% 止盈），")
         console.print(f"   [bold]不能作为真实交易决策依据[/bold]，建议：")
@@ -1604,55 +1592,30 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
         console.print(f"\n[dim]持仓本身已添加成功，仅 trade_plan 子系统未启用此股 PlanGuard 守卫[/dim]")
         return
 
-    # RAG（可选）
-    rag_service = None
-    try:
-        from src.rag.service import get_rag_service
-        rag_service = get_rag_service()
-    except Exception:
-        pass
-
-    # 跳法A 阶段1.2：笨总评分定 mode（建仓时一次评分，A→气宗/B→剑宗/其他→不设）
-    benzong_grade = None
-    industry_prosperity = None
-    is_self_reliance = False
-    flagbearer_code = None
-    penetration_stage = None
-    try:
-        from src.core.benzong.auto_scorer import auto_score
-        console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
-        bz = auto_score(stock_code, name=stock_name)
-        benzong_grade = bz.score.effective_grade()
-        industry_prosperity = bz.score.industry_prosperity
-        is_self_reliance = bz.is_self_reliance
-        flagbearer_code = bz.flagbearer_code
-        penetration_stage = bz.penetration_stage
-        console.print(f"   [green]✓[/green] 笨总评分 {bz.score.normalized_score():.0f}/100 级别 {benzong_grade}（行业景气={industry_prosperity:.0f}, conf={bz.overall_confidence:.2f}）")
-        _src_line = _bz_industry_sources_line(bz.score)   # C6：行业景气数据来源透出
-        if _src_line:
-            console.print(_src_line)
-    except Exception as e:
-        logger.warning(f"建仓笨总评分失败: {e}")
+    console.print(f"   [green]✓[/green] 读取技术面（ATR={oc.atr_str}, MA20={oc.ma20_str}, MA60={oc.ma60_str}）")
+    # 文案顺序与旧实现一致：先提示「评分中」，再展示结果或失败（编排已在服务内完成）
+    console.print(f"   [cyan]🧮 笨总评分中（定气宗/剑宗模式）...[/cyan]")
+    if oc.score_failed:
         console.print(f"   [yellow]⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）[/yellow]")
+    elif oc.score_normalized is not None:
+        ip = oc.industry_prosperity if oc.industry_prosperity is not None else 0
+        conf = oc.overall_confidence if oc.overall_confidence is not None else 0
+        console.print(
+            f"   [green]✓[/green] 笨总评分 {oc.score_normalized:.0f}/100 级别 {oc.benzong_grade}"
+            f"（行业景气={ip:.0f}, conf={conf:.2f}）")
+        src_line = _industry_sources_rich_line(oc.industry_sources)
+        if src_line:
+            console.print(src_line)
 
-    gen = TradePlanGenerator(rag_service=rag_service, ai_modifier=None)
-    # market_state 已不参与 mode 判定（ISS-051 回退阶段4牛市闸门，改用个股级 Weinstein stage，
-    # gen.generate 内部 _detect_weinstein_stage 自算）。原 _ms 计算与 StateMachine 调用是死代码，已删。
-    try:
-        plan, meta = gen.generate(
-            stock_code=stock_code, stock_name=stock_name,
-            entry_price=entry_price, ratio=ratio, stock_data=stock_data,
-            benzong_grade=benzong_grade, industry_prosperity=industry_prosperity,
-            is_self_reliance=is_self_reliance,
-            flagbearer_code=flagbearer_code, penetration_stage=penetration_stage,
-        )
-    except Exception as e:
-        logger.error(f"TradePlan 生成失败: {e}")
-        console.print(f"   [red]✗ 生成失败: {e}[/red]")
+    if oc.status == TP_GENERATE_FAILED:
+        console.print(f"   [red]✗ 生成失败: {oc.generate_error}[/red]")
         console.print(f"   [dim]可后续手动编辑 portfolio.yaml 的 trade_plan 字段[/dim]")
         return
 
-    # 展示草稿
+    plan = oc.plan
+    meta = oc.meta or {}
+    benzong_grade = oc.benzong_grade
+
     outlook_color = {"bullish": "green", "neutral": "yellow", "bearish": "red"}.get(plan.fundamental_outlook, "white")
     console.print(f"\n[bold]📋 计划草稿[/bold]")
     console.print(f"  why_buy: {plan.why_buy}")
@@ -1670,11 +1633,9 @@ def _try_attach_trade_plan(pm, stock_code: str, stock_name: str, entry_price: fl
     console.print(f"  笨总模式 mode: [{mode_color}]{mode_label}[/{mode_color}]" + (f"  [dim](笨总 {benzong_grade} 级)[/dim]" if benzong_grade else ""))
     console.print(f"  [dim]thesis_sources: {len(plan.thesis_sources)} 条锚点[/dim]")
 
-    # 元数据提示
     if meta.get("fallback_reasons"):
         console.print(f"  [dim]⚠ 降级提示: {' / '.join(meta['fallback_reasons'])}[/dim]")
 
-    # Y/N 交互
     try:
         answer = input("\n是否采用此计划草稿？[Y/n]（n=跳过，可后续编辑 portfolio.yaml 补） ").strip().lower()
     except (EOFError, KeyboardInterrupt):
@@ -2697,56 +2658,36 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
         console.print(f"[green]✓ 已删除持仓: {oc.removed_name} ({stock_code})[/green]")
 
     elif action == "overweight":
-        # 报告3.1 笨总教学十超配策略：事件驱动临时加倍+止盈降本
-        # 铁律：涨幅3-10倍标的禁入 / 只出手一次 / 1-2月时间窗口 / 非添油战术
-        if not stock_code:
+        # T04-C：铁律与写盘下沉 activate_overweight_checked；此处只按状态渲染
+        oc = activate_overweight_checked(pm, stock_code, basis=name)
+        if oc.status == OW_MISSING_CODE:
             console.print("[red]用法: pos overweight <代码> [超配依据][/red]")
             return
-        if not pm.has_position(stock_code):
+        if oc.status == OW_NOT_HELD:
             console.print(f"[yellow]⚠ {stock_code} 无持仓记录（超配需先有底仓）[/yellow]")
             return
-        pos = pm.get_position(stock_code)
-        if pos.trade_plan is None:
+        if oc.status == OW_NO_PLAN:
             console.print(f"[yellow]⚠ {stock_code} 无 TradePlan，先 pos plan {stock_code} 生成[/yellow]")
             return
-        tp = pos.trade_plan
-        # 铁律2: 只出手一次
-        if tp.overweight_executed:
-            console.print(f"[yellow]⚠ {stock_code} 已执行过超配(到期{tp.overweight_expiry or '?'})，笨总铁律：只出手一次，非添油战术[/yellow]")
+        if oc.status == OW_ALREADY_EXECUTED:
+            console.print(f"[yellow]⚠ {stock_code} 已执行过超配(到期{oc.expiry or '?'})，笨总铁律：只出手一次，非添油战术[/yellow]")
             console.print(f"  [dim]如需新超配，等新质变事件并先 pos plan {stock_code} --update 重置[/dim]")
             return
-        # 铁律1: 涨幅3-10倍标的禁入（笨总"短期3到10倍的标的我肯定自动pass"）
-        # BUG-OW：try 只包数据获取与倍数计算；展示/return 在 try 外，展示异常不再被当作数据失败吞掉（fail-open）
-        multiple = None
-        try:
-            from src.data.akshare_client import get_stock_data
-            sd = get_stock_data(stock_code)
-            if sd and sd.price and getattr(sd, "low_60d", None) and sd.low_60d > 0:
-                multiple = sd.price / sd.low_60d
-        except Exception as e:
-            logger.warning(f"超配涨幅检查失败({stock_code}): {e}")
+        if oc.rise_check_failed:
             console.print(f"  [yellow]⚠ 涨幅检查数据获取失败，继续但建议人工核实未超3倍[/yellow]")
-        if multiple is not None:
-            if multiple >= 3.0:
-                console.print(f"[red]✗ 拒绝超配：{stock_code} 近60日已涨 {multiple:.1f} 倍[/red]")
-                console.print(f"  [red]笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）[/red]")
-                return
-            console.print(f"  [green]✓[/green] 涨幅检查通过（近60日 {multiple:.1f} 倍 < 3x）")
-        # 激活超配
-        from datetime import datetime, timedelta
-        basis = name if name else "事件驱动质变（用户未填依据，建议补）"
-        expiry = (datetime.now() + timedelta(days=45)).strftime("%Y-%m-%d")  # 1.5月中位
-        tp.overweight_executed = True
-        tp.overweight_expiry = expiry
-        tp.overweight_basis = basis
-        if not pm.attach_plan(stock_code, tp):
-            # M5：保存失败不报假成功——overweight_executed 标志没落盘，PlanGuard 不会压制第二次超配
+        if oc.status == OW_RISE_REJECTED:
+            console.print(f"[red]✗ 拒绝超配：{stock_code} 近60日已涨 {oc.multiple:.1f} 倍[/red]")
+            console.print(f"  [red]笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）[/red]")
+            return
+        if oc.multiple is not None:
+            console.print(f"  [green]✓[/green] 涨幅检查通过（近60日 {oc.multiple:.1f} 倍 < 3x）")
+        if oc.status == OW_SAVE_FAILED:
             console.print(f"[red]✗ 超配标志保存失败：{stock_code} 的 overweight_executed 未落盘"
                           f"（文件可能被其他会话修改，详见上方告警）——请核对后重试[/red]")
             return
         console.print(f"[green]✓ {stock_code} 超配已激活（笨总教学十）[/green]")
-        console.print(f"  依据: {basis}")
-        console.print(f"  到期: {expiry}（1-2月重新定价窗口，到期评估退出超配部分）")
+        console.print(f"  依据: {oc.basis}")
+        console.print(f"  到期: {oc.expiry}（1-2月重新定价窗口，到期评估退出超配部分）")
         console.print(f"  [cyan]操作建议[/cyan]: 底仓基础上临时加倍(用 pos add 加仓)，逻辑兑现后卖超配部分摊薄底仓成本")
         console.print(f"  [dim]铁律: 只出手一次 / 永不满仓留底牌 / 涨幅3-10倍禁入[/dim]")
 
@@ -3960,21 +3901,18 @@ def doctor():
 
 
 def _bz_industry_sources_line(bz_score) -> str:
-    """C6（v0.8.17）：行业景气维的证据来源摘要行——三级桥接（v0.8.8.7）拉到的
-    客观数据来源透出到输出，覆盖不足时用户能看见（而非只见一个分数）。
-
-    bz_score.dimensions_meta["industry_prosperity"]["sources"] 样例：
-    ["行业: 稀土", "商品锚(氧化镝)", "需求端: 新能源车", "新闻 12 条"]。无数据返回空串。
-    """
-    try:
-        meta = (getattr(bz_score, "dimensions_meta", None) or {}).get("industry_prosperity") or {}
-        srcs = meta.get("sources") or []
-        if not srcs:
-            return ""
-        return "   [dim]行业景气来源: " + "；".join(str(s) for s in srcs[:4]) + "[/dim]"
-    except Exception as e:
-        logger.debug(f"行业景气来源摘要生成失败(不影响输出): {e}")
+    """C6：行业景气来源摘要行（rich）。来源列表抽取下沉 draft_prep，文案不变。"""
+    from src.core.trade_plan.draft_prep import industry_sources_from_score
+    srcs = industry_sources_from_score(bz_score)
+    if not srcs:
         return ""
+    return "   [dim]行业景气来源: " + "；".join(srcs) + "[/dim]"
+
+
+def _industry_sources_rich_line(sources) -> str:
+    if not sources:
+        return ""
+    return "   [dim]行业景气来源: " + "；".join(sources) + "[/dim]"
 
 
 def _diff_change_text(d: dict) -> str:

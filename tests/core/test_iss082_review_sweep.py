@@ -62,20 +62,23 @@ def _isolated_portfolio():
 
 
 def test_manage_portfolio_normalizes_code():
-    """④ SH.600519 式输入规范化后再进 CLI 写盘路径。"""
+    """④ SH.600519 式输入规范化后再进写盘路径（T04-C：服务层，不再经 CLI）。"""
     import src.cli.main as cli_main
+    from src.data.portfolio import PortfolioManager
     calls = []
 
     def _fake_manage_positions(action, **kwargs):
         calls.append((action, kwargs))
 
-    with _isolated_portfolio(), _swap(cli_main, "manage_positions", _fake_manage_positions), _quiet():
+    with _isolated_portfolio() as path, _swap(cli_main, "manage_positions", _fake_manage_positions), _quiet():
         result = manage_portfolio(action="add", stock_code="SH.600519",
                                   stock_name="贵州茅台", confirm=True)
-    assert not result.startswith("[工具失败]"), f"应放行并规范化: {result[:80]}"
-    assert calls, "应调用 CLI manage_positions"
-    assert calls[0][1].get("stock_code") == "600519", \
-        f"代码应规范化为 600519，实际: {calls[0][1].get('stock_code')}"
+        assert not result.startswith("[工具失败]"), f"应放行并规范化: {result[:80]}"
+        assert "已添加持仓" in result and "600519" in result
+        assert calls == [], "T04-C 后 add 不应再调 CLI manage_positions"
+        pm = PortfolioManager(path)
+        assert pm.has_position("600519")
+        assert not pm.has_position("SH.600519")
 
 
 def test_bz_dash_uppercase_R_triggers_refresh():

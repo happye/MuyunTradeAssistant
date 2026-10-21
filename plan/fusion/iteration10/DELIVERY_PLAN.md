@@ -140,11 +140,27 @@
 | 反例（已翻转） | `test_legacy_current_*`：隔离+PARTIAL；nan 成本可读且后续 confirm 可写；today 无 inf/假 0；NAV 非 ok。写侧 35 项整文件保持绿。 |
 | 不改 | 写侧 BUG-FINITE（`7de1e59`）；正常有限账本行为；T04/T05/G7 主线。 |
 
+
+## 卡片 T04-C（实现复验通过，本提交）：chat add/plan/overweight 去 CLI 桥（TradePlan 草稿编排下沉）
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G2（跨入口一致）/ G7 / T04；ISS-124 留下的 chat 管理桥尾巴 |
+| 现状 | chat manage_portfolio 的 add/plan/overweight 仍 
+edirect_stdout + _InputPatcher 复用整个 CLI manage_positions；TradePlan 草稿生成与 Y/n 交互耦合在 _try_attach_trade_plan（拉行情/笨总评分/Generator/展示/input/attach 一体），chat 无法在不经过 CLI 的情况下得到结构化结果。 |
+| 用户收益 | chat 建仓/看计划/超配与 CLI 同源服务，不再依赖 CLI 控制台与 input 补丁；失败状态可结构化处理；后续 TUI/Web 可直接复用同一草稿编排。 |
+| 设计 | ① src/core/trade_plan/draft_prep.py 新增 prepare_trade_plan_draft → TradePlanDraftOutcome（DATA_UNAVAILABLE / GENERATE_FAILED / READY；无打印、无 input、不写盘；可注入 get_stock_data/auto_score/rag/generator）。② CLI _try_attach_trade_plan 改为调服务后按原 rich 文案渲染 + Y/n + attach。③ portfolio.activate_overweight_checked → OverweightOpOutcome；CLI overweight 只渲染。④ chat add/plan/overweight 改调服务并自行写纯文本（confirm=True 视为采用草稿，对齐旧 _InputPatcher）。 |
+| 不改 | CLI pos plan --update 的 Y/n 更新路径（仍走 _generate_or_update_plan）；_watch_pool_touch / 
+ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43。 |
+| 反例与验收 | ① 服务单测：	ests/core/test_t04c_draft_prep.py（草稿三态 + 超配各状态）。② chat 桥：	ests/core/test_t04c_chat_bridge.py（add/plan/overweight 断言不调用 manage_positions）。③ 回归：T04-B 黄金/服务、overweight rise guard、chat_command_bridge、trade_plan 套件全绿。④ 全量 0 failed（cash_material 折行若仍失败记 follow-up，不挡本卡）。 |
+| 停止与回滚 | CLI attach/overweight 文案与旧行为明显偏离 → 回滚；chat add(price=0) 回归失败 → 回滚。独立 commit，可 revert。 |
+
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
-1. **T04-C chat add/plan/overweight 去 CLI 桥**：需先把 `_try_attach_trade_plan`（TradePlan 草稿与 Y/n 交互）拆成「生成草稿（服务）+ 确认交互（各入口）」，再让 chat 改调服务。
+1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（本提交已关闭）：prepare_trade_plan_draft + activate_overweight_checked；chat add/plan/overweight 改调服务。剩余可选：CLI pos plan --update 交互再抽（非阻塞）。
 3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：`./knowledge/index` 随启动目录漂移；改为基于仓库根解析，或显式配置。需确认对 Web/TUI/脚本入口的影响。
 4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
+7. **BUG-CASH-WRAP**（可选 follow-up）：	est_cash_material_intake 控制台折行把「回执1条，均已」拆成两行导致断言失败；与账户/持仓桥无关，宜单独小卡放宽断言或固定 Console width。
 6. **BUG-TUI-MARKUP**：`src/tui/app.py` 分析面板 `RichLog(id="analysis-panel")` 未开 markup，约 85、163、168 行的 `[red]`/`[green]` 提示原样显示为字面标签（T04-B 实施时发现；新行已用 `rich.Text`）。小修：开 markup 或统一改 `Text`，需 TUI pilot 测试锁定。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
 
@@ -164,4 +180,5 @@
 | 2026-10-21 | T04-B | 黄金 20 项先在 HEAD 通过；TUI 4 项先红（stdout 被写入且显示「已加仓」）后绿；服务单测 18；定向回归 209；muyun-reviewer 无阻断；全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）；commit `03cab94`（ISS-124） |
 | 2026-10-21 | BUG-FEE | 接线测试 HEAD 5 failed/2 passed → 7 passed；实测 `--price inf` 旧版实际入账（ISS-125）；定向回归 83 passed；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）；commit `9d13a3f`；同类 P1 转 BUG-FINITE |
 | 2026-10-21 | BUG-FINITE | HEAD 18 failed/15 passed → 35 passed（含复核新增超大整数 2 项先红后绿）；调查确认读侧对旧非有限事件不隔离且 nan 成本使重放崩溃（→BUG-FINITE-READ）；code-quality-guard 可合入、2 P2 已处理；定向 465；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）；commit `7de1e59`（ISS-126） |
-| 2026-10-21 | BUG-FINITE-READ | 设计验证=按卡片裁决（隔离非有限、不加 AccountEvent 约束）；修前 legacy_current 6 passed 锁坏行为 → 翻转后 test_bug_finite_ledger.py 35 passed；相关账户套件 161 passed；全量 3293 passed / 1 failed / 11 skipped / 1 deselected（453.89s）——唯一失败为 test_cash_material_intake 控制台折行把「回执1条，均已」拆成两行，与本卡 src 改动无关（既有展示断言脆弱）；关闭 ISS-126 读侧；下一张推荐 T04-C（不抢 T05/G7） |
+| 2026-10-21 | T04-C | 卡片落盘并实现：draft_prep + overweight 服务；CLI 薄封装；chat add/plan/overweight 去 CLI 桥；定测 test_t04c_draft_prep + test_t04c_chat_bridge；相关回归（T04-B/overweight/chat/trade_plan）全绿；下一张按候选：生产 RAG 索引 CWD（ISS-123）或 BUG-TUI-MARKUP / T05-G7 剩余（不抢道） |
+| 2026-10-21 | BUG-FINITE-READ | 设计验证=按卡片裁决（隔离非有限、不加 AccountEvent 约束）；修前 legacy_current 6 passed 锁坏行为 → 翻转后 test_bug_finite_ledger.py 35 passed；相关账户套件 161 passed；全量 3293 passed / 1 failed / 11 skipped / 1 deselected（453.89s）——唯一失败为 test_cash_material_intake 控制台折行把「回执1条，均已」拆成两行，与本卡 src 改动无关（既有展示断言脆弱）；关闭 ISS-126 读侧；下一张曾推荐 T04-C（本提交已交付；再下一张见候选队列，不抢 T05/G7） |

@@ -2290,7 +2290,7 @@ P3（已取消）:
 - **优先级/方向**：P2，G2跨入口一致/T04。
 - **实证**：`src/tui/app.py`加仓经`asyncio.to_thread(manage_positions, "add")`后无条件显示「已加仓」；`manage_positions`遇已有持仓/参数非法/保存失败只打印并`return None`。新TUI pilot测试在HEAD上红：stdout被写入「⚠ 600519 已有持仓记录」且panel显示「已加仓 600519」。
 - **修复**：`src/data/portfolio.py` `add_position_checked`/`remove_position_checked`返回`PositionOpOutcome`；TUI加仓与chat删仓改调服务；CLI按状态渲染、文案逐字不变（20项黄金先在HEAD通过）。
-- **限制**：chat add/plan/overweight仍经CLI桥（TradePlan草稿交互，T04-C候选）；TUI分析面板旧行的字面markup见候选BUG-TUI-MARKUP。
+- **限制**：T04-C已关闭chat add/plan/overweight的CLI桥（本提交）；CLI pos plan --update交互路径仍在CLI；TUI分析面板旧行的字面markup见候选BUG-TUI-MARKUP。
 
 ### ISS-125: pos confirm负手续费/非有限数值未在入口校验，inf成交价可入账
 
@@ -2307,4 +2307,4 @@ P3（已取消）:
 - **实证**：写侧见原记录。读侧修前：旧inf/nan不隔离、nan成本重放ValidationError致无法再写、today显示inf或吞成0、compute_nav非有限现金仍ok。
 - **修复（写侧）**：`FillInput` price/fee `allow_inf_nan=False`；`opening_import`拒非有限/溢出；`start.py` opening入口校验。
 - **修复（读侧）**：`AccountEventLog.replay` 对非有限 cash_delta/price/lot_cost_price/fee 走 `_isolate`→PARTIAL；`cash_deployable` 非有限→None；`compute_nav` 拒非有限现金；**不加** AccountEvent 有限约束。`test_legacy_current_*` 已翻转为期望行为。
-- **同类剩余（不在本 ISS 关闭范围）**：allocate_tradeable_budget 的 p<=0 放过 inf；pos add 价格/仓位（P2）；backtest/scan 资金（P3）。T04-C / T05/G7 剩余按里程碑另卡，不因本 ISS 改道。
+- **同类剩余（不在本 ISS 关闭范围）**：allocate_tradeable_budget 的 p<=0 放过 inf；pos add 价格/仓位（P2）；backtest/scan 资金（P3）。T04-C 已合入；T05/G7 剩余按里程碑另卡，不因本 ISS 改道。

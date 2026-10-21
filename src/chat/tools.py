@@ -995,15 +995,149 @@ def run_command(command: str, confirm: bool = False) -> str:
     return _finalize_output(buf, note)
 
 
+
+def _plain_trade_plan_lines(pos) -> list:
+    """T04-C：chat 展示 TradePlan 的纯文本行（对齐 CLI _display_trade_plan 去色后）。"""
+    tp = pos.trade_plan
+    if tp is None:
+        return [f"⚠ {pos.stock_code} 暂无 TradePlan"]
+    lines = [
+        f"📋 {pos.stock_code} {pos.stock_name} — 交易计划",
+        f"  plan_id: {tp.plan_id}",
+        f"  opened_at: {tp.opened_at}",
+    ]
+    if tp.mode:
+        mode_cn = {"qizong": "⛰️气宗(长期格局)", "jianzong": "🗡️剑宗(一波流)"}.get(tp.mode, tp.mode)
+        lines.append(f"  mode: {mode_cn}")
+    lines.extend([
+        f"  why_buy: {tp.why_buy}",
+        f"  when_buy: {tp.when_buy}",
+        f"  how_much: {tp.how_much:.0%} 仓位",
+        f"  止盈分档: {' / '.join(f'¥{x:.2f}' for x in tp.when_sell_targets) or '-'}",
+        "  失效条件:",
+    ])
+    for c in tp.when_sell_invalidate:
+        lines.append(f"    - {c}")
+    lines.extend([
+        f"  locked_initial_stop: ¥{tp.locked_initial_stop:.2f}",
+        f"  current_stop: ¥{tp.current_stop:.2f} (单向上移)",
+        f"  max_hold_days: {tp.max_hold_days} 天",
+        f"  fundamental_outlook: {tp.fundamental_outlook}",
+    ])
+    if tp.thesis_sources:
+        lines.append(f"  thesis_sources: {len(tp.thesis_sources)} 条锚点")
+    if tp.adjustments:
+        lines.append(f"  adjustments: {len(tp.adjustments)} 条调整记录")
+    return lines
+
+
+def _render_add_outcome(buf, oc, code: str, price: float) -> None:
+    """按 T04-B/C CLI add 去色文案写入 chat 缓冲。"""
+    from src.data.portfolio import (
+        POS_MISSING_CODE, POS_ALREADY_HELD, POS_INVALID_PRICE, POS_INVALID_RATIO,
+        POS_SAVE_FAILED, POS_ADDED,
+    )
+    if oc.status == POS_MISSING_CODE:
+        buf.write("请指定股票代码\n"); return
+    if oc.status == POS_ALREADY_HELD:
+        buf.write(f"⚠ {code} 已有持仓记录，请先 --pos-remove 删除\n"); return
+    if oc.status == POS_INVALID_PRICE:
+        buf.write("开仓价不能为负数（不设置请留空）\n"); return
+    if oc.status == POS_INVALID_RATIO:
+        buf.write("仓位比例需在 0-1 之间（0%-100%）\n"); return
+    if oc.status == POS_SAVE_FAILED:
+        buf.write(f"✗ 持仓保存失败：{oc.display_name} ({code}) 未写入"
+                  f"——请看上方告警，处理后重试\n"); return
+    # ADDED
+    buf.write(f"✓ 已添加持仓: {oc.display_name} ({code})\n")
+    price_part = f"  开仓价: {price:.2f}" if price > 0 else ""
+    buf.write(f"  仓位: {oc.ratio:.0%}{price_part}\n")
+    if not oc.total_ratio_error:
+        if oc.total_ratio is None:
+            buf.write("  ⚠ 存在权重待重估持仓（数量账户比例视图过期）——"
+                      "总仓位未知，暂无法判断80%底牌线；重估后再看\n")
+        elif oc.total_ratio > 0.80:
+            buf.write(f"  ⚠ 总仓位 {oc.total_ratio:.0%}>80%，笨总教学十：任何时候给自己留一张底牌（建议≤80%，预留20%应对突发/抄底）\n")
+    if price > 0:
+        return  # TradePlan 路径由调用方继续
+    buf.write("⚠ 未带价格参数，本次跳过 TradePlan 草稿生成\n")
+    buf.write("  草稿需要入场价算止损位；可补价格重跑 pos add，或事后 pos plan <代码> 生成\n")
+
+
+def _chat_attach_trade_plan(buf, pm, code: str, name: str, price: float, ratio: float, accept: bool) -> None:
+    """T04-C：chat 侧生成草稿；confirm=True 视为 Y（对齐 _InputPatcher）。"""
+    from src.core.trade_plan.draft_prep import (
+        prepare_trade_plan_draft, TP_DATA_UNAVAILABLE, TP_GENERATE_FAILED, TP_READY,
+    )
+    buf.write(f"\n🤖 正在为 {code} {name} 生成交易计划草稿...\n")
+    oc = prepare_trade_plan_draft(code, name, price, ratio)
+    if oc.status == TP_DATA_UNAVAILABLE:
+        buf.write("\n⚠ 无法获取技术面数据\n")
+        if oc.data_error:
+            buf.write(f"   错误: {oc.data_error}\n")
+        buf.write("\nTradePlan 自动生成已跳过\n")
+        buf.write("   原因：没有 ATR / MA / 趋势数据时生成的 plan 全是硬编码兜底值（8% 止损 / 10%-20% 止盈），\n")
+        buf.write("   不能作为真实交易决策依据，建议：\n")
+        buf.write("   1. 检查网络/代理（系统代理 127.0.0.1:7890 会干扰金融 API，可临时关闭）\n")
+        buf.write(f"   2. 等数据源恢复后跑 pos plan {code} 查看是否需要重建 plan\n")
+        buf.write("   3. 或手动编辑 portfolio.yaml 的 trade_plan 字段（参考 portfolio.yaml.template）\n")
+        buf.write("\n持仓本身已添加成功，仅 trade_plan 子系统未启用此股 PlanGuard 守卫\n")
+        return
+    buf.write(f"   ✓ 读取技术面（ATR={oc.atr_str}, MA20={oc.ma20_str}, MA60={oc.ma60_str}）\n")
+    buf.write("   🧮 笨总评分中（定气宗/剑宗模式）...\n")
+    if oc.score_failed:
+        buf.write("   ⚠ 笨总评分未获取，本计划不设气宗/剑宗纪律（mode=None）\n")
+    elif oc.score_normalized is not None:
+        ip = oc.industry_prosperity if oc.industry_prosperity is not None else 0
+        conf = oc.overall_confidence if oc.overall_confidence is not None else 0
+        buf.write(f"   ✓ 笨总评分 {oc.score_normalized:.0f}/100 级别 {oc.benzong_grade}"
+                  f"（行业景气={ip:.0f}, conf={conf:.2f}）\n")
+        if oc.industry_sources:
+            buf.write("   行业景气来源: " + "；".join(oc.industry_sources) + "\n")
+    if oc.status == TP_GENERATE_FAILED:
+        buf.write(f"   ✗ 生成失败: {oc.generate_error}\n")
+        buf.write("   可后续手动编辑 portfolio.yaml 的 trade_plan 字段\n")
+        return
+    plan = oc.plan
+    meta = oc.meta or {}
+    buf.write("\n📋 计划草稿\n")
+    buf.write(f"  why_buy: {plan.why_buy}\n")
+    buf.write(f"  when_buy: {plan.when_buy}\n")
+    buf.write(f"  how_much: {plan.how_much:.0%} 仓位\n")
+    buf.write(f"  止盈分档: {' / '.join(f'¥{x:.2f}' for x in plan.when_sell_targets)}\n")
+    buf.write("  失效条件:\n")
+    for c in plan.when_sell_invalidate:
+        buf.write(f"    - {c}\n")
+    buf.write(f"  locked_initial_stop: ¥{plan.locked_initial_stop:.2f}\n")
+    buf.write(f"  max_hold_days: {plan.max_hold_days} 天\n")
+    buf.write(f"  fundamental_outlook: {plan.fundamental_outlook}\n")
+    mode_label = {"qizong": "气宗(长期格局,持有期长,压制技术卖出)", "jianzong": "剑宗(一波流,破线即走)"}.get(plan.mode, "未设定(仅压 weak_sell)")
+    grade_suf = f"  (笨总 {oc.benzong_grade} 级)" if oc.benzong_grade else ""
+    buf.write(f"  笨总模式 mode: {mode_label}{grade_suf}\n")
+    buf.write(f"  thesis_sources: {len(plan.thesis_sources)} 条锚点\n")
+    if meta.get("fallback_reasons"):
+        buf.write(f"  ⚠ 降级提示: {' / '.join(meta['fallback_reasons'])}\n")
+    prompt = "\n是否采用此计划草稿？[Y/n]（n=跳过，可后续编辑 portfolio.yaml 补） "
+    ans = "y" if accept else "n"
+    buf.write(f"{prompt}[chat自动应答: {ans}]\n")
+    if accept:
+        if pm.attach_plan(code, plan):
+            buf.write("✓ 交易计划已保存到 portfolio.yaml\n")
+            buf.write("  后续跑 scan 时 PlanGuard 会按此计划压制 weak_sell（计划未失效时不卖）\n")
+        else:
+            buf.write("✗ 附加失败（持仓不存在，或保存失败——文件可能被其他会话修改，详见上方告警）\n")
+    else:
+        buf.write("已跳过 TradePlan 生成。可后续编辑 portfolio.yaml 的 trade_plan 字段补\n")
+
+
 def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "",
                      price: Optional[float] = None, ratio: Optional[float] = None,
                      basis: str = "", confirm: bool = False) -> str:
     """修改本地持仓文件 portfolio.yaml（v0.8.8，写操作带 confirm 硬门）。
 
-    add/remove/plan/overweight 复用 CLI manage_positions（含 TradePlan 草稿
-    生成、超配铁律检查、总仓位警告等全部副作用，与 REPL pos 命令完全同源）；
-    update 为字段级修改（PortfolioManager.update_position_fields，REPL 没有
-    的新能力：只改仓位/开仓价/名称，strategy_state 等系统字段不动）。
+    T04-B/C：add/remove/plan/overweight 改调非 UI 服务（portfolio / draft_prep），
+    与 REPL 同源校验与写盘；chat 自行渲染纯文本（不再 redirect CLI）。
+    update 为字段级修改（PortfolioManager.update_position_fields）。
     每次写盘走 _save()（原子写 + portfolio.yaml.bak 滚动备份）。
     """
     action = (action or "").strip().lower()
@@ -1068,7 +1202,6 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
         return (TOOL_ERROR_MARK + "持仓修改是写盘操作。请先在对话中向用户确认具体内容"
                 f"（{action} {code} 的名称/价格/仓位等），用户明确同意后带 confirm=true 重新调用")
 
-    from src.cli.main import manage_positions
     buf = _TeeBuf()
     note = ""
     try:
@@ -1107,17 +1240,74 @@ def manage_portfolio(action: str = "", stock_code: str = "", stock_name: str = "
                     else:
                         buf.write(f"✓ 已删除持仓: {oc.removed_name} ({code})\n")
                 elif action == "plan":
-                    manage_positions("plan", stock_code=code)
-                elif action == "overweight":
-                    manage_positions("overweight", stock_code=code, name=basis or stock_name)
-                else:  # add
-                    manage_positions(
-                        "add",
-                        stock_code=code,
-                        name=stock_name,
-                        price=float(price) if price else 0.0,
-                        ratio=float(ratio) if ratio is not None else 0.20,
+                    # T04-C：查看已有计划或生成新计划（chat 无 --update；新生成自动落盘）
+                    from src.data.portfolio import PortfolioManager
+                    from src.core.trade_plan.draft_prep import (
+                        prepare_trade_plan_draft, TP_DATA_UNAVAILABLE, TP_GENERATE_FAILED, TP_READY,
                     )
+                    pm = PortfolioManager()
+                    if not pm.has_position(code):
+                        buf.write(f"⚠ {code} 无持仓记录（先 pos add {code}）\n")
+                    else:
+                        pos = pm.get_position(code)
+                        if pos.trade_plan is not None:
+                            for ln in _plain_trade_plan_lines(pos):
+                                buf.write(ln + "\n")
+                            buf.write(f"\n💡 行情变动后可 pos plan {code} --update 按当前行情更新计划\n")
+                        else:
+                            entry = pos.entry_price if pos.entry_price else 0.0
+                            ratio_v = pos.current_ratio if pos.current_ratio else 0.20
+                            if not entry or entry <= 0:
+                                buf.write(f"⚠ {code} 无开仓价，无法生成 TradePlan（请 update 补价格或 pos plan 在 CLI 操作）\n")
+                            else:
+                                _chat_attach_trade_plan(
+                                    buf, pm, code, pos.stock_name or code, float(entry), float(ratio_v),
+                                    accept=True)
+                elif action == "overweight":
+                    from src.data.portfolio import (
+                        PortfolioManager, activate_overweight_checked,
+                        OW_MISSING_CODE, OW_NOT_HELD, OW_NO_PLAN, OW_ALREADY_EXECUTED,
+                        OW_RISE_REJECTED, OW_SAVE_FAILED, OW_ACTIVATED,
+                    )
+                    oc = activate_overweight_checked(PortfolioManager(), code, basis=basis or stock_name)
+                    if oc.status == OW_MISSING_CODE:
+                        buf.write("用法: pos overweight <代码> [超配依据]\n")
+                    elif oc.status == OW_NOT_HELD:
+                        buf.write(f"⚠ {code} 无持仓记录（超配需先有底仓）\n")
+                    elif oc.status == OW_NO_PLAN:
+                        buf.write(f"⚠ {code} 无 TradePlan，先 pos plan {code} 生成\n")
+                    elif oc.status == OW_ALREADY_EXECUTED:
+                        buf.write(f"⚠ {code} 已执行过超配(到期{oc.expiry or '?'})，笨总铁律：只出手一次，非添油战术\n")
+                        buf.write(f"  如需新超配，等新质变事件并先 pos plan {code} --update 重置\n")
+                    else:
+                        if oc.rise_check_failed:
+                            buf.write("  ⚠ 涨幅检查数据获取失败，继续但建议人工核实未超3倍\n")
+                        if oc.status == OW_RISE_REJECTED:
+                            buf.write(f"✗ 拒绝超配：{code} 近60日已涨 {oc.multiple:.1f} 倍\n")
+                            buf.write("  笨总铁律(教学十)：涨幅3-10倍的标的自动 pass（高位加仓=添油战术，成本越高经不起波动）\n")
+                        else:
+                            if oc.multiple is not None:
+                                buf.write(f"  ✓ 涨幅检查通过（近60日 {oc.multiple:.1f} 倍 < 3x）\n")
+                            if oc.status == OW_SAVE_FAILED:
+                                buf.write(f"✗ 超配标志保存失败：{code} 的 overweight_executed 未落盘"
+                                          f"（文件可能被其他会话修改，详见上方告警）——请核对后重试\n")
+                            else:
+                                buf.write(f"✓ {code} 超配已激活（笨总教学十）\n")
+                                buf.write(f"  依据: {oc.basis}\n")
+                                buf.write(f"  到期: {oc.expiry}（1-2月重新定价窗口，到期评估退出超配部分）\n")
+                                buf.write("  操作建议: 底仓基础上临时加倍(用 pos add 加仓)，逻辑兑现后卖超配部分摊薄底仓成本\n")
+                                buf.write("  铁律: 只出手一次 / 永不满仓留底牌 / 涨幅3-10倍禁入\n")
+                else:  # add
+                    from src.data.portfolio import PortfolioManager, add_position_checked, POS_ADDED
+                    pm = PortfolioManager()
+                    price_v = float(price) if price else 0.0
+                    ratio_v = float(ratio) if ratio is not None else 0.20
+                    oc = add_position_checked(pm, code, name=stock_name, price=price_v, ratio=ratio_v)
+                    _render_add_outcome(buf, oc, code, price_v)
+                    if oc.status == POS_ADDED and price_v > 0:
+                        _chat_attach_trade_plan(
+                            buf, pm, code, oc.display_name, price_v, float(oc.ratio or ratio_v),
+                            accept=True)
             except ValueError as e:
                 return TOOL_ERROR_MARK + f"参数校验失败: {e}"
             except SystemExit:

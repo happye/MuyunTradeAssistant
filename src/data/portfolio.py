@@ -1889,3 +1889,91 @@ def remove_position_checked(pm, stock_code: str) -> PositionOpOutcome:
                                  removed_name=removed_name)
     return PositionOpOutcome(status=POS_REMOVED, stock_code=stock_code,
                              removed_name=removed_name)
+
+
+# ===== T04-C：超配激活的非 UI 服务（CLI / chat 共用，只返回结果不打印）=====
+
+OW_MISSING_CODE = "MISSING_CODE"
+OW_NOT_HELD = "NOT_HELD"
+OW_NO_PLAN = "NO_PLAN"
+OW_ALREADY_EXECUTED = "ALREADY_EXECUTED"
+OW_RISE_REJECTED = "RISE_REJECTED"
+OW_SAVE_FAILED = "SAVE_FAILED"
+OW_ACTIVATED = "ACTIVATED"
+
+
+@dataclass(frozen=True)
+class OverweightOpOutcome:
+    """T04-C：超配激活结构化结果。
+
+    - MISSING_CODE / NOT_HELD / NO_PLAN / ALREADY_EXECUTED / RISE_REJECTED：未写盘
+    - SAVE_FAILED：内存改了但落盘失败（调用方应视作未生效）
+    - ACTIVATED：已落盘；rise_check_failed=True 表示涨幅数据获取失败但仍继续激活
+    """
+    status: str
+    stock_code: str = ""
+    multiple: Optional[float] = None
+    rise_check_failed: bool = False
+    basis: str = ""
+    expiry: str = ""
+
+
+def activate_overweight_checked(
+    pm,
+    stock_code: str,
+    basis: str = "",
+    *,
+    get_stock_data=None,
+    now=None,
+) -> OverweightOpOutcome:
+    """激活超配（铁律与写盘顺序同 CLI `pos overweight`；不打印）。"""
+    from datetime import datetime, timedelta
+
+    if not stock_code:
+        return OverweightOpOutcome(status=OW_MISSING_CODE, stock_code=stock_code)
+    if not pm.has_position(stock_code):
+        return OverweightOpOutcome(status=OW_NOT_HELD, stock_code=stock_code)
+    pos = pm.get_position(stock_code)
+    if pos.trade_plan is None:
+        return OverweightOpOutcome(status=OW_NO_PLAN, stock_code=stock_code)
+    tp = pos.trade_plan
+    if tp.overweight_executed:
+        return OverweightOpOutcome(
+            status=OW_ALREADY_EXECUTED, stock_code=stock_code,
+            expiry=tp.overweight_expiry or "",
+            basis=tp.overweight_basis or "",
+        )
+
+    if get_stock_data is None:
+        from src.data.akshare_client import get_stock_data as _gsd
+        get_stock_data = _gsd
+
+    multiple = None
+    rise_check_failed = False
+    try:
+        sd = get_stock_data(stock_code)
+        if sd and sd.price and getattr(sd, "low_60d", None) and sd.low_60d > 0:
+            multiple = sd.price / sd.low_60d
+    except Exception as e:
+        logger.warning(f"超配涨幅检查失败({stock_code}): {e}")
+        rise_check_failed = True
+
+    if multiple is not None and multiple >= 3.0:
+        return OverweightOpOutcome(
+            status=OW_RISE_REJECTED, stock_code=stock_code, multiple=multiple)
+
+    stamp = now or datetime.now()
+    basis_text = basis if basis else "事件驱动质变（用户未填依据，建议补）"
+    expiry = (stamp + timedelta(days=45)).strftime("%Y-%m-%d")
+    tp.overweight_executed = True
+    tp.overweight_expiry = expiry
+    tp.overweight_basis = basis_text
+    if not pm.attach_plan(stock_code, tp):
+        return OverweightOpOutcome(
+            status=OW_SAVE_FAILED, stock_code=stock_code,
+            multiple=multiple, rise_check_failed=rise_check_failed,
+            basis=basis_text, expiry=expiry)
+    return OverweightOpOutcome(
+        status=OW_ACTIVATED, stock_code=stock_code,
+        multiple=multiple, rise_check_failed=rise_check_failed,
+        basis=basis_text, expiry=expiry)
