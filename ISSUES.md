@@ -2291,7 +2291,7 @@ P3（已取消）:
 - **优先级/方向**：P2，G2跨入口一致/T04。
 - **实证**：`src/tui/app.py`加仓经`asyncio.to_thread(manage_positions, "add")`后无条件显示「已加仓」；`manage_positions`遇已有持仓/参数非法/保存失败只打印并`return None`。新TUI pilot测试在HEAD上红：stdout被写入「⚠ 600519 已有持仓记录」且panel显示「已加仓 600519」。
 - **修复**：`src/data/portfolio.py` `add_position_checked`/`remove_position_checked`返回`PositionOpOutcome`；TUI加仓与chat删仓改调服务；CLI按状态渲染、文案逐字不变（20项黄金先在HEAD通过）。
-- **限制**：T04-C已关闭chat add/plan/overweight的CLI桥（本提交）；CLI pos plan --update交互路径仍在CLI；TUI分析面板旧行的字面markup见候选BUG-TUI-MARKUP。
+- **限制**：T04-C已关闭chat add/plan/overweight的CLI桥（本提交）；CLI pos plan --update交互路径仍在CLI；TUI分析面板旧行字面markup已由本提交 ISS-127 / BUG-TUI-MARKUP 关闭。
 
 ### ISS-125: pos confirm负手续费/非有限数值未在入口校验，inf成交价可入账
 
@@ -2309,3 +2309,14 @@ P3（已取消）:
 - **修复（写侧）**：`FillInput` price/fee `allow_inf_nan=False`；`opening_import`拒非有限/溢出；`start.py` opening入口校验。
 - **修复（读侧）**：`AccountEventLog.replay` 对非有限 cash_delta/price/lot_cost_price/fee 走 `_isolate`→PARTIAL；`cash_deployable` 非有限→None；`compute_nav` 拒非有限现金；**不加** AccountEvent 有限约束。`test_legacy_current_*` 已翻转为期望行为。
 - **同类剩余（不在本 ISS 关闭范围）**：allocate_tradeable_budget 的 p<=0 放过 inf；pos add 价格/仓位（P2）；backtest/scan 资金（P3）。T04-C 已合入；T05/G7 剩余按里程碑另卡，不因本 ISS 改道。
+
+### ISS-127: TUI 分析面板字面显示 [red]/[green] markup（BUG-TUI-MARKUP）
+
+- **状态/日期**：2026-10-21，第十轮 BUG-TUI-MARKUP 修复，本提交关闭。
+- **优先级/方向**：P2（用户可见展示缺陷），T04/TUI。
+- **实证**：src/tui/app.py RichLog(id="analysis-panel") 默认不开 markup；引擎初始化失败、分析失败/无数据、加仓异常等路径写 "[red]...[/red]" 字符串，标签原样出现在侧栏（T04-B 实施时发现；加仓成功/已知失败新行已用 
+ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel 文本含字面 [red]。
+- **修复**：顶层 rom rich.text import Text；四处失败提示统一 Text(..., style="red")，与 T04-B 加仓路径一致。未开 RichLog markup（避免异常文案含方括号触发 MarkupError）。不扩 BUG-CASH-WRAP（控制台折行断言，非同一路径）。
+- **验证**：定测 4 passed；相关 TUI（test_t04b_tui_add + test_tui）8 passed；全量 3318 passed/1 failed（BUG-CASH-WRAP 折行无关）/11 skipped/1 deselected（341.62s）。
+- **限制**：离线 pilot 不等于真实长任务/真引擎路径；其他入口若再写 markup 字符串须另记，不顺手扩。
+

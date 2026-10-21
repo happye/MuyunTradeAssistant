@@ -4,7 +4,7 @@ T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passe
 
 **唯一长期路线入口｜更新：2026-10-21｜当前限定接收：v0.8.42；本轮main整合，直接交付、无需PR｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
 
-**当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
+**当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 BUG-TUI-MARKUP / ISS-127；先已关 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
 
 **2026-10-20历史main整合**：v42限定观察及此前各批接收边界保持；已完成本轮main整合验收与双仓库收尾。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 原账户/知识库脏改及109个未跟踪文件不提交。真实MID、历史行业/PIT、ROE、现金持续性及G4/V1仍未完成，后续只按既有G/T路线安排，不因工具接通自动启动v43。
 
@@ -141,5 +141,6 @@ V1结项必须同时满足：R01–R09都有验收证据；G1–G7达到明示�
 - 2026-10-17 v0.8.42：`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未提交发布；父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）。460项源码/测试/材料指纹稳定，7保护hash/知识库集合不变；network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅重跑受影响组1 passed（2.19s），实际worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），产品退出专用case最终SHA复核1 passed。真实PDF/SSE各一次，产1个当前条件化组2期，行业仅当次SSE转述C15非金融。历史行业/PIT、ROE、现金持续性仍UNKNOWN，真实MID NO_VALID、G4整体/V1未完成。批次完成后暂停等待新指派。
 - 2026-10-20 原生DSH只读协作限定通过（非产品迭代）：同session分析/追问/追加量化自评三请求完成，原两轮21/21工具结果成功，用户认证后代传0次；主控纠正方案边界与自评缓存分母。初版27项本地回归另记，未称全功能或节省费用。用户明确重大改动验收后集中commit+push，当时v31–v42快照曾由`codex/v42-native-collab`交付，后按用户要求更正为main直接集成；7项远端增量由本轮最新记录承接。量化及便携夹具复验见第九轮计划末节，不计G7修复、v43或产品整体完成。
 
+- 2026-10-21 第十轮 BUG-TUI-MARKUP（ISS-127）合入：分析面板失败提示统一 `rich.Text`，消除字面 `[red]`/`[green]`；定测 `test_bug_tui_markup.py` 4 项先红后绿；相关 TUI 12 passed；不捆绑 BUG-CASH-WRAP；下一张候选测试写报告目录隔离 / BUG-CASH-WRAP；T05/G7 不抢道。
 - 2026-10-21 第十轮 ISS-126 读侧（BUG-FINITE-READ）合入：Claude 在 BUG-FINITE 写侧 `7de1e59` 后留在 iteration10 队列的下一张 P1（非平行新轨）。重放隔离非有限事件→PARTIAL；nan 成本账本可读可再写；today/NAV 未知语义。本轮 Claude 已接受主线（T05-D/BUG-OW/BUG-IDX/T04-A/T04-B/BUG-FEE/写侧）保持；T04-C 已于同日合入（草稿编排下沉+chat去CLI桥）；下一张见候选（RAG CWD/BUG-TUI-MARKUP等）；T05/G7 剩余（晚到缓存、Baostock、真实 MID 等）仍按本表推进。证据见 `tests/core/test_bug_finite_ledger.py` 35 passed 与 plan/fusion/iteration10/DELIVERY_PLAN 执行记录。
 - 2026-10-20 main整合收尾：`ACCEPTED_MAIN_INTEGRATION_SCOPE_ONLY`。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 NAV纯查询与pipeline数量边界补修；双仓库分开交付。具体指纹、分轮失败及限制见第九轮最新验收，不重算历史各批数字。

@@ -18,6 +18,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal
+from rich.text import Text
 from textual.widgets import DataTable, Footer, Header, RichLog
 
 logger = logging.getLogger(__name__)
@@ -82,7 +83,7 @@ class MuyunTUI(App):
         except Exception as e:
             self.sub_title = f"引擎初始化失败: {e}"
             self.query_one("#analysis-panel", RichLog).write(
-                f"[red]引擎初始化失败: {e}[/red]"
+                Text(f"引擎初始化失败: {e}", style="red")
             )
 
     @work
@@ -160,12 +161,12 @@ class MuyunTUI(App):
             result = await asyncio.to_thread(self._analyze_work, code)
         except Exception as e:
             panel.clear()
-            panel.write(f"[red]分析失败: {e}[/red]")
+            panel.write(Text(f"分析失败: {e}", style="red"))
             self.sub_title = "分析失败"
             return
         if result is None:
             panel.clear()
-            panel.write(f"[red]无法获取 {code} 数据[/red]")
+            panel.write(Text(f"无法获取 {code} 数据", style="red"))
             self.sub_title = "分析失败（无数据）"
             return
         panel.clear()
@@ -261,8 +262,6 @@ class MuyunTUI(App):
         panel = self.query_one("#analysis-panel", RichLog)
         panel.write(f"\n加仓 {code}（默认 20%）...")
         try:
-            from rich.text import Text
-
             from src.data.portfolio import (
                 POS_ADDED, POS_ALREADY_HELD, POS_INVALID_PRICE, POS_INVALID_RATIO,
                 POS_MISSING_CODE, POS_SAVE_FAILED, PortfolioManager, add_position_checked,
@@ -291,7 +290,7 @@ class MuyunTUI(App):
                 }
                 panel.write(Text(f"加仓失败: {reasons.get(oc.status, oc.status)}", style="red"))
         except Exception as e:
-            panel.write(f"[red]加仓失败: {e}[/red]")
+            panel.write(Text(f"加仓失败: {e}", style="red"))
 
     @staticmethod
     def _account_text(ctx, *, incomplete=False) -> str:
