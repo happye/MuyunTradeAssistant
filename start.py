@@ -1670,6 +1670,77 @@ def _run_benzong_manual(meta: str = ""):
 
 
 # ── 命令执行 ──────────────────────────────────────────────
+
+def _dispatch_pos_cli(mode: str, args: dict, manage_positions) -> bool:
+    """T04-E：pos_* 命令分发表（从 run_cli 抽出的连贯一块）。
+
+    命中并执行后返回 True；非 pos_* mode 返回 False（供 run_cli 继续 elif）。
+    行为与抽出前逐分支等价——黄金测试 test_t04e_dispatch_golden 锁死。
+    """
+    if mode == "pos_list":
+        manage_positions("list")
+        return True
+    if mode == "pos_add":
+        manage_positions(
+            "add",
+            stock_code=args.get("stock_code", ""),
+            name=args.get("name", ""),
+            price=args.get("price", 0.0),
+            ratio=args.get("ratio", 0.20),
+        )
+        return True
+    if mode == "pos_remove":
+        manage_positions("remove", stock_code=args.get("stock_code", ""))
+        return True
+    if mode == "pos_confirm":
+        # F1：确认实际成交（账户事实唯一入口；含 J2：--qty 数量成交入账户事件账本）
+        manage_positions(
+            "confirm",
+            stock_code=args.get("stock_code", ""),
+            ratio=args.get("ratio"),
+            price=args.get("price", 0.0),
+            qty=args.get("qty"),
+            fee=args.get("fee", 0.0),
+            trade_date=args.get("trade_date", ""),
+            note=args.get("note", ""),
+        )
+        return True
+    if mode == "pos_verify":
+        # ISS-111：可记录核对确认（市值校准，不产生费用）
+        manage_positions("verify", stock_code=args.get("stock_code", ""))
+        return True
+    if mode == "pos_opening":
+        # J2 期初导入：现金锚定
+        manage_positions("opening", cash=args.get("cash"))
+        return True
+    if mode == "pos_openinglot":
+        # J2 期初导入：持仓批次
+        manage_positions(
+            "openinglot",
+            security_id=args.get("security_id", ""),
+            qty=args.get("quantity"),
+            cost_price=args.get("cost_price", 0.0),
+            acquired_at=args.get("acquired_at", ""),
+        )
+        return True
+    if mode == "pos_plan":
+        manage_positions(
+            "plan",
+            stock_code=args.get("stock_code", ""),
+            update=args.get("update", False),
+        )
+        return True
+    if mode == "pos_overweight":
+        manage_positions(
+            "overweight",
+            stock_code=args.get("stock_code", ""),
+            name=args.get("name", ""),
+        )
+        return True
+    return False
+
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
@@ -2049,49 +2120,8 @@ def run_cli(mode: str, args: dict):
             end_date=end_date,
         )
 
-    elif mode == "pos_list":
-        manage_positions("list")
-
-    elif mode == "pos_add":
-        manage_positions(
-            "add",
-            stock_code=args.get("stock_code", ""),
-            name=args.get("name", ""),
-            price=args.get("price", 0.0),
-            ratio=args.get("ratio", 0.20),
-        )
-
-    elif mode == "pos_remove":
-        manage_positions("remove", stock_code=args.get("stock_code", ""))
-
-    elif mode == "pos_confirm":
-        # F1：确认实际成交（建议→事实的唯一入口）；J2：--qty 数量级走账户事件账本事务
-        manage_positions("confirm", stock_code=args.get("stock_code", ""),
-                         ratio=args.get("ratio"), price=args.get("price", 0.0),
-                         qty=args.get("qty"), fee=args.get("fee", 0.0),
-                         trade_date=args.get("trade_date", ""), note=args.get("note", ""))
-
-    elif mode == "pos_verify":
-        # ISS-111：旧记录核对确认（数值不变，消除提醒）
-        manage_positions("verify", stock_code=args.get("stock_code", ""))
-
-    elif mode == "pos_opening":
-        # J2 期初导入：现金锚定
-        manage_positions("opening", cash=args.get("cash"))
-
-    elif mode == "pos_openinglot":
-        # J2 期初导入：持仓批次
-        manage_positions("openinglot", security_id=args.get("security_id", ""),
-                         qty=args.get("quantity"), cost_price=args.get("cost_price", 0.0),
-                         acquired_at=args.get("acquired_at", ""))
-
-    elif mode == "pos_plan":
-        manage_positions("plan", stock_code=args.get("stock_code", ""),
-                         update=args.get("update", False))
-
-    elif mode == "pos_overweight":
-        manage_positions("overweight", stock_code=args.get("stock_code", ""),
-                         name=args.get("name", ""))
+    elif _dispatch_pos_cli(mode, args, manage_positions):
+        pass
 
     elif mode == "chat":
         # 子进程化（ISS-060遗留）：chat退出即OS整体回收（含torch等导入开销~440MB，

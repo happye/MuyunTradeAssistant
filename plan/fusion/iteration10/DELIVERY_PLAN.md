@@ -190,7 +190,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 4. ~~**测试写仓库报告目录**~~（本提交已关闭 / ISS-123 残余）：`tests/conftest.py` session 隔离 `evidence._REPORT_DIR`→临时目录 + 仓库`分析报告/analysis` 文件名集合守卫；定测 `test_report_dir_isolation` 4 项；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s）；不改生产路径。
 7. ~~**BUG-CASH-WRAP**~~（本提交已关闭 / ISS-128）：捕获 `Console(width=220, height=40)`；回执断言去换行匹配；定测 `test_cash_material_intake.py` 45 passed；不改生产折行。
 6. ~~**BUG-TUI-MARKUP**~~（本提交已关闭 / ISS-127）：分析面板失败提示统一 `rich.Text(..., style="red")`；定测 `tests/ui/test_bug_tui_markup.py` 4 项。未开 RichLog markup。不捆绑 BUG-CASH-WRAP。
-5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
+5. **T04 大函数拆分**：~~T04-E 分发黄金 + pos_* 抽出~~（本提交关闭）：`test_t04e_dispatch_golden` 锁 parse/run_cli；`_dispatch_pos_cli` 抽出 pos_*。其余 live_multi/benzong_*/scan 内联等仍待，不急。
 2. ~~**T05-E 晚到缓存写抑制**~~（已关闭 / ISS-120 切片）：`is_call_abandoned` + MarketCache/K线写跳过。
 2b. ~~**T05-E2 MarketCache 其余共享内存写**~~（本提交已关闭）：ETF/行业/概念写簇经 `_live_cache_write_allowed`；不定 Baostock/MID。
 8. **T05-G7 仍待（需产品/实证）**：Baostock 会话重叠；真实 MID；其余内存字典逐点守卫（磁盘入口已统一）。缺有限反例前不扩修。
@@ -253,6 +253,22 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 验收 | 定测含 ETF 真路径迟到写抑制；相关 market/etf/industry/concept 计数回归绿；全量见执行记录 |
 | 下一张 | T05-G7 仍待 Baostock 会话·真实 MID（不抢道）；T04 大函数拆分（不急） |
 
+
+
+## 卡片 T04-E：parse_input/run_cli 分发黄金 + pos_* 抽出（本提交关闭）
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G7 / T04（大函数拆分前置） |
+| 现状 | `start.py` `parse_input`/`run_cli` 超长 if/elif；既有单点解析测（bzscan/index_ref/fee）未覆盖分发全表 |
+| 目标 | 先黄金锁分发契约，再抽出一块连贯分发助手；不停于「只测不抽」若 pos_* 表可安全抽出 |
+| 交付 | ① `tests/core/test_t04e_dispatch_golden.py`：parse 关键命令表 + run_cli 薄路由桩探针 + 未知 mode 告警 + noai/debug + LRN-L005 全链；② `_dispatch_pos_cli` 承接 pos_* 九模式 |
+| 验收 | 定测全绿；相关回归不红；全量 0 failed；抽出前后黄金逐字段相等 |
+| 不做 | 评分/MID/G7/v43/Baostock；不一次拆完 live_multi 等内联大块 |
+| 停止/回滚 | 黄金红或全量红 → `git revert` 本卡提交 |
+| 下一张 | T04 其余大分支拆分（不急）/ T05-G7 剩余（不抢道） |
+
+
 ## 执行记录
 
 | 日期 | 事项 | 结果 |
@@ -278,3 +294,4 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-22 | T04-D | 卡片落盘并实现：plan_update_prep + CLI 薄封装；定测 test_t04d_plan_update_prep；回归 iss117 plan update / T04-C 全绿；全量 3333 passed/0 failed/11 skipped/1 deselected（309.47s）；下一张：~~T05-E 晚到缓存写~~（本提交关闭）/ T05-G7 仍待 Baostock 会话·真实 MID（不抢道）/ T04 大函数拆分（不急） |
 | 2026-10-22 | T05-E | 卡片落盘并实现：timeout_call abandoned 栈 + `is_call_abandoned`；`_disk_save`/`_accept_snapshot`/`_kline_disk_save` 跳过迟到写；定测 test_t05e_late_cache_write 8 passed；相关 371 passed/8 skipped；全量 3341 passed/0 failed/11 skipped/1 deselected（490.04s）；不绑 Baostock/MID/G7/v43 |
 | 2026-10-22 | T05-E2 | MarketCache ETF/行业/概念共享内存写经 `_live_cache_write_allowed` 抑制；定测 10 passed；相关 354 passed/8 skipped；全量 3343 passed/0 failed/11 skipped/1 deselected（489.00s）；不绑 Baostock/MID |
+| 2026-10-22 | T04-E | 分发黄金 `test_t04e_dispatch_golden`（parse 表 + run_cli 桩路由）；抽出 `_dispatch_pos_cli`（pos_* 九模式行为等价）；定测 118；相关 145；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s）；不定 Baostock/MID/G7/v43；下一张：T04 其余大分支 / T05-G7 剩余（不抢道） |

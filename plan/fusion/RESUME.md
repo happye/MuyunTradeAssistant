@@ -1,3 +1,5 @@
+> **2026-10-22 T04-E 本提交关闭**：parse_input/run_cli 分发黄金锁 + `_dispatch_pos_cli` 抽出（定测 118；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s））。**下一张**：T04 其余大分支拆分（不急）；T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）。
+
 
 > **2026-10-22 T05-E2 本提交关闭**：MarketCache ETF/行业/概念共享内存写亦受 `_live_cache_write_allowed` 抑制。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）；T04 大函数拆分（不急）。
 
