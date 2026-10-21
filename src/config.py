@@ -9,8 +9,23 @@ from pathlib import Path
 import yaml
 
 _ROOT = Path(__file__).resolve().parents[1]
+PROJECT_ROOT = _ROOT  # 对外稳定名：仓库根（不依赖调用者 cwd）
 _DEFAULT_PATH = _ROOT / "configs" / "settings.yaml"
 _LOCAL_PATH = _ROOT / "configs" / "settings.local.yaml"
+
+
+def resolve_under_root(path: str | Path, *, root: Path | None = None) -> Path:
+    """把相对路径锚到仓库根；绝对路径原样 resolve。
+
+    settings.yaml 里 rag.index_dir / knowledge_dir 等历来写相对路径
+    （如 ``./knowledge/index``）。此前由调用方 cwd 解析，从其他目录启动会
+    在别处建空索引（ISS-123 生产残余）。绝对路径（含测试 tmp）不改写。
+    """
+    base = root if root is not None else _ROOT
+    p = Path(path)
+    if p.is_absolute():
+        return p.resolve()
+    return (base / p).resolve()
 
 
 def _deep_merge(base: dict, override: dict) -> dict:

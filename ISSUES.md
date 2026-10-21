@@ -2275,14 +2275,15 @@ P3（已取消）:
 - **限制**：扫描局限，变量传入的文案扫不到；离线测试通过不等于真实持仓路径与投资效果。其他文件如有发现须另记ISSUES，不顺手修。
 
 
-### ISS-123: 离线全量测试改写受保护的knowledge/index
+### ISS-123: 离线全量测试改写受保护的knowledge/index + 生产索引相对CWD
 
-- **状态/日期**：2026-10-21，第十轮BUG-IDX测试侧修复；全量3184 passed/0 failed/11 skipped/1 deselected（593.66s），守卫开启且索引未被改写。
-- **优先级/方向**：P1（测试隔离破坏受保护文件），G7。
-- **实证**：干净克隆跑离线全量后`knowledge/index/config.json`由512维变5000维，index.faiss 1.7MB→16.7MB（TF-IDF兜底重建并save）。写入链：`tests/core/test_cli_smoke_paths.py::test_pipeline_runs`→`scripts/pipeline.py` `init_engines`→`src/chat/tools.py` `_rag_service.initialize()`→`src/rag/service.py` `_store.save(index_dir)`；`tests/core/test_l2_public_checkpoint.py`的`l CODE`→`get_cli_rag_service`→同一save。
-- **修复**：仅`tests/conftest.py`：session级根因隔离（包装`RAGService.__init__`，index_dir等于仓库索引时改指临时副本）+sha256与mtime兜底守卫（会话结束若被写则失败）。不改src。
-- **反例**：只有守卫无隔离时`test_pipeline_runs`报「测试改写了受保护的knowledge/index」；加隔离后13 passed、mtime不变。
-- **登记不修**：①生产`index_dir`为相对CWD的`./knowledge/index`，从其他目录启动会在别处建索引；②`src/cli/evidence.py` `_REPORT_DIR`使测试每次在仓库`分析报告/analysis/`新增文件（已gitignore，非受保护）。
+- **状态/日期**：2026-10-21，第十轮。BUG-IDX测试侧修复 `28b7e68`（全量3184 passed，守卫开启且索引未被改写）。**本提交关闭生产残余**：相对`index_dir`/`knowledge_dir`锚仓库根，不再随启动cwd漂移；faiss Windows中文绝对路径经chdir+ASCII文件名安全读写。
+- **优先级/方向**：P1（测试隔离破坏受保护文件 + 生产路径漂移），G7。
+- **实证（测试侧）**：干净克隆跑离线全量后`knowledge/index/config.json`由512维变5000维，index.faiss 1.7MB→16.7MB（TF-IDF兜底重建并save）。写入链：`tests/core/test_cli_smoke_paths.py::test_pipeline_runs`→`scripts/pipeline.py` `init_engines`→`src/chat/tools.py` `_rag_service.initialize()`→`src/rag/service.py` `_store.save(index_dir)`；`tests/core/test_l2_public_checkpoint.py`的`l CODE`→`get_cli_rag_service`→同一save。
+- **修复（测试侧，BUG-IDX）**：仅`tests/conftest.py`：session级根因隔离（包装`RAGService.__init__`，index_dir等于仓库索引时改指临时副本）+sha256与mtime兜底守卫。
+- **修复（生产残余，本提交）**：`src/config.resolve_under_root`；`RAGService`相对路径锚`PROJECT_ROOT`；`src/rag/store._faiss_path_call`避免faiss C fopen吃中文绝对路径（LRN-20260905-004）；定测`tests/rag/test_iss123_index_dir_repo_root.py`。
+- **反例**：只有守卫无隔离时`test_pipeline_runs`报「测试改写了受保护的knowledge/index」；加隔离后13 passed、mtime不变。生产侧：外国cwd下相对`./knowledge/index`原先会在cwd旁建空索引；修复后锚仓库根且不建旁路目录。
+- **仍登记不修**：`src/cli/evidence.py` `_REPORT_DIR`使测试每次在仓库`分析报告/analysis/`新增文件（已gitignore，非受保护）——另卡候选。
 
 ### ISS-124: TUI加仓失败仍显示「已加仓」且CLI输出污染界面
 

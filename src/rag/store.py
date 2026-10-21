@@ -20,6 +20,28 @@ from src.rag.models import RAGDocument
 logger = logging.getLogger(__name__)
 
 
+def _faiss_path_call(file_path: Path, fn):
+    """对 faiss C++ fopen 安全地读/写索引文件。
+
+    Windows 上 faiss 的 fopen 按 ANSI 代码页解析路径字节，含中文的绝对路径
+    会 ENOENT（见 .learnings LRN-20260905-004）。Python 的 chdir 能处理 Unicode，
+    因此先 chdir 到父目录，只把纯 ASCII 文件名交给 faiss；ASCII 路径则直传。
+    """
+    file_path = Path(file_path)
+    path_str = str(file_path)
+    try:
+        path_str.encode("ascii")
+    except UnicodeEncodeError:
+        old_cwd = os.getcwd()
+        try:
+            os.chdir(file_path.parent)
+            return fn(file_path.name)
+        finally:
+            os.chdir(old_cwd)
+    return fn(path_str)
+
+
+
 class VectorStore(ABC):
     """向量存储抽象基类"""
 
@@ -216,7 +238,7 @@ class FAISSVectorStore(VectorStore):
             tmp_docs = dir_path / "docs.json.tmp"
             tmp_cfg = dir_path / "config.json.tmp"
 
-            faiss.write_index(self._index, str(tmp_index))
+            _faiss_path_call(tmp_index, lambda p: faiss.write_index(self._index, p))
             docs_data = [doc.model_dump() for doc in self._docs]
             with open(tmp_docs, 'w', encoding='utf-8') as f:
                 json.dump(docs_data, f, ensure_ascii=False, indent=2)
@@ -243,7 +265,8 @@ class FAISSVectorStore(VectorStore):
             import faiss
 
             # 加载FAISS索引
-            self._index = faiss.read_index(str(dir_path / "index.faiss"))
+            self._index = _faiss_path_call(
+                dir_path / "index.faiss", faiss.read_index)
             self._dimension = self._index.d
 
             # 加载文档元数据

@@ -13,8 +13,8 @@ app:
 # RAG知识库配置（v0.8.1）
 rag:
   enabled: true                               # 是否启用RAG
-  knowledge_dir: "./投资策略（持续更新）"        # 策略知识目录
-  index_dir: "./knowledge/index"               # 索引持久化目录
+  knowledge_dir: "./投资策略（持续更新）"        # 策略知识目录（相对路径锚仓库根，非启动 cwd；ISS-123）
+  index_dir: "./knowledge/index"               # 索引持久化目录（相对路径锚仓库根，非启动 cwd；ISS-123）
   chunk_size: 500                              # 分块大小（字）
   chunk_overlap: 50                            # 分块重叠（字）
   default_top_k: 5                             # 默认检索数量

@@ -78,10 +78,10 @@ def _protect_knowledge_index():
 def _isolate_rag_index_dir():
     """根因隔离：RAGService 的 index_dir 若落在仓库 knowledge/index，改指临时副本。
 
-    index_dir 来自 settings 的相对路径（./knowledge/index），src/rag 没有环境变量
-    覆盖点；pipeline 的 init_engines、CLI 的 get_cli_rag_service 等真实接线会据此
-    save 回仓库。就地包装 RAGService.__init__（不替换类，不影响 by-value 导入与
-    测试自己的 monkeypatch 替身）；副本含原索引文件，只读加载行为不变，写落临时目录。
+    index_dir 现已锚仓库根（ISS-123），但仍可能等于仓库 knowledge/index；
+    pipeline 的 init_engines、CLI 的 get_cli_rag_service 等真实接线会据此 save。
+    就地包装 RAGService.__init__（不替换类，不影响 by-value 导入与测试自己的
+    monkeypatch 替身）；副本含原索引文件，只读加载行为不变，写落临时目录。
     """
     from src.rag.service import RAGService
 

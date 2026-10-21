@@ -158,11 +158,22 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 ## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
 
 1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（本提交已关闭）：prepare_trade_plan_draft + activate_overweight_checked；chat add/plan/overweight 改调服务。剩余可选：CLI pos plan --update 交互再抽（非阻塞）。
-3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：`./knowledge/index` 随启动目录漂移；改为基于仓库根解析，或显式配置。需确认对 Web/TUI/脚本入口的影响。
+3. **生产 RAG 索引路径相对 CWD**（ISS-123 登记）：**本提交已关闭**——相对路径锚仓库根 + faiss Unicode 安全 I/O；定测 `test_iss123_index_dir_repo_root`；Web/TUI/脚本经同一 `RAGService`/`get_rag_service` 受益，无需各入口 chdir。
 4. **测试写仓库报告目录**（ISS-123 登记）：`src/cli/evidence.py` `_REPORT_DIR` 用 conftest 同手法隔离。
 7. **BUG-CASH-WRAP**（可选 follow-up）：	est_cash_material_intake 控制台折行把「回执1条，均已」拆成两行导致断言失败；与账户/持仓桥无关，宜单独小卡放宽断言或固定 Console width。
 6. **BUG-TUI-MARKUP**：`src/tui/app.py` 分析面板 `RichLog(id="analysis-panel")` 未开 markup，约 85、163、168 行的 `[red]`/`[green]` 提示原样显示为字面标签（T04-B 实施时发现；新行已用 `rich.Text`）。小修：开 markup 或统一改 `Text`，需 TUI pilot 测试锁定。
 5. **T04 大函数拆分**：`start.py` `parse_input`（约 542 行）/`run_cli`（约 501 行）命令分发表化——风险高，需先有分发黄金测试，不急。
+
+## 卡片 ISS-123-PROD：生产 RAG 索引路径相对 CWD（本提交关闭）
+
+| 项 | 内容 |
+|---|---|
+| 对应 | G7 / ISS-123 登记残余（生产路径） |
+| 根因 | `settings.yaml` 的 `./knowledge/index`、知识目录在 `RAGService.__init__` 按调用方 cwd 解析；从其他目录启动会在别处建空索引。另：仓库根含中文时，faiss C fopen 不能吃中文绝对路径（相对路径曾靠 cwd 规避）。 |
+| 用户收益 | 任意启动目录都使用仓库内同一索引/知识库；不因 cwd 漂移静默重建或读空库。 |
+| 修复边界 | `src/config.py`（`PROJECT_ROOT`/`resolve_under_root`）；`src/rag/service.py`；`src/rag/store.py`（`_faiss_path_call`）；`configs/settings.yaml` 注释；定测；文档。不改 G7/v43，不扩 BUG-TUI-MARKUP。 |
+| 验收 | 外国 cwd 下相对路径落仓库根且不在旁路建 `knowledge/`；绝对路径透传；faiss Unicode 父路径只传 ASCII 文件名；真实索引绝对路径 load 成功。 |
+| 停止/回滚 | faiss 中文路径再 ENOENT 或全量红 -> `git revert` 本提交。 |
 
 ## 执行记录
 
@@ -181,4 +192,5 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 2026-10-21 | BUG-FEE | 接线测试 HEAD 5 failed/2 passed → 7 passed；实测 `--price inf` 旧版实际入账（ISS-125）；定向回归 83 passed；全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）；commit `9d13a3f`；同类 P1 转 BUG-FINITE |
 | 2026-10-21 | BUG-FINITE | HEAD 18 failed/15 passed → 35 passed（含复核新增超大整数 2 项先红后绿）；调查确认读侧对旧非有限事件不隔离且 nan 成本使重放崩溃（→BUG-FINITE-READ）；code-quality-guard 可合入、2 P2 已处理；定向 465；全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）；commit `7de1e59`（ISS-126） |
 | 2026-10-21 | T04-C | 卡片落盘并实现：draft_prep + overweight 服务；CLI 薄封装；chat add/plan/overweight 去 CLI 桥；定测 test_t04c_draft_prep + test_t04c_chat_bridge；相关回归（T04-B/overweight/chat/trade_plan）全绿；下一张按候选：生产 RAG 索引 CWD（ISS-123）或 BUG-TUI-MARKUP / T05-G7 剩余（不抢道） |
+| 2026-10-21 | ISS-123 生产残余 | 相对 `index_dir`/`knowledge_dir` 锚仓库根（`resolve_under_root`）；`_faiss_path_call` 规避 Windows faiss 中文绝对路径 ENOENT；定测 6 项；smoke 绝对路径加载真实索引 837 docs/512 dim；下一张按候选：BUG-TUI-MARKUP / 测试写报告目录隔离 / BUG-CASH-WRAP / T05-G7 剩余（不抢道） |
 | 2026-10-21 | BUG-FINITE-READ | 设计验证=按卡片裁决（隔离非有限、不加 AccountEvent 约束）；修前 legacy_current 6 passed 锁坏行为 → 翻转后 test_bug_finite_ledger.py 35 passed；相关账户套件 161 passed；全量 3293 passed / 1 failed / 11 skipped / 1 deselected（453.89s）——唯一失败为 test_cash_material_intake 控制台折行把「回执1条，均已」拆成两行，与本卡 src 改动无关（既有展示断言脆弱）；关闭 ISS-126 读侧；下一张曾推荐 T04-C（本提交已交付；再下一张见候选队列，不抢 T05/G7） |

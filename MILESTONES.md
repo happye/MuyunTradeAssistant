@@ -4,7 +4,7 @@ T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passe
 
 **唯一长期路线入口｜更新：2026-10-21｜当前限定接收：v0.8.42；本轮main整合，直接交付、无需PR｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
 
-**当前执行入口**：[第九轮交付计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
+**当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
 
 **2026-10-20历史main整合**：v42限定观察及此前各批接收边界保持；已完成本轮main整合验收与双仓库收尾。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 原账户/知识库脏改及109个未跟踪文件不提交。真实MID、历史行业/PIT、ROE、现金持续性及G4/V1仍未完成，后续只按既有G/T路线安排，不因工具接通自动启动v43。
 

@@ -68,9 +68,12 @@ class RAGService:
             logger.info("RAG服务未启用")
             return
 
-        # 配置参数
-        self.knowledge_dir = config.get("knowledge_dir", "./投资策略（持续更新）")
-        self.index_dir = config.get("index_dir", "./knowledge/index")
+        # 配置参数（相对路径锚仓库根，不随启动 cwd 漂移——ISS-123）
+        from src.config import resolve_under_root
+        self.knowledge_dir = str(resolve_under_root(
+            config.get("knowledge_dir", "./投资策略（持续更新）")))
+        self.index_dir = str(resolve_under_root(
+            config.get("index_dir", "./knowledge/index")))
         self.chunk_size = config.get("chunk_size", 500)
         self.chunk_overlap = config.get("chunk_overlap", 50)
         self.default_top_k = config.get("default_top_k", 5)
