@@ -9,6 +9,8 @@
 - volume：腾讯股票单位为“手”，此处 ×100 换算为“股”；amount 用 close×volume 近似（非真实成交额）。
 - turn/peTTM/isST 等字段无来源，返回空串；tradestatus 恒为 "1"（停牌日腾讯不出bar，等价于跳过）。
 - query_stock_industry / query_forecast_report / 财务季频接口 返回空结果（error_code="0", 0 行）。
+- 来源顺序：腾讯 proxy.finance.qq.com 镜像 → 腾讯 web.ifzq（易被 WAF 501）→ 新浪日K（不复权，
+  此时 adjustflag 字段返回 "3" 以如实标注；周/月线由日线聚合）。WAF 拦截一次即熔断该源。
 - 前复权口径为腾讯 qfq，与 Baostock 前复权在除权日附近可能存在细微差异。
 """
 from __future__ import annotations
@@ -25,14 +27,53 @@ import requests
 
 logger = logging.getLogger(__name__)
 
-_TX_URL = "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get"
+# 腾讯 K线：web.ifzq.gtimg.cn 常被 WAF 拦截（HTTP 501 / waf.tencent.com），
+# proxy.finance.qq.com 的 newfqkline 为同源镜像，优先使用；两者均失败再降级到新浪日K。
+_TX_URLS = (
+    "https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get",
+    "https://web.ifzq.gtimg.cn/appstock/app/fqkline/get",
+)
+_TX_URL = _TX_URLS[-1]  # 兼容旧引用
+_SINA_KLINE = "https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData"
 _SINA_HQ = "https://hq.sinajs.cn/list="
-_HEADERS = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.sina.com.cn"}
-_TIMEOUT = float(os.environ.get("MUYUN_SHIM_TIMEOUT", "8"))
+_HEADERS = {
+    "User-Agent": ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
+                   "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"),
+    "Referer": "https://finance.sina.com.cn",
+}
+_TX_HEADERS = dict(_HEADERS, Referer="https://gu.qq.com/")
+_TIMEOUT = float(os.environ.get("MUYUN_SHIM_TIMEOUT", "5"))
 _MIN_INTERVAL = float(os.environ.get("MUYUN_SHIM_MIN_INTERVAL", "0.15"))
+_BREAK_COOLDOWN = float(os.environ.get("MUYUN_SHIM_BREAK_COOLDOWN", "600"))
 _lock = threading.Lock()
 _last_call = [0.0]
 _installed = False
+# 源熔断：url -> 熔断时刻；WAF/501 一次即熔断，冷却期内直接走下一个源
+_broken: dict = {}
+# 记录每次 _tx_kline 结果的实际来源与复权口径：key -> (source, adj_used)
+LAST_SOURCE: dict = {}
+
+
+class WafBlocked(ConnectionError):
+    """被 WAF 拦截/HTTP 5xx 拒绝（非瞬时故障，不重试）。"""
+
+
+def _is_broken(url: str) -> bool:
+    t = _broken.get(url)
+    if t is None:
+        return False
+    if time.time() - t >= _BREAK_COOLDOWN:
+        _broken.pop(url, None)
+        return False
+    return True
+
+
+def _mark_broken(url: str):
+    _broken[url] = time.time()
+
+
+def reset_breakers():
+    _broken.clear()
 
 
 class ShimResult:
@@ -67,19 +108,31 @@ def _throttle():
         _last_call[0] = time.time()
 
 
-def _get(url, params=None):
+def _retries() -> int:
+    return 1 if os.environ.get("MUYUN_FAST_FAIL") == "1" else 3
+
+
+def _get(url, params=None, headers=None):
+    """GET + 指数退避重试；WAF/501 立即抛 WafBlocked（不重试）。"""
     last = None
-    for attempt in range(3):
+    n = _retries()
+    for attempt in range(n):
         _throttle()
         try:
-            r = requests.get(url, params=params, headers=_HEADERS, timeout=_TIMEOUT,
+            r = requests.get(url, params=params, headers=headers or _HEADERS, timeout=_TIMEOUT,
                              proxies={"http": None, "https": None})
-            if r.status_code == 200 and "waf.tencent.com" not in r.text[:400]:
+            head = r.text[:400]
+            if "waf.tencent.com" in head or r.status_code in (403, 501):
+                raise WafBlocked(f"shim blocked: {url} (HTTP {r.status_code} / WAF)")
+            if r.status_code == 200:
                 return r
-            last = f"HTTP {r.status_code} / WAF"
+            last = f"HTTP {r.status_code}"
+        except WafBlocked:
+            raise
         except requests.RequestException as e:
             last = e
-        time.sleep(0.8 * (attempt + 1))
+        if attempt < n - 1:
+            time.sleep(0.5 * (2 ** attempt))
     raise ConnectionError(f"shim fetch failed: {url} ({last})")
 
 
@@ -87,30 +140,123 @@ def _tx_code(bs_code: str) -> str:
     return bs_code.replace(".", "").lower()
 
 
-@lru_cache(maxsize=512)
-def _tx_kline(tx_code: str, freq: str, adj: str, start: str, end: str) -> tuple:
-    """返回 ((date, open, close, high, low, volume_raw), ...)，按日期升序，含 [start, end]。"""
-    period = {"d": "day", "w": "week", "m": "month"}.get(freq, "day")
-    s = datetime.strptime(start, "%Y-%m-%d")
-    e = datetime.strptime(end, "%Y-%m-%d")
+def _tx_fetch(url: str, tx_code: str, period: str, adj: str, s: datetime, e: datetime) -> dict:
     out = {}
-    # 腾讯单次最多约 640 根：日线按 1 年分段，周/月线一次取
+    # 腾讯单次最多约 640 根（返回截至 end 的最近 640 根）：日线按 1 年分段，周/月线一次取
     step = timedelta(days=365) if period == "day" else (e - s + timedelta(days=1))
     cur = s
     while cur <= e:
         seg_end = min(cur + step - timedelta(days=1), e)
         count = 640 if period == "day" else 2000
         param = f"{tx_code},{period},{cur:%Y-%m-%d},{seg_end:%Y-%m-%d},{count},{adj}"
-        data = _get(_TX_URL, {"param": param}).json().get("data") or {}
+        payload = _get(url, {"param": param}, headers=_TX_HEADERS).json()
+        data = payload.get("data") or {}
         node = data.get(tx_code) if isinstance(data, dict) else None
         if isinstance(node, dict):
             key = f"{adj}{period}" if adj else period
             rows = node.get(key) or node.get(period) or []
             for row in rows:
-                if len(row) >= 6:
+                if len(row) >= 6 and f"{s:%Y-%m-%d}" <= row[0] <= f"{e:%Y-%m-%d}":
                     out[row[0]] = tuple(row[:6])
         cur = seg_end + timedelta(days=1)
-    return tuple(out[k] for k in sorted(out))
+    return out
+
+
+def _sina_daily(tx_code: str, s: datetime, e: datetime) -> dict:
+    """新浪日K（**不复权**）。最多返回最近 1023 根；volume 单位：个股为“股”，此处换算成“手”以对齐腾讯。"""
+    days = (datetime.now() - s).days
+    datalen = max(10, min(1023, int(days * 0.72) + 20))
+    r = _get(_SINA_KLINE, {"symbol": tx_code, "scale": "240", "ma": "no", "datalen": str(datalen)})
+    arr = r.json() or []
+    is_index = _is_index(tx_code)
+    out = {}
+    for it in arr:
+        d = str(it.get("day", ""))[:10]
+        if not (f"{s:%Y-%m-%d}" <= d <= f"{e:%Y-%m-%d}"):
+            continue
+        v = float(it.get("volume") or 0)
+        out[d] = (d, it["open"], it["close"], it["high"], it["low"], str(v if is_index else v / 100))
+    return out
+
+
+def _resample(daily: dict, freq: str) -> dict:
+    if freq not in ("w", "m") or not daily:
+        return daily
+    df = pd.DataFrame(list(daily.values()), columns=["date", "o", "c", "h", "l", "v"])
+    df["dt"] = pd.to_datetime(df["date"])
+    for col in "ochlv":
+        df[col] = df[col].astype(float)
+    grp = df.groupby(df["dt"].dt.to_period("W-FRI" if freq == "w" else "M"))
+    out = {}
+    for _, g in grp:
+        d = g["date"].iloc[-1]
+        out[d] = (d, str(g["o"].iloc[0]), str(g["c"].iloc[-1]), str(g["h"].max()),
+                  str(g["l"].min()), str(g["v"].sum()))
+    return out
+
+
+def _is_index(tx: str) -> bool:
+    return tx.startswith("sh000") or tx.startswith("sz399")
+
+
+def _fetch_kline(tx_code: str, freq: str, adj: str, start: str, end: str):
+    """依次尝试 腾讯镜像 → 腾讯原站 → 新浪日K。返回 (rows_tuple, source, adj_used)。"""
+    period = {"d": "day", "w": "week", "m": "month"}.get(freq, "day")
+    s = datetime.strptime(start, "%Y-%m-%d")
+    e = datetime.strptime(end, "%Y-%m-%d")
+    errs = []
+    for url in _TX_URLS:
+        if _is_broken(url):
+            errs.append(f"{url}: circuit-open")
+            continue
+        try:
+            out = _tx_fetch(url, tx_code, period, adj, s, e)
+            if out:
+                return tuple(out[k] for k in sorted(out)), "tencent", adj
+            errs.append(f"{url}: empty")
+        except WafBlocked as ex:
+            _mark_broken(url)
+            logger.warning(f"[bs_shim] 腾讯K线源被拦截，熔断 {_BREAK_COOLDOWN:.0f}s：{url}")
+            errs.append(str(ex))
+        except Exception as ex:  # noqa: BLE001
+            errs.append(f"{url}: {ex}")
+    if not _is_broken(_SINA_KLINE):
+        try:
+            out = _resample(_sina_daily(tx_code, s, e), freq)
+            if out:
+                if adj:
+                    logger.warning(f"[bs_shim] {tx_code} 使用新浪降级源：不复权数据（请求 {adj}），adjustflag 标为 3")
+                return tuple(out[k] for k in sorted(out)), "sina", ""
+            errs.append("sina: empty")
+        except WafBlocked as ex:
+            _mark_broken(_SINA_KLINE)
+            errs.append(str(ex))
+        except Exception as ex:  # noqa: BLE001
+            errs.append(f"sina: {ex}")
+    raise ConnectionError("; ".join(errs))
+
+
+def _disk_cache_on() -> bool:
+    return os.environ.get("MUYUN_SHIM_DISK_CACHE", "1") != "0"
+
+
+@lru_cache(maxsize=512)
+def _tx_kline(tx_code: str, freq: str, adj: str, start: str, end: str) -> tuple:
+    """返回 ((date, open, close, high, low, volume_raw), ...)，按日期升序，含 [start, end]。
+    实际来源/复权口径写入 LAST_SOURCE[(tx_code, freq, adj, start, end)]。"""
+    key = (tx_code, freq, adj, start, end)
+    if _disk_cache_on():
+        from src.data import robust_fetch as rf
+        ttl = 6 * 3600 if end >= (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d") else 30 * 86400
+        res = rf.robust_call("bs_shim_kline", "|".join(key), lambda: _fetch_kline(*key),
+                             ttl=ttl, timeout=60, retries=0, quiet=True)
+        if not res:
+            raise ConnectionError(f"K线获取失败（所有源）：{tx_code}")
+        rows, src, adj_used = res
+    else:
+        rows, src, adj_used = _fetch_kline(*key)
+    LAST_SOURCE[key] = (src, adj_used)
+    return rows
 
 
 def _fmt(x):
@@ -133,6 +279,8 @@ def query_history_k_data_plus(code, fields, start_date=None, end_date=None,
         # 多取 15 天以计算首行 preclose
         pre_start = (datetime.strptime(start, "%Y-%m-%d") - timedelta(days=15)).strftime("%Y-%m-%d")
         raw = _tx_kline(tx, frequency, adj, pre_start, end)
+        src, adj_used = LAST_SOURCE.get((tx, frequency, adj, pre_start, end), ("tencent", adj))
+        out_flag = str(adjustflag) if (adj_used == adj or is_index) else "3"
     except Exception as e:  # 网络失败 → 与 baostock 一致：非 "0" 错误码
         logger.warning(f"[bs_shim] K线获取失败 {code}: {e}")
         return ShimResult(field_list, [], error_code="10002007", error_msg=str(e))
@@ -144,7 +292,7 @@ def query_history_k_data_plus(code, fields, start_date=None, end_date=None,
         rec = {
             "date": d, "code": code, "open": _fmt(o), "high": _fmt(h), "low": _fmt(l),
             "close": _fmt(c), "preclose": _fmt(prev_close), "volume": str(int(vol)),
-            "amount": _fmt(float(c) * vol), "adjustflag": str(adjustflag), "turn": "",
+            "amount": _fmt(float(c) * vol), "adjustflag": out_flag, "turn": "",
             "tradestatus": "1", "pctChg": _fmt((float(c) / float(prev_close) - 1) * 100) if prev_close else "",
             "isST": "0", "peTTM": "", "pbMRQ": "", "psTTM": "", "pcfNcfTTM": "",
         }
