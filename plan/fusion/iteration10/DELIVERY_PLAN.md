@@ -4,9 +4,19 @@
 
 本文件保存实施合同与历史执行记录；任务/权重/当前验收状态唯一见[PROGRESS](../PROGRESS.md)。T04-A–D映射`V1-G7-SERVICES`，E–L映射`V1-G7-DISPATCH`，T05-D/F1/F2映射`V1-G7-WAIT-EXIT`，E/E2/E3映射`V1-G7-LATE-CACHE`。同条款多个补修不重复加分；先前缺冻结分母，不追造每批百分点。
 
-下一产品合同对应`V1-G7-SESSION`，沿现有完整会话方案补齐文件所有权、有限矩阵与停止条件后开工；本次量化不是该产品项完成。每张后续卡须带任务ID，回执列E/A/P前后与范围影响；验收撤销重开原条款，新需求才修订分母。
+本批`V1-G7-SESSION`已限定接收；唯一量化事实见PROGRESS。下一产品合同为`V1-G7-BATCH-BUDGET`，先核既有批量deadline/资源界和续跑合同，再决定有限实施范围。每张后续卡须带任务ID，回执列E/A/P前后与范围影响；验收撤销重开原条款，新需求才修订分母。
 
-## 2026-10-25 当前合同：T05-F2 三个备用行情查询创建等待界
+## 2026-10-25 已限定接收：V1-G7-SESSION 完整共享会话生命周期
+
+用户恢复Codex+DSH协作；正式task/session与最新完成请求见[RESUME](../RESUME.md)。基线main=`5dcfaa74ef4920cc782994bde0c3d04b2f58e5bd`；合同`muyun-v1-g7-session` rev3，hash=`ab5c64ad394ac4cac91a147b34e0e02b9b4dc7970e7d555b7686fa15d54370f7`。交付SHA以Git实际日志为准。源码/测试归DSH，文档归主控；保护9项用户文件及原218未跟踪。用户可见帮助行及source/plain_errors已更新；报错速查手册由主控另行同步。
+
+- 生产边界：新增`src/data/baostock_session.py`，统一12个直接生产消费者及CLI/chat关闭入口。非阻塞独占租约由实际daemon worker finally释放；忙即降级；调用方超时不放lease、不另登出。复用既有timeout_call传播祖先abandoned及同线程更早deadline，跨线程不能借ID重入。
+- 生命周期：登录/心跳/查询/fields/error/分页耗尽/必要close由同worker在monotonic截止内执行；心跳终止error非0不健康。单查询15/20/30及原配置从登录前计；DataFeeder双query与正常close整体60秒，空stock同worker立即close且不查index，完整payload接收后才发布；独立ensure/login及logout 8秒；scanner原整批预算不变。
+- 验证：初版399 guard通过但有独立反例BLOCKERS；修订408 pass/1 skip后继续修核心。真实round3未修代码4 failed，修后224 passed/1 skipped；心跳终止错误1红1绿，receiver完成Event后精确1 passed。全量3611 passed/1 failed/12 skipped/1 deselected（pytest 525.09s，process 542.18s），唯一失败为J1旧无限mock；只将该函数fixture改为有限一行/EOF、原断言不变后，J1+financial+session+consumers 148 passed/1 skipped（pytest 9.16s，process 12.4s），IO=0。1018全量前后hash相同，修后仅该测试文件改变；AST除该函数其余module相同，受测生产字节未变。9保护hash与原218未跟踪存在性稳定。独立Sol/high最终PASS，增量接收此前有效证据；**没有最终树单次全绿全量**。专用child round2 1 passed只复用未变daemon退出路径，不能推及全部CLI/后台退出。
+- 限制：供应商线程不能强杀；真实外源、产品AI/账户及全部CLI退出未验。shim未改；业务身份/PIT/复权/评分/缓存版本未改。回执/指纹/详细结果见`T05G_SESSION_ACCEPTANCE.json`、`T05G_SESSION_SOURCE_PINS.json`、`T05G_SESSION_RESULTS.txt`。本批工程/验收各+3；进度唯一见PROGRESS，G7/T05/V1整体未完成。
+- 下一产品任务`V1-G7-BATCH-BUDGET`：核现有批量deadline/资源界、任务输入及配置身份、同日成功缓存与失败续跑，复用既有scanner整批截止；G3/G4另按原门取证，不伪填G6日期。本次交付后不自动开始新实验。
+
+## 2026-10-25 已接收历史合同：T05-F2 三个备用行情查询创建等待界
 
 状态：2026-10-25限定接收，基线main@ba0fc87已推送，本批SHA核实际Git历史。范围只含AKShareClient的`_fetch_baostock_realtime`、`_fetch_baostock_kline`、`_get_index_trend_uncached`，将query创建与读取共用各自既有30秒预算，登录另计；由Astra/low核异常边界、Sol/medium实施、Sol/high独立复核，型号无执行元数据时标未核实。
 

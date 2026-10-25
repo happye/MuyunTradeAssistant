@@ -2706,3 +2706,8 @@ Status: applied。持久记忆依靠共享JSON/合同/RESUME及各平台实际�
 ### LRN-20261025-PROGRESS-BASELINE｜固定分母和证据，不用批次测试数替代进度
 
 Status: applied。用户要求解除开发黑盒，V1按既有G/T拆成47条111权重，工程与验收分开，unknown不是未开发；G0治理不自加产品点。适用性纳入指纹、必需验收不可NA、mix固定50/50；范围变化需显式账本及Git独立审查，脚本自洽不等于历史防篡改。初稿独立复核发现G2重复账户读取及T05批量预算漏归属，首次冻结前纠正并留审计备注；历史批次无同口径前值不追造增量。只维护JSON，自动生成MD/HTML，每批报任务ID、行为、证据和前后指标；代码/数据/观察/费用阻断分开，旧遗留分流不忽略。用户本次要文档/量化，不跑投资产品全量。
+
+
+### LRN-20261025-SESSION-LIFECYCLE｜worker生命周期与有限终止证据
+
+Status: applied / V1-G7-SESSION限定接收。共享租约必须由真实daemon worker的finally释放；调用方超时不能释放仍运行worker持有的租约，也不能另行logout。嵌套调用继承祖先abandoned及更早deadline；检查接收结果、逐次操作及最终分页error。测试用有限迭代器和完成Event证明已走到终止点；无限mock或短暂未见副作用不是成功证据。真实round3曾4 failed，修后224 passed/1 skipped；心跳error与完成屏障各有精确反例。全量3611/1失败后仅修旧无限mock夹具并跑相关148/1；没有最终树单次全绿全量。完整限制与证据见[会话接收回执](../plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)。

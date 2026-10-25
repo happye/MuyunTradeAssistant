@@ -146,7 +146,8 @@ def shutdown_engines():
     # （未登录时调bs.logout()会打印"you don't login."噪声，无意义）
     try:
         from src.data import akshare_client
-        if getattr(akshare_client, "_bs_login_status", False):
+        from src.data import baostock_session
+        if getattr(akshare_client, "_bs_login_status", False) or baostock_session.is_logged_in():
             akshare_client._baostock_logout()
     except Exception as e:
         logger.warning(f"chat清理: baostock登出失败: {e}")

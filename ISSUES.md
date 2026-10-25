@@ -12,7 +12,7 @@
 | 方向 | 尚缺能力 / 下一步 | 门槛与入口 |
 |---|---|---|
 | G3/G4 研究资格 | 真实MID仍NO_VALID；历史行业/PIT、ROE、现金持续性未知 | 已验当前C15条件化观察不追认历史资格；第九轮现有合同 |
-| G7/T05 外源退出与成本 | 3个共享超时helper及第十轮ISS-120剩余4处并行executor（T05-D，2026-10-21，commit `ac6ce8a`）已有专用退出反例并修复；晚到写缓存已有T05-E有界抑制（2026-10-22）；Baostock会话重叠仍缺实证 | 下一产品批先固定有限反例；本次收尾不启动v43 |
+| G7/T05 外源退出与成本 | 3个共享超时helper及第十轮ISS-120剩余4处并行executor（T05-D，2026-10-21，commit `ac6ce8a`）已有专用退出反例并修复；晚到写缓存已有T05-E有界抑制（2026-10-22）；T05-G SESSION共享会话已限定接收，真实外源及全部CLI退出仍未验 | 下一产品批先固定有限反例；本次收尾不启动v43 |
 | G5/T04 超配涨幅禁入 | ISS-122（2026-10-21第十轮BUG-OW）rich未配对标签使3倍禁入被绕过，已修复，commit `c67b85e`；其余超配自动执行见下行低优先级 | 另见第十轮[DELIVERY_PLAN](plan/fusion/iteration10/DELIVERY_PLAN.md) |
 | G7/T06 AI/RAG质量 | 独立质量集、引用/提取正确率与成本配对基准 | 费用和范围另按合同，不从工程测试推导收益 |
 | G4/G6/T07 证据便携 | 公开财报测试依赖补齐；supplier.raw、更正检索、历史PIT及异机迁移仍缺 | SHA与原件清单核对不能代替财务资格核定 |
@@ -2244,6 +2244,9 @@ P3（已取消）:
 
 
 ### ISS-120: 三个共享超时包装器返回后仍阻塞解释器退出
+
+- **2026-10-25 T05-G SESSION限定接收**：`src/data/baostock_session.py:243`统一12直接消费者及CLI/chat关闭；非阻塞独占租约在实际daemon worker finally释放，忙即降级，调用方超时不释放租约/不另登出。完整登录、心跳、查询、分页与必要关闭按monotonic deadline执行，DataFeeder双query+close整体60秒，scanner整批预算保持。全量3611 passed/1 failed/12 skipped/1 deselected；唯一失败旧J1无限mock改为有限fixture后相关148 passed/1 skipped；无最终树单次全绿全量。独立Sol/high PASS，增量接收。真实外源、产品AI/账户、全部CLI退出未验；shim及身份/PIT/复权/评分/缓存版本未改。G7/T05/V1仍未关闭。回执、pins、结果见[第十轮接收记录](plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)；交付SHA以Git实际日志为准。
+
 
 - **2026-10-25 T05-F2限定接收（基线ba0fc87，交付SHA核本项Git历史）**：`src/data/akshare_client.py::_fetch_baostock_realtime/_fetch_baostock_kline/_get_index_trend_uncached`的query创建/读取共用各自原30秒，登录另计；query自身TimeoutError仍走原外层socket重置，迭代异常/参数/正常输出保持。9红→54绿，守卫相关159通过（9.12s），532源/9保护hash稳定，回执iteration10/T05F2_ACCEPTANCE.json；本批无全量。F1旧5计数明确更正为3，股名/预告先已覆盖；该3处现修复，原生共享会话及其它消费者仍待全合同，不关闭G7/T05。
 

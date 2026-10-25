@@ -1853,38 +1853,38 @@
       },
       "phase": "S1",
       "engineering": {
-        "status": "unmet",
+        "status": "met",
         "evidence": [
           {
-            "path": "MILESTONES.md",
-            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
-            "anchor": "F2保留登录/心跳与完整Baostock会话，尚未实施"
+            "path": "plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json",
+            "anchor": "accepted_scope; independent review; full plus local fixture correction"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05G_SESSION_RESULTS.txt",
+            "anchor": "original full failure and post-fix targeted results retained separately"
           }
         ],
-        "basis": "current_plan_record"
+        "basis": "independent_scope_acceptance_with_incremental_full_reuse"
       },
       "acceptance": {
-        "status": "unmet",
+        "status": "met",
         "evidence": [
           {
-            "path": "MILESTONES.md",
-            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
-            "anchor": "F2保留登录/心跳与完整Baostock会话，尚未实施"
+            "path": "plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json",
+            "anchor": "accepted_scope; independent review; full plus local fixture correction"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05G_SESSION_RESULTS.txt",
+            "anchor": "original full failure and post-fix targeted results retained separately"
           }
         ],
-        "basis": "current_plan_record"
+        "basis": "independent_scope_acceptance_with_incremental_full_reuse"
       },
-      "blockers": [
-        {
-          "type": "code",
-          "reason": "先落完整消费者及登录/心跳/异常/忙时/晚到恢复/总截止合同，再实施非阻塞租约与有限反例。",
-          "release_condition": "全部核定消费者的登录/心跳/查询/迭代/关闭共同接入非阻塞会话所有权与明确绝对总截止；超时旧worker仍运行时新请求降级且不干扰会话。登录、心跳和单次完整生命周期预算须独立验收，不能只加锁而留无界登录。"
-        }
-      ],
+      "blockers": [],
       "depends_on": [
         "V1-G7-WAIT-EXIT"
       ],
-      "next_action": "先落完整消费者及登录/心跳/异常/忙时/晚到恢复/总截止合同，再实施非阻塞租约与有限反例。"
+      "next_action": "保持已验会话/祖先放弃/绝对截止合同；新增消费者须同门。后续批量总预算、资源界和任务身份归V1-G7-BATCH-BUDGET，不据单次会话关闭整个G7。"
     },
     {
       "id": "V1-G7-BATCH-BUDGET",
@@ -2428,6 +2428,57 @@
       "reason": "用户要求量化既有V1；根据现有合同及历史接收登记，非全面代码审计；本批只建立管理基线，不自加产品完成点。",
       "new_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
       "new_total_weight": 111
+    },
+    {
+      "id": "SESSION-20261025",
+      "date": "2026-10-25",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-SESSION"
+      ],
+      "reason": "完整共享会话合同独立限定接收；原全量3611通过/1个无限mock失败，单函数夹具修后148通过，复用其余证据，不声称最终树全绿全量。仅SESSION工程/验收各+3，E44.9%→48.0%、A33.3%→36.0%、P39.1%–65.7%→42.0%–68.6%，18/47闭合；范围/权重/适用性不变，G7及V1仍未完成。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 44,
+          "unknown": 46,
+          "lower": 44.89795918367347,
+          "upper": 91.83673469387755
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 37,
+          "unknown": 7,
+          "lower": 33.333333333333336,
+          "upper": 39.63963963963964
+        },
+        "lower": 39.1156462585034,
+        "upper": 65.73818716675859,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json"
+      ]
     }
   ],
   "history_batches": [

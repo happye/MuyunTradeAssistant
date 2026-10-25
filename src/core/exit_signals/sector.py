@@ -120,26 +120,44 @@ def _fetch_20d_change_pct(code: str) -> Optional[float]:
     baostock K线调用（~1-2s，同 announcements fetch，可接受）。失败返回 None -> 跳过。
     """
     try:
-        from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout, AKShareClient
-        if not _ensure_baostock_login():
-            return None
+        from src.data.akshare_client import _ensure_baostock_login, AKShareClient
+        from src.data import baostock_session
         import baostock as bs
         end = datetime.now().strftime("%Y-%m-%d")
         start = (datetime.now() - timedelta(days=40)).strftime("%Y-%m-%d")  # 多取防停牌
         prefix, _ = AKShareClient._normalize_stock_code(code)
-        rs = bs.query_history_k_data_plus(
-            f"{prefix}.{code}", "date,close",
-            start_date=start, end_date=end,
-            adjustflag="2",  # E4（S1）：前复权，与标的主源 qfq 同口径（除权跳空不再伪装滞涨）
-        )
-        if rs.error_code != '0':
-            logger.debug(f"旗手{code}K线查询错误: {rs.error_msg}")
-            return None
-        rows = []
+
         def _drain():
-            while rs.next():
-                rows.append(rs.get_row_data())
-        _call_with_timeout(_drain, timeout=20)  # bs.next() 读取防 hang
+            if not _ensure_baostock_login():
+                return None
+            baostock_session.check()
+            rs = bs.query_history_k_data_plus(
+                f"{prefix}.{code}", "date,close",
+                start_date=start, end_date=end,
+                adjustflag="2",
+            )
+            baostock_session.check()
+            if rs.error_code != '0':
+                logger.debug(f"旗手{code}K线查询错误: {rs.error_msg}")
+                return None
+            out = []
+            while True:
+                baostock_session.check()
+                if not rs.next():
+                    break
+                baostock_session.check()
+                out.append(rs.get_row_data())
+                baostock_session.check()
+            baostock_session.check()
+            return out
+
+        try:
+            rows = baostock_session.run(_drain, timeout=20, label="bs-sector")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+            logger.debug(f"旗手{code}K线读取超时或共享会话忙")
+            return None
+        if rows is None:
+            return None
         # Q7/Q-R7（QR3 收口）：行级日期**完整严格解析**——不截断（[:10] 曾把
         # "2026-10-09garbage" 洗成合法日期，QR2 探针实证）；非法日历/垃圾尾巴剔除；
         # 未来日期剔除；**行日期必须落在本次请求窗口 [start, end] 内**（供应商无视

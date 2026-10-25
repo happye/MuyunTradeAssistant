@@ -81,7 +81,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+产业线索**（v0.8.6.8）。
 
-当前产品基线为 **v0.8.42 当次行业条件化现金观察限定接收**；真实 MID 仍 NO_VALID，G3/G4/G7/T04 及 V1 整体未完成。cv6/binding_v4/assertion_v2、v15、capture_only/default、笨总缓存和阈值保持。T01 仅登记业务读取范围通过，管理投影视图豁免。当前进度、待办与证据分别见 [MILESTONES](MILESTONES.md)、[RESUME](plan/fusion/RESUME.md) 和 [第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；历史测试数字不作为当前验收。
+当前产品基线为 **v0.8.42 当次行业条件化现金观察限定接收**，共享会话生命周期按第十轮限定接收；真实 MID 仍 NO_VALID，G3/G4/G7/T04 及 V1 整体未完成。cv6/binding_v4/assertion_v2、v15、capture_only/default、笨总缓存和阈值保持。T01 仅登记业务读取范围通过，管理投影视图豁免。当前进度、待办与证据分别见 [MILESTONES](MILESTONES.md)、[RESUME](plan/fusion/RESUME.md) 和 [第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；历史测试数字不作为当前验收。
 
 版本变更见 [README 版本历史](README.md#版本历史)；较早叙事保存在现有 [截至v0.8.14归档](docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md) 与 [v0.8.15–v0.8.19归档](docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md)。归档与历史实施账本只作历史证据，不作为当前执行或通过保证。
 
@@ -197,7 +197,7 @@ docs/               # 详细文档
 - **curl_cffi SSL 证书路径修复**（v0.8.6.3，ISS-045）：项目路径含中文「暮云思辨投资助手」致 curl_cffi 的 libcurl 找不到 CA 证书（curl 77）。修复在 `src/data/source_check.py:fix_curl_ssl_paths`（公共函数），data_provider/news_client 共用，启动时把 certifi 证书复制到 ASCII 路径 `~/.muyun_cacert.pem`
 - **RAG ingestion 用 `rglob` 扫 `.txt` + `.md`**（`src/rag/ingestion.py`）：新增策略文档放子目录也会被扫到
 - **AI 评分 JSON 截断容错**（v0.8.6.5）：`_call_ai_for_score(max_tokens=)` 按维度可调（业务纯度 2000，其余 1500）+ finish_reason==length 自动重试 + `_parse_score_json` 容错截断。截断退化 confidence=0.3（不再假装 0.5）。维度 prompt 须显式限 reasoning 长度防超 max_tokens
-- **网络超时与退出边界**（ISS-047）：akshare/baostock底层requests无timeout会挂起，现有调用点使用线程超时并提供降级。新增网络调用须核总期限与进程退出行为。`shutdown(wait=False)`只表示调用方不等待executor关闭，不能证明解释器退出时不会join仍运行线程；v41专用取证及本批三个共享包装器/robust调用用daemon和独立结果槽限定等待；新扫描补算有同一monotonic批截止。不能强杀DNS/socket或担保晚到副作用/全CLI退出；原剩余4个旧executor站点已由第十轮T05-D改用共享daemon并行helper`run_parallel_with_deadline`并有专用退出反例（ISS-120）。不要用with块包`ThreadPoolExecutor`，其`__exit__`的`shutdown(wait=True)`会等待工作线程。
+- **网络超时与退出边界**（ISS-047）：akshare/baostock底层requests无timeout会挂起，现有调用点使用线程超时并提供降级。新增网络调用须核总期限与进程退出行为。`shutdown(wait=False)`只表示调用方不等待executor关闭，不能证明解释器退出时不会join仍运行线程；v41专用取证及本批三个共享包装器/robust调用用daemon和独立结果槽限定等待；新扫描补算有同一monotonic批截止。不能强杀DNS/socket或担保晚到副作用/全CLI退出；原剩余4个旧executor站点已由第十轮T05-D改用共享daemon并行helper`run_parallel_with_deadline`并有专用退出反例（ISS-120）。不要用with块包`ThreadPoolExecutor`，其`__exit__`的`shutdown(wait=True)`会等待工作线程。 Baostock生产消费者须走`src/data/baostock_session.py`的`run`，登录/心跳/查询/分页/必要关闭同worker、同绝对截止；只有实际worker结束才释放非阻塞租约，调用方超时不得另登出。复用既有祖先放弃传播，核接收门和分页终止错误；不让可联网ResultData逃逸。
 - **笨总等级展示/决策一律用 `effective_grade()` 不用 `grade()`**（ISS-047）：`grade()`/`total_score` 是 Excel 保真值（试金石 7/7 锁死，不能改）；`effective_grade()`（一票否决判F/景气度=0判F/≤30最高C/≤50最高B）+ `normalized_score()`（÷(正权和×当期流动性系数) 归一化到100，B16 修复后满分恒=100 不随成交额漂移）才是展示/排序/定 mode 用的。改了等级逻辑必须改 effective_grade 而非 grade
 - **建仓笨总评分一次定 mode，更新不重跑**（跳法A 阶段1）：`pos add`/回测建仓时笨总 grade→`generator._mode_from_grade`（A→气宗180天/B→剑宗30天）。`pos plan --update` 由旧 mode 反推 grade 不重跑评分（避免纪律摇摆）。回测走 `backtest_engine._resolve_benzong_mode`（rule_scorer 规则版，带 code 缓存）
 - **AI client 必须设 timeout**（ISS-047）：`auto_scorer._build_ai_client` 已加 `timeout=60`+`max_retries=2`，防 bz scan 长批量挂起到 WinError 10060/10054。新写 OpenAI client 别忘 timeout

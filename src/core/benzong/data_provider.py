@@ -282,37 +282,53 @@ def get_industry_info(code: str) -> Optional[dict]:
     # 主数据源：Baostock 证监会行业分类
     try:
         import baostock as bs
-        if _ensure_baostock_login():
-            from src.data.akshare_client import _call_with_timeout
-            rs = bs.query_stock_industry(code=f"{prefix}.{code}")
-            if rs.error_code == '0':
-                # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
-                def _read_rows():
-                    rws = []
-                    while rs.next():
-                        rws.append(rs.get_row_data())
-                    return rws
+        from src.data import baostock_session
 
-                rows = _call_with_timeout(_read_rows, timeout=15)
-                if rows:
-                    f = rs.fields
-                    industry = rows[0][f.index('industry')]
-                    stock_name = rows[0][f.index('code_name')]
-                    from src.data import robust_fetch as _rf
-                    q = _robust("tencent_quote_fundamentals", code,
-                                lambda: _rf.tencent_quote_fundamentals(code), ttl=86400) or {}
-                    fmt = (lambda v: f"{v}亿" if v is not None else "")
-                    return {
-                        "industry_name": industry,
-                        "stock_name": stock_name,
-                        "total_market_cap": fmt(q.get("total_mcap_yi")),
-                        "circulating_market_cap": fmt(q.get("circ_mcap_yi")),
-                        "pe_ttm": q.get("pe_ttm"),
-                        "pb": q.get("pb"),
-                        "industry_raw": {"source": "baostock", "industry": industry},
-                    }
-            else:
+        def _read():
+            if not _ensure_baostock_login():
+                return None
+            baostock_session.check()
+            rs = bs.query_stock_industry(code=f"{prefix}.{code}")
+            baostock_session.check()
+            if rs.error_code != '0':
                 logger.warning(f"Baostock 行业查询失败: {rs.error_msg}")
+                return None
+            rows = []
+            while True:
+                baostock_session.check()
+                if not rs.next():
+                    break
+                baostock_session.check()
+                rows.append(rs.get_row_data())
+                baostock_session.check()
+            baostock_session.check()
+            fields = list(rs.fields)
+            baostock_session.check()
+            return fields, rows
+
+        try:
+            payload = baostock_session.run(_read, timeout=15, label="bs-industry")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+            logger.warning("Baostock 行业查询超时或共享会话忙")
+            payload = None
+        if payload:
+            f, rows = payload
+            if rows:
+                industry = rows[0][f.index('industry')]
+                stock_name = rows[0][f.index('code_name')]
+                from src.data import robust_fetch as _rf
+                q = _robust("tencent_quote_fundamentals", code,
+                            lambda: _rf.tencent_quote_fundamentals(code), ttl=86400) or {}
+                fmt = (lambda v: f"{v}亿" if v is not None else "")
+                return {
+                    "industry_name": industry,
+                    "stock_name": stock_name,
+                    "total_market_cap": fmt(q.get("total_mcap_yi")),
+                    "circulating_market_cap": fmt(q.get("circ_mcap_yi")),
+                    "pe_ttm": q.get("pe_ttm"),
+                    "pb": q.get("pb"),
+                    "industry_raw": {"source": "baostock", "industry": industry},
+                }
     except Exception as e:
         logger.warning(f"Baostock 行业查询异常: {type(e).__name__}: {str(e)[:80]}")
 

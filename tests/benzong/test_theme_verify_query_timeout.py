@@ -8,7 +8,7 @@ import pytest
 # Import before patches: a first import must not capture any test substitute.
 from src.core.benzong import theme_locator
 from src.data import akshare_client
-from src.data.timeout_call import call_with_timeout
+from src.data import baostock_session
 
 
 @pytest.fixture
@@ -17,19 +17,22 @@ def query_env(monkeypatch):
     budgets = []
     materialized = []
 
+    real_run = baostock_session.run
+
     def bounded(fn, *args, timeout, **kwargs):
         budgets.append(timeout)
 
         def owned():
             workers.append(threading.current_thread())
-            value = fn(*args, **kwargs)
+            value = fn(*args)
             materialized.append(value)
             return value
 
-        return call_with_timeout(owned, timeout=0.05)
+        # Keep the production absolute runner/lease, but shorten only the test wait.
+        return real_run(owned, timeout=0.5, label=kwargs.get("label", "bs-test"))
 
     monkeypatch.setattr(akshare_client, "_ensure_baostock_login", lambda: True)
-    monkeypatch.setattr(akshare_client, "_call_with_timeout", bounded)
+    monkeypatch.setattr(baostock_session, "run", bounded)
     yield SimpleNamespace(budgets=budgets, materialized=materialized, workers=workers)
     # Every test releases its barriers before fixture teardown restores mocks.
     for worker in workers:
@@ -47,6 +50,7 @@ class Result:
         self.index = -1
         self.next_calls = 0
         self.row_calls = 0
+        self.field_reads = 0
 
     @property
     def error_code(self):
@@ -56,6 +60,7 @@ class Result:
     @property
     def fields(self):
         self.hook("fields")
+        self.field_reads += 1
         return self._fields
 
     def next(self):
@@ -112,8 +117,39 @@ def test_query_and_consumption_return_before_blocked_worker_finishes(
     for worker in query_env.workers:
         worker.join(timeout=3)
         assert not worker.is_alive(), "late query worker did not terminate"
-    assert result.next_calls == 2 and result.row_calls == 1
+    if blocked_stage == "next":
+        assert result.next_calls == 1
+        assert result.row_calls == 0, "late next returned and then get_row_data ran"
+    elif blocked_stage == "row":
+        assert result.next_calls == 1
+        assert result.row_calls == 1
+    else:
+        assert result.next_calls == 0
+        assert result.row_calls == 0
     assert returned == [None], "late successful rows changed the expired return"
+
+
+def test_late_error_does_not_read_fields(monkeypatch, query_env):
+    entered, release = threading.Event(), threading.Event()
+
+    def hook(stage):
+        if stage == "error":
+            entered.set()
+            assert release.wait(3)
+
+    result = Result(hook=hook)
+    monkeypatch.setattr(bs, "query_stock_basic", lambda **kwargs: result)
+    finished = threading.Event()
+    caller = threading.Thread(target=lambda: (theme_locator._verify_code("600519", "贵州茅台"), finished.set()))
+    caller.start()
+    try:
+        assert entered.wait(2)
+        assert finished.wait(0.7)
+    finally:
+        release.set()
+        caller.join(3)
+    assert not caller.is_alive()
+    assert result.field_reads == 0, "late error_code was followed by fields read"
 
 
 def test_normal_query_materializes_fields_and_all_rows(monkeypatch, query_env):
@@ -194,4 +230,4 @@ def test_failed_login_does_not_query(monkeypatch, query_env):
 
     monkeypatch.setattr(bs, "query_stock_basic", forbidden)
     assert theme_locator._verify_code("600519", "贵州茅台") is None
-    assert query_env.budgets == []
+    assert query_env.budgets == [15]

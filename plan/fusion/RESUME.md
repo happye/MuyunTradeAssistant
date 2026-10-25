@@ -1,11 +1,25 @@
 # 融合项目恢复入口
 
-## 当前入口：2026-10-25 Codex原生Subagent
+## 当前入口：2026-10-25 V1-G7-SESSION 限定接收
 
-跨会话/跨工具进度接续统一执行[量化合同第7节](PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新)：新对话先核共享账本，交付时由唯一写入者更新并生成看板；Claude Code/Grok Build/Copilot/Cursor入口已同步。本批仅完善持久规则，不改产品任务或进度分数。
+**当前摘要**：用户恢复Codex+DSH协作；Codex审批/独立验收/Git，DSH实施。正式task=`muyun-dev-native-20261020`、session=`codex-1de974ba-34f0-4de8-a092-6fdfa43e822c`；最新完成请求`32577d22-b00e-4628-8ad0-6fce6a7e6763`/seq4096，已停写。基线main=`5dcfaa74ef4920cc782994bde0c3d04b2f58e5bd`；本段记录实施基线，交付SHA以Git实际日志为准。合同`muyun-v1-g7-session` rev3，hash=`ab5c64ad394ac4cac91a147b34e0e02b9b4dc7970e7d555b7686fa15d54370f7`。
 
-**当前管理入口**：先看[量化账本](PROGRESS.md)和[计分合同](PROGRESS_CONTRACT.md)，JSON是唯一进度事实源。产品基线`f07b743`，本批只整理路线/量化/协作复盘，不改产品能力、不自加进度；历史成果已纳入基线。下一产品卡关联`V1-G7-SESSION`：先核全消费者合同，再做非阻塞会话协调。并行可推进`V1-G3-REAL-MID`及G4数据资格取证，真实费用仍按专项授权；G6真实观察先冻结协议，不假填日期。每批更新JSON并重新生成视图，交付说明前后进度和剩余，纯维护允许零增量。
+**已验摘要**：统一12个直接生产消费者及CLI/chat关闭入口；独占非阻塞租约由实际daemon worker finally释放，忙即降级，调用方超时不释放租约/不另登出；复用祖先abandoned与同线程更早deadline，跨线程不借ID重入。登录/心跳/查询/fields/error/分页耗尽/必要close在worker及monotonic截止内；心跳终止error非0不健康。单查询15/20/30及原配置从登录前计；DataFeeder双query与正常close整体60秒，空stock同worker立即close且不查index，完整payload接收后才发布；独立ensure/login与logout 8秒，scanner保留整批预算。
 
+**证据与限制**：真实round3当前未修代码4 failed→修后224 passed/1 skipped；心跳终止错误1红1绿；receiver完成Event后精确1 passed。全量3611 passed/1 failed/12 skipped/1 deselected（pytest 525.09s，process 542.18s）；唯一失败为`tests/core/test_j1_mapping_boundary.py::test_has_quarter_evidence_and_skip_archived`旧无限mock，局部改有限fixture/EOF且原断言不变后，J1+financial+session+consumers 148 passed/1 skipped（pytest 9.16s，process 12.4s）。无最终树单次全绿全量声明。9保护hash及原218未跟踪存在性稳定；1018全量前后哈希相同，修后仅该测试文件变化；受测生产字节未变。独立Sol/high最终PASS，接受增量证据；专用child round2 1 passed只复用未变daemon退出路径。真实外源、产品AI/账户、全部CLI退出及供应商线程强杀未验；shim、业务身份/PIT/复权/评分/缓存版本未改。回执、source pins、结果见`iteration10/T05G_SESSION_ACCEPTANCE.json`、`T05G_SESSION_SOURCE_PINS.json`、`T05G_SESSION_RESULTS.txt`。
+
+**状态与下一步**：本批V1-G7-SESSION工程/验收各+3；冻结47条/111权重，E44/98→47/98，A37/111→40/111，P39.1%–65.7%→42.0%–68.6%，closed 17→18。唯一账本为PROGRESS；S1 18条均闭合，但G7/T05及V1整体未完成。下一产品任务V1-G7-BATCH-BUDGET：先核现有批量deadline/资源界、任务输入及配置身份、同日成功缓存与失败续跑，复用既有scanner整批截止；另按G3/G4原门独立取证，不假填G6日期。本次交付后不自动开始新实验。
+
+本合同hash只标识已接收的SESSION批次；下一目标先核实际main新HEAD及有效合同，不直接持旧hash派发。
+
+旧“仅Codex/下一SESSION未实施”及旧下一步段落仅作历史记录；它们不得覆盖本段当前身份和状态。恢复时核正式task最新请求、Git实际diff和三个回执资产，不盲目重投。
+
+跨会话/跨工具进度接续统一执行[量化合同第7节](PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新)：新对话先核共享账本，交付时由唯一写入者更新并生成看板；Claude Code/Grok Build/Copilot/Cursor入口已同步。产品批次按实际验收更新共享JSON；纯维护允许分数不变。
+
+**当前管理入口**：先看[量化账本](PROGRESS.md)和[计分合同](PROGRESS_CONTRACT.md)，JSON是唯一进度事实源。本批V1-G7-SESSION已限定接收，增量和限制见上方及第十轮计划；进度前后由唯一账本记录。下一产品卡`V1-G7-BATCH-BUDGET`，先核现有批量deadline/资源界、任务输入与配置身份、成功缓存及失败续跑，复用scanner整批截止。G3/G4独立数据取证按原门，G6不假填真实观察日期；本批后不自动启动新实验。
+
+
+## 历史批次入口（不得覆盖上方当前指派）
 
 2026-10-25 T05-F2限定接收：备用行情、历史K线、指数趋势的query创建与耗尽共用各自既有登录后30秒预算，保留供应商异常/socket重置、迭代异常、空/error与正常输出。正式9红→54绿，主控8文件守卫159 passed（9.12s），532项受测指纹、9保护hash和原218未跟踪存在性稳定。本批未跑全量；登录/心跳、整批预算与原生会话重叠仍待，G7/T05/V1未关闭。 本批生产与测试独立复核PASS，见[验收回执](iteration10/T05F2_ACCEPTANCE.json)和[合同](iteration10/DELIVERY_PLAN.md)。E3/F1已分别推送e28c674/ba0fc87；本批SHA核main实际Git日志。下一项是完整Baostock非阻塞会话租约合同，需覆盖全部消费者的登录/心跳/查询/迭代/关闭，不能单站点加锁或仅补更多计数探针。当前只用Codex原生Subagent，主控审批与Git；保留用户配置/账户/索引。
 
@@ -21,7 +35,7 @@
 
 更新2026-10-21。读AGENTS/CODEX→MILESTONES→STATUS→本文件。T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
 
-## 当前交付与下一步
+## 历史交付摘要（当前批之前）
 
 裁决`ACCEPTED_SHARED_TIMEOUT_AND_REMOTE_INTEGRATION_SCOPE_ONLY`。Git由Codex负责，默认直接main、无新命名分支/PR；最终交付SHA以实际main与origin/main日志核对，不沿用旧bd9e5d0。远端4cc3bf6的13文件增量已在临时detached树与本批补丁整合验收，最终全量和指纹见第九轮R15、REVIEW_INDEX及FULL/TARGETED原始日志。T05自身基线3119结果与最终整合分轮保留，E全量因F新发现由主控中止，不作产品失败或完整通过。
 
@@ -31,11 +45,11 @@
 
 ## DSH恢复身份
 
-个人Skill local-settings沿用共享账本`C:/Users/Crux/.codex/codex-dsh-state`、连接native。正式task=`muyun-dev-native-20261020`；session=`codex-1de974ba-34f0-4de8-a092-6fdfa43e822c`；原生cwd=`G:\Tools\暮云思辨投资助手`；workspace=`c2168aee-0263-45c8-8dd3-2595db031930`，显示名称“暮云正式工作区｜Codex委派DSH实施”。新Codex聊天先resume/status，再核原生header/cwd、main/HEAD、实际diff与最近resultFile，未知状态不盲目重投。A-F六请求均COMPLETED，最后F=`fe5a34e9-6b35-4400-9f39-17b334a3281b`/seq1277；DSH已停写，Git归Codex。原生仍是完整DSH会话，不声称嵌套Agent。
+个人Skill local-settings沿用共享账本`C:/Users/Crux/.codex/codex-dsh-state`、连接native。正式task=`muyun-dev-native-20261020`；session=`codex-1de974ba-34f0-4de8-a092-6fdfa43e822c`；原生cwd=`G:\Tools\暮云思辨投资助手`；workspace=`c2168aee-0263-45c8-8dd3-2595db031930`，显示名称“暮云正式工作区｜Codex委派DSH实施”。新Codex聊天先resume/status，再核原生header/cwd、main/HEAD、实际diff与最近resultFile，未知状态不盲目重投。A-F为历史六请求，均COMPLETED；该阶段最后F=`fe5a34e9-6b35-4400-9f39-17b334a3281b`/seq1277；DSH已停写，Git归Codex。原生仍是完整DSH会话，不声称嵌套Agent。
 
-本轮D-F仅允许写OS Temp detached验收树，未迁移原生cwd；此临时树不再是后续产品默认写入口。正式Git交付后新合同回原工作区，先核main实际HEAD。旧task muyun-g7-readonly-20261020保留只读试用，muyun-dev-20261020是零prompt空会话，均不作继续入口。工具长期问题唯一在其独立仓docs/validation.md，本项目不迭代工具。
+历史D-F仅允许写OS Temp detached验收树，未迁移原生cwd；此临时树不再是后续产品默认写入口。正式Git交付后新合同回原工作区，先核main实际HEAD。旧task muyun-g7-readonly-20261020保留只读试用，muyun-dev-20261020是零prompt空会话，均不作继续入口。工具长期问题唯一在其独立仓docs/validation.md，本项目不迭代工具。
 
-## 保护与限制
+## 历史阶段保护与限制（当前保护见本页入口）
 
 portfolio/备份、knowledge/index原有脏改与原109个未跟踪文件只保护，不恢复、不提交。项目venv、-B、显式UTF8；review_test_runner全量显式传tests，专用四child另行精确许可，不放宽普通守卫；不git add -A。原生模型实施获用户授权，无产品AI/真实账户迁移；费用未量化，不承诺节省比例或额度耗尽后常驻主控。
 

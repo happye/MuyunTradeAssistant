@@ -1,0 +1,833 @@
+DERIVED EVIDENCE VIEW: each following line is enclosed by one leading and one trailing |. The content inside retains diagnostic trailing spaces; text newlines are normalized to LF. Exact raw bytes are unchanged in the named original files, with raw byte lengths and SHA256 in the receipt.
+|V1-G7-SESSION evidence bundle, 2026-10-25|
+|Raw originals remain in OS Temp/muyun-session-20261025; copies below normalize text newlines to LF. Original byte lengths and SHA256 are recorded separately.|
+|Initial direct run is not offline evidence; stage1/round2 restored-path or artificial-bypass reds are labeled historical diagnostics, not a Git-baseline red. Round3 has four genuine pre-fix failures; round4 has one genuine pre-fix failure. The full run is NOT all green; fixture correction is accepted incrementally.|
+||
+|===== stage1/direct.meta.json | raw SHA256 97b65417580ec13129a2b6ca34f56fcc854868b778863ffb7829315887f06442 =====|
+|{|
+|    "stdout_bytes":  522,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B -X utf8 -m pytest -q -p no:cacheprovider tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py tests/data_sources/test_source_check.py",|
+|    "stdout_sha":  "A636EEB0AB9DC2DD931545E425F942C0BEDF84F65E5A7BACA289C1061E6EFA1D",|
+|    "stderr_bytes":  0,|
+|    "seconds":  24|
+|}|
+||
+||
+|===== stage1/direct.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+||
+||
+|===== stage1/direct.stdout.txt | raw SHA256 a636eeb0ab9dc2dd931545e425f942c0bedf84f65e5a7baca289c1061e6efa1d =====|
+|........................................................................ [ 17%]|
+|........................................................................ [ 35%]|
+|........................................................................ [ 53%]|
+|........................................................................ [ 71%]|
+|........................................................................ [ 88%]|
+|.............................................                            [100%]|
+|405 passed, 1 deselected in 22.25s|
+||
+||
+|===== stage1/guarded.meta.json | raw SHA256 117891aa9e7c2991fae8e575ba58a42d6b5344e332febc33e9c2f263328c21e3 =====|
+|{|
+|    "stdout_bytes":  715,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py tests/data_sources/test_source_check.py",|
+|    "stdout_sha":  "74729C55687A126546B9A8E931A3F64FFED6D2AEDB376CFEEEFBCDACC1633792",|
+|    "stderr_bytes":  0,|
+|    "seconds":  29.56|
+|}|
+||
+||
+|===== stage1/guarded.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== stage1/guarded.stdout.txt | raw SHA256 74729c55687a126546b9a8e931a3f64ffed6d2aedb376cfeeefbcdacc1633792 =====|
+|........................................................................ [ 17%]|
+|........................................................................ [ 35%]|
+|........................................................................ [ 53%]|
+|........................................................................ [ 71%]|
+|........................................................................ [ 88%]|
+|.............................................                            [100%]|
+|405 passed, 1 deselected in 26.31s|
+|BLOCKED_IO_ATTEMPTS {'network': 221, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== stage1/guarded_final.meta.json | raw SHA256 dc8c29daeb0fd7bebc59a4e680ccca14b8851279df6eaf7317d34c2ab15d3a61 =====|
+|{|
+|    "stdout_bytes":  701,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py",|
+|    "stdout_sha":  "1B9CFF2D120CAE7FF9A1C090A94856C3D6E55F9203793B42A0AF32601FBD1F19",|
+|    "stderr_bytes":  0,|
+|    "seconds":  29.35|
+|}|
+||
+||
+|===== stage1/guarded_final.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== stage1/guarded_final.stdout.txt | raw SHA256 1b9cff2d120cae7ff9a1c090a94856c3d6e55f9203793b42a0af32601fbd1f19 =====|
+|........................................................................ [ 18%]|
+|........................................................................ [ 36%]|
+|........................................................................ [ 54%]|
+|........................................................................ [ 72%]|
+|........................................................................ [ 90%]|
+|.......................................                                  [100%]|
+|399 passed in 25.86s|
+|BLOCKED_IO_ATTEMPTS {'network': 221, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== stage1/guarded_offline.meta.json | raw SHA256 00902b536fe32beca37fa0e4a503eceaac297b8c45d50776f64735ed31399695 =====|
+|{|
+|    "stdout_bytes":  701,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py",|
+|    "stdout_sha":  "B84E1F497464A942BC570E76C641236CCBD8C8919F12CEA8099FC5986FDB18AC",|
+|    "stderr_bytes":  0,|
+|    "seconds":  28.24|
+|}|
+||
+||
+|===== stage1/guarded_offline.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== stage1/guarded_offline.stdout.txt | raw SHA256 b84e1f497464a942bc570e76c641236ccbd8c8919f12cea8099fc5986fdb18ac =====|
+|........................................................................ [ 18%]|
+|........................................................................ [ 36%]|
+|........................................................................ [ 54%]|
+|........................................................................ [ 72%]|
+|........................................................................ [ 90%]|
+|.......................................                                  [100%]|
+|399 passed in 25.10s|
+|BLOCKED_IO_ATTEMPTS {'network': 221, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== stage1/red_consumer.meta.json | raw SHA256 3aa67686d8dfad92afa29d4bea502338294121427a11f0983b5aa228951996cd =====|
+|{|
+|  "command": ".venv\\Scripts\\python.exe -B -X utf8 -m pytest -q -p no:cacheprovider tests/core/test_baostock_session_consumers.py::test_kline_query_holds_lease_and_second_consumer_does_not_query (pre-migration call path temporarily restored; then final source restored)",|
+|  "rc": 1,|
+|  "seconds": 2.74,|
+|  "stdout_bytes": 2267,|
+|  "stderr_bytes": 0,|
+|  "stdout_sha": "722f971d35efcd0cc0a8b18a58ef91e83910880cbbbadb7128930379ce5455bd",|
+|  "stderr_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",|
+|  "reason": "second consumer entered the supplier while first lease was held (calls=2)"|
+|}|
+||
+|===== stage1/red_consumer.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== stage1/red_consumer.stdout.txt | raw SHA256 722f971d35efcd0cc0a8b18a58ef91e83910880cbbbadb7128930379ce5455bd =====|
+|F                                                                        [100%]|
+|================================== FAILURES ===================================|
+|_______ test_kline_query_holds_lease_and_second_consumer_does_not_query _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000268FFBEFB10>|
+||
+|    def test_kline_query_holds_lease_and_second_consumer_does_not_query(monkeypatch):|
+|        entered, release = threading.Event(), threading.Event()|
+|        calls = []|
+|    |
+|        def query(*args, **kwargs):|
+|            calls.append(args)|
+|            if len(calls) == 1:|
+|                entered.set()|
+|                assert release.wait(3), "test barrier was not released"|
+|            return Result([["2026-10-23", "sh.600519", "10", "12", "9", "11", "10", "100", "1100"]])|
+|    |
+|        monkeypatch.setattr(ac.bs, "query_history_k_data_plus", query)|
+|        monkeypatch.setattr(ac.bs, "query_stock_basic", lambda **kwargs: SimpleNamespace(error_code="0"))|
+|        monkeypatch.setattr(ac, "_ensure_baostock_login", lambda: True)|
+|    |
+|        results = []|
+|        first = threading.Thread(target=lambda: results.append(|
+|            ac.AKShareClient._fetch_baostock_kline("600519", start_date="2026-10-01", end_date="2026-10-25")))|
+|        first.start()|
+|        assert entered.wait(2)|
+|        second = threading.Thread(target=lambda: results.append(|
+|            ac.AKShareClient._fetch_baostock_kline("600519", start_date="2026-10-01", end_date="2026-10-25")))|
+|        second.start()|
+|        try:|
+|            time.sleep(0.2)|
+|>           assert len(calls) == 1, "second consumer entered the supplier while the first lease was held"|
+|E           AssertionError: second consumer entered the supplier while the first lease was held|
+|E           assert 2 == 1|
+|E            +  where 2 = len([('sh.600519', 'date,code,open,high,low,close,preclose,volume,amount'), ('sh.600519', 'date,code,open,high,low,close,preclose,volume,amount')])|
+||
+|tests\core\test_baostock_session_consumers.py:58: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_baostock_session_consumers.py::test_kline_query_holds_lease_and_second_consumer_does_not_query|
+|1 failed in 1.53s|
+||
+||
+|===== round2/child_exit.meta.json | raw SHA256 787d4161ec1b410028b268be4c56b0a78328feb2c63f93489d5b7e08d218c154 =====|
+|{|
+|    "stdout_bytes":  100,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  "MUYUN_SESSION_EXIT_PROBE=1 .venv\\\\Scripts\\\\python.exe -B -X utf8 -m pytest -q -p no:cacheprovider tests/core/test_baostock_session.py::test_daemon_worker_does_not_block_exit",|
+|    "stdout_sha":  "64E0D33E08A54E45AAB6FDD4AAC9DB8A4664AF65FEE05BE28FD03B7FCD5F74C6",|
+|    "stderr_bytes":  0,|
+|    "seconds":  2.38|
+|}|
+||
+||
+|===== round2/child_exit.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round2/child_exit.stdout.txt | raw SHA256 64e0d33e08a54e45aab6fdd4aac9db8a4664af65fee05be28fd03b7fcd5f74c6 =====|
+|.                                                                        [100%]|
+|1 passed in 1.19s|
+||
+||
+|===== round2/green.meta.json | raw SHA256 56286e53ab1eec1e8383bd50a09823ce71e15ac0c0f587b2f08a31e17efe2b85 =====|
+|{|
+|    "stdout_bytes":  710,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py",|
+|    "stdout_sha":  "1A27561F5C2723AAAD5647BBC2F9252571E6921B5A23D54EF87176B1A488AA91",|
+|    "stderr_bytes":  0,|
+|    "seconds":  24.12|
+|}|
+||
+||
+|===== round2/green.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round2/green.stdout.txt | raw SHA256 1a27561f5c2723aaad5647bbc2f9252571e6921b5a23d54ef87176b1a488aa91 =====|
+|s....................................................................... [ 17%]|
+|........................................................................ [ 35%]|
+|........................................................................ [ 52%]|
+|........................................................................ [ 70%]|
+|........................................................................ [ 88%]|
+|.................................................                        [100%]|
+|408 passed, 1 skipped in 20.90s|
+|BLOCKED_IO_ATTEMPTS {'network': 1, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round2/green_final.meta.json | raw SHA256 2b9fb216a6f860ce58c86d83caba83c5a8af749c3b55d15df44b9dd4a88a8057 =====|
+|{|
+|    "stdout_bytes":  710,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_fear_index_history.py tests/core/test_fear_index_adversarial.py tests/core/test_remote_integration_boundaries.py tests/core/test_trial_run_fixes.py tests/core/test_v0895_correctness_batch.py tests/core/test_iss117_q_batch.py tests/core/test_iss117_qr3_closeout.py tests/core/test_iss117_qr4_coverage.py tests/core/test_iss117_qr5_integrity.py tests/chat/test_chat_shutdown.py tests/core/test_fundamental_alert.py tests/core/test_signal_authority_iss117.py",|
+|    "stdout_sha":  "70E2DD7585E883A4EDBF493229F77BF59D32F2FB4E2EB9A4AD38E8CDDD2BBBA4",|
+|    "stderr_bytes":  0,|
+|    "seconds":  25.58|
+|}|
+||
+||
+|===== round2/green_final.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round2/green_final.stdout.txt | raw SHA256 70e2dd7585e883a4edbf493229f77bf59d32f2fb4e2eb9a4ad38e8cddd2bbba4 =====|
+|s....................................................................... [ 17%]|
+|........................................................................ [ 35%]|
+|........................................................................ [ 52%]|
+|........................................................................ [ 70%]|
+|........................................................................ [ 88%]|
+|.................................................                        [100%]|
+|408 passed, 1 skipped in 22.24s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round2/red_ancestor.meta.json | raw SHA256 7f43f8beb0385b79dd013f0728faebfd672e1f424099b2a4259141fb182a3724 =====|
+|{|
+|  "command": "temporary bypass of ancestor check + plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py -k ancestor; source signature restored before green",|
+|  "rc": 1,|
+|  "seconds": 2.7,|
+|  "stdout_bytes": 1749,|
+|  "stderr_bytes": 0,|
+|  "stdout_sha": "e3fc9c554e330a91db0eeb7e665427f1cf346bf6b242d4f6ffc9564cbae1a796",|
+|  "stderr_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",|
+|  "reason": "child IO ran after ancestor abandoned"|
+|}|
+||
+|===== round2/red_ancestor.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round2/red_ancestor.stdout.txt | raw SHA256 e3fc9c554e330a91db0eeb7e665427f1cf346bf6b242d4f6ffc9564cbae1a796 =====|
+|F                                                                        [100%]|
+|================================== FAILURES ===================================|
+|______________ test_ancestor_abandonment_prevents_late_child_io _______________|
+||
+|    def test_ancestor_abandonment_prevents_late_child_io():|
+|        entered, release = threading.Event(), threading.Event()|
+|        io = []|
+|    |
+|        def child_body():|
+|            entered.set()|
+|            assert release.wait(3)|
+|            session.check()|
+|            io.append("late-io")|
+|            return "late"|
+|    |
+|        def parent():|
+|            return session.run(child_body, timeout=1, label="child-under-parent")|
+|    |
+|        with pytest.raises(TimeoutError):|
+|            call_with_timeout(parent, timeout=0.03)|
+|        assert entered.wait(2)|
+|        release.set()|
+|        deadline = time.monotonic() + 2|
+|        while session._LEASE.locked() and time.monotonic() < deadline:|
+|            time.sleep(0.01)|
+|        assert not session._LEASE.locked()|
+|>       assert io == [], "child IO ran after ancestor abandoned"|
+|E       AssertionError: child IO ran after ancestor abandoned|
+|E       assert ['late-io'] == []|
+|E         |
+|E         Left contains one more item: 'late-io'|
+|E         Use -v to get more diff|
+||
+|tests\core\test_baostock_session.py:222: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_baostock_session.py::test_ancestor_abandonment_prevents_late_child_io|
+|1 failed, 12 deselected in 0.86s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round3/green.meta.json | raw SHA256 6dde024b752a828ae3685955e92600c2567f08a5061946c94d09d4442c85b92a =====|
+|{|
+|    "stdout_bytes":  548,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_remote_integration_boundaries.py",|
+|    "stdout_sha":  "24DC9B0A98E14282150D6134303871028C3B38C8D954304D8A519CD060F3950A",|
+|    "stderr_bytes":  0,|
+|    "seconds":  17.76|
+|}|
+||
+||
+|===== round3/green.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round3/green.stdout.txt | raw SHA256 24dc9b0a98e14282150d6134303871028c3b38c8d954304d8a519cd060f3950a =====|
+|s....................................................................... [ 32%]|
+|........................................................................ [ 64%]|
+|........................................................................ [ 96%]|
+|.......                                                                  [100%]|
+|222 passed, 1 skipped in 15.07s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round3/green2.meta.json | raw SHA256 799fcf5789c744d04688ad9645ff382fd4d6d5a5481ec0b4e96ebadc1061f071 =====|
+|{|
+|    "stdout_bytes":  548,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_remote_integration_boundaries.py",|
+|    "stdout_sha":  "71808BF2110D59D50A25E7B580E28B788802AE9BCEE7A477435CC05D7A75CAB7",|
+|    "stderr_bytes":  0,|
+|    "seconds":  17.9|
+|}|
+||
+||
+|===== round3/green2.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round3/green2.stdout.txt | raw SHA256 71808bf2110d59d50a25e7b580e28b788802ae9bcee7a477435cc05d7a75cab7 =====|
+|s....................................................................... [ 32%]|
+|........................................................................ [ 64%]|
+|........................................................................ [ 96%]|
+|........                                                                 [100%]|
+|223 passed, 1 skipped in 15.26s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round3/green3.meta.json | raw SHA256 2f510a0fe7120ea4dc2a23ddd4cbd1280c9b9c68f743841c91598453e90246fc =====|
+|{|
+|    "stdout_bytes":  548,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py tests/core/test_baostock_query_deadline.py tests/benzong/test_theme_verify_query_timeout.py tests/core/test_financial_data.py tests/core/test_remote_integration_boundaries.py",|
+|    "stdout_sha":  "C9BC201189C2AC604AB1FAE0310DE4F3DD317A31BDE4CEEB5FD727B57C0BB90F",|
+|    "stderr_bytes":  0,|
+|    "seconds":  17.9|
+|}|
+||
+||
+|===== round3/green3.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round3/green3.stdout.txt | raw SHA256 c9bc201189c2ac604ab1fae0310de4f3dd317a31bde4ceeb5fd727b57c0bb90f =====|
+|s....................................................................... [ 32%]|
+|........................................................................ [ 64%]|
+|........................................................................ [ 96%]|
+|.........                                                                [100%]|
+|224 passed, 1 skipped in 15.23s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round3/red.meta.json | raw SHA256 f05e6a50868ad20861e1bbeae39fb4adf983e34aefa3a74deacbb02038e0f324 =====|
+|{|
+|  "command": "plan/fusion/iteration9/review_test_runner.py <4 exact nodeids>",|
+|  "rc": 1,|
+|  "seconds": 5.55,|
+|  "stdout_bytes": 6637,|
+|  "stderr_bytes": 0,|
+|  "stdout_sha": "4714e64fb005ca992ed88d224e099d3251f84dfc2f11bb0e1ab106310c13bf7b",|
+|  "stderr_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",|
+|  "reason": "4 failed: B1 heartbeat drain, B2 receiver ancestor, B4 empty close/index, B5 basic socket reset"|
+|}|
+||
+|===== round3/red_b1_b2_b4_b5.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round3/red_b1_b2_b4_b5.stdout.txt | raw SHA256 4714e64fb005ca992ed88d224e099d3251f84dfc2f11bb0e1ab106310c13bf7b =====|
+|FFFF                                                                     [100%]|
+|================================== FAILURES ===================================|
+|___________ test_heartbeat_login_drains_next_and_row_before_success ___________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025B126C6390>|
+||
+|    def test_heartbeat_login_drains_next_and_row_before_success(monkeypatch):|
+|        import baostock as bs|
+|    |
+|        events = []|
+|    |
+|        class PingRS:|
+|            error_code = "0"|
+|            error_msg = ""|
+|    |
+|            @property|
+|            def fields(self):|
+|                events.append("fields")|
+|                return ["code"]|
+|    |
+|            def next(self):|
+|                events.append("next")|
+|                return len([e for e in events if e == "next"]) < 2|
+|    |
+|            def get_row_data(self):|
+|                events.append("row")|
+|                return ["sh.600000"]|
+|    |
+|        monkeypatch.setattr(session, "_LOGGED_IN", True, raising=False)|
+|        monkeypatch.setattr(bs, "query_stock_basic", lambda **kwargs: PingRS())|
+|        assert session.run(session._login_impl, timeout=1, label="heartbeat") is True|
+|>       assert events.count("next") == 2 and events.count("row") == 1|
+|E       AssertionError: assert (0 == 2)|
+|E        +  where 0 = <built-in method count of list object at 0x0000025B10A06B80>('next')|
+|E        +    where <built-in method count of list object at 0x0000025B10A06B80> = [].count|
+||
+|tests\core\test_baostock_session.py:225: AssertionError|
+|_____________ test_receiver_rechecks_ancestor_after_worker_result _____________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025B12AC45D0>|
+||
+|    def test_receiver_rechecks_ancestor_after_worker_result(monkeypatch):|
+|        real_run = session.call_with_timeout|
+|        completed, release = threading.Event(), threading.Event()|
+|    |
+|        def delayed_return(fn, *, timeout):|
+|            result = real_run(fn, timeout=timeout)|
+|            completed.set()|
+|            assert release.wait(2)|
+|            return result|
+|    |
+|        monkeypatch.setattr(session, "call_with_timeout", delayed_return)|
+|        returned = []|
+|    |
+|        def parent():|
+|            returned.append(session.run(lambda: "late-success", timeout=1, label="delayed-receiver"))|
+|    |
+|        with pytest.raises(TimeoutError):|
+|            call_with_timeout(parent, timeout=0.05)|
+|        assert completed.wait(1)|
+|>       assert session._LEASE.locked()|
+|E       assert False|
+|E        +  where False = <built-in method locked of _thread.lock object at 0x0000025B10D0FC00>()|
+|E        +    where <built-in method locked of _thread.lock object at 0x0000025B10D0FC00> = <unlocked _thread.lock object at 0x0000025B10D0FC00>.locked|
+|E        +      where <unlocked _thread.lock object at 0x0000025B10D0FC00> = session._LEASE|
+||
+|tests\core\test_baostock_session.py:247: AssertionError|
+|________ test_datafeeder_empty_stock_closes_immediately_without_index _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025B10A05590>|
+||
+|    def test_datafeeder_empty_stock_closes_immediately_without_index(monkeypatch):|
+|        from src.data.data_feeder import DataFeeder|
+|        import src.data.data_feeder as feeder_module|
+|    |
+|        calls = []|
+|        monkeypatch.setattr(feeder_module.DataFeeder, "_fetch_stock_kline", lambda self, s, e: pd.DataFrame())|
+|        monkeypatch.setattr(feeder_module.DataFeeder, "_fetch_index_kline",|
+|                            lambda self, s, e: calls.append("index") or None)|
+|        monkeypatch.setattr(ac, "_ensure_baostock_login", lambda: True)|
+|        monkeypatch.setattr(ac, "_baostock_logout",|
+|                            lambda: calls.append(("close", threading.current_thread())))|
+|        feeder = DataFeeder("600519", "2026-01-01", "2026-03-31")|
+|        assert feeder.load(timeout=2) is False|
+|        assert feeder._stock_df is None and feeder._index_df is None|
+|>       assert [c for c in calls if c == "index"] == []|
+|E       AssertionError: assert ['index'] == []|
+|E         |
+|E         Left contains one more item: 'index'|
+|E         Use -v to get more diff|
+||
+|tests\core\test_baostock_session_consumers.py:140: AssertionError|
+|---------------------------- Captured stderr call -----------------------------|
+|2026-10-25 20:49:38,395 - src.data.data_feeder - ERROR - 个股K线数据获取失败: 600519|
+||
+|------------------------------ Captured log call ------------------------------|
+|ERROR    src.data.data_feeder:data_feeder.py:121 个股K线数据获取失败: 600519|
+|________________ test_basic_socket_reset_stays_in_same_worker _________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000025B12970450>|
+||
+|    def test_basic_socket_reset_stays_in_same_worker(monkeypatch):|
+|        from src.data import financial_data  # noqa: F401 - preload consumer package|
+|    |
+|        reset_threads = []|
+|    |
+|        def query(**kwargs):|
+|            raise ConnectionResetError("socket reset fixture")|
+|    |
+|        monkeypatch.setattr(ac.bs, "query_stock_basic", query)|
+|        monkeypatch.setattr(ac, "_ensure_baostock_login", lambda: True)|
+|        monkeypatch.setattr(ac.bs, "logout", lambda: reset_threads.append(threading.current_thread()))|
+|        assert ac.AKShareClient.get_stock_basic_name("600519") is None|
+|>       assert reset_threads and reset_threads[0] is not threading.main_thread()|
+|E       assert ([])|
+||
+|tests\core\test_baostock_session_consumers.py:208: AssertionError|
+|---------------------------- Captured stderr call -----------------------------|
+|2026-10-25 20:49:38,418 - src.data.akshare_client - WARNING - get_stock_basic_name 异常 600519: socket reset fixture|
+||
+|------------------------------ Captured log call ------------------------------|
+|WARNING  src.data.akshare_client:akshare_client.py:944 get_stock_basic_name 异常 600519: socket reset fixture|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_baostock_session.py::test_heartbeat_login_drains_next_and_row_before_success|
+|FAILED tests/core/test_baostock_session.py::test_receiver_rechecks_ancestor_after_worker_result|
+|FAILED tests/core/test_baostock_session_consumers.py::test_datafeeder_empty_stock_closes_immediately_without_index|
+|FAILED tests/core/test_baostock_session_consumers.py::test_basic_socket_reset_stays_in_same_worker|
+|4 failed in 3.03s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round4/green.meta.json | raw SHA256 9b901fbe4379c7efa90645781926a5a6b0197f6e0f96362990fff14f7b8339cf =====|
+|{|
+|  "command": "plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py::test_heartbeat_pagination_error_is_unhealthy_and_reconnects",|
+|  "rc": 0,|
+|  "seconds": 2.32,|
+|  "stdout_bytes": 291,|
+|  "stderr_bytes": 0,|
+|  "stdout_sha": "bdf978372d725a4e73eba24153191129744432814ff4c16d242b21d9c716094e",|
+|  "stderr_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|}|
+||
+|===== round4/green.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round4/green.stdout.txt | raw SHA256 bdf978372d725a4e73eba24153191129744432814ff4c16d242b21d9c716094e =====|
+|.                                                                        [100%]|
+|1 passed in 0.46s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== round4/red.meta.json | raw SHA256 21e38fc221dcea9f1f1e3217b59e8be1a701492affe2b1a854e46187fa7b4165 =====|
+|{|
+|  "command": "plan/fusion/iteration9/review_test_runner.py tests/core/test_baostock_session.py::test_heartbeat_pagination_error_is_unhealthy_and_reconnects",|
+|  "rc": 1,|
+|  "seconds": 3.68,|
+|  "stdout_bytes": 1961,|
+|  "stderr_bytes": 0,|
+|  "stdout_sha": "99326ae0581fe4f2a6da1bae6aaed7f310e87a6383b17209313e5ce8b3298af4",|
+|  "stderr_sha": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",|
+|  "reason": "result_is_healthy returned True after next() set error_code=1 and returned False"|
+|}|
+||
+|===== round4/red.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== round4/red.stdout.txt | raw SHA256 99326ae0581fe4f2a6da1bae6aaed7f310e87a6383b17209313e5ce8b3298af4 =====|
+|F                                                                        [100%]|
+|================================== FAILURES ===================================|
+|_________ test_heartbeat_pagination_error_is_unhealthy_and_reconnects _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022A11519FD0>|
+||
+|    def test_heartbeat_pagination_error_is_unhealthy_and_reconnects(monkeypatch):|
+|        import baostock as bs|
+|    |
+|        events = []|
+|    |
+|        class PaginationErrorRS:|
+|            error_code = "0"|
+|            error_msg = ""|
+|            fields = ["code"]|
+|    |
+|            def next(self):|
+|                self.error_code = "1"|
+|                return False|
+|    |
+|            def get_row_data(self):|
+|                return ["sh.600000"]|
+|    |
+|>       assert session.result_is_healthy(PaginationErrorRS()) is False|
+|E       AssertionError: assert True is False|
+|E        +  where True = <function result_is_healthy at 0x0000022A1032F2E0>(<test_baostock_session.test_heartbeat_pagination_error_is_unhealthy_and_reconnects.<locals>.PaginationErrorRS object at 0x0000022A114EA6D0>)|
+|E        +    where <function result_is_healthy at 0x0000022A1032F2E0> = session.result_is_healthy|
+|E        +    and   <test_baostock_session.test_heartbeat_pagination_error_is_unhealthy_and_reconnects.<locals>.PaginationErrorRS object at 0x0000022A114EA6D0> = <class 'test_baostock_session.test_heartbeat_pagination_error_is_unhealthy_and_reconnects.<locals>.PaginationErrorRS'>()|
+||
+|tests\core\test_baostock_session.py:245: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_baostock_session.py::test_heartbeat_pagination_error_is_unhealthy_and_reconnects|
+|1 failed in 1.07s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== full/run.meta.json | raw SHA256 1c9f368e6d83c8043ec011bf18c9f710a5cd2bc8b71104ac5d278733552b87fd =====|
+|{|
+|    "seconds":  542.18,|
+|    "stdout_bytes":  10144,|
+|    "started_at":  "2026-10-25T21:03:40.1603240+08:00",|
+|    "stderr_bytes":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B -X utf8 plan/fusion/iteration9/review_test_runner.py tests",|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  1,|
+|    "stdout_sha":  "95136AD8FFAEA80E0C326BF7FEF74A99399C7AD1CF965F9366CB9F6DBB318660",|
+|    "ended_at":  "2026-10-25T21:12:42.3579016+08:00"|
+|}|
+||
+||
+|===== full/stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== full/stdout.txt | raw SHA256 95136ad8ffaea80e0c326bf7fef74a99399c7ad1cf965f9366cb9f6dbb318660 =====|
+|........................................................................ [  1%]|
+|........................................................................ [  3%]|
+|........................................................................ [  5%]|
+|........................................................................ [  7%]|
+|........................................................................ [  9%]|
+|.............................................................s.......... [ 11%]|
+|........................................................................ [ 13%]|
+|........................................................................ [ 15%]|
+|........................................................................ [ 17%]|
+|........................................................................ [ 19%]|
+|.....................s.................................................. [ 21%]|
+|........................................................................ [ 23%]|
+|........................................................................ [ 25%]|
+|........................................................................ [ 27%]|
+|........................................................................ [ 29%]|
+|........................................................................ [ 31%]|
+|........................................................................ [ 33%]|
+|........................................................................ [ 35%]|
+|........................................................................ [ 37%]|
+|........................................................................ [ 39%]|
+|........................................................................ [ 41%]|
+|........................................................................ [ 43%]|
+|........................................................................ [ 45%]|
+|..................................F..................................... [ 47%]|
+|........................................................................ [ 49%]|
+|........................................................................ [ 51%]|
+|........................................................................ [ 53%]|
+|........................................................................ [ 55%]|
+|........................................................................ [ 57%]|
+|........................................................................ [ 59%]|
+|........................................................................ [ 61%]|
+|........................................................................ [ 63%]|
+|........................................................................ [ 65%]|
+|........................................................................ [ 67%]|
+|........................................................................ [ 69%]|
+|........................................................................ [ 71%]|
+|........................................................................ [ 73%]|
+|........................................................................ [ 75%]|
+|........................................................................ [ 77%]|
+|........................................................................ [ 79%]|
+|........................................................................ [ 81%]|
+|........................................................................ [ 83%]|
+|........................................................................ [ 85%]|
+|........................................................................ [ 87%]|
+|........................................................................ [ 89%]|
+|..........ssssssss......................ss.............................. [ 91%]|
+|........................................................................ [ 93%]|
+|........................................................................ [ 95%]|
+|........................................................................ [ 97%]|
+|........................................................................ [ 99%]|
+|........................                                                 [100%]|
+|================================== FAILURES ===================================|
+|_________________ test_has_quarter_evidence_and_skip_archived _________________|
+||
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_t_wyv4g3/pytest/test_has_quarter_evidence_and_0')|
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000246DCFDE9D0>|
+||
+|    def test_has_quarter_evidence_and_skip_archived(tmp_path, monkeypatch):|
+|        """零重复抓取：已归档季度 has_quarter_evidence=True；skip_archived=True 时|
+|        不再发接口请求（相同归档离线可读）。"""|
+|        rows = {|
+|            "query_balance_data": {"code": "sz.000002", "pubDate": "2024-08-30",|
+|                                   "statDate": "2024-06-30", "liabilityToAsset": "0.007294"},|
+|        }|
+|        calls = []|
+|    |
+|        def _mk(fn_name):|
+|            def _f(code, year, quarter):|
+|                calls.append((fn_name, code, year, quarter))|
+|                row = rows.get(fn_name)|
+|                fields = ["code", "pubDate", "statDate"] + [k for k in row|
+|                                                            if k not in ("code", "pubDate", "statDate")]|
+|                return SimpleNamespace(fields=fields, error_code="0", error_msg="",|
+|                                       _row=[row.get(f, "") for f in fields], _used=False,|
+|                                       next=lambda s=None: True, get_row_data=lambda: list(|
+|                                           [row.get(f, "") for f in fields]))|
+|            return _f|
+|    |
+|        import baostock as bs_mod|
+|        for fn_name in fd._INTERFACE_FIELDS:|
+|            monkeypatch.setattr(bs_mod, fn_name, _mk(fn_name))|
+|        monkeypatch.setattr(fd, "_ensure_baostock_login", lambda: True)|
+|    |
+|        store = ResearchStore(tmp_path / "research")|
+|        assert store.has_quarter_evidence("000002", 2024, 2) is False|
+|        first = fd.capture_quarterly_evidence("000002", 2024, 2, store=store)|
+|>       assert first and any(r.metric_or_claim == "liabilityToAsset" for r in first)|
+|E       assert ([])|
+||
+|tests\core\test_j1_mapping_boundary.py:186: AssertionError|
+|---------------------------- Captured stderr call -----------------------------|
+|2026-10-25 21:07:14,514 - src.data.financial_data - WARNING - ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_profit_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+||
+|2026-10-25 21:07:44,512 - src.data.baostock_session - WARNING - ⚠ Baostock 共享会话等待超时，本次数据降级——底层请求可能仍在收尾，避免连续重试｜原始：Baostock共享会话调用超时: bs-fin-query_balance_data|
+||
+|2026-10-25 21:07:44,512 - src.data.financial_data - WARNING - ⚠ 财务季报数据拉取超时——当期财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频读取超时或共享会话忙 query_balance_data sz.000002 2024Q2|
+||
+|2026-10-25 21:07:44,513 - src.data.financial_data - WARNING - ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_cash_flow_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+||
+|2026-10-25 21:07:44,514 - src.data.financial_data - WARNING - ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_operation_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+||
+|2026-10-25 21:07:44,515 - src.data.financial_data - WARNING - ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_growth_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+||
+|------------------------------ Captured log call ------------------------------|
+|WARNING  src.data.financial_data:financial_data.py:498 ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_profit_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+|WARNING  src.data.baostock_session:baostock_session.py:310 ⚠ Baostock 共享会话等待超时，本次数据降级——底层请求可能仍在收尾，避免连续重试｜原始：Baostock共享会话调用超时: bs-fin-query_balance_data|
+|WARNING  src.data.financial_data:financial_data.py:460 ⚠ 财务季报数据拉取超时——当期财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频读取超时或共享会话忙 query_balance_data sz.000002 2024Q2|
+|WARNING  src.data.financial_data:financial_data.py:498 ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_cash_flow_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+|WARNING  src.data.financial_data:financial_data.py:498 ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_operation_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+|WARNING  src.data.financial_data:financial_data.py:498 ⚠ 财务数据接口异常——当期该路财务证据缺失走降级，其余分析不受影响｜原始：Baostock 财务季频接口异常 query_growth_data sz.000002 2024Q2: 'NoneType' object is not iterable|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_j1_mapping_boundary.py::test_has_quarter_evidence_and_skip_archived|
+|1 failed, 3611 passed, 12 skipped, 1 deselected in 525.09s (0:08:45)|
+|BLOCKED_IO_ATTEMPTS {'network': 1256, 'subprocess': 12, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== full/targeted.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== full/targeted.stdout.txt | raw SHA256 731ff9176d69605819ee14e9947c4b7b7ee66cc3a087b420863fbda0d18793fb =====|
+|.                                                                        [100%]|
+|1 passed in 0.51s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== fixture_fix/ast_compare.json | raw SHA256 89599628862991ce7bd26192f6e810820db432dd1d32665280f9664b098e6f76 =====|
+|{|
+|  "old_sha": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",|
+|  "new_sha": "cc96fc68c9601e345648ffafd79c68d9a4b2da6fc8cb29af0b7313da27bda7d2",|
+|  "old_bytes": 12553,|
+|  "new_bytes": 12910,|
+|  "ast_equal_with_unique_test_removed": true,|
+|  "old_dump_sha": "aaaf111f609405744c83dbb1c5b7b4ee15b479a958c798110c07b9266733846d",|
+|  "new_dump_sha": "aaaf111f609405744c83dbb1c5b7b4ee15b479a958c798110c07b9266733846d"|
+|}|
+||
+|===== fixture_fix/compare.json | raw SHA256 aacaa039e68a94fbe8f1f1e04d7edb943e94feec918049854c6bb5343ca9f9e2 =====|
+|{|
+|  "full_hashes_after_sha": "8e48e3c35db1e6e83e675499b82a39f09b713d1d6a068d7345a4ad3298e4aaff",|
+|  "fixture_hashes_after_sha": "a398774698652e5b9f34efecf94b5962f772733a81ef0b328c5890906cc17478",|
+|  "changed_paths": [|
+|    "tests/core/test_j1_mapping_boundary.py"|
+|  ],|
+|  "changed_count": 1,|
+|  "only_j1_changed": true,|
+|  "j1_old_sha": "46ce44f404345d91c4c51686024d571e257834649d8dcfb974fca162ead843af",|
+|  "j1_new_sha": "cc96fc68c9601e345648ffafd79c68d9a4b2da6fc8cb29af0b7313da27bda7d2",|
+|  "protected_bad": [],|
+|  "untracked_missing_count": 0|
+|}|
+||
+|===== fixture_fix/targeted.meta.json | raw SHA256 d74ce6a140f7b7904a7d81a4a3bfbd8a2d3d3295c9150a0886e5881111506db9 =====|
+|{|
+|    "stdout_bytes":  466,|
+|    "stderr_sha":  "E3B0C44298FC1C149AFBF4C8996FB92427AE41E4649B934CA495991B7852B855",|
+|    "rc":  0,|
+|    "command":  ".venv\\\\Scripts\\\\python.exe -B -X utf8 plan/fusion/iteration9/review_test_runner.py tests/core/test_j1_mapping_boundary.py tests/core/test_financial_data.py tests/core/test_baostock_session.py tests/core/test_baostock_session_consumers.py",|
+|    "stdout_sha":  "546A7B192C8050A70DB17DEE3D51FEE63D5CEA4D526A3FD9507F9CFD7D3D7079",|
+|    "stderr_bytes":  0,|
+|    "seconds":  12.4|
+|}|
+||
+||
+|===== fixture_fix/targeted.stderr.txt | raw SHA256 e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 =====|
+|Identical raw bytes already included at stage1/direct.stderr.txt|
+||
+|===== fixture_fix/targeted.stdout.txt | raw SHA256 546a7b192c8050a70db17dee3d51fee63d5cea4d526a3fd9507f9cfd7d3d7079 =====|
+|........................................................................ [ 48%]|
+|..................................................s..................... [ 96%]|
+|.....                                                                    [100%]|
+|148 passed, 1 skipped in 9.16s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+||
+||
+|===== Actual independent initial counterexamples; zero supplier I/O =====|
+|{|
+|  "ancestor_abandoned_still_allowed": [|
+|    "I/O after ancestor abandoned"|
+|  ],|
+|  "expired_nested_still_executed": [|
+|    "I/O after zero child budget"|
+|  ],|
+|  "expected_both_empty": true,|
+|  "real_supplier_calls": 0|
+|}|

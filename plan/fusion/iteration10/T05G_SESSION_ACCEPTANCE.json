@@ -1,0 +1,457 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-25",
+  "status": "ACCEPTED_SESSION_LIFECYCLE_SCOPE_INCREMENTAL",
+  "base_commit": "5dcfaa74ef4920cc782994bde0c3d04b2f58e5bd",
+  "task_ids": [
+    "V1-G7-SESSION"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-session",
+    "revision": 3,
+    "sha256": "ab5c64ad394ac4cac91a147b34e0e02b9b4dc7970e7d555b7686fa15d54370f7",
+    "git_owner": "Codex",
+    "test_owner": "DSH"
+  },
+  "native": {
+    "task": "muyun-dev-native-20261020",
+    "session": "codex-1de974ba-34f0-4de8-a092-6fdfa43e822c",
+    "last_request": "32577d22-b00e-4628-8ad0-6fce6a7e6763",
+    "last_seq": 4096,
+    "stopped_writing": true
+  },
+  "accepted_scope": [
+    "12 direct consumers and CLI/chat close use one non-blocking worker-owned lease",
+    "login/heartbeat/query/complete pagination/necessary close share absolute deadline",
+    "ancestor abandonment and receive gates; late login/logout do not rewrite state",
+    "DataFeeder double-query/close total 60s; empty stock closes without index query",
+    "same-worker socket reset; heartbeat final pagination error is unhealthy"
+  ],
+  "budgets_seconds": {
+    "standalone_login": 8,
+    "standalone_close": 8,
+    "DataFeeder_load": 60,
+    "single_query": "original 15/20/30 or configured timeout, now starts before login",
+    "scanner": "existing batch deadline retained"
+  },
+  "validation": {
+    "round3_true_red": {
+      "failed": 4,
+      "seconds": 5.55,
+      "B3_separate_red_recorded": false
+    },
+    "round3_related": {
+      "passed": 224,
+      "skipped": 1,
+      "driver_seconds": 17.9
+    },
+    "final_heartbeat_red_green": {
+      "failed_before": 1,
+      "passed_after": 1
+    },
+    "full": {
+      "passed": 3611,
+      "failed": 1,
+      "skipped": 12,
+      "deselected": 1,
+      "pytest_seconds": 525.09,
+      "driver_seconds": 542.18,
+      "exit_code": 1,
+      "failure": "tests/core/test_j1_mapping_boundary.py::test_has_quarter_evidence_and_skip_archived",
+      "blocked_io": {
+        "network": 1256,
+        "subprocess": 12,
+        "real_state": 0
+      }
+    },
+    "post_fixture_targeted": {
+      "passed": 148,
+      "skipped": 1,
+      "pytest_seconds": 9.16,
+      "driver_seconds": 12.4,
+      "exit_code": 0,
+      "blocked_io": {
+        "network": 0,
+        "subprocess": 0,
+        "real_state": 0
+      }
+    },
+    "dedicated_child_reused": {
+      "passed": 1,
+      "driver_seconds": 2.38,
+      "basis": "round2 evidence reused only for unchanged tested daemon exit path; not a current-tree all-CLI exit guarantee"
+    },
+    "final_tree_single_green_full_run": false,
+    "formal_bridge_run_receipt_generated": false,
+    "reuse_basis": "Full before/after 1018 hashes equal. Only one function-local fixture changed afterwards; AST outside that test identical, every production input unchanged; independent Sol/high PASS. No duplicate full run."
+  },
+  "environment": {
+    "sys_executable": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe",
+    "python": "3.11.13",
+    "pytest": "9.1.1",
+    "baostock_distribution": "0.9.1",
+    "baostock_module": "00.9.10"
+  },
+  "protection": {
+    "protected_files": 9,
+    "unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "original_untracked_count": 218,
+    "original_untracked_missing": 0,
+    "untracked_check_is_existence_not_all_byte_hashes": true
+  },
+  "reviews": {
+    "final": "PASS, independent read-only source/diff/log/pins/AST review; no test duplication",
+    "requested_roles": "Astra/low architecture; Sol/high quality review; Luna/medium documentation",
+    "actual_subagent_model_metadata_verified": false
+  },
+  "source_manifest": {
+    "path": "plan/fusion/iteration10/T05G_SESSION_SOURCE_PINS.json",
+    "sha256": "7729185e66fff5fb33cfc155f8cd59f5643e2382d8bcc05062892972a959627b",
+    "count": 535
+  },
+  "evidence_bundle": {
+    "path": "plan/fusion/iteration10/T05G_SESSION_RESULTS.txt",
+    "sha256": "adfaa20e7a9463da40fe73b2cf145d90eef97d68237004ed199c7c8baa7544ee",
+    "normalization": "Derived UTF-8 LF line-framed view: remove one outer | at each line to retain diagnostic trailing spaces; original raw byte hashes unchanged"
+  },
+  "raw_artifacts": [
+    {
+      "path": "stage1/direct.meta.json",
+      "bytes": 1087,
+      "sha256": "97b65417580ec13129a2b6ca34f56fcc854868b778863ffb7829315887f06442"
+    },
+    {
+      "path": "stage1/direct.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stage1/direct.stdout.txt",
+      "bytes": 522,
+      "sha256": "a636eeb0ab9dc2dd931545e425f942c0bedf84f65e5a7baca289c1061e6efa1d"
+    },
+    {
+      "path": "stage1/guarded.meta.json",
+      "bytes": 1094,
+      "sha256": "117891aa9e7c2991fae8e575ba58a42d6b5344e332febc33e9c2f263328c21e3"
+    },
+    {
+      "path": "stage1/guarded.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stage1/guarded.stdout.txt",
+      "bytes": 715,
+      "sha256": "74729c55687a126546b9a8e931a3f64ffed6d2aedb376cfeeefbcdacc1633792"
+    },
+    {
+      "path": "stage1/guarded_final.meta.json",
+      "bytes": 1054,
+      "sha256": "dc8c29daeb0fd7bebc59a4e680ccca14b8851279df6eaf7317d34c2ab15d3a61"
+    },
+    {
+      "path": "stage1/guarded_final.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stage1/guarded_final.stdout.txt",
+      "bytes": 701,
+      "sha256": "1b9cff2d120cae7ff9a1c090a94856c3d6e55f9203793b42a0af32601fbd1f19"
+    },
+    {
+      "path": "stage1/guarded_offline.meta.json",
+      "bytes": 1054,
+      "sha256": "00902b536fe32beca37fa0e4a503eceaac297b8c45d50776f64735ed31399695"
+    },
+    {
+      "path": "stage1/guarded_offline.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stage1/guarded_offline.stdout.txt",
+      "bytes": 701,
+      "sha256": "b84e1f497464a942bc570e76c641236ccbd8c8919f12cea8099fc5986fdb18ac"
+    },
+    {
+      "path": "stage1/red_consumer.meta.json",
+      "bytes": 616,
+      "sha256": "3aa67686d8dfad92afa29d4bea502338294121427a11f0983b5aa228951996cd"
+    },
+    {
+      "path": "stage1/red_consumer.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "stage1/red_consumer.stdout.txt",
+      "bytes": 2267,
+      "sha256": "722f971d35efcd0cc0a8b18a58ef91e83910880cbbbadb7128930379ce5455bd"
+    },
+    {
+      "path": "round2/child_exit.meta.json",
+      "bytes": 472,
+      "sha256": "787d4161ec1b410028b268be4c56b0a78328feb2c63f93489d5b7e08d218c154"
+    },
+    {
+      "path": "round2/child_exit.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round2/child_exit.stdout.txt",
+      "bytes": 100,
+      "sha256": "64e0d33e08a54e45aab6fdd4aac9db8a4664af65fee05be28fd03b7fcd5f74c6"
+    },
+    {
+      "path": "round2/green.meta.json",
+      "bytes": 1054,
+      "sha256": "56286e53ab1eec1e8383bd50a09823ce71e15ac0c0f587b2f08a31e17efe2b85"
+    },
+    {
+      "path": "round2/green.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round2/green.stdout.txt",
+      "bytes": 710,
+      "sha256": "1a27561f5c2723aaad5647bbc2f9252571e6921b5a23d54ef87176b1a488aa91"
+    },
+    {
+      "path": "round2/green_final.meta.json",
+      "bytes": 1054,
+      "sha256": "2b9fb216a6f860ce58c86d83caba83c5a8af749c3b55d15df44b9dd4a88a8057"
+    },
+    {
+      "path": "round2/green_final.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round2/green_final.stdout.txt",
+      "bytes": 710,
+      "sha256": "70e2dd7585e883a4edbf493229f77bf59d32f2fb4e2eb9a4ad38e8cddd2bbba4"
+    },
+    {
+      "path": "round2/red_ancestor.meta.json",
+      "bytes": 492,
+      "sha256": "7f43f8beb0385b79dd013f0728faebfd672e1f424099b2a4259141fb182a3724"
+    },
+    {
+      "path": "round2/red_ancestor.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round2/red_ancestor.stdout.txt",
+      "bytes": 1749,
+      "sha256": "e3fc9c554e330a91db0eeb7e665427f1cf346bf6b242d4f6ffc9564cbae1a796"
+    },
+    {
+      "path": "round3/green.meta.json",
+      "bytes": 631,
+      "sha256": "6dde024b752a828ae3685955e92600c2567f08a5061946c94d09d4442c85b92a"
+    },
+    {
+      "path": "round3/green.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round3/green.stdout.txt",
+      "bytes": 548,
+      "sha256": "24dc9b0a98e14282150d6134303871028c3b38c8d954304d8a519cd060f3950a"
+    },
+    {
+      "path": "round3/green2.meta.json",
+      "bytes": 630,
+      "sha256": "799fcf5789c744d04688ad9645ff382fd4d6d5a5481ec0b4e96ebadc1061f071"
+    },
+    {
+      "path": "round3/green2.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round3/green2.stdout.txt",
+      "bytes": 548,
+      "sha256": "71808bf2110d59d50a25e7b580e28b788802ae9bcee7a477435cc05d7a75cab7"
+    },
+    {
+      "path": "round3/green3.meta.json",
+      "bytes": 630,
+      "sha256": "2f510a0fe7120ea4dc2a23ddd4cbd1280c9b9c68f743841c91598453e90246fc"
+    },
+    {
+      "path": "round3/green3.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round3/green3.stdout.txt",
+      "bytes": 548,
+      "sha256": "c9bc201189c2ac604ab1fae0310de4f3dd317a31bde4ceeb5fd727b57c0bb90f"
+    },
+    {
+      "path": "round3/red.meta.json",
+      "bytes": 444,
+      "sha256": "f05e6a50868ad20861e1bbeae39fb4adf983e34aefa3a74deacbb02038e0f324"
+    },
+    {
+      "path": "round3/red_b1_b2_b4_b5.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round3/red_b1_b2_b4_b5.stdout.txt",
+      "bytes": 6637,
+      "sha256": "4714e64fb005ca992ed88d224e099d3251f84dfc2f11bb0e1ab106310c13bf7b"
+    },
+    {
+      "path": "round4/green.meta.json",
+      "bytes": 410,
+      "sha256": "9b901fbe4379c7efa90645781926a5a6b0197f6e0f96362990fff14f7b8339cf"
+    },
+    {
+      "path": "round4/green.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round4/green.stdout.txt",
+      "bytes": 291,
+      "sha256": "bdf978372d725a4e73eba24153191129744432814ff4c16d242b21d9c716094e"
+    },
+    {
+      "path": "round4/red.meta.json",
+      "bytes": 508,
+      "sha256": "21e38fc221dcea9f1f1e3217b59e8be1a701492affe2b1a854e46187fa7b4165"
+    },
+    {
+      "path": "round4/red.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "round4/red.stdout.txt",
+      "bytes": 1961,
+      "sha256": "99326ae0581fe4f2a6da1bae6aaed7f310e87a6383b17209313e5ce8b3298af4"
+    },
+    {
+      "path": "full/run.meta.json",
+      "bytes": 503,
+      "sha256": "1c9f368e6d83c8043ec011bf18c9f710a5cd2bc8b71104ac5d278733552b87fd"
+    },
+    {
+      "path": "full/stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "full/stdout.txt",
+      "bytes": 10144,
+      "sha256": "95136ad8ffaea80e0c326bf7fef74a99399c7ad1cf965f9366cb9f6dbb318660"
+    },
+    {
+      "path": "full/targeted.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "full/targeted.stdout.txt",
+      "bytes": 291,
+      "sha256": "731ff9176d69605819ee14e9947c4b7b7ee66cc3a087b420863fbda0d18793fb"
+    },
+    {
+      "path": "fixture_fix/ast_compare.json",
+      "bytes": 434,
+      "sha256": "89599628862991ce7bd26192f6e810820db432dd1d32665280f9664b098e6f76"
+    },
+    {
+      "path": "fixture_fix/compare.json",
+      "bytes": 550,
+      "sha256": "aacaa039e68a94fbe8f1f1e04d7edb943e94feec918049854c6bb5343ca9f9e2"
+    },
+    {
+      "path": "fixture_fix/targeted.meta.json",
+      "bytes": 536,
+      "sha256": "d74ce6a140f7b7904a7d81a4a3bfbd8a2d3d3295c9150a0886e5881111506db9"
+    },
+    {
+      "path": "fixture_fix/targeted.stderr.txt",
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "fixture_fix/targeted.stdout.txt",
+      "bytes": 466,
+      "sha256": "546a7b192c8050a70db17dee3d51fee63d5cea4d526a3fd9507f9cfd7d3d7079"
+    }
+  ],
+  "progress": {
+    "scope_revision": "V1-progress-1",
+    "before": {
+      "engineering": {
+        "denominator": 98,
+        "met": 44,
+        "unknown": 46,
+        "lower": 44.89795918367347,
+        "upper": 91.83673469387755
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 37,
+        "unknown": 7,
+        "lower": 33.333333333333336,
+        "upper": 39.63963963963964
+      },
+      "lower": 39.1156462585034,
+      "upper": 65.73818716675859,
+      "closed": false
+    },
+    "after": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "scope_weight_change": 0,
+    "closed_clauses": 18,
+    "all_clauses": 47,
+    "S1_closed": 18,
+    "S1_total": 18
+  },
+  "limits": [
+    "underlying supplier calls cannot be forcibly killed; a hung worker keeps the lease",
+    "not a complete business batch/resource budget or all-CLI exit guarantee",
+    "initial direct execution was not audited and is not accepted as offline evidence",
+    "full guarded attempts were blocked, not zero attempted I/O",
+    "no real provider/AI/account validation or investment effect claim",
+    "local environment versions recorded; this is not a complete external runtime byte lock",
+    "real MID NO_VALID; G4, G7/T05 and V1 overall remain open"
+  ],
+  "git": "Codex exact staging on main and normal push; delivered SHA from actual Git log",
+  "usage_note": {
+    "status": "partial",
+    "scope": "one native DSH session including previous requests, not bilateral usage",
+    "complete_totals_available": false,
+    "savings_claimed": false
+  }
+}

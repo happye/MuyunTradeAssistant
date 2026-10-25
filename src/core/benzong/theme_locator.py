@@ -118,23 +118,40 @@ def _verify_code(code: str, ai_name: str) -> Optional[dict]:
     名称对不上 = AI 可能给错了代码（张冠李戴），丢弃。
     """
     try:
-        from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout
+        from src.data.akshare_client import _ensure_baostock_login
+        from src.data import baostock_session
         import baostock as bs
-        if not _ensure_baostock_login():
-            return None
         prefix = _baostock_prefix(code)
-        # 查询创建与完整读取共用预算，不把活动 ResultData 交回调用线程。
+        # Login, query creation and complete read share the leased worker and
+        # one 15-second absolute deadline; no live ResultData escapes.
         def _query_rows():
+            if not _ensure_baostock_login():
+                return [], []
+            baostock_session.check()
             rs = bs.query_stock_basic(code=f"{prefix}.{code}")
-            if rs.error_code != "0":
+            baostock_session.check()
+            error = rs.error_code
+            baostock_session.check()
+            if error != "0":
                 return [], []
             fields = list(rs.fields)
+            baostock_session.check()
             rws = []
-            while rs.next():
+            while True:
+                baostock_session.check()
+                if not rs.next():
+                    break
+                baostock_session.check()
                 rws.append(rs.get_row_data())
+                baostock_session.check()
+            baostock_session.check()
             return fields, rws
 
-        f, rows = _call_with_timeout(_query_rows, timeout=15)
+        try:
+            f, rows = baostock_session.run(_query_rows, timeout=15, label="bs-theme-verify")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+            logger.debug(f"theme_locator 验证超时或共享会话忙 {code}")
+            return None
         if not rows:
             return None
         status = rows[0][f.index("status")] if "status" in f else "1"

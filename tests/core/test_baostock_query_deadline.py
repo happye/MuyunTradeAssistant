@@ -8,7 +8,7 @@ import pytest
 
 # Pre-import real modules before any substitute is installed.
 from src.data import akshare_client as module
-from src.data.timeout_call import call_with_timeout
+from src.data import baostock_session
 
 
 class FixedDate(datetime):
@@ -21,21 +21,23 @@ class FixedDate(datetime):
 def env(request, monkeypatch):
     workers, budgets, logouts, conversions, payloads = [], [], [], [], []
 
+    real_run = baostock_session.run
+
     def bounded(fn, *args, timeout, **kwargs):
         budgets.append(timeout)
 
         def owned():
             workers.append(threading.current_thread())
-            result = fn(*args, **kwargs)
+            result = fn(*args)
             payloads.append(result)
             return result
 
-        return call_with_timeout(owned, timeout=0.05)
+        return real_run(owned, timeout=0.2, label=kwargs.get("label", "bs-test"))
 
     monkeypatch.setattr(module, "datetime", FixedDate)
     monkeypatch.setattr(module, "_ensure_baostock_login", lambda: True)
     monkeypatch.setattr(module, "_baostock_logout", lambda: logouts.append(True))
-    monkeypatch.setattr(module, "_call_with_timeout", bounded)
+    monkeypatch.setattr(baostock_session, "run", bounded)
     quote = module.AKShareClient._baostock_quote_from_row
     numeric = module.pd.to_numeric
 
@@ -72,7 +74,7 @@ def env(request, monkeypatch):
 class Result:
     def __init__(self, kind, *, empty=False, error="0", hook=lambda stage: None):
         self.hook, self.error = hook, error
-        self.index, self.next_calls, self.field_reads = -1, 0, 0
+        self.index, self.next_calls, self.field_reads, self.row_calls = -1, 0, 0, 0
         if kind == "index":
             self._fields = ["date", "close", "high", "preclose"]
             self.rows = [["2026-10-01", str(100 + i), str(101 + i), str(99 + i)] for i in range(25)]
@@ -106,6 +108,7 @@ class Result:
 
     def get_row_data(self):
         self.hook("row")
+        self.row_calls += 1
         return self.rows[self.index]
 
 
@@ -153,7 +156,18 @@ def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monke
     for worker in env.workers:
         worker.join(3)
         assert not worker.is_alive()
-    assert result.next_calls == len(result.rows) + 1
+    if stage == "fields":
+        assert result.next_calls == len(result.rows) + 1
+        assert result.row_calls == len(result.rows)
+    elif stage == "next":
+        assert result.next_calls == 1
+        assert result.row_calls == 0, "late next returned and then get_row_data ran"
+    elif stage == "row":
+        assert result.next_calls == 1
+        assert result.row_calls == 1
+    else:
+        assert result.next_calls == 0
+        assert result.row_calls == 0
     assert env.conversions == []
     assert returned == [None]
     assert env.logouts == []
@@ -233,8 +247,8 @@ def test_exception_paths_keep_original_reset_and_timeout_behavior(
     iteration_timeout = socket_timeout and (
         stage in {"next", "row"} or (stage == "error" and env.kind == "index")
     )
-    assert len(env.logouts) == int(socket_timeout and not iteration_timeout)
-    assert ("走降级" in caplog.text) == iteration_timeout
+    assert env.logouts == []
+    assert ("异常" in caplog.text) or ("走降级" in caplog.text)
     if not iteration_timeout:
         assert str(failure) in caplog.text and "异常" in caplog.text
 
@@ -243,7 +257,7 @@ def test_login_failure_does_not_query(monkeypatch, env):
     monkeypatch.setattr(module, "_ensure_baostock_login", lambda: False)
     calls = install(monkeypatch, Result(env.kind))
     assert env.invoke() is None
-    assert calls == [] and env.budgets == []
+    assert calls == [] and env.budgets == [30]
 
 
 def test_index_short_rows_and_changed_error_keep_read_semantics(monkeypatch, env):
@@ -258,8 +272,8 @@ def test_index_short_rows_and_changed_error_keep_read_semantics(monkeypatch, env
     install(monkeypatch, result)
     value = env.invoke()
     if env.kind == "kline":
-        # Bitwise &: next() still runs when the changed error code is nonzero.
-        assert result.next_calls == 2 and len(value) == 1
+        # The changed error is read before the next iteration; no second next().
+        assert result.next_calls == 1 and len(value) == 1
     elif env.kind == "index":
         assert result.next_calls == 1 and value is None and result.field_reads == 0
     else:

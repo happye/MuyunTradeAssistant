@@ -244,25 +244,37 @@ def trading_days(allow_refresh: bool = True):
         _dates = payload.get("dates") or []
         if age < timedelta(days=7) and _dates:
             return payload["dates"]
-    from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
+    from src.data.akshare_client import _ensure_baostock_login
+    from src.data import baostock_session
     import baostock as bs
 
-    if not _ensure_baostock_login():
-        raise RuntimeError("baostock 登录失败，无法获取交易日历")
     start = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
     end = (datetime.now() + timedelta(days=30)).strftime("%Y-%m-%d")
 
     def _q():
-        # QR4 覆盖合同：保留供应商返回的**每一天**（含非交易日标志），不再只挑
-        # 交易日——「区间内哪些日子已确认休市」必须留档，消费端才能复核覆盖。
+        # QR4 覆盖合同：保留供应商返回的每一天（含非交易日标志）。
+        if not _ensure_baostock_login():
+            raise RuntimeError("baostock 登录失败，无法获取交易日历")
+        baostock_session.check()
         rs = bs.query_trade_dates(start_date=start, end_date=end)
+        baostock_session.check()
         rows = []
-        while rs.error_code == "0" and rs.next():
+        while True:
+            baostock_session.check()
+            if not (rs.error_code == "0" and rs.next()):
+                break
+            baostock_session.check()
             row = rs.get_row_data()
+            baostock_session.check()
             rows.append((row[0], row[1]))
+            baostock_session.check()
+        baostock_session.check()
         return rows, rs.error_code
 
-    rows, err_code = _call_with_timeout(_q, timeout=_NET_TIMEOUT)
+    try:
+        rows, err_code = baostock_session.run(_q, timeout=_NET_TIMEOUT, label="bs-trade-dates")
+    except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy) as e:
+        raise RuntimeError(f"baostock 交易日历查询超时或共享会话忙: {e}") from e
     if err_code != "0":
         raise RuntimeError(f"交易日历查询未正常结束（error_code={err_code!r}）——不盖覆盖合格章")
     if not rows:
@@ -320,22 +332,35 @@ def recent_trade_date(now: Optional[datetime] = None) -> str:
 
 def _bs_index_kline(code: str, fields: str, start: str, end: str) -> list[list[str]]:
     """baostock 指数日线查询，读取循环包硬超时。失败抛异常。"""
-    from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
+    from src.data.akshare_client import _ensure_baostock_login
+    from src.data import baostock_session
     import baostock as bs
 
-    if not _ensure_baostock_login():
-        raise RuntimeError("baostock 登录失败")
     rate_limiter.wait("baostock")
 
     def _q():
+        if not _ensure_baostock_login():
+            raise RuntimeError("baostock 登录失败")
+        baostock_session.check()
         rs = bs.query_history_k_data_plus(
             code, fields, start_date=start, end_date=end, frequency="d", adjustflag="3")
+        baostock_session.check()
         rows = []
-        while rs.error_code == "0" and rs.next():
+        while True:
+            baostock_session.check()
+            if not (rs.error_code == "0" and rs.next()):
+                break
+            baostock_session.check()
             rows.append(rs.get_row_data())
+            baostock_session.check()
+        baostock_session.check()
         return rows, rs.error_code, rs.error_msg
 
-    rows, err_code, err_msg = _call_with_timeout(_q, timeout=_NET_TIMEOUT)
+    try:
+        rows, err_code, err_msg = baostock_session.run(
+            _q, timeout=_NET_TIMEOUT, label="bs-fear-index")
+    except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy) as e:
+        raise RuntimeError(f"baostock {code} 查询超时或共享会话忙: {e}") from e
     if err_code != "0":
         raise RuntimeError(f"baostock {code} 查询失败: {err_msg}")
     if not rows:

@@ -620,3 +620,8 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ### ERR-20261025-PROGRESS-BOOTSTRAP｜初始生成与验证口径的两类误判
 
 初次render误将尚未生成的两个受控产物当作缺失证据拒绝；修为仅render准许这两路径暂缺，证据及check仍要求实存。计分审查又发现NA适用性/mix若不冻结可静默改指标，已纳入拒绝回归。浏览器QA初版误要求全文搜索任务ID只命中一行，实际上依赖列也应匹配；改为核目标可见及过滤/还原正确，未为迎合测试改搜索语义。原产品源码未改，相关计分自测和实际浏览器交互单独记录，不把文档校验称产品验收。
+
+
+### ERR-20261025-SESSION-ROUND3｜会话边界反例及有限迭代器修正
+
+未修核心4 failed转修后224 passed/1 skipped；心跳终止error非0曾未判不健康，补1红1绿；接收测试先缺完成屏障，改Event后精确1 passed。隔离全量3611 passed/1 failed/12 skipped/1 deselected，唯一失败是J1旧next永True无限mock；将该测试函数局部fixture改为有限一行/EOF，原断言不变，相关组148 passed/1 skipped。最终树没有单次全绿全量；独立Sol/high依据源码pins与增量范围PASS。详见[原件汇编](../plan/fusion/iteration10/T05G_SESSION_RESULTS.txt)与[接收回执](../plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)。

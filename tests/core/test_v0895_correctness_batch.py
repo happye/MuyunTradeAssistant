@@ -207,6 +207,9 @@ def test_datafeeder_load_smoke(monkeypatch):
         query_history_k_data_plus = staticmethod(_fake_query)
 
     monkeypatch.setattr(df_mod, "bs", _FakeBS)
+    import src.data.akshare_client as ac
+    monkeypatch.setattr(ac, "_ensure_baostock_login", lambda: True)
+    monkeypatch.setattr(ac, "_baostock_logout", lambda: None)
 
     feeder = DataFeeder("600519", "2024-01-01", "2024-03-29")
     assert feeder.load() is True, "load() 必须成功（P0：曾因调用不存在方法静默失败）"

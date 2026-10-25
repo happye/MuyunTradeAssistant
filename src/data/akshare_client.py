@@ -5,7 +5,6 @@
 2. Baostock - 历史K线备用
 """
 
-import contextlib
 import json
 import pandas as pd
 import akshare as ak
@@ -20,6 +19,7 @@ import random
 from src.data.models import StockData
 from src.data.net_guard import circuit_breaker, rate_limiter
 from src.data.timeout_call import call_with_timeout
+from src.data import baostock_session
 
 logger = logging.getLogger(__name__)
 
@@ -31,20 +31,6 @@ _bs_login_status = None
 from concurrent.futures import TimeoutError as FuturesTimeout
 
 DEFAULT_TIMEOUT = 30.0
-
-
-@contextlib.contextmanager
-def _quiet_baostock_print():
-    """抑制 baostock 库直接 print 到 stdout 的 login/logout 噪声（用户指令 2026-08-30）。
-
-    baostock 库内部用 print() 输出 "login success!/logout failed!"，logging 静音不了；
-    在调用窗口内重定向 stdout 即可。窗口极短（登录 <1s），代价是并行线程恰在此窗口
-    的打印也会被吞（实测重登仅发生于每股 AI 评分间隔后，风险可忽略）。
-    """
-    import io
-    buf = io.StringIO()
-    with contextlib.redirect_stdout(buf):
-        yield
 
 
 def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
@@ -60,58 +46,48 @@ def _call_with_timeout(fn, *args, timeout: float = DEFAULT_TIMEOUT, **kwargs):
 
 
 def _ensure_baostock_login():
-    """确保baostock已登录（模块级别全局状态）
+    """Ensure the process-wide leased Baostock session is logged in.
 
-    v0.8.6.5：心跳重连——连接闲置被服务端断开后，下次查询用死连接会报错，
-    现已登录状态先做轻量心跳(query_stock_basic)，失败则 logout+重 login。
-    注：baostock 库的 print(login success/you don't login)是它直接 print 的，
-    走 logging 静音不了，但无害，保留正常输出(不重定向stdout，避免改过头)。
+    Login, heartbeat, reconnect and the later query share one daemon worker and
+    one absolute deadline.  A busy lease returns False immediately; an in-worker
+    timeout propagates so the caller cannot continue to a supplier operation
+    after the deadline.
     """
     global _bs_login_status
-    if _bs_login_status:
-        if not _baostock_ping():
-            logger.info("Baostock 连接已断开(闲置超时)，重新登录")
-            _baostock_logout()
-            _bs_login_status = False
-        else:
-            return True
-
     try:
-        # 用户指令（2026-08-30）：抑制 baostock 库直接 print 的 "login success!"
-        # 噪声（B23 缓存全量失效后每股 AI 评分间隔超服务端闲置阈值，逐股重登可见）。
-        with _quiet_baostock_print():
-            lg = bs.login()
-        _bs_login_status = lg.error_code == '0'
-        if _bs_login_status:
-            logger.info("Baostock登录成功")
-        else:
-            logger.warning(f"Baostock登录失败: {lg.error_msg}")
-    except Exception as e:
-        logger.warning(f"Baostock登录异常: {e}")
-        _bs_login_status = False
-    return _bs_login_status
+        ok = baostock_session.ensure_login()
+    except baostock_session.BaostockBusy:
+        ok = False
+    _bs_login_status = ok
+    return ok
 
 
 def _baostock_ping() -> bool:
-    """轻量心跳：query_stock_basic 一只常见股，验证连接活着。失败返回 False。"""
+    """Same-worker heartbeat; the compatibility entry itself takes the lease."""
+    def _ping():
+        baostock_session.check()
+        rs = bs.query_stock_basic(code="sh.600000")
+        baostock_session.check()
+        return rs is not None and baostock_session.result_is_healthy(rs)
+
     try:
-        def _q():
-            return bs.query_stock_basic(code="sh.600000")
-        rs = _call_with_timeout(_q, timeout=8)
-        return rs is not None and rs.error_code == '0'
+        if baostock_session.current() is not None:
+            return _ping()
+        return bool(baostock_session.run(_ping, timeout=8, label="baostock-ping"))
     except Exception:
         return False
 
 
 def _baostock_logout():
-    """登出baostock并重置全局登录状态"""
+    """Explicit logout through the session lease; busy/timeout never touches the supplier."""
     global _bs_login_status
     try:
-        with _quiet_baostock_print():
-            bs.logout()
+        baostock_session.logout(timeout=baostock_session.LOGOUT_TIMEOUT)
     except Exception:
         pass
-    _bs_login_status = False
+    # A late/busy logout must not rewrite the compatibility login flag.
+    if not baostock_session.is_logged_in():
+        _bs_login_status = False
 
 
 class AKShareClient:
@@ -935,32 +911,51 @@ class AKShareClient:
         数据源实测：sz.000005 -> "ST星源"，sh.600519 -> "贵州茅台"。
         失败/超时返回 None（fail-open，不假退出）。
         """
-        if not _ensure_baostock_login():
-            return None
         try:
             prefix, _code = cls._normalize_stock_code(code)
             bs_code = f"{prefix}.{_code}"
 
             def _read():
-                rs = bs.query_stock_basic(code=bs_code)
-                if rs is None or rs.error_code != '0':
-                    return None
-                name = None
-                while rs.next():
-                    row = rs.get_row_data()
-                    if 'code_name' in rs.fields:
-                        name = row[rs.fields.index('code_name')]
-                return name
+                try:
+                    if not _ensure_baostock_login():
+                        return None
+                    baostock_session.check()
+                    rs = bs.query_stock_basic(code=bs_code)
+                    baostock_session.check()
+                    if rs is None:
+                        return None
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
+                        return None
+                    fields = list(rs.fields)
+                    baostock_session.check()
+                    name = None
+                    while True:
+                        baostock_session.check()
+                        if not rs.next():
+                            break
+                        baostock_session.check()
+                        row = rs.get_row_data()
+                        baostock_session.check()
+                        if 'code_name' in fields:
+                            name = row[fields.index('code_name')]
+                        baostock_session.check()
+                    return name
+                except Exception as e:
+                    if not isinstance(e, TimeoutError) and ('socket' in str(e).lower() or '10038' in str(e)):
+                        try:
+                            baostock_session.reset_connection()
+                        except Exception:
+                            pass
+                    raise
             try:
-                return _call_with_timeout(_read, timeout=15)
-            except FuturesTimeout:
-                logger.warning(f"query_stock_basic 超时 {code}")
-                _baostock_logout()
+                return baostock_session.run(_read, timeout=15, label="bs-stock-basic")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning(f"query_stock_basic 超时或共享会话忙 {code}")
                 return None
         except Exception as e:
             logger.warning(f"get_stock_basic_name 异常 {code}: {e}")
-            if 'socket' in str(e).lower() or '10038' in str(e):
-                _baostock_logout()
             return None
 
     @classmethod
@@ -972,8 +967,6 @@ class AKShareClient:
         全部预告都在 since_date 之前发布时返回 None。
         返回 {type, abstract, pub_date, stat_date} 或 None。fail-open：异常返回 None。
         """
-        if not _ensure_baostock_login():
-            return None
         try:
             prefix, _code = cls._normalize_stock_code(code)
             bs_code = f"{prefix}.{_code}"
@@ -981,28 +974,52 @@ class AKShareClient:
             start = (datetime.now() - timedelta(days=540)).strftime("%Y-%m-%d")
 
             def _read():
-                rs = bs.query_forecast_report(code=bs_code, start_date=start, end_date=end)
-                if rs is None or rs.error_code != '0':
-                    return []
-                idx_pub = rs.fields.index('profitForcastExpPubDate')
-                idx_stat = rs.fields.index('profitForcastExpStatDate')
-                idx_type = rs.fields.index('profitForcastType')
-                idx_abs = rs.fields.index('profitForcastAbstract')
-                parsed = []
-                while rs.next():
-                    row = rs.get_row_data()
-                    parsed.append({
-                        "type": row[idx_type],
-                        "abstract": row[idx_abs],
-                        "pub_date": row[idx_pub],
-                        "stat_date": row[idx_stat],
-                    })
-                return parsed
+                try:
+                    if not _ensure_baostock_login():
+                        return []
+                    baostock_session.check()
+                    rs = bs.query_forecast_report(code=bs_code, start_date=start, end_date=end)
+                    baostock_session.check()
+                    if rs is None:
+                        return []
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
+                        return []
+                    fields = list(rs.fields)
+                    baostock_session.check()
+                    idx_pub = fields.index('profitForcastExpPubDate')
+                    idx_stat = fields.index('profitForcastExpStatDate')
+                    idx_type = fields.index('profitForcastType')
+                    idx_abs = fields.index('profitForcastAbstract')
+                    baostock_session.check()
+                    parsed = []
+                    while True:
+                        baostock_session.check()
+                        if not rs.next():
+                            break
+                        baostock_session.check()
+                        row = rs.get_row_data()
+                        baostock_session.check()
+                        parsed.append({
+                            "type": row[idx_type],
+                            "abstract": row[idx_abs],
+                            "pub_date": row[idx_pub],
+                            "stat_date": row[idx_stat],
+                        })
+                        baostock_session.check()
+                    return parsed
+                except Exception as e:
+                    if not isinstance(e, TimeoutError) and ('socket' in str(e).lower() or '10038' in str(e)):
+                        try:
+                            baostock_session.reset_connection()
+                        except Exception:
+                            pass
+                    raise
             try:
-                parsed = _call_with_timeout(_read, timeout=30)
-            except FuturesTimeout:
-                logger.warning(f"query_forecast_report 超时 {code}")
-                _baostock_logout()
+                parsed = baostock_session.run(_read, timeout=30, label="bs-forecast")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning(f"query_forecast_report 超时或共享会话忙 {code}")
                 return None
             if not parsed:
                 return None
@@ -1029,8 +1046,6 @@ class AKShareClient:
             return None  # 全部预告无资格或在建仓前发布
         except Exception as e:
             logger.warning(f"get_latest_forecast 异常 {code}: {e}")
-            if 'socket' in str(e).lower() or '10038' in str(e):
-                _baostock_logout()
             return None
 
     @classmethod
@@ -1054,16 +1069,17 @@ class AKShareClient:
         bs_code = f"{prefix}.{code}"
 
         try:
-            if not _ensure_baostock_login():
-                return None
-
             # 获取最近5天的日K线，取最后一天作为"实时"数据
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
 
-            # 创建与完整读取共用预算；原门外异常作为载荷送回，保留重置路径。
+            # Login, query creation, fields and pagination share one daemon
+            # worker and one 30-second absolute deadline.
             def _read_all():
                 try:
+                    if not _ensure_baostock_login():
+                        return {"login": False}
+                    baostock_session.check()
                     rs = bs.query_history_k_data_plus(
                         bs_code,
                         "date,code,open,high,low,close,preclose,volume,amount",
@@ -1071,13 +1087,25 @@ class AKShareClient:
                         end_date=end_date,
                         frequency="d"
                     )
+                    baostock_session.check()
                     if rs.error_code != '0':
                         return {"query_error": rs.error_msg}
                 except Exception as e:
+                    if not isinstance(e, TimeoutError) and ('socket' in str(e).lower() or '10038' in str(e)):
+                        try:
+                            baostock_session.reset_connection()
+                        except Exception:
+                            pass
                     return {"exception": e}
                 data_list = []
-                while rs.next():
+                while True:
+                    baostock_session.check()
+                    if not rs.next():
+                        break
+                    baostock_session.check()
                     data_list.append(rs.get_row_data())
+                    baostock_session.check()
+                baostock_session.check()
                 try:
                     fields = list(rs.fields) if data_list else []
                 except Exception as e:
@@ -1085,11 +1113,13 @@ class AKShareClient:
                 return {"data": data_list, "fields": fields}
 
             try:
-                result = _call_with_timeout(_read_all, timeout=30)
-            except FuturesTimeout:
-                logger.warning(f"Baostock 读取实时行情超时 {stock_code}，走降级")
+                result = baostock_session.run(_read_all, timeout=30, label="bs-realtime")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning(f"Baostock 读取实时行情超时或共享会话忙 {stock_code}，走降级")
                 return None
 
+            if result.get("login") is False:
+                return None
             if "exception" in result:
                 raise result["exception"]
             if "query_error" in result:
@@ -1105,10 +1135,6 @@ class AKShareClient:
 
         except Exception as e:
             logger.warning(f"_fetch_baostock_realtime异常 {stock_code}: {e}")
-            # socket错误时重置连接状态，下次_ensure_baostock_login会重新连接
-            if '10038' in str(e) or 'socket' in str(e).lower():
-                logger.warning("检测到socket异常，重置Baostock连接")
-                _baostock_logout()
             return None
 
     @staticmethod
@@ -1171,9 +1197,6 @@ class AKShareClient:
         Returns:
             DataFrame: 标准化格式的K线数据
         """
-        if not _ensure_baostock_login():
-            return None
-
         try:
             prefix, code = cls._normalize_stock_code(stock_code)
             bs_code = f"{prefix}.{code}"
@@ -1191,9 +1214,13 @@ class AKShareClient:
                 fields = "date,code,open,high,low,close,preclose,volume,amount"
             else:
                 fields = "date,code,open,high,low,close,volume,amount"
-            # 创建与完整读取共用预算；保留原查询/字段异常与迭代异常的分界。
+            # Login, query creation, field reads and pagination share the lease
+            # and one 30-second absolute deadline on the same daemon worker.
             def _read_all():
                 try:
+                    if not _ensure_baostock_login():
+                        return {"login": False}
+                    baostock_session.check()
                     rs = bs.query_history_k_data_plus(
                         bs_code,
                         fields,
@@ -1202,24 +1229,44 @@ class AKShareClient:
                         frequency=freq,
                         adjustflag=cls._BAOSTOCK_ADJUST_FLAG.get(adjust, "3")
                     )
-                    if rs.error_code != '0':
+                    baostock_session.check()
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
                         return {"query_error": rs.error_msg}
                 except Exception as e:
+                    if not isinstance(e, TimeoutError) and ('socket' in str(e).lower() or '10038' in str(e)):
+                        try:
+                            baostock_session.reset_connection()
+                        except Exception:
+                            pass
                     return {"exception": e}
                 data = []
-                while (rs.error_code == '0') & rs.next():
+                while True:
+                    baostock_session.check()
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
+                        break
+                    if not rs.next():
+                        break
+                    baostock_session.check()
                     data.append(rs.get_row_data())
+                    baostock_session.check()
+                baostock_session.check()
                 try:
                     result_fields = list(rs.fields) if data else []
                 except Exception as e:
                     return {"exception": e}
                 return {"data": data, "fields": result_fields}
             try:
-                result = _call_with_timeout(_read_all, timeout=30)
-            except FuturesTimeout:
-                logger.warning(f"Baostock 读取K线超时 {stock_code}，走降级")
+                result = baostock_session.run(_read_all, timeout=30, label="bs-kline")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning(f"Baostock 读取K线超时或共享会话忙 {stock_code}，走降级")
                 return None
 
+            if result.get("login") is False:
+                return None
             if "exception" in result:
                 raise result["exception"]
             if "query_error" in result:
@@ -1255,10 +1302,6 @@ class AKShareClient:
 
         except Exception as e:
             logger.error(f"Baostock获取K线异常 {stock_code}: {e}")
-            # socket错误时重置连接状态
-            if '10038' in str(e) or 'socket' in str(e).lower():
-                logger.warning("检测到socket异常，重置Baostock连接")
-                _baostock_logout()
             return None
 
     @staticmethod
@@ -1742,10 +1785,6 @@ class AKShareClient:
         Returns:
             dict: {trend, ma20, ma60, ma250, close, change_pct, high_250d} 或 None
         """
-        if not _ensure_baostock_login():
-            logger.warning("Baostock未登录，跳过大盘数据获取")
-            return None
-
         try:
             # 计算日期范围（最近400个自然日，确保250个交易日用于年线计算）
             end_date = datetime.now().strftime("%Y-%m-%d")
@@ -1753,6 +1792,9 @@ class AKShareClient:
 
             def _read_index_rows():
                 try:
+                    if not _ensure_baostock_login():
+                        return {"login": False}
+                    baostock_session.check()
                     rs = bs.query_history_k_data_plus(
                         index_code,
                         "date,close,high,preclose",
@@ -1760,22 +1802,45 @@ class AKShareClient:
                         end_date=end_date,
                         frequency="d",
                     )
+                    baostock_session.check()
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
+                        return {"data": [], "fields": []}
                 except Exception as e:
+                    if not isinstance(e, TimeoutError) and ('socket' in str(e).lower() or '10038' in str(e)):
+                        try:
+                            baostock_session.reset_connection()
+                        except Exception:
+                            pass
                     return {"exception": e}
                 rows = []
-                while (rs.error_code == '0') and rs.next():
+                while True:
+                    baostock_session.check()
+                    error = rs.error_code
+                    baostock_session.check()
+                    if error != '0':
+                        break
+                    if not rs.next():
+                        break
+                    baostock_session.check()
                     rows.append(rs.get_row_data())
+                    baostock_session.check()
+                baostock_session.check()
                 try:
                     fields = list(rs.fields) if len(rows) >= 20 else []
                 except Exception as e:
                     return {"exception": e}
                 return {"data": rows, "fields": fields}
             try:
-                result = _call_with_timeout(_read_index_rows, timeout=30)
-            except FuturesTimeout:
-                logger.warning(f"Baostock 读取大盘数据超时 {index_code}，走降级")
+                result = baostock_session.run(_read_index_rows, timeout=30, label="bs-index")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning(f"Baostock 读取大盘数据超时或共享会话忙 {index_code}，走降级")
                 return None
 
+            if result.get("login") is False:
+                logger.warning("Baostock未登录，跳过大盘数据获取")
+                return None
             if "exception" in result:
                 raise result["exception"]
             rows = result["data"]
@@ -1847,10 +1912,6 @@ class AKShareClient:
 
         except Exception as e:
             logger.warning(f"大盘趋势获取异常: {e}")
-            # socket错误时重置连接状态
-            if '10038' in str(e) or 'socket' in str(e).lower():
-                logger.warning("检测到socket异常，重置Baostock连接")
-                _baostock_logout()
             return None
 
     _INDEX_TREND_TTL = 600  # 秒。指数趋势/MA是慢变量，10分钟内共享一份400日K线拉取

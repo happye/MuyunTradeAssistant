@@ -17,8 +17,7 @@ from datetime import datetime, timedelta
 from typing import Optional
 
 from src.data.models import StockData
-from src.data.akshare_client import _call_with_timeout
-from concurrent.futures import TimeoutError as _FuturesTimeout
+from src.data import baostock_session
 
 
 def _use_legacy_sma_indicators() -> bool:
@@ -76,38 +75,61 @@ class DataFeeder:
         self._date_pos: dict[str, int] = {}
         self._tf: dict[str, dict] = {}
 
-    def load(self) -> bool:
+    def load(self, *, timeout: float = 60.0) -> bool:
         """加载历史数据（个股K线 + 大盘指数）
 
-        一次性拉取所有数据，后续iterate不再网络请求。
+        一次性拉取所有数据，后续iterate不再网络请求。个股与指数两次 query
+        在同一个 daemon worker 的 60 秒绝对预算内完成；调用方超时不会发布
+        半成品，也不会 logout 或启动另一会话。
 
         Returns:
             bool: 是否加载成功
         """
         try:
-            # 抑制 baostock "login success!/logout failed!" 直接打印噪声（同 akshare_client）
-            from src.data.akshare_client import _quiet_baostock_print
-            with _quiet_baostock_print():
-                lg = bs.login()
-            if lg.error_code != '0':
-                logger.error(f"Baostock登录失败: {lg.error_msg}")
-                return False
-
             # 加载个股数据 - 需要足够的历史数据计算MA60等指标
             # 向前多取320天，确保MA250(年线)等长周期指标有效
             calc_start = self._shift_date(self.start_date, days=-320)
-            self._stock_df = self._fetch_stock_kline(calc_start, self.end_date)
-            if self._stock_df is None or self._stock_df.empty:
-                logger.error(f"个股K线数据获取失败: {self.stock_code}")
-                with _quiet_baostock_print():
-                    bs.logout()
+
+            def _load_queries():
+                from src.data.akshare_client import _ensure_baostock_login, _baostock_logout
+                if not _ensure_baostock_login():
+                    return {"login": False}
+                baostock_session.check()
+                stock = self._fetch_stock_kline(calc_start, self.end_date)
+                baostock_session.check()
+                if stock is None or stock.empty:
+                    # Empty stock must close within this same lifecycle and
+                    # must not issue the index query.
+                    baostock_session.check()
+                    _baostock_logout()
+                    baostock_session.check()
+                    return {"stock": stock, "index": None}
+                index = self._fetch_index_kline(calc_start, self.end_date)
+                baostock_session.check()
+                # Normal close stays in the same worker and the remaining
+                # overall budget; no caller-side 8s session starts here.
+                _baostock_logout()
+                baostock_session.check()
+                return {"stock": stock, "index": index}
+
+            try:
+                payload = baostock_session.run(_load_queries, timeout=timeout, label="bs-datafeeder")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning("Baostock DataFeeder 加载超时或共享会话忙，不发布半成品")
+                return False
+            if payload.get("login") is False:
+                logger.error("Baostock登录失败")
                 return False
 
-            # 加载大盘指数
-            self._index_df = self._fetch_index_kline(calc_start, self.end_date)
+            stock_df = payload.get("stock")
+            index_df = payload.get("index")
+            if stock_df is None or stock_df.empty:
+                logger.error(f"个股K线数据获取失败: {self.stock_code}")
+                return False
 
-            with _quiet_baostock_print():
-                bs.logout()
+            # 只有成功接收完整 payload 后才发布实例状态。
+            self._stock_df = stock_df
+            self._index_df = index_df
 
             # v0.8.9.5（P2-1）：显式按日期排序（旧逐bar切片隐式依赖 baostock 返回
             # 的升序；显式排序让 bisect 定位与旧 cutoff.iloc[-1] 语义在有序输入下
@@ -609,59 +631,52 @@ class DataFeeder:
     # ===== 数据获取 =====
 
     def _fetch_stock_kline(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """获取个股历史K线"""
+        """获取个股历史K线（必须在 DataFeeder load 的会话 worker 内调用）。"""
         try:
+            baostock_session.check()
             rs = bs.query_history_k_data_plus(
                 self.bs_code,
                 "date,code,open,high,low,close,volume,amount",
                 start_date=start_date,
                 end_date=end_date,
                 frequency="d",
-                adjustflag="2",  # v0.8.7.5 审计修复 A05：前复权，与实盘 akshare adjust="qfq" 对齐。
-                # 此前缺省="3"不复权：除权日假暴跌触发虚假止损；分红丢失致回测/基准收益系统性偏差
+                adjustflag="2",  # 前复权，与实盘 akshare adjust="qfq" 对齐。
             )
-
+            baostock_session.check()
             if rs.error_code != '0':
                 logger.error(f"个股K线查询失败: {rs.error_msg}")
                 return None
-
-            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时——本函数是
-            # 回测唯一网络入口，socket 挂起会冻结整个回测（ISS-047 同类点收尾）
-            def _read_rows():
-                rows = []
-                while (rs.error_code == '0') and rs.next():
-                    rows.append(rs.get_row_data())
-                return rows
-
-            try:
-                rows = _call_with_timeout(_read_rows, timeout=30)
-            except _FuturesTimeout:
-                logger.warning(f"Baostock 读取个股K线超时 {self.stock_code}，回测数据加载失败")
-                return None
-
+            rows = []
+            while True:
+                baostock_session.check()
+                if not ((rs.error_code == '0') and rs.next()):
+                    break
+                baostock_session.check()
+                rows.append(rs.get_row_data())
+                baostock_session.check()
+            baostock_session.check()
             if not rows:
                 return None
-
-            df = pd.DataFrame(rows, columns=rs.fields)
-
-            # 类型转换
+            baostock_session.check()
+            fields = list(rs.fields)
+            baostock_session.check()
+            df = pd.DataFrame(rows, columns=fields)
             for col in ['open', 'high', 'low', 'close', 'volume', 'amount']:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce')
-
-            # 过滤无效行
             df = df.dropna(subset=['close', 'volume'])
             df = df[df['volume'] > 0].reset_index(drop=True)
-
             return df
-
+        except baostock_session.BaostockTimeout:
+            raise
         except Exception as e:
             logger.error(f"获取个股K线异常: {e}")
             return None
 
     def _fetch_index_kline(self, start_date: str, end_date: str) -> Optional[pd.DataFrame]:
-        """获取大盘指数K线"""
+        """获取大盘指数K线（必须在 DataFeeder load 的会话 worker 内调用）。"""
         try:
+            baostock_session.check()
             rs = bs.query_history_k_data_plus(
                 self.index_code,
                 "date,close,high,preclose",
@@ -669,31 +684,29 @@ class DataFeeder:
                 end_date=end_date,
                 frequency="d",
             )
-
-            # v0.8.9.5（彻查批 P1-2）：同上，指数K线读取也包超时
-            def _read_rows():
-                rows = []
-                while (rs.error_code == '0') and rs.next():
-                    rows.append(rs.get_row_data())
-                return rows
-
-            try:
-                rows = _call_with_timeout(_read_rows, timeout=30)
-            except _FuturesTimeout:
-                logger.warning("Baostock 读取大盘指数K线超时，大盘趋势走降级")
-                return None
-
+            baostock_session.check()
+            rows = []
+            while True:
+                baostock_session.check()
+                if not ((rs.error_code == '0') and rs.next()):
+                    break
+                baostock_session.check()
+                rows.append(rs.get_row_data())
+                baostock_session.check()
+            baostock_session.check()
             if not rows:
                 return None
-
-            df = pd.DataFrame(rows, columns=rs.fields)
+            baostock_session.check()
+            fields = list(rs.fields)
+            baostock_session.check()
+            df = pd.DataFrame(rows, columns=fields)
             df['close'] = pd.to_numeric(df['close'], errors='coerce')
             if 'high' in df.columns:
                 df['high'] = pd.to_numeric(df['high'], errors='coerce')
             df = df.dropna(subset=['close']).reset_index(drop=True)
-
             return df
-
+        except baostock_session.BaostockTimeout:
+            raise
         except Exception as e:
             logger.warning(f"大盘指数获取异常（不影响回测）: {e}")
             return None

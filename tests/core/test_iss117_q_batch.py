@@ -473,6 +473,8 @@ def test_r4a_sector_layer_error_keeps_triple_exit(monkeypatch):
     import src.core.exit_signals.stock as stock
     monkeypatch.setattr(stock, "_check_holder_count_surge", lambda code: None)
     monkeypatch.setattr(stock, "_check_margin_surge", lambda code: None)
+    # live=True also enters the macro layer; this test targets sector only.
+    monkeypatch.setattr(ex, "check_macro_top_signal", lambda **kwargs: None)
     sd = StockData(stock_code="x", stock_name="x", price=40.0, volume=1000,
                    ma5=42.0, low_60d=10.0)
     plan = _mk_plan(penetration_stage="30+", flagbearer_code="600170")

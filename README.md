@@ -8,7 +8,7 @@ AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系�
 
 ## 项目状态
 
-**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。当前产品基线为v0.8.42当次行业条件化现金观察限定接收，正式发布基线仍为v0.8.33；真实MID、历史行业/PIT、ROE、持续性、G4整体与V1仍未完成，capture_only/default不变。当前整合按用户约定直接面向`main`，不另建功能分支或PR；2026-10-21已限定接收共享超时及远端免费源增量的安全补修，G7/T05整体仍未完成。详见[第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)、[R15](plan/fusion/iteration9/R15_ACCEPTANCE.md)及[恢复入口](plan/fusion/RESUME.md)。
+**长期路线与完成标准：[MILESTONES.md](MILESTONES.md)**。当前产品基线为v0.8.42当次行业条件化现金观察限定接收，正式发布基线仍为v0.8.33；真实MID、历史行业/PIT、ROE、持续性、G4整体与V1仍未完成，capture_only/default不变。当前交付入口为[第十轮计划](plan/fusion/iteration10/DELIVERY_PLAN.md)与[恢复入口](plan/fusion/RESUME.md)。2026-10-25 V1-G7-SESSION限定接收；G7/T05与V1整体仍未完成，真实MID仍NO_VALID。本批证据见[会话验收回执](plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)。
 
 > 📖 历史版本记录见 [v0.8.3里程碑归档](docs/archive/v0.8.3_里程碑.md)；当前长期进度以根目录MILESTONES.md为准。
 > 📖 **案例验证报告请参阅 [C4 案例验证](docs/archive/v0.8.3_C4_案例验证报告.md)（已归档）**

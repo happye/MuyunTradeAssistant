@@ -27,7 +27,7 @@ import pandas as pd
 from src.scanner.market_cache import MarketCache
 from src.scanner.scanner_filter import ScannerFilter
 from src.data.models import ScanCandidate
-from src.data.timeout_call import call_with_timeout
+from src.data import baostock_session
 from src.core.ai_model import thinking_disabled_body
 from src.core.orchestrator import Orchestrator
 from src.data.akshare_client import AKShareClient
@@ -1151,17 +1151,21 @@ class ScannerEngine:
             return False
 
         def collect():
+            baostock_session.check()
             check_deadline()
             from src.data.akshare_client import _ensure_baostock_login
             import baostock as bs
 
+            baostock_session.check()
             check_deadline()
             if not _ensure_baostock_login():
                 return {}
+            baostock_session.check()
             check_deadline()
             query = bs.query_history_k_data_plus
             out = {}
             for code in codes:
+                baostock_session.check()
                 check_deadline()
                 code = str(code)
                 prefix = "sh" if code.startswith(("6", "9")) else ("bj" if code.startswith(("4", "8")) else "sz")
@@ -1169,15 +1173,24 @@ class ScannerEngine:
                     rs = query(f"{prefix}.{code}", "date,code,close,volume",
                                start_date=start_d, end_date=end_d,
                                frequency="d", adjustflag="2")
+                    baostock_session.check()
                     check_deadline()
-                    if rs.error_code != "0":
+                    error = rs.error_code
+                    baostock_session.check()
+                    check_deadline()
+                    if error != "0":
                         continue
                     rows = []
                     while True:
                         check_deadline()
                         if not rs.next():
                             break
+                        baostock_session.check()
+                        check_deadline()
                         rows.append(rs.get_row_data())
+                        baostock_session.check()
+                        check_deadline()
+                    baostock_session.check()
                     check_deadline()
                     valid_rows = []
                     for row in rows:
@@ -1193,7 +1206,8 @@ class ScannerEngine:
                     metrics = self.kline_metrics_from_rows(valid_rows, as_of=end_d, start_date=start_d)
                     if metrics and any(value is not None for value in metrics.values()):
                         out[code] = metrics
-                except _KlineBudgetExceeded:
+                except (_KlineBudgetExceeded, baostock_session.BaostockTimeout,
+                        baostock_session.BaostockAbandoned):
                     raise
                 except Exception as e:
                     logger.debug(f"kline metrics {code} 失败: {type(e).__name__}")
@@ -1201,8 +1215,8 @@ class ScannerEngine:
             return out
 
         try:
-            return call_with_timeout(collect, timeout=budget)
-        except TimeoutError:
+            return baostock_session.run(collect, timeout=budget, label="bs-scan-kline")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
             logger.warning(f"ScannerEngine: K线补算超过总预算 {budget:.0f}s，本批返回空")
             return {}
         except _KlineBudgetExceeded:
@@ -1221,13 +1235,10 @@ class ScannerEngine:
             return candidates
 
         try:
-            from src.data.akshare_client import _ensure_baostock_login, _call_with_timeout
+            from src.data.akshare_client import _ensure_baostock_login
             import baostock as bs
             from datetime import datetime, timedelta
             import pandas as pd
-
-            if not _ensure_baostock_login():
-                return candidates
 
             end_d = datetime.now().strftime("%Y-%m-%d")
             start_d = (datetime.now() - timedelta(days=100)).strftime("%Y-%m-%d")
@@ -1239,30 +1250,36 @@ class ScannerEngine:
                     prefix = "sh" if code.startswith(("6", "9")) else "sz"
                     bs_code = f"{prefix}.{code}"
 
-                    rs = bs.query_history_k_data_plus(
-                        bs_code, "date,close",
-                        start_date=start_d, end_date=end_d,
-                        frequency="d", adjustflag="2"
-                    )
-                    if rs.error_code != "0":
-                        continue
-
-                    # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时
-                    def _read_rows():
+                    def _read_rows(bs_code=bs_code):
+                        if not _ensure_baostock_login():
+                            return None
+                        baostock_session.check()
+                        rs = bs.query_history_k_data_plus(
+                            bs_code, "date,close",
+                            start_date=start_d, end_date=end_d,
+                            frequency="d", adjustflag="2"
+                        )
+                        baostock_session.check()
+                        if rs.error_code != "0":
+                            return None
                         rws = []
-                        while (rs.error_code == "0") and rs.next():
+                        while True:
+                            baostock_session.check()
+                            if not ((rs.error_code == "0") and rs.next()):
+                                break
+                            baostock_session.check()
                             rws.append(rs.get_row_data())
+                            baostock_session.check()
+                        baostock_session.check()
                         return rws
 
                     try:
-                        rows = _call_with_timeout(_read_rows, timeout=15)
-                    except Exception as e:
-                        # v0.8.9.5（审查 P3）：超时/异常留 debug 痕迹——原全静默 continue，
-                        # baostock 整体故障时富集静默全空无从排查
+                        rows = baostock_session.run(
+                            _read_rows, timeout=15, label=f"bs-enrich-{code}")
+                    except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy) as e:
                         logger.debug(f"60d enrich {code} 读取失败: {type(e).__name__}")
                         continue
-
-                    if len(rows) < 20:
+                    if rows is None or len(rows) < 20:
                         continue
 
                     df = pd.DataFrame(rows, columns=["date", "close"])

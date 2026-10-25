@@ -272,10 +272,13 @@ def test_a11_valid_price_stop_breach_positive():
 
 # ── A12：全部未核定信号 = research 资格（三倍定律例外）────
 
-def test_a12_all_unverified_signals_are_research():
+def test_a12_all_unverified_signals_are_research(monkeypatch):
     """缩量/减持/股东户数/融资/旗手/渗透率/宏观 = research；三倍定律 = exit（既有纪律）。"""
     from src.core.exit_signals.stock import _check_shrink_acceleration
+    import src.core.exit_signals.sector as sector
     from src.core.exit_signals.sector import _check_flagbearer_lag
+    # This admission test does not need the flagbearer K-line source.
+    monkeypatch.setattr(sector, "_fetch_20d_change_pct", lambda code: None)
     sd = StockData(stock_code="x", stock_name="x", price=10, volume=60,
                    avg_volume_5=100, avg_volume_20=100, change_pct=16)
     f1 = _check_shrink_acceleration(sd, code="x")

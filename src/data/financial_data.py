@@ -23,7 +23,7 @@ R1 字段语义登记表（FIELD_DEFINITIONS，DATA_TRUST §3）：
   「未核实字段不用于长期资格/风险预算/排名优选」的**消费侧限制尚未接线**（属
   R3/R4/R8 服务层与因子层）——当前语义状态只随证据记录落账，不隐含任何下游已拦截
 
-网络纪律：baostock 读取走 _call_with_timeout 30s 硬超时（防冻结，同 data_feeder 口径）；
+网络纪律：baostock 读取走共享租约 worker 的 30s 绝对截止（防冻结，同 data_feeder 口径）；
 本模块只服务 **live 证据抓取**——回测路径不调用（财务证据经 research_snapshot 严格
 PIT 闸门进快照，回放从快照读而非实时拉）。
 """
@@ -31,13 +31,13 @@ PIT 闸门进快照，回放从快照读而非实时拉）。
 import logging
 import re
 from calendar import monthrange
-from concurrent.futures import TimeoutError as _FuturesTimeout
+
 from datetime import datetime
 from typing import Literal, Optional
 
 from pydantic import BaseModel, Field
 
-from src.data.akshare_client import _call_with_timeout, _ensure_baostock_login
+from src.data.akshare_client import _ensure_baostock_login
 
 logger = logging.getLogger(__name__)
 
@@ -424,23 +424,40 @@ def _query_one(fn_name: str, bs_code: str, year: int, quarter: int,
                timeout: int) -> dict | None:
     """单接口查询 → {field: value}；超时/空返回返回 None 并告警（不抛冻结）。"""
     import baostock as bs
+    from src.data import baostock_session
 
     def _read():
+        if not _ensure_baostock_login():
+            return None
+        baostock_session.check()
         rs = getattr(bs, fn_name)(code=bs_code, year=year, quarter=quarter)
+        baostock_session.check()
         fields = list(rs.fields)
+        baostock_session.check()
         if rs.error_code != "0":
+            baostock_session.check()
             logger.warning(
                 f"Baostock 财务季频接口返回错误 {fn_name} {bs_code} {year}Q{quarter}: "
                 f"{rs.error_code} {rs.error_msg}")
             return None
-        while rs.next():
-            return dict(zip(fields, rs.get_row_data()))
-        return None
+        baostock_session.check()
+        first = None
+        while True:
+            baostock_session.check()
+            if not rs.next():
+                break
+            baostock_session.check()
+            row = dict(zip(fields, rs.get_row_data()))
+            baostock_session.check()
+            if first is None:
+                first = row
+        baostock_session.check()
+        return first
 
     try:
-        return _call_with_timeout(_read, timeout=timeout)
-    except _FuturesTimeout:
-        logger.warning(f"Baostock 财务季频读取超时 {fn_name} {bs_code} {year}Q{quarter}")
+        return baostock_session.run(_read, timeout=timeout, label=f"bs-fin-{fn_name}")
+    except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+        logger.warning(f"Baostock 财务季频读取超时或共享会话忙 {fn_name} {bs_code} {year}Q{quarter}")
         return None
 
 
@@ -471,9 +488,6 @@ def get_financial_quarterly(stock_code: str, year: int, quarter: int, *,
     bs_code = _to_baostock_code(stock_code)
     month = quarter * 3
     expected_period = f"{year:04d}-{month:02d}-{monthrange(year, month)[1]:02d}"
-    if not _ensure_baostock_login():
-        logger.warning(f"Baostock 登录失败，财务季频证据跳过 {bs_code} {year}Q{quarter}")
-        return []
     out: list[dict] = []
     for fn_name, fields in _INTERFACE_FIELDS.items():
         try:

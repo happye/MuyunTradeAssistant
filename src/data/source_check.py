@@ -209,25 +209,38 @@ def check_all_sources(code: str = "600989") -> dict:
     # v0.8.9.5（彻查批 P1-2）：行业分类探针换 _probe_t（带线程级硬超时）——
     # 原用无超时的 _probe，bs.next() 卡住会拖垮整个体检（ISS-047 同类点）
     def _bs_industry():
-        from src.data.akshare_client import _ensure_baostock_login, AKShareClient, _call_with_timeout
+        from src.data.akshare_client import _ensure_baostock_login, AKShareClient
+        from src.data import baostock_session
         import baostock as bs
-        if not _ensure_baostock_login():
-            raise RuntimeError("Baostock 登录失败")
         prefix, _ = AKShareClient._normalize_stock_code(code)
 
-        def _read_rows():
+        def _read():
+            if not _ensure_baostock_login():
+                raise RuntimeError("Baostock 登录失败")
+            baostock_session.check()
+            rs = bs.query_stock_industry(code=f"{prefix}.{code}")
+            baostock_session.check()
+            if rs.error_code != '0':
+                raise RuntimeError(rs.error_msg)
             rws = []
-            while rs.next():
+            while True:
+                baostock_session.check()
+                if not rs.next():
+                    break
+                baostock_session.check()
                 rws.append(rs.get_row_data())
-            return rws
+                baostock_session.check()
+            baostock_session.check()
+            fields = list(rs.fields)
+            baostock_session.check()
+            return fields, rws
 
-        rs = bs.query_stock_industry(code=f"{prefix}.{code}")
-        if rs.error_code != '0':
-            raise RuntimeError(rs.error_msg)
-        rows = _call_with_timeout(_read_rows, timeout=15)
+        try:
+            f, rows = baostock_session.run(_read, timeout=15, label="bs-source-check-industry")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy) as e:
+            raise RuntimeError(f"Baostock 行业查询超时或共享会话忙: {e}") from e
         if not rows:
             raise RuntimeError("行业查询返回空")
-        f = rs.fields
         return f"{code} → {rows[0][f.index('industry')]}/{rows[0][f.index('code_name')]}"
 
     def _bs_kline():

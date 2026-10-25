@@ -167,12 +167,28 @@ def test_has_quarter_evidence_and_skip_archived(tmp_path, monkeypatch):
         def _f(code, year, quarter):
             calls.append((fn_name, code, year, quarter))
             row = rows.get(fn_name)
-            fields = ["code", "pubDate", "statDate"] + [k for k in row
-                                                        if k not in ("code", "pubDate", "statDate")]
+            if row is None:
+                fields = ["code", "pubDate", "statDate"]
+                values = []
+                served = [True]
+
+                def _next():
+                    return False
+            else:
+                fields = ["code", "pubDate", "statDate"] + [
+                    k for k in row if k not in ("code", "pubDate", "statDate")]
+                values = [row.get(f, "") for f in fields]
+                served = [False]
+
+                def _next():
+                    if served[0]:
+                        return False
+                    served[0] = True
+                    return True
+
             return SimpleNamespace(fields=fields, error_code="0", error_msg="",
-                                   _row=[row.get(f, "") for f in fields], _used=False,
-                                   next=lambda s=None: True, get_row_data=lambda: list(
-                                       [row.get(f, "") for f in fields]))
+                                   _row=list(values), _used=False,
+                                   next=_next, get_row_data=lambda: list(values))
         return _f
 
     import baostock as bs_mod

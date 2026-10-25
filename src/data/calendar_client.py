@@ -126,27 +126,43 @@ class CalendarClient:
 
         def _fetch():
             from src.data.akshare_client import _ensure_baostock_login
+            from src.data import baostock_session
             import baostock as bs
             if not _ensure_baostock_login():
                 return None
+            baostock_session.check()
             rs = bs.query_history_k_data_plus(
                 symbol, "date,close",
                 start_date=start, end_date=end,
                 frequency="d", adjustflag="3",
             )
+            baostock_session.check()
             if rs.error_code != "0":
                 logger.warning("baostock 指数查询失败: %s %s", rs.error_code, rs.error_msg)
                 return None
             closes = []
-            while rs.next():
-                val = rs.get_row_data()[1]
+            while True:
+                baostock_session.check()
+                if not rs.next():
+                    break
+                baostock_session.check()
+                row = rs.get_row_data()
+                baostock_session.check()
+                val = row[1]
                 try:
                     closes.append(float(val))
                 except (ValueError, TypeError):
                     continue
+                baostock_session.check()
+            baostock_session.check()
             return closes
 
-        closes = _safe_call("calendar.index_history", _fetch, timeout=30)
+        from src.data import baostock_session
+        try:
+            closes = baostock_session.run(_fetch, timeout=30, label="bs-calendar-index")
+        except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+            logger.warning("baostock 指数查询超时或共享会话忙，走降级")
+            return None
         if not closes:
             return None
         cls._index_history_cache = (now, closes)

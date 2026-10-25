@@ -1,3 +1,5 @@
+**2026-10-25 V1-G7-SESSION限定接收**：统一12个生产消费者及CLI/chat关闭入口，实施非阻塞独占Baostock租约与worker内生命周期/monotonic截止。忙请求立即降级；实际worker finally释放租约；调用方超时不释放、不另登出。单查询从登录前计；DataFeeder双query+正常close整体60秒；scanner整批预算保持。入口/边界及未知真实外源、AI/账户、全CLI退出限制见[第十轮合同](iteration10/DELIVERY_PLAN.md)和[RESUME](RESUME.md)。独立Sol/high PASS；全量3611 passed/1 failed，唯一失败为旧无限mock；有限fixture修后相关148 passed/1 skipped，无最终树单次全绿全量声明。回执/指纹/结果：`iteration10/T05G_SESSION_ACCEPTANCE.json`、`T05G_SESSION_SOURCE_PINS.json`、`T05G_SESSION_RESULTS.txt`。工程/验收各+3；唯一进度账本见PROGRESS。G7/T05及V1整体仍未完成。
+
 **2026-10-25管理交付：V1量化基线建立**。任务/权重/当前状态只维护[PROGRESS.json](PROGRESS.json)，用户看[任务账本](PROGRESS.md)或[可筛选看板](../../docs/开发进度看板.html)。本批不改产品代码，不新增产品完成点；E3/F1/F2是该基线已有成果，缺同口径历史前值不虚构百分点。未来批次必须报告关联ID、实际交付、证据、进度前后与范围变化；下面保留各批验收原范围。
 
 **2026-10-25 T05-F2限定接收：备用行情、历史K线、指数趋势的query创建与耗尽共用各自既有登录后30秒预算，保留供应商异常/socket重置、迭代异常、空/error与正常输出。正式9红→54绿，主控8文件守卫159 passed（9.12s），532项受测指纹、9保护hash和原218未跟踪存在性稳定。本批未跑全量；登录/心跳、整批预算与原生会话重叠仍待，G7/T05/V1未关闭。**

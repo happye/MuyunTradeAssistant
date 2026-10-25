@@ -663,28 +663,36 @@ class EventLayer:
         if cached is not None and (time.time() - cached_ts) < EventLayer._INDEX_CACHE_TTL:
             return cached
         try:
-            from src.data.akshare_client import AKShareClient, _call_with_timeout
-            from concurrent.futures import TimeoutError as _FuturesTimeout
-            AKShareClient._ensure_baostock_login()
+            from src.data.akshare_client import _ensure_baostock_login
+            from src.data import baostock_session
             import baostock as bs
-            rs = bs.query_history_k_data_plus(
-                "sh.000300",
-                "date,close,pctChg",
-                start_date=((datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")),
-                end_date=(datetime.now().strftime("%Y-%m-%d")),
-            )
 
-            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
             def _read_rows():
+                if not _ensure_baostock_login():
+                    return None
+                baostock_session.check()
+                rs = bs.query_history_k_data_plus(
+                    "sh.000300",
+                    "date,close,pctChg",
+                    start_date=((datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")),
+                    end_date=(datetime.now().strftime("%Y-%m-%d")),
+                )
+                baostock_session.check()
                 last_row = None
-                while rs.next():
-                    last_row = rs.get_row_data()  # 取最后一行（最近交易日）
+                while True:
+                    baostock_session.check()
+                    if not rs.next():
+                        break
+                    baostock_session.check()
+                    last_row = rs.get_row_data()
+                    baostock_session.check()
+                baostock_session.check()
                 return last_row
 
             try:
-                last_row = _call_with_timeout(_read_rows, timeout=30)
-            except _FuturesTimeout:
-                logger.warning("Baostock 读取沪深300行情超时，市场规则事件本轮跳过")
+                last_row = baostock_session.run(_read_rows, timeout=30, label="bs-event-index")
+            except (baostock_session.BaostockTimeout, baostock_session.BaostockBusy):
+                logger.warning("Baostock 读取沪深300行情超时或共享会话忙，市场规则事件本轮跳过")
                 return None
             if last_row:
                 result = {

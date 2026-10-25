@@ -297,13 +297,13 @@ def test_kline_query_shim_requires_code(monkeypatch):
 def test_kline_metrics_deadline_anchored_before_late_worker(monkeypatch):
     import src.scanner.scanner_engine as se
     engine, calls = _fake_baostock(monkeypatch)
-    real = se.call_with_timeout
+    real = se.baostock_session.run
 
-    def delayed(fn, timeout):
+    def delayed(fn, *, timeout, label="bs-test"):
         time.sleep(0.3)
-        return real(fn, timeout=timeout)
+        return real(fn, timeout=timeout, label=label)
 
-    monkeypatch.setattr(se, "call_with_timeout", delayed)
+    monkeypatch.setattr(se.baostock_session, "run", delayed)
     started = time.monotonic()
     result = engine._kline_metrics(["000001"])
     elapsed = time.monotonic() - started
