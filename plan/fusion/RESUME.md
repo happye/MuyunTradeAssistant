@@ -19,9 +19,11 @@
 > **2026-10-22 T05-E 本提交关闭**：晚到缓存写抑制（`is_call_abandoned` + MarketCache/K线写跳过）。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（均缺有限反例与产品裁决，不抢道）；T04 大函数拆分（不急）。不绑 G7/v43。
 # 融合项目恢复入口
 
-## 当前入口：2026-10-25 Codex原生Subagent（测试执行2026-10-24）
+## 当前入口：2026-10-25 Codex原生Subagent
 
-用户改派只在Codex实施，主控规划/审批/Git，原生Subagent开发与复核；不调用DSH。main@2727141与origin/main已核一致，原8项保护文件和207个未跟踪文件保持。
+2026-10-25 T05-F1限定接收：主题代码核验的查询创建、错误/字段读取与结果耗尽共用既有登录后15秒预算，首包挂起可降级；正常名称与退市过滤保持。正式6红→15绿，主控五文件守卫204 passed（3.64s），531项受测指纹、9保护hash及原218未跟踪存在性稳定。未跑本批全量；登录/心跳、整批预算及原生共享会话仍未解决，G7/T05/V1未关闭。 生产与回归独立复核PASS，当前证据见[回执](iteration10/T05F1_ACCEPTANCE.json)和[第十轮合同](iteration10/DELIVERY_PLAN.md)。E3已推送`e28c674`；本批交付SHA以main实际Git历史核对。主控只在Codex+原生Subagent实施/Git，不调用DSH。下一项先将非阻塞会话租约的完整消费者范围落合同再实施；不加只覆盖单站点的伪全局锁。
+
+用户改派只在Codex实施，主控规划/审批/Git，原生Subagent开发与复核；不调用DSH。本批基线main@e28c674；当前9项保护文件（含用户本地.codex/config.toml）与218个原有未跟踪文件保持，Git交付核实际main/origin/main。
 
 2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。 见[验收回执](iteration10/T05E3_ACCEPTANCE.json)与[合同](iteration10/DELIVERY_PLAN.md)。产品、runner与最后两项测试均独立复核PASS；主控负责本提交和普通推送，交付SHA核main实际历史。下一批先限定Baostock查询与迭代会话边界合同；不追加无收益T04机械拆分。
 

@@ -1,5 +1,7 @@
 # 暮云长期路线与持续里程碑
 
+**2026-10-25 T05-F1限定接收：主题代码核验的查询创建、错误/字段读取与结果耗尽共用既有登录后15秒预算，首包挂起可降级；正常名称与退市过滤保持。正式6红→15绿，主控五文件守卫204 passed（3.64s），531项受测指纹、9保护hash及原218未跟踪存在性稳定。未跑本批全量；登录/心跳、整批预算及原生共享会话仍未解决，G7/T05/V1未关闭。**
+
 **2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。**
 
 **2026-10-22 T04-L**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected；留下 scan-portfolio/chat/noai-debug 等更厚内联；不触评分/MID/G7/v43/Baostock。

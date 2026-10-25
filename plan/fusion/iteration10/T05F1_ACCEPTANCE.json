@@ -1,0 +1,77 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-25",
+  "status": "ACCEPTED_THEME_QUERY_WAIT_SCOPE_ONLY",
+  "base_commit": "e28c674b457cb2547a51504111c6f08754b55b39",
+  "product_scope": "theme_locator._verify_code query creation and full materialization share existing post-login15seconds",
+  "development_red": {
+    "failed": 6,
+    "passed": 9,
+    "seconds": 7.71
+  },
+  "development_green": {
+    "passed": 15,
+    "failed": 0,
+    "seconds": 1.0
+  },
+  "guarded_related": {
+    "passed": 204,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 3.64,
+    "files": [
+      "tests/benzong/test_theme_verify_query_timeout.py",
+      "tests/core/test_scan_caches.py",
+      "tests/core/test_candidate_lineage.py",
+      "tests/core/test_bzscan_parse.py",
+      "tests/core/test_t04e_dispatch_golden.py"
+    ],
+    "blocked_io": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "shim_env": "unset; all query/login operations mocked"
+  },
+  "full_suite_run_this_batch": false,
+  "validation_scope_basis": "Only one function and help row changed plus new tests; no global state/helper/fixture/dependency change. Independent review found related suite sufficient. E3 full is historical, not F1 full.",
+  "checks": {
+    "exit_code": 0,
+    "source_count": 531,
+    "source_unchanged": true,
+    "protected_files": 9,
+    "protected_unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "original_untracked_present": true,
+    "original_untracked_count": 218,
+    "driver_seconds": 6.484
+  },
+  "help_rows_width": 74,
+  "reviews": {
+    "architecture": "bounded F1 approved; full session coordination separately scoped",
+    "code": "PASS, read-only no test rerun",
+    "requested_roles": "Astra/low architecture; Sol/medium developer; Sol/high quality guard",
+    "actual_execution_model_verified": false
+  },
+  "source_manifest": {
+    "path": "plan/fusion/iteration10/T05F1_SOURCE_PINS.json",
+    "sha256": "1a9f9bb0d86713dad9327e875f3347f73bd8df5407d4f874ad1c290720c37197",
+    "count": 531
+  },
+  "evidence": {
+    "path": "plan/fusion/iteration9/TARGETED_TEST_RESULTS_P.txt",
+    "sha256": "b76c9a1239c27b887dbdb585a5fba77ab9ed675258d9fbc4e957f063cca466f1",
+    "hash_basis": "committed Git text blob bytes; existing raw-text log line endings normalized by Git"
+  },
+  "limits": [
+    "login and heartbeat outside15seconds",
+    "not an entire bzscan batch deadline",
+    "underlying worker cannot be forcibly killed",
+    "Baostock shared-socket concurrency and late side effects not fixed",
+    "five explicitly known AKShareClient query-creation sites remain; not an exhaustive all-source count",
+    "no new direct next-request-isolation empirical test; helper unchanged",
+    "real MID NO_VALID, G7/T05/V1 incomplete",
+    "audit hook is not OS sandbox"
+  ],
+  "git": "Codex owns main commit/push; delivery SHA from actual Git history"
+}

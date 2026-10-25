@@ -24002,3 +24002,270 @@ Full original log has exactly the two expected unsafe-write failures: 3514 passe
 
 Incremental reuse is valid while product, runner, shared fixtures, config and dependencies stay unchanged. Changes only relocate local test writes; monkeypatch is fixture-restored, no new shared state or widened permissions. Accept prior full passed portion plus final affected-file verification; no third full required. Do not claim a final-tree single 3516-all-green full run.
 
+
+===== T05_F1_FINAL_2026_10_25 =====
+
+--- ORIGINAL_SOURCE_RED ---
+FFF..FF...F....                                                          [100%]
+================================== FAILURES ===================================
+___ test_query_and_consumption_return_before_blocked_worker_finishes[query] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000135588FC350>
+query_env = namespace(budgets=[15], materialized=[[['贵州茅台', '1']]], workers=[<Thread(muyun-timeout-call, stopped daemon 40644)>])
+blocked_stage = 'query'
+
+    @pytest.mark.parametrize("blocked_stage", ["query", "error", "fields", "next", "row"])
+    def test_query_and_consumption_return_before_blocked_worker_finishes(
+        monkeypatch, query_env, blocked_stage
+    ):
+        entered = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        returned = []
+    
+        def hook(stage):
+            if stage == blocked_stage:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(hook=hook)
+    
+        def query(**kwargs):
+            assert kwargs == {"code": "sh.600519"}
+            hook("query")
+            return result
+    
+        monkeypatch.setattr(bs, "query_stock_basic", query)
+    
+        def verify():
+            try:
+                returned.append(theme_locator._verify_code("600519", "贵州茅台"))
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=verify, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2), "query did not reach the controlled barrier"
+>           assert finished.wait(0.7), f"{blocked_stage} escaped the query wait budget"
+E           AssertionError: query escaped the query wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x135588f3c90: unset>.wait
+
+tests\benzong\test_theme_verify_query_timeout.py:106: AssertionError
+___ test_query_and_consumption_return_before_blocked_worker_finishes[error] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000013558CA46D0>
+query_env = namespace(budgets=[15], materialized=[[['贵州茅台', '1']]], workers=[<Thread(muyun-timeout-call, stopped daemon 14204)>])
+blocked_stage = 'error'
+
+    @pytest.mark.parametrize("blocked_stage", ["query", "error", "fields", "next", "row"])
+    def test_query_and_consumption_return_before_blocked_worker_finishes(
+        monkeypatch, query_env, blocked_stage
+    ):
+        entered = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        returned = []
+    
+        def hook(stage):
+            if stage == blocked_stage:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(hook=hook)
+    
+        def query(**kwargs):
+            assert kwargs == {"code": "sh.600519"}
+            hook("query")
+            return result
+    
+        monkeypatch.setattr(bs, "query_stock_basic", query)
+    
+        def verify():
+            try:
+                returned.append(theme_locator._verify_code("600519", "贵州茅台"))
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=verify, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2), "query did not reach the controlled barrier"
+>           assert finished.wait(0.7), f"{blocked_stage} escaped the query wait budget"
+E           AssertionError: error escaped the query wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x13558ca72d0: unset>.wait
+
+tests\benzong\test_theme_verify_query_timeout.py:106: AssertionError
+__ test_query_and_consumption_return_before_blocked_worker_finishes[fields] ___
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000013558BF5ED0>
+query_env = namespace(budgets=[15], materialized=[[['贵州茅台', '1']]], workers=[<Thread(muyun-timeout-call, stopped daemon 41648)>])
+blocked_stage = 'fields'
+
+    @pytest.mark.parametrize("blocked_stage", ["query", "error", "fields", "next", "row"])
+    def test_query_and_consumption_return_before_blocked_worker_finishes(
+        monkeypatch, query_env, blocked_stage
+    ):
+        entered = threading.Event()
+        release = threading.Event()
+        finished = threading.Event()
+        returned = []
+    
+        def hook(stage):
+            if stage == blocked_stage:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(hook=hook)
+    
+        def query(**kwargs):
+            assert kwargs == {"code": "sh.600519"}
+            hook("query")
+            return result
+    
+        monkeypatch.setattr(bs, "query_stock_basic", query)
+    
+        def verify():
+            try:
+                returned.append(theme_locator._verify_code("600519", "贵州茅台"))
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=verify, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2), "query did not reach the controlled barrier"
+>           assert finished.wait(0.7), f"{blocked_stage} escaped the query wait budget"
+E           AssertionError: fields escaped the query wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x13558bf5290: unset>.wait
+
+tests\benzong\test_theme_verify_query_timeout.py:106: AssertionError
+_____________ test_normal_query_materializes_fields_and_all_rows ______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000013558BD2290>
+query_env = namespace(budgets=[15], materialized=[[['1', 'a', '贵州茅台'], ['1', 'b', '另一家公司']]], workers=[<Thread(muyun-timeout-call, stopped daemon 40220)>])
+
+    def test_normal_query_materializes_fields_and_all_rows(monkeypatch, query_env):
+        result = Result(
+            fields=["status", "unused", "code_name"],
+            rows=[["1", "a", "贵州茅台"], ["1", "b", "另一家公司"]],
+        )
+        operations = []
+        result.hook = lambda stage: operations.append(threading.current_thread())
+    
+        def query(**kwargs):
+            assert kwargs == {"code": "sh.600519"}
+            operations.append(threading.current_thread())
+            return result
+    
+        monkeypatch.setattr(bs, "query_stock_basic", query)
+        assert theme_locator._verify_code("600519", "贵州茅台") == {
+            "code": "600519", "name": "贵州茅台"
+        }
+        assert result.next_calls == 3
+        assert result.row_calls == 2
+        assert query_env.budgets == [15]
+        fields, rows = query_env.materialized[0]
+>       assert fields == result._fields and fields is not result._fields
+E       AssertionError: assert (['1', 'a', '贵州茅台'] == ['status', 'u..., 'code_name']
+E         
+E         At index 0 diff: '1' != 'status'
+E         Use -v to get more diff)
+
+tests\benzong\test_theme_verify_query_timeout.py:139: AssertionError
+________________ test_rejected_results_stay_none[query-error] _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000013558CEBFD0>
+query_env = namespace(budgets=[], materialized=[], workers=[])
+result = <test_theme_verify_query_timeout.Result object at 0x00000135588D7B90>
+ai_name = '贵州茅台'
+
+    @pytest.mark.parametrize(
+        "result, ai_name",
+        [
+            (Result(error="1"), "贵州茅台"),
+            (Result(rows=[]), "贵州茅台"),
+            (Result(), "中国平安"),
+            (Result(rows=[["贵州茅台", "0"]]), "贵州茅台"),
+        ],
+        ids=["query-error", "empty", "name-mismatch", "delisted"],
+    )
+    def test_rejected_results_stay_none(monkeypatch, query_env, result, ai_name):
+        monkeypatch.setattr(bs, "query_stock_basic", lambda **kwargs: result)
+        assert theme_locator._verify_code("600519", ai_name) is None
+>       assert query_env.budgets == [15]
+E       assert [] == [15]
+E         
+E         Right contains one more item: 15
+E         Use -v to get more diff
+
+tests\benzong\test_theme_verify_query_timeout.py:158: AssertionError
+_______________ test_query_and_read_exceptions_stay_none[query] _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000013558D043D0>
+query_env = namespace(budgets=[], materialized=[], workers=[]), stage = 'query'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "row"])
+    def test_query_and_read_exceptions_stay_none(monkeypatch, query_env, stage):
+        def hook(current):
+            if current == stage:
+                raise RuntimeError("controlled query failure")
+    
+        def query(**kwargs):
+            hook("query")
+            return Result(hook=hook)
+    
+        monkeypatch.setattr(bs, "query_stock_basic", query)
+        assert theme_locator._verify_code("600519", "贵州茅台") is None
+>       assert query_env.budgets == [15]
+E       assert [] == [15]
+E         
+E         Right contains one more item: 15
+E         Use -v to get more diff
+
+tests\benzong\test_theme_verify_query_timeout.py:175: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_query_and_consumption_return_before_blocked_worker_finishes[query]
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_query_and_consumption_return_before_blocked_worker_finishes[error]
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_query_and_consumption_return_before_blocked_worker_finishes[fields]
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_normal_query_materializes_fields_and_all_rows
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_rejected_results_stay_none[query-error]
+FAILED tests/benzong/test_theme_verify_query_timeout.py::test_query_and_read_exceptions_stay_none[query]
+6 failed, 9 passed in 7.71s
+
+
+--- FINAL_DEVELOPER_GREEN ---
+...............                                                          [100%]
+15 passed in 1.00s
+
+
+--- PARENT_GUARDED_RELATED ---
+T05-F1 guarded related verification; native provider mocked, shim env unset
+COMMAND ["G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe", "-B", "-X", "utf8", "plan/fusion/iteration9/review_test_runner.py", "tests/benzong/test_theme_verify_query_timeout.py", "tests/core/test_scan_caches.py", "tests/core/test_candidate_lineage.py", "tests/core/test_bzscan_parse.py", "tests/core/test_t04e_dispatch_golden.py"]
+........................................................................ [ 35%]
+........................................................................ [ 70%]
+............................................................             [100%]
+204 passed in 3.64s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+--- ACTUAL_AST_HELP_RENDER ---
+│   已放弃的嵌套取数同样跳过快照/K线缓存写入                             │
+│   主题代码查询与读取共用15秒等待，登录另计                             │
+HELP_ROWS_WIDTH_74 True
+
+
+--- INDEPENDENT_NARROW_REVIEW ---
+2026-10-25 Independent task_quality_guard F1 review: PASS scoped query-wait boundary. Requested Sol/high; actual model execution metadata unverified. Read-only, no tests/file edits/delegation.
+Verified query creation, error_code, fields copy and complete iteration share existing timeout=15. Login and existing normal/name/delist/empty/exception behavior unchanged. Old red query/error/fields cases prove actual unbounded wait, not just payload shape; 6failed/9passed7.71s, final15passed1.00s.
+Event barriers release in finally; caller and owned workers joined before monkeypatch restoration. Late worker really consumes rows and expired return remains None. New tests do not directly issue a subsequent verification, so do not claim a new empirical no-cross-request test; local state and unchanged helper per-call queue support isolation. Shared Baostock socket and late side effects remain out of scope.
+Planned five-file guarded related suite sufficient; no reason found to require full suite. Guard result was pending at review and subsequently verified by parent:204passed3.64s, source531/protected9 unchanged, original218untracked present.

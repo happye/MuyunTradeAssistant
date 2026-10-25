@@ -1,5 +1,22 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 2026-10-25 当前合同：T05-F1 主题代码核验查询等待界
+
+状态：2026-10-25限定接收，基线main@e28c674（已推送），本批交付SHA核main日志。Codex主控/Git，Sol/medium开发、Sol/high只读审查；架构Astra/low已裁决此有限切片。实际型号缺运行元数据时标未核实。
+
+- 唯一产品切片：`theme_locator._verify_code`在登录成功后，将`query_stock_basic`创建、错误检查、字段复制和`next/get_row_data`耗尽纳入同一个既有15秒helper调用，返回已物化字段/行；名称/退市过滤保持。当前仅next受限，首包可卡在门外，必须先写有限反例再修。
+- 开发所有权：`src/core/benzong/theme_locator.py`仅该函数、新`tests/benzong/test_theme_verify_query_timeout.py`、`start.py`帮助新增短行（登录另计）。主控拥有合同/状态/ISSUES/手册/教训/证据与Git。保留其他人配置、账户、索引和未跟踪成果，不递归委派。
+- 有限验收矩阵：创建阻塞先红后绿、迭代阻塞、正常字段/行、查询错误/异常、迟到行不进入当前返回、名称不符/退市拒绝、既有主题缓存与候选链路回归；所有worker用Event有限释放，在mock恢复前完成，禁止真实外源/业务AI。
+- 测试责任：开发仅新文件红绿；主控一次守卫组合（新文件、scan_caches、candidate_lineage及主题消费者相关测试），独立审查不复制测试。此改动无全局状态/fixture/helper修改，不预设再全仓；若发现共享状态或导入污染，则扩大受影响验证并记录原因。E3正文全量仅作其原范围历史依据，不称F1全量通过。
+- 不改登录/心跳、15秒预算、AI提示/模型/评分/CACHE_VERSION、主题缓存与invalid结构、shim、超时helper、其他消费者、MID或Baostock会话机制。15秒只限登录后的查询；不是单候选全流程或整批总预算，不能强杀底层调用。
+- 停止：需要改变登录/空结果意义/其他消费者时转独立合同，不以局部锁伪称会话安全。ISS-120仍保留原生共享socket、晚到worker与logout/重登的全消费者风险；shim开启后被替换路径不套用原生socket推断。
+
+**F1最终验收**：旧源码6 failed/9 passed（7.71s），修复后新文件15 passed（1.00s）；主控一次5文件守卫204 passed/0 failed/0 skipped（3.64s），包含新test、scan_caches、candidate_lineage、bzscan_parse与t04e_dispatch_golden。531项指纹起止一致，9项保护hash/知识集合及原218未跟踪存在性不变，阻断IO三项计数均0。真实AST帮助渲染相关行74列。只读独立复核PASS，未复制测试；本批没有全量，不将E3旧全量称为F1全量。见[T05F1_ACCEPTANCE.json](T05F1_ACCEPTANCE.json)、[531项清单](T05F1_SOURCE_PINS.json)及既有TARGETED原始日志。迟到结果不改变本次返回已实测，下一请求隔离基于未改helper与局部状态，不冒称新增测试已覆盖。
+
+**同类明确剩余5处**：AKShareClient的股名、预告、实时备用报价、历史K线和指数趋势，query创建仍在各自读取helper外；本批不扩大。其他直接Baostock消费者及登录/心跳/关闭入口另按全会话合同核定，不把5当全源穷尽。
+
+后续会话合同候选为完整查询worker的非阻塞独占租约：旧worker实际结束前保持busy，新请求立即降级、无排队；登录/心跳/创建/分页/登出全部消费者共同接入。该候选尚未批准实施，不引入actor或单站点伪全局锁；真实数据串证券尚无复现证据。
+
 ## 2026-10-24 当前合同：T05-E3 嵌套放弃状态与缓存保护
 
 状态：2026-10-25增量限定接收。用户最新指派只在Codex实施，主控规划/Git、原生Subagent开发与复核；下方Claude/DSH身份为历史。基线main@2727141，已fetch核origin/main一致。

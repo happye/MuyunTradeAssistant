@@ -605,3 +605,8 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ### ERR-20261025-VALIDATOR-ISOLATION｜两类验证设施失败不可伪称产品全绿
 
 首次3506 setup errors（140.24s）由旧索引只读门阻断，无正文；完整8182127字节原件gzip保真。修复门后全量3514 passed/2 failed（550.35s），二者均测试写出隔离临时根。保留失败，测试改用tmp_path后两文件10 passed（3.77s）。最后只修改两测试局部body和docstring，528项及全局AST未变，独立复核后增量接收，无最终树一次全绿全量；边界见T05E3_ACCEPTANCE.json。
+
+
+### ERR-20261025-THEME-QUERY-OUTSIDE-BUDGET｜主题代码首包在15秒门外
+
+旧_verify_code的query/error/fields在调用线程，只有next读取受限；有限阻塞反例6 failed/9 passed（7.71s），其中query/error/fields三例直接证明未及时返回。修复后15 passed（1.00s），主控相关204 passed（3.64s）。不改登录，不声称单候选全程或整批15秒，不修共享会话；原始红绿及审查见既有TARGETED和T05F1_ACCEPTANCE.json。

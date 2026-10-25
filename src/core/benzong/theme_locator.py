@@ -123,20 +123,20 @@ def _verify_code(code: str, ai_name: str) -> Optional[dict]:
         if not _ensure_baostock_login():
             return None
         prefix = _baostock_prefix(code)
-        rs = bs.query_stock_basic(code=f"{prefix}.{code}")
-        if rs.error_code != "0":
-            return None
-        # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时（ISS-047 同类点）
-        def _read_rows():
+        # 查询创建与完整读取共用预算，不把活动 ResultData 交回调用线程。
+        def _query_rows():
+            rs = bs.query_stock_basic(code=f"{prefix}.{code}")
+            if rs.error_code != "0":
+                return [], []
+            fields = list(rs.fields)
             rws = []
             while rs.next():
                 rws.append(rs.get_row_data())
-            return rws
+            return fields, rws
 
-        rows = _call_with_timeout(_read_rows, timeout=15)
+        f, rows = _call_with_timeout(_query_rows, timeout=15)
         if not rows:
             return None
-        f = rs.fields
         status = rows[0][f.index("status")] if "status" in f else "1"
         if status != "1":  # 已退市
             return None
