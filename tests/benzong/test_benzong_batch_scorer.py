@@ -9,6 +9,7 @@ mock auto_score + _build_ai_client/_build_rag_service，验证：
 6. progress_cb 回调被调用
 """
 
+import contextlib
 import os
 import sys
 import unittest.mock as mock
@@ -123,6 +124,137 @@ def test_progress_cb():
         auto_score_batch(["A", "B"], top_n=10, progress_cb=lambda i, t, c, s: calls.append((i, c)))
         assert calls == [(1, "A"), (2, "B")], f"回调顺序错: {calls}"
         print(f"✓ progress_cb: {calls}")
+
+
+# ── T05-H：结构化逐项结果 callback（ba 只据此记账）──────────
+
+_DIMS = ("industry_prosperity", "business_purity", "valuation_position",
+         "industry_leader", "market_recognition", "risk_deduction")
+
+
+def _make_structured_result(total, confs=None, name="测试", invalidate=False):
+    """构造带 6 维 confidence 的 mock 结果（confs 缺省全 0.8 有效）。"""
+    confs = dict(confs or {})
+    r = _make_result(total, name=name, invalidate=invalidate)
+    r.dimensions_meta = {
+        d: {"score": total * 0.8, "confidence": confs.get(d, 0.8)} for d in _DIMS
+    }
+    return r
+
+
+@contextlib.contextmanager
+def _patch_scorer_env(m_auto):
+    with mock.patch("src.core.benzong.batch_scorer.auto_score", m_auto) as auto, \
+         mock.patch("src.core.benzong.batch_scorer._build_ai_client",
+                    return_value=(mock.MagicMock(), "m")) as build, \
+         mock.patch("src.core.benzong.batch_scorer.get_market_turnover", return_value=1.2) as turnover:
+        yield auto, build, turnover
+
+
+def test_result_cb_structured_complete_and_ranking_preserved():
+    """完整维度结果 → 只回调一次结构化成功；ranked/top_n 业务语义不变。"""
+    records, progress = [], []
+    with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):
+        m_auto.side_effect = lambda code, **kw: _make_structured_result(
+            {"A": 80, "B": 60, "C": 70}[code], name=code)
+        from src.core.benzong.batch_scorer import auto_score_batch
+        r = auto_score_batch(["A", "B", "C"], top_n=2,
+                             progress_cb=lambda i, t, c, s: progress.append(c),
+                             result_cb=lambda rec: records.append(rec))
+    assert [x["code"] for x in r["ranked"]] == ["A", "C", "B"]
+    assert [x["code"] for x in r["top_n"]] == ["A", "C"]
+    assert r["failures"] == [] and r["scored"] == 3
+    assert progress == ["A", "B", "C"]
+    assert [rec["code"] for rec in records] == ["A", "B", "C"]
+    for rec in records:
+        assert rec["ok"] is True and rec["status"] == "complete"
+        assert rec["degraded_dims"] == []
+
+
+def test_result_cb_degraded_when_partial_confidence_unrated_or_illegal():
+    """部分维度 confidence 缺失/0/非法 → 降级（仍算已返回结果，不记失败）。"""
+    bad = [
+        {"risk_deduction": 0},
+        {"market_recognition": None},
+        {"industry_leader": "bad"},
+        {"valuation_position": float("nan")},
+        {"industry_leader": -0.2},
+    ]
+    records = []
+    with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):
+        def fake(code, **kw):
+            idx = ["D0", "D1", "D2", "D3", "D4", "OK"].index(code)
+            confs = bad[idx] if idx < len(bad) else {}
+            return _make_structured_result(70, confs=confs, name=code)
+        m_auto.side_effect = fake
+        from src.core.benzong.batch_scorer import auto_score_batch
+        r = auto_score_batch(["D0", "D1", "D2", "D3", "D4", "OK"],
+                             top_n=10, result_cb=lambda rec: records.append(rec))
+    assert r["failed"] == 0 and r["scored"] == 6
+    by_code = {rec["code"]: rec for rec in records}
+    for code in ["D0", "D1", "D2", "D3", "D4"]:
+        assert by_code[code]["ok"] is True
+        assert by_code[code]["status"] == "degraded", f"{code} 应记降级"
+        assert by_code[code]["degraded_dims"], "降级必须列出未评出维度"
+    assert by_code["OK"]["status"] == "complete"
+
+
+def test_result_cb_failure_record():
+    """auto_score 抛异常 → 结构化失败记录；ranked 不含该股、failures 照旧。"""
+    records = []
+    with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):
+        def fake(code, **kw):
+            if code == "BAD":
+                raise RuntimeError("网络挂")
+            return _make_structured_result(60, name=code)
+        m_auto.side_effect = fake
+        from src.core.benzong.batch_scorer import auto_score_batch
+        r = auto_score_batch(["GOOD", "BAD"], top_n=10,
+                             result_cb=lambda rec: records.append(rec))
+    assert r["failed"] == 1 and [x["code"] for x in r["ranked"]] == ["GOOD"]
+    bad = next(rec for rec in records if rec["code"] == "BAD")
+    assert bad["ok"] is False and bad["status"] == "failed"
+    assert "网络挂" in bad["error"]
+
+
+def test_result_cb_exception_does_not_reclassify_accepted_score():
+    """记账回调异常：已接受评分不得改判失败/双计；批次继续并告知记录不可靠。"""
+    records = []
+    progress = []
+
+    def _cb(rec):
+        records.append(rec["code"])
+        if rec["code"] == "A":
+            raise RuntimeError("账本坏了")
+
+    with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):
+        m_auto.side_effect = lambda code, **kw: _make_structured_result(70, name=code)
+        from src.core.benzong.batch_scorer import auto_score_batch
+        r = auto_score_batch(["A", "B"], top_n=10,
+                             progress_cb=lambda i, t, c, s: progress.append(c),
+                             result_cb=_cb)
+    assert [x["code"] for x in r["ranked"]] == ["A", "B"]
+    assert r["failures"] == [] and r["failed"] == 0
+    assert progress == ["A", "B"]
+    assert records == ["A", "B"]
+    assert r.get("result_cb_errors") == 1, "必须如实报告记账回调异常（记录不可靠）"
+
+
+def test_progress_cb_exception_is_isolated():
+    """展示回调异常不得把已评分结果算失败，也不中断批次。"""
+    calls = []
+
+    def _progress(i, total, code, status):
+        calls.append(code)
+        raise RuntimeError("rich 挂了")
+
+    with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):
+        m_auto.side_effect = lambda code, **kw: _make_structured_result(70, name=code)
+        from src.core.benzong.batch_scorer import auto_score_batch
+        r = auto_score_batch(["A", "B"], top_n=10, progress_cb=_progress)
+    assert [x["code"] for x in r["ranked"]] == ["A", "B"]
+    assert r["failures"] == [] and r["failed"] == 0 and r["scored"] == 2
+    assert calls == ["A", "B"]
 
 
 if __name__ == "__main__":

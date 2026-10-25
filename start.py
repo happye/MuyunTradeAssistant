@@ -154,7 +154,7 @@ def show_help():
     L.append(_row())
     L.append(_row("● 工具与开关"))
     L.append(_cmd("doctor", "运行诊断（环境/依赖/配置/缓存）"))
-    L.append(_cmd("tasks", "批量任务进度与失败项（中断续跑可见）"))
+    L.append(_cmd("tasks", "批量任务：run 身份/已完成/降级/失败/未记录结果"))
     L.append(_cmd("noai / debug", "切换 AI 开关 / AI 调试模式"))
     L.append(_cmd("chat", "AI 对话（自然语言跑任意命令+改持仓）"))
     L.append(_row("  h | help | ?  显示本菜单        q | quit  退出"))
@@ -835,7 +835,7 @@ _COMMAND_HINTS = {
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
     "diff": "diff 列出可对比股票 | diff <代码> 同股最近两次深分析对比",
-    "tasks": "tasks 批量任务账本：l all/la/ba 的进度与失败项，中断续跑可见",
+    "tasks": "tasks 批量任务账本：每次 run 的已完成/降级/失败/未记录结果；旧记录只读，记录≠缓存资格",
     "today": "today 今日工作台：待确认建议/继续持有/等待条件——建议≠成交",
     "shadow": "shadow 影子对照报告：legacy 终态 vs fusion_mid/long 决策表差异（分原因）",
     "plan2": "plan2 列出计划 | plan2 <代码> mid|long <意图> [--facts a,b] [--until 日期] | plan2 accept/rm <代码>",
@@ -1856,6 +1856,39 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
 
 
 
+def _batch_ledger_begin(ss, kind: str, key: str, codes: list):
+    """C2/T05-H：登记一次独立批量运行并显示 run 身份；返回令牌（None=记录不可用）。
+
+    每次调用都会新建 run_id/roster——不继承旧 run 的完成/失败，也不冒充缓存命中。
+    """
+    run_id = ss.batch_task_start(kind, key, codes)
+    if run_id:
+        print(f"  任务记录：run {run_id}（配置未冻结；本次独立 run，不继承旧记录）")
+    else:
+        print("  [!] 任务记录保存失败：本次进度不会被记录（不影响分析）")
+    return run_id
+
+
+def _batch_task_mark(ss, run_id, kind: str, key: str, code: str, ok: bool, note: str = "") -> bool:
+    """C2/T05-H：逐项记账（必须携带本次 run 令牌）；返回记录是否可信。
+
+    缺令牌 / 旧 run 晚到 / 清单外 / 写盘失败都由 session_state fail-closed 返回 False，
+    入口据此提示“进度可能不完整”，不把可见性记录当成业务结果。
+    """
+    try:
+        return bool(ss.batch_task_mark(kind, key, code, ok, note, run_id=run_id))
+    except Exception:
+        return False
+
+
+def _batch_ledger_finish(run_id, rec_ok: bool, ok_n: int, failed_n: int, total: int) -> None:
+    """C2/T05-H：跑完显示已完成/失败/未记录结果计数；记录不可信时明确提示。"""
+    print(f"  任务记录：run {run_id}（已完成 {ok_n} / 失败 {failed_n} / 未记录结果 "
+          f"{max(0, total - ok_n - failed_n)}）")
+    if not rec_ok:
+        print("  [!] 任务记录写入失败：本次进度可能不完整（分析继续）")
+
+
 def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) -> bool:
     """T04-G：live_* 连贯分发助手（从 run_cli 抽出行为等价一块）。
 
@@ -1889,10 +1922,11 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
             print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
         failed = []
         ok = 0
-        # C2：批量任务账本（tasks 命令可查进度与失败项）——键含代码集摘要，
-        # 防不同代码集同数量碰撞继承无关的失败记录（监督员批 3 核对项）
+        # C2/T05-H：批量任务账本（tasks 命令可查进度与失败项）——键含代码集摘要，
+        # 防不同代码集同数量碰撞；每次启动新建独立 run，令牌绑定全部逐项 mark
         _tk = "手动多代码 " + ",".join(codes[:4]) + ("…" if len(codes) > 4 else "")
-        _ss.batch_task_start("l", _tk, codes)
+        run_id = _batch_ledger_begin(_ss, "l", _tk, codes)
+        _rec_ok = bool(run_id)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
         from src.data.portfolio import PortfolioManager as _PM_multi
         _acct_facts = _PM_multi().request_account_facts(estimate_nav=True)
@@ -1904,18 +1938,21 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
                 analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True,
                              account_facts=_acct_facts)
                 _ss.mark_deep_analyzed([code], source="手动多代码")
-                _ss.batch_task_mark("l", _tk, code, True)
+                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, True) and _rec_ok
                 ok += 1
             except SystemExit:
                 print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
-                _ss.batch_task_mark("l", _tk, code, False, "数据获取失败")
+                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, False, "数据获取失败") and _rec_ok
                 failed.append(code)
             except Exception as e:
                 print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
-                _ss.batch_task_mark("l", _tk, code, False, f"{type(e).__name__}: {e}")
+                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, False,
+                                           f"{type(e).__name__}: {e}") and _rec_ok
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(codes)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
+        if run_id:
+            _batch_ledger_finish(run_id, _rec_ok, ok, len(failed), len(codes))
         return True
 
     if mode == "live_all":
@@ -1938,7 +1975,10 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         from src.cli import session_state as _ss_la
         _la_codes = [e.stock_code for e in _entries]
         _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
-        _ss_la.batch_task_start("la", _tk_la, _la_codes)
+        run_id = _batch_ledger_begin(_ss_la, "la", _tk_la, _la_codes)
+        _rec_ok = bool(run_id)
+        _la_ok = 0
+        _la_failed = []
         for i, e in enumerate(_entries, 1):
             _src_tag = "  [账本持仓·投影缺失——成本/比例未知]" if e.from_ledger else ""
             print(f"\n{'='*60}")
@@ -1947,15 +1987,24 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
             try:
                 analyze_live(e.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
                              compact=True, account_facts=_acct_facts)
-                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, True)
+                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code, True) and _rec_ok
+                _la_ok += 1
             except SystemExit:
                 print(f"  [!] {e.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
-                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, False, "数据获取失败")
+                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code,
+                                           False, "数据获取失败") and _rec_ok
+                _la_failed.append(e.stock_code)
             except Exception as ex:
                 # handler 名不可与循环变量 e 撞名——as e 会把 e 重绑为异常对象，
                 # 下一行取 .stock_code 即 AttributeError 且从 handler 传播跳出整批
                 print(f"  [!] 分析失败: {ex}")
-                _ss_la.batch_task_mark("la", _tk_la, e.stock_code, False, str(ex)[:120])
+                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code,
+                                           False, str(ex)[:120]) and _rec_ok
+                _la_failed.append(e.stock_code)
+        print(f"\n  批量完成：{_la_ok}/{len(_entries)} 成功"
+              + (f"；失败: {', '.join(_la_failed)}" if _la_failed else ""))
+        if run_id:
+            _batch_ledger_finish(run_id, _rec_ok, _la_ok, len(_la_failed), len(_entries))
         return True
 
     if mode == "live_scan_all":
@@ -2004,8 +2053,10 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         src_label = last.get("source", "?")
         failed = []
         ok = 0
-        # C2：批量任务账本（tasks 命令可查进度与失败项）
-        session_state.batch_task_start("l all", src_label, [it["code"] for it in new_items])
+        # C2/T05-H：批量任务账本——每次运行独立 run，令牌绑定全部逐项 mark
+        run_id = _batch_ledger_begin(session_state, "l all", src_label,
+                                     [it["code"] for it in new_items])
+        _rec_ok = bool(run_id)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
         from src.data.portfolio import PortfolioManager as _PM_all
         _acct_facts = _PM_all().request_account_facts(estimate_nav=True)
@@ -2019,18 +2070,22 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
                              compact=True, account_facts=_acct_facts)
                 # 成功才记当日已析（失败下次自动重试）；逐只落盘，Ctrl-C 中断不丢记录
                 session_state.mark_deep_analyzed([code], source=src_label)
-                session_state.batch_task_mark("l all", src_label, code, True)
+                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code, True) and _rec_ok
                 ok += 1
             except SystemExit:
                 print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
-                session_state.batch_task_mark("l all", src_label, code, False, "数据获取失败")
+                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code,
+                                           False, "数据获取失败") and _rec_ok
                 failed.append(code)
             except Exception as e:
                 print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
-                session_state.batch_task_mark("l all", src_label, code, False, f"{type(e).__name__}: {e}")
+                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code,
+                                           False, f"{type(e).__name__}: {e}") and _rec_ok
                 failed.append(code)
         print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
               + (f"；失败: {', '.join(failed)}" if failed else ""))
+        if run_id:
+            _batch_ledger_finish(run_id, _rec_ok, ok, len(failed), len(new_items))
         return True
 
     return False

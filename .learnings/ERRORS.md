@@ -1,3 +1,7 @@
+## ERR-20261026-DSH恢复入口
+
+已关闭本轮误用源码入口启动的PID49968；该入口产生MISSING_CREDENTIAL，未执行修复。用户通过既有dsh-web.cmd启动并手动重试原生turn3后完成修复。bridge历史FAILED不等于当前原生轮失败；恢复核turn/真实diff，不盲重投，不打印含token的Host日志。本批停止后不自动重启服务。
+
 # Errors
 
 ## [ERR-20261010-ARCH16] Q审查先猜测路径导致无效搜索

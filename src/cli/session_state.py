@@ -22,6 +22,7 @@ import logging
 import os
 import re
 import tempfile
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
 from typing import NamedTuple, Optional
@@ -410,10 +411,13 @@ def get_watch_active() -> list[dict]:
     return sorted(active.values(), key=lambda r: str(r.get("timestamp") or ""))
 
 
-# ── 批量任务账本（v0.8.17，plan/ C2）────────────────────────
+# ── 批量任务账本（v0.8.17，plan/ C2；T05-H 运行隔离）────────────
 # l all / la / ba / l 多代码 的任务清单与逐项状态：中断后 tasks 命令可见
-# 进度与失败项，重跑同类任务时成功项由既有 deep_analyzed/评分缓存语义复用。
-# 只做可见性记录，不引入通用工作流框架（ADR C2 口径）。保留最近 5 个任务。
+# 进度与失败项。T05-H 起每次启动都是独立 run（不可混淆 run_id + 完整 roster），
+# 不继承上一 run 的 done/failed/degraded，旧 run 晚到 mark 一律 fail-closed。
+# 只做可见性记录，不引入通用工作流/队列/跨进程事务；保留最近 5 条运行记录。
+# 重要：这里只记「本次运行实际返回的结果」，不改变各命令原有缓存规则，也不代表
+# 缓存消费资格（任务记录 ≠ 缓存命中/可跳过）。
 
 _BATCH_TASKS_FILE = _STATE_DIR / "batch_tasks.json"
 _BATCH_TASKS_KEEP = 5
@@ -433,45 +437,98 @@ def _load_batch_tasks() -> dict:
         return {"tasks": []}
 
 
-def batch_task_start(kind: str, key: str, codes: list) -> None:
-    """批量任务启动：登记任务清单（同 kind+key 重启则继承既有逐项状态）。失败不抛。"""
+def _new_batch_run_id() -> str:
+    """本 run 的不可混淆令牌：启动时间 + 完整 UUID（同秒连续启动也不会重复）。
+
+    只存 UUID 短前缀会在同秒两次启动时碰撞（≈24bit），因此保存完整 32 位 hex。
+    """
+    return datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex
+
+
+def batch_task_start(kind: str, key: str, codes: list) -> Optional[str]:
+    """批量任务启动：新建独立 run 并返回令牌；写入失败返回 None（不抛）。
+
+    - 每次调用插入一条新运行记录（保留最近 5 条），不按 kind+key 合并，
+      也不继承上一 run 的 done/failed/degraded
+    - codes 完整复制为本 run 不可变 roster；后续 mark 必须同时核令牌与 roster
+    - ts_started 只标本次运行开始，不是全批分析数据的 as_of
+    - 仅可见性记录：不改变调用方原有缓存/跳过语义，不承诺跨进程事务
+    """
     try:
+        roster = [str(c) for c in codes]
+        now = datetime.now().isoformat(timespec="seconds")
+        run_id = _new_batch_run_id()
         data = _load_batch_tasks()
-        tasks = data["tasks"]
-        task = next((t for t in tasks if t.get("kind") == kind and t.get("key") == key), None)
-        if task is None:
-            task = {"kind": kind, "key": key, "codes": list(codes),
-                    "done": {}, "failed": {}}
-            tasks.insert(0, task)
-        else:
-            task["codes"] = list(codes)   # 同名任务以最新清单为准
-        task["ts_updated"] = datetime.now().isoformat(timespec="seconds")
-        task.setdefault("ts_started", task["ts_updated"])
+        tasks = [t for t in data.get("tasks") or [] if isinstance(t, dict)]
+        tasks.insert(0, {
+            "run_id": run_id,
+            "kind": kind,
+            "key": key,
+            "codes": roster,
+            "done": {},
+            "degraded": {},
+            "failed": {},
+            "ts_started": now,
+            "ts_updated": now,
+        })
         data["tasks"] = tasks[:_BATCH_TASKS_KEEP]
-        _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1)
+        if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
+            return None
+        return run_id
     except Exception as e:
         logger.debug(f"batch_task_start 失败(不影响批量主流程): {e}")
+        return None
 
 
-def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "") -> None:
-    """批量任务逐项状态更新。失败不抛（可见性记录不拖垮主流程）。"""
+def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "",
+                    run_id: Optional[str] = None, degraded: bool = False) -> bool:
+    """批量任务逐项状态更新；返回是否真的记账成功（失败不抛，返回 False）。
+
+    fail-closed（任一不满足 → False 且不写文件、不改新旧记录）：
+    - 必须携带本次 run 令牌；缺令牌或旧 run 晚到一律拒绝
+    - kind+key 当前最新 run 必须正是该令牌
+    - code 必须在该 run 的 roster 内
+    - ok / degraded 必须是 bool（未知/坏结果不伪造成功）
+    完成、降级、失败三种状态互斥转移；写盘失败返回 False（原子写保留旧文件）。
+    """
     try:
-        data = _load_batch_tasks()
-        task = next((t for t in data["tasks"]
-                     if t.get("kind") == kind and t.get("key") == key), None)
-        if task is None:
-            return
+        if not isinstance(run_id, str) or not run_id:
+            return False
+        if not isinstance(ok, bool) or not isinstance(degraded, bool):
+            return False
         code = str(code)
+        data = _load_batch_tasks()
+        tasks = [t for t in data.get("tasks") or [] if isinstance(t, dict)]
+        latest = next((t for t in tasks if t.get("kind") == kind and t.get("key") == key), None)
+        if latest is None or latest.get("run_id") != run_id:
+            return False
+        roster = [str(c) for c in latest.get("codes") or []]
+        if code not in roster:
+            return False
+        for name in ("done", "degraded", "failed"):
+            if not isinstance(latest.get(name), dict):
+                latest[name] = {}
+        now = datetime.now().isoformat(timespec="seconds")
         if ok:
-            task.setdefault("done", {})[code] = datetime.now().isoformat(timespec="seconds")
-            task.get("failed", {}).pop(code, None)
+            if degraded:
+                latest["done"].pop(code, None)
+                latest["failed"].pop(code, None)
+                latest["degraded"][code] = (note or "部分维度未评出")[:120]
+            else:
+                latest["degraded"].pop(code, None)
+                latest["failed"].pop(code, None)
+                latest["done"][code] = now
         else:
-            task.setdefault("done", {}).pop(code, None)
-            task.setdefault("failed", {})[code] = (note or "失败")[:120]
-        task["ts_updated"] = datetime.now().isoformat(timespec="seconds")
-        _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1)
+            latest["done"].pop(code, None)
+            latest["degraded"].pop(code, None)
+            latest["failed"][code] = (note or "失败")[:120]
+        latest["ts_updated"] = now
+        if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
+            return False
+        return True
     except Exception as e:
         logger.debug(f"batch_task_mark 失败(不影响批量主流程): {e}")
+        return False
 
 
 def get_recent_batch_tasks(n: int = 3) -> list:

@@ -1,5 +1,7 @@
 # CODEX.md — 暮云思辨投资助手 Codex 专用配置
 
+当前交接（2026-10-26）：T05-H批量运行身份/可靠记账已限定接收，整条BATCH-BUDGET及G7/V1未完成；进度不变。本批Git交付后按用户要求停止，不自动开启下一批。新指派先读[RESUME](plan/fusion/RESUME.md)与共享PROGRESS；原生手动重试turn3已完成，历史bridge FAILED不作当前失败或重投依据。
+
 > **单一信源是 [AGENTS.md](AGENTS.md)**——Codex CLI 会自动读取仓库根目录的 AGENTS.md，
 > 本文件不重复其内容（架构/命令/数据源/踩坑警示以 AGENTS.md 为准），只补充 Codex 特有的操作说明。
 > 多工具协同：Claude Code → `CLAUDE.md`，VS Code Copilot → `.github/copilot-instructions.md`。

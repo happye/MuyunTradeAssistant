@@ -1987,11 +1987,23 @@ def _print_plain_summary(result, strategy_decision, sd, pos=None, watch_info=Non
     console.print(Panel(body, title="📖 人话摘要", border_style="cyan"))
 
 
+def _ba_conf_usable(conf) -> bool:
+    """展示层置信度可用性：缺失/0/非数值/NaN/越界都按未评出处理（与 batch_scorer 降级口径一致）。"""
+    if isinstance(conf, bool) or not isinstance(conf, (int, float)):
+        return False
+    return conf == conf and 0 < conf <= 1
+
+
 def _ba_dim_cell(row: dict, key: str) -> str:
-    """v0.8.8.6（ISS-082）：ba 表格单维格子——conf=0（降级未评出）显示"未评出"
-    而非形似真实打分的数字（风险维缺新闻降级为中性50 的教训，ISS-066 遗留）。"""
+    """v0.8.8.6（ISS-082）：ba 表格单维格子——降级/未评出显示"未评出"。
+
+    T05-H：直接消费 batch_scorer 已判定的 degraded_dims（覆盖 confidence 为
+    None/NaN/负值等非法值），不再只过滤 ==0；其余非法置信度同样按未评出展示。
+    """
+    if key in (row.get("degraded_dims") or []):
+        return "未评出"
     conf = (row.get("dim_confidences") or {}).get(key, 0)
-    if conf == 0:
+    if not _ba_conf_usable(conf):
         return "未评出"
     return f"{(row.get('dim_scores') or {}).get(key, 0):.0f}"
 
@@ -1999,53 +2011,121 @@ def _ba_dim_cell(row: dict, key: str) -> str:
 def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_label: str = "?") -> None:
     """ba 命令：对最近一次扫描找到的股票批量笨总评分（缓存优先，排序输出白话点评）。
 
+    T05-H（运行隔离/可靠逐项记录）：
+    - 每次启动新建独立 run_id，逐项 mark 必须携带该令牌；不按 kind/key 合并继承旧结果
+    - ba 只依据 auto_score_batch 的结构化逐项结果记账；progress 文案仅用于展示
+    - 部分维度未评出记「降级」而非已完成；结束时不按 kind/key 盲目补记
+    - 任务记录只描述运行可见性，不改变笨总原缓存规则，也不授予投资信号权限
+
     Args:
         items: session_state.get_last_scan() 的 items（至少含 code/name）
         force_refresh: True 时忽略缓存重算
     """
     from src.core.benzong.batch_scorer import auto_score_batch
+    from src.cli import session_state as _ss_ba
 
     codes = [it.get("code") for it in items if isinstance(it, dict) and it.get("code")]
     if not codes:
         console.print("[yellow]扫描结果里没有股票代码[/yellow]")
         return
 
+    # C2/T05-H：每次运行独立令牌；写入失败明确 None，下面给用户可见提示
+    run_id = _ss_ba.batch_task_start("ba", src_label, codes)
+    if run_id:
+        console.print(f"  任务记录：run {run_id}（配置未冻结；本次独立 run，不继承旧成功）")
+    else:
+        console.print("  [yellow]⚠ 任务记录保存失败：本次进度不会被记录（不影响评分）[/yellow]")
+
+    roster = {str(c) for c in codes}
+    counts = {"complete": 0, "degraded": 0, "failed": 0}
+    record_state = {"write_failed": False, "unreliable": False}
+    counted = set()
+
+    def _mark_unreliable():
+        record_state["unreliable"] = True
+
+    def _on_result(record):
+        """结构化逐项结果记账——仅本 roster 且契约合法的事件才计数。
+
+        未收到合法结果 ≠ 未运行：未知/非法/外来/重复事件一律标“记录不可靠”，
+        既不算完成也不算失败，最终落入“未记录结果/待确认”。
+        """
+        if not isinstance(record, dict):
+            _mark_unreliable()
+            return
+        code = record.get("code")
+        ok = record.get("ok")
+        status = record.get("status")
+        if not isinstance(code, str) or code not in roster:
+            _mark_unreliable()   # 外来/缺代码事件：不计数
+            return
+        if code in counted:
+            _mark_unreliable()   # 重复事件：不重复计数
+            return
+        if ok is True:
+            dims = record.get("degraded_dims")
+            if dims is None and status == "complete":
+                dims = []   # complete 事件不强制携带空 degraded_dims
+            if not isinstance(dims, list) or any(not isinstance(d, str) or not d for d in dims):
+                _mark_unreliable()
+                return
+            if status == "complete" and not dims:
+                counts["complete"] += 1
+                note, degraded = "", False
+            elif status == "degraded" and dims:
+                counts["degraded"] += 1
+                note = "降级：" + "、".join(_BZ_DIM_CN.get(d, d) for d in dims) + " 未评出"
+                degraded = True
+            else:
+                _mark_unreliable()   # 状态与降级维自相矛盾：不计数
+                return
+        elif ok is False:
+            if status != "failed":
+                _mark_unreliable()
+                return
+            counts["failed"] += 1
+            note = str(record.get("error") or "失败")[:120]
+            degraded = False
+        else:
+            _mark_unreliable()       # ok 未知/坏值：不伪造成功/失败
+            return
+        counted.add(code)
+        if not _ss_ba.batch_task_mark("ba", src_label, code, ok,
+                                      note, run_id=run_id, degraded=degraded) and run_id:
+            record_state["write_failed"] = True
+
     def _progress(i, total, code, status):
         console.print(f"  [{i}/{total}] {code} {status}")
-        # C2：逐项记账（监督员批 3 核对：循环后批量回填会在中断时丢全部进度，
-        # 挪进回调与 start.py 三循环同款）
-        try:
-            from src.cli import session_state as _ss_ba
-            _ss_ba.batch_task_mark("ba", src_label, code, status != "失败", note=status)
-        except Exception:
-            pass
 
     console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
-    # C2：任务登记必须在 auto_score_batch **之前**——_progress 回调里的逐项
-    # mark 对未登记任务是 no-op，start 放后面=中断时账本连任务都没有
-    # （监督员批 4 核对抓到 65f81c6 的此失误，时序锁见 test_ba_task_ledger_timing）
-    from src.cli import session_state as _ss_ba
-    _ss_ba.batch_task_start("ba", src_label, codes)
     res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
-                           progress_cb=_progress)
+                           progress_cb=_progress, result_cb=_on_result)
 
     ranked = res.get("ranked", [])
     failures = res.get("failures", [])
-    # 运行后补漏：回调未覆盖的边界（如全部命中缓存零评分轮次、评分异常中断前
-    # 的已完成项）也要有完整清单；不做 prune，保最近 5 任务
-    try:
-        for _r in ranked:
-            _ss_ba.batch_task_mark("ba", src_label, _r.get("code"), True)
-        for _f in failures:
-            _ss_ba.batch_task_mark("ba", src_label, _f.get("code"), False,
-                                   str(_f.get("error", "失败"))[:120])
-    except Exception as e:
-        logger.debug(f"ba 任务账本更新失败(不影响主流程): {e}")
+    if run_id and record_state["write_failed"]:
+        console.print("  [yellow]⚠ 任务记录写入失败：本次进度可能不完整（评分结果不受影响）[/yellow]")
+    if record_state["unreliable"]:
+        console.print("  [yellow]⚠ 结果记录不可靠：存在未知/非法/外来/重复逐项结果，未计入已完成"
+                      "（以屏幕输出与实际结果为准）[/yellow]")
+    if res.get("result_cb_errors"):
+        console.print("  [yellow]⚠ 任务记录回调异常：本次进度可能不完整（评分结果不受影响）[/yellow]")
+
+    # T05-H：真实计数来自结构化逐项结果；未收到合法结果只表示“未记录结果”，不能当未运行
+    n_done = counts["complete"]
+    n_deg = counts["degraded"]
+    n_fail = counts["failed"]
+    pending = max(0, len(codes) - n_done - n_deg - n_fail)
+    if run_id:
+        console.print(f"  任务记录：run {run_id}（已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}）")
+    else:
+        console.print(f"  本次结果：已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}（任务记录不可用）")
+
     if not ranked and not failures:
         console.print("[yellow]没有产出评分结果[/yellow]")
         return
 
-    table = Table(title=f"笨总批量评分排名（{len(ranked)} 只成功 / {len(failures)} 只失败）")
+    table = Table(title=f"笨总批量评分排名（已完成 {n_done} 只 / 降级 {n_deg} 只 / 失败 {n_fail} 只）")
     table.add_column("#", width=3, justify="right")
     table.add_column("代码", width=8)
     table.add_column("名称", overflow="fold")
@@ -2061,9 +2141,19 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
         else:
             ds = row.get("dim_scores", {})
             dc = row.get("dim_confidences") or {}
-            # v0.8.8.6（ISS-082）：conf=0（降级未评出）的维度不参与最强/最弱点评
-            # ——风险维缺新闻降级为中性50，此前在点评里形似真实打分
-            rated = {k: v for k, v in ds.items() if dc.get(k, 1) != 0}
+            # v0.8.8.6（ISS-082）+ T05-H：直接排除 batch_scorer 判定的降级维
+            # （覆盖 None/NaN/负值等非法 confidence），不拿兜底数值冒充真实打分
+            degraded_dims = set(row.get("degraded_dims") or [])
+            rated = {}
+            for k, v in ds.items():
+                if k in degraded_dims:
+                    continue
+                if k in dc and not _ba_conf_usable(dc.get(k)):
+                    continue
+                try:
+                    rated[k] = float(v)
+                except (TypeError, ValueError):
+                    continue
             if rated:
                 best = max(rated, key=lambda k: rated[k])
                 worst = min(rated, key=lambda k: rated[k])
@@ -2074,6 +2164,10 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
                 note = "-"
             if conf < 0.5:
                 note += " [yellow]⚠置信度低，建议复核[/yellow]"
+            if row.get("scoring_status") == "degraded":
+                _deg = row.get("degraded_dims") or []
+                _deg_names = "、".join(_BZ_DIM_CN.get(d, d) for d in _deg)
+                note += f" [yellow]⚠{len(_deg)}维未评出（{_deg_names}），非完整评分[/yellow]"
         gc = {"A": "green", "B": "green", "C": "yellow", "D": "red", "F": "red"}.get(eff, "white")
         table.add_row(
             str(i), row["code"], row.get("name") or "-",
@@ -2085,7 +2179,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
     console.print(table)
     for f in failures:
         console.print(f"  [red]✗ {f['code']}: {f.get('error', '失败')}[/red]")
-    console.print("[dim]说明：分数是当天缓存，重复跑 ba 不再花 AI 费用；bz <代码> --refresh 可强刷单只[/dim]")
+    console.print("[dim]说明：维度命中当日缓存时不再花 AI 费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz <代码> --refresh 可强刷单只[/dim]")
 
 
 
@@ -4219,8 +4313,53 @@ def shadow_command():
     console.print(render_shadow_report(report))
 
 
+def _safe_batch_roster(raw):
+    """账本 codes 的安全只读视图：类型非法不猜、不抛；返回 (roster, issues)。"""
+    if not isinstance(raw, list):
+        return [], ["codes 字段类型非法（应为代码列表），无法核对清单"]
+    roster, bad = [], 0
+    for c in raw:
+        if isinstance(c, str) and c:
+            roster.append(c)
+        else:
+            bad += 1
+    issues = [f"codes 含 {bad} 个非法条目（已忽略）"] if bad else []
+    return roster, issues
+
+
+def _safe_batch_status_map(raw, label):
+    """done/degraded/failed 的安全只读视图：坏类型/坏键/坏值只标异常，绝不 .items 崩溃。
+
+    坏键与非字符串/空字符串记录值一律只读隔离：值坏只记「待确认」且不参与状态计数
+    （None/[]/{} /空串不能冒充已完成）；只判类型与非空，不解析日期格式。
+    返回 (状态映射, 异常说明, 待确认项[(code, 值类型说明)])。
+    """
+    if raw is None:
+        return {}, [], []
+    if not isinstance(raw, dict):
+        return {}, [f"{label} 字段类型非法（应为 code→记录映射）"], []
+    out, pending, bad = {}, [], 0
+    for c, note in raw.items():
+        if not (isinstance(c, str) and c):
+            bad += 1
+        elif isinstance(note, str) and note.strip():
+            out[c] = note
+        else:
+            pending.append((c, "空字符串" if isinstance(note, str) else type(note).__name__))
+    issues = [f"{label} 含 {bad} 个非法键（已忽略）"] if bad else []
+    if pending:
+        issues.append(f"{label} 含 {len(pending)} 个无效记录值（已隔离，待确认，不计数）")
+    return out, issues, pending
+
+
 def batch_tasks_cmd():
-    """批量任务账本（C2，v0.8.17）：最近批量任务的进度与失败项——中断后续跑可见。"""
+    """批量任务账本（C2，v0.8.17；T05-H 运行身份）：每次 run 的已完成/降级/失败/未记录结果。
+
+    只读展示：旧无 run_id 记录标注为旧记录且不补造身份；嵌套坏账本（类型非法/
+    坏键/坏值（非字符串或空串）/状态冲突/清单外条目）只标“记录异常/待确认”，不假成功、
+    不崩溃、不改写旧文件。
+    任务记录只描述运行可见性，不改变各命令原缓存规则，也不代表缓存消费资格。
+    """
     from src.cli import session_state as _ss
     tasks = _ss.get_recent_batch_tasks(3)
     console.print(f"\n[bold cyan]📋 最近批量任务[/bold cyan]")
@@ -4228,24 +4367,74 @@ def batch_tasks_cmd():
         console.print("  [yellow]还没有批量任务记录[/yellow]（l all / la / ba / l 多代码 会自动记账）")
         return
     for t in tasks:
-        codes = t.get("codes") or []
-        done = t.get("done") or {}
-        failed = t.get("failed") or {}
-        ok_n = sum(1 for c in codes if c in done)
-        fail_n = sum(1 for c in codes if c in failed)
-        pending_n = len(codes) - ok_n - fail_n
-        console.print(f"\n  [cyan]{t.get('kind')}[/cyan] {t.get('key')}（{t.get('ts_updated', '?')}）")
-        console.print(f"  进度: {ok_n}/{len(codes)} 成功"
-                      + (f"，{fail_n} 失败" if fail_n else "")
-                      + (f"，{pending_n} 未跑" if pending_n else ""))
-        if failed:
-            for c, note in list(failed.items())[:5]:
-                console.print(f"    [red]✗ {c}[/red]: {note}")
-            if len(failed) > 5:
-                console.print(f"    [dim]…等 {len(failed)} 项[/dim]")
-        if pending_n:
-            console.print(f"  [dim]重跑同类命令即续跑（成功项由当日缓存复用，失败项自动重试）[/dim]")
-    console.print(f"  [dim]账本: ~/.muyun/batch_tasks.json（保留最近 5 个任务）[/dim]\n")
+        roster, issues = _safe_batch_roster(t.get("codes"))
+        done, i_done, p_done = _safe_batch_status_map(t.get("done"), "done")
+        degraded, i_deg, p_deg = _safe_batch_status_map(t.get("degraded"), "degraded")
+        failed, i_fail, p_fail = _safe_batch_status_map(t.get("failed"), "failed")
+        issues = issues + i_done + i_deg + i_fail
+        unverified = [(c, name, kind) for name, pending in
+                      (("done", p_done), ("degraded", p_deg), ("failed", p_fail))
+                      for c, kind in pending]
+        roster_set = set(roster)
+        maps = (("done", done), ("degraded", degraded), ("failed", failed))
+        for name, mp in maps:
+            extra = sorted(set(mp) - roster_set)
+            if extra:
+                issues.append(f"{name} 含清单外代码 {len(extra)} 个（不计数）")
+        state_of = {}
+        for c in roster:
+            states = [name for name, mp in maps if c in mp]
+            if len(states) > 1:
+                state_of[c] = states
+        conflicts = list(state_of.items())
+        ok_n = sum(1 for c in roster if c not in state_of and c in done)
+        deg_n = sum(1 for c in roster if c not in state_of and c in degraded)
+        fail_n = sum(1 for c in roster if c not in state_of and c in failed)
+        pending_n = max(0, len(roster) - ok_n - deg_n - fail_n - len(conflicts))
+        console.print(f"\n  [cyan]{t.get('kind')}[/cyan] {t.get('key')}（启动 {t.get('ts_started', '?')}；更新 {t.get('ts_updated', '?')}）")
+        run_id = t.get("run_id")
+        if isinstance(run_id, str) and run_id:
+            console.print(f"  运行: run {run_id}")
+            console.print("  配置: 未冻结（本次运行未记录有效配置身份，不作为配置/数据时点依据）")
+        else:
+            console.print("  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）")
+            console.print("  配置: 未记录（旧记录不补造）")
+        raw_codes = t.get("codes")
+        if not isinstance(raw_codes, list) or (raw_codes and not roster):
+            console.print("  进度: 未知（清单不可读，无法核对）")
+        else:
+            console.print(f"  进度: 已完成 {ok_n}/{len(roster)}，降级 {deg_n}，失败 {fail_n}，"
+                          f"未记录结果 {pending_n}"
+                          + (f"，状态冲突 {len(conflicts)}" if conflicts else ""))
+        if issues:
+            console.print("  记录异常: " + "；".join(issues) + "（只读展示，不改旧文件）")
+        for c, states in conflicts[:5]:
+            _state_cn = "、".join({"done": "已完成", "degraded": "降级", "failed": "失败"}[s]
+                                  for s in states)
+            console.print(f"    [yellow]⚠ {c}[/yellow]: 状态冲突（{_state_cn}），待确认，不计入任何状态")
+        if len(conflicts) > 5:
+            console.print(f"    [dim]…等 {len(conflicts)} 项状态冲突[/dim]")
+        for c, name, kind in unverified[:5]:
+            console.print(f"    [yellow]⚠ {c}[/yellow]: {name} 记录值无效（{kind}），"
+                          "待确认，不参与计数")
+        if len(unverified) > 5:
+            console.print(f"    [dim]…等 {len(unverified)} 项待确认记录值[/dim]")
+        shown_deg = [(c, n) for c, n in degraded.items()
+                     if c in roster_set and c not in state_of]
+        for c, note in shown_deg[:5]:
+            console.print(f"    [yellow]⚠ {c}[/yellow]: {note}")
+        if len(shown_deg) > 5:
+            console.print(f"    [dim]…等 {len(shown_deg)} 项降级[/dim]")
+        shown_fail = [(c, n) for c, n in failed.items()
+                      if c in roster_set and c not in state_of]
+        for c, note in shown_fail[:5]:
+            console.print(f"    [red]✗ {c}[/red]: {note}")
+        if len(shown_fail) > 5:
+            console.print(f"    [dim]…等 {len(shown_fail)} 项失败[/dim]")
+        if pending_n or conflicts:
+            console.print("  [dim]重跑同类命令会开新的独立 run（不继承本记录）；成功项是否复用当日缓存"
+                          "由各命令原规则决定——任务记录不等于缓存资格。[/dim]")
+    console.print(f"  [dim]账本: ~/.muyun/batch_tasks.json（保留最近 5 条运行记录；启动时间只标本次开始）[/dim]\n")
 
 
 def watch_pool(args: dict):

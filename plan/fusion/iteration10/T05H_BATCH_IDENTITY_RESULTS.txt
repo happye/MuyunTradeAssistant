@@ -1,0 +1,1935 @@
+T05-H evidence: derived UTF-8 LF line-framed views; remove one outer | from each content line.
+Original bytes/length/SHA256 are recorded below; originals stay unchanged in OS Temp.
+Phase1 red includes missing-new-API cases; unknown-result tests added later had green-only evidence.
+FIX2 red 12 failed/14 passed; intermediate green-fix2-identity-1 remained failing and is not acceptance.
+
+{"file": "T05H/logs/red-phase-new-tests.meta.json", "bytes": 1143, "sha256": "d1b3f83c8d1cdfcddb4f3260f6be64dd60500c3c145355e4e0e217d413a7a81b"}
+|{|
+|    "label":  "red-phase-new-tests",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py tests/benzong/test_benzong_batch_scorer.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  1,|
+|    "started_at":  "2026-10-26T00:11:57.2804177+08:00",|
+|    "ended_at":  "2026-10-26T00:12:08.4016995+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\red-phase-new-tests.stdout.txt",|
+|                   "bytes":  28816,|
+|                   "sha256":  "e79af1dce43cb78d831f3f9c4e5d6aa945e9a7bb06027bc724a6c206f3241a6f"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\red-phase-new-tests.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H/logs/red-phase-new-tests.stdout.txt", "bytes": 28816, "sha256": "e79af1dce43cb78d831f3f9c4e5d6aa945e9a7bb06027bc724a6c206f3241a6f"}
+|FFFFFFFFFFFFFFFF......FFFFF                                              [100%]|
+|================================== FAILURES ===================================|
+|___________ test_each_start_opens_distinct_run_and_does_not_inherit ___________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD1A128D0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_each_start_opens_distinct0')|
+||
+|    def test_each_start_opens_distinct_run_and_does_not_inherit(monkeypatch, tmp_path):|
+|        """同显示 key 再启动 → 新 run 令牌不同、旧完成项不继承；旧 run 记录保留可查。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        key = "手动多代码 600519,000001"|
+|        first = ss.batch_task_start("l", key, ["600519", "000001"])|
+|>       assert isinstance(first, str) and first, "start 必须返回非空 run 令牌"|
+|E       AssertionError: start 必须返回非空 run 令牌|
+|E       assert (False)|
+|E        +  where False = isinstance(None, str)|
+||
+|tests\core\test_batch_task_run_identity.py:77: AssertionError|
+|____________ test_same_key_changed_roster_new_run_starts_from_zero ____________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD17BAE90>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_same_key_changed_roster_n0')|
+||
+|    def test_same_key_changed_roster_new_run_starts_from_zero(monkeypatch, tmp_path):|
+|        """同显示 key 但完整清单变化（截断 key 相同）→ roster 各自冻结，不合并旧 done。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        key = "l all 扫描A"   # 旧代码的截断/同名 key 场景|
+|        first = ss.batch_task_start("l all", key, ["A", "B"])|
+|>       ss.batch_task_mark("l all", key, "A", True, run_id=first)|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:96: TypeError|
+|____________ test_interrupted_batch_rerun_records_new_results_only ____________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD17403D0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_interrupted_batch_rerun_r0')|
+||
+|    def test_interrupted_batch_rerun_records_new_results_only(monkeypatch, tmp_path):|
+|        """中断后重跑：新 run 从零记账，旧 run 未跑项不被冒充为完成。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        key = "持仓 600519,000001,300750"|
+|        first = ss.batch_task_start("la", key, ["600519", "000001", "300750"])|
+|>       ss.batch_task_mark("la", key, "600519", True, run_id=first)   # 中断：后两只未跑|
+|        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:116: TypeError|
+|________________ test_legacy_record_without_run_id_is_readonly ________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD16E8750>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_legacy_record_without_run0')|
+||
+|    def test_legacy_record_without_run_id_is_readonly(monkeypatch, tmp_path):|
+|        """旧无 run_id 记录：可展示原样，不补造身份，不接受旧式 mark。"""|
+|        path = _redirect_ledger(monkeypatch, tmp_path)|
+|        _seed_ledger(path, [_legacy_record()])|
+|        before = path.read_bytes()|
+|    |
+|>       assert ss.batch_task_mark("ba", "bz scan 测试", "B", True) is False, \|
+|            "缺 run 令牌必须 fail-closed 且返回准确 False"|
+|E       AssertionError: 缺 run 令牌必须 fail-closed 且返回准确 False|
+|E       assert None is False|
+|E        +  where None = <function batch_task_mark at 0x0000026BD17DD9E0>('ba', 'bz scan 测试', 'B', True)|
+|E        +    where <function batch_task_mark at 0x0000026BD17DD9E0> = ss.batch_task_mark|
+||
+|tests\core\test_batch_task_run_identity.py:139: AssertionError|
+|____________ test_mark_requires_exact_latest_run_token_and_roster _____________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD19FA410>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_mark_requires_exact_lates0')|
+||
+|    def test_mark_requires_exact_latest_run_token_and_roster(monkeypatch, tmp_path):|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        key = "l all 扫描B"|
+|        old = ss.batch_task_start("l all", key, ["A", "B"])|
+|>       assert ss.batch_task_mark("l all", key, "A", True, run_id=old) is True|
+|               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:157: TypeError|
+|______ test_success_failure_degraded_transitions_are_mutually_exclusive _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD19DC910>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_success_failure_degraded_0')|
+||
+|    def test_success_failure_degraded_transitions_are_mutually_exclusive(monkeypatch, tmp_path):|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        key = "ba bz scan 测试"|
+|        token = ss.batch_task_start("ba", key, ["A"])|
+|>       assert ss.batch_task_mark("ba", key, "A", True, run_id=token, degraded=True) is True|
+|               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:179: TypeError|
+|__________________ test_atomic_write_failure_keeps_old_file ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD1A57E50>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_atomic_write_failure_keep0')|
+||
+|    def test_atomic_write_failure_keeps_old_file(monkeypatch, tmp_path):|
+|        path = _redirect_ledger(monkeypatch, tmp_path)|
+|        token = ss.batch_task_start("l", "k", ["A", "B"])|
+|>       assert ss.batch_task_mark("l", "k", "A", True, run_id=token) is True|
+|               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:197: TypeError|
+|___________________ test_atomic_write_raise_keeps_old_file ____________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD1770650>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_atomic_write_raise_keeps_0')|
+||
+|    def test_atomic_write_raise_keeps_old_file(monkeypatch, tmp_path):|
+|        path = _redirect_ledger(monkeypatch, tmp_path)|
+|        token = ss.batch_task_start("l", "k", ["A"])|
+|        before = path.read_bytes()|
+|    |
+|        def _boom(*a, **k):|
+|            raise OSError("disk full")|
+|    |
+|        monkeypatch.setattr(ss, "_atomic_write_json", _boom)|
+|        assert ss.batch_task_start("l", "k", ["A"]) is None|
+|        assert path.read_bytes() == before|
+|>       assert ss.get_recent_batch_tasks(99)[0]["run_id"] == token|
+|               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|E       KeyError: 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:222: KeyError|
+|__________________ test_keep_latest_five_runs_with_identity ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD173F8D0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_keep_latest_five_runs_wit0')|
+||
+|    def test_keep_latest_five_runs_with_identity(monkeypatch, tmp_path):|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        tokens = [ss.batch_task_start("l all", f"任务{i}", ["A"]) for i in range(7)]|
+|        tasks = ss.get_recent_batch_tasks(99)|
+|        assert len(tasks) == 5|
+|>       assert [t["run_id"] for t in tasks] == list(reversed(tokens))[:5]|
+|               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+||
+|tests\core\test_batch_task_run_identity.py:230: |
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+||
+|.0 = <list_iterator object at 0x0000026BD1BF51B0>|
+||
+|>   assert [t["run_id"] for t in tasks] == list(reversed(tokens))[:5]|
+|            ^^^^^^^^^^^|
+|E   KeyError: 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:230: KeyError|
+|_________ test_tasks_view_shows_run_identity_counts_and_legacy_label __________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD1717BD0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_tasks_view_shows_run_iden0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026BD1717410>|
+||
+|    def test_tasks_view_shows_run_identity_counts_and_legacy_label(monkeypatch, tmp_path, capsys):|
+|        path = _redirect_ledger(monkeypatch, tmp_path)|
+|        _seed_ledger(path, [_legacy_record(kind="l all", key="用户旧记录",|
+|                                           codes=("600519", "000001"))])|
+|        token = ss.batch_task_start("ba", "bz scan 测试", ["A", "B", "C", "D"])|
+|>       ss.batch_task_mark("ba", "bz scan 测试", "A", True, run_id=token)|
+|E       TypeError: batch_task_mark() got an unexpected keyword argument 'run_id'|
+||
+|tests\core\test_batch_task_run_identity.py:241: TypeError|
+|____________________ test_live_multi_entry_binds_run_token ____________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026BD1727ED0>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026BD17255D0>|
+||
+|    def test_live_multi_entry_binds_run_token(monkeypatch, capsys):|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-L-MULTI")|
+|        import start|
+|        import src.cli.main as cli_main|
+|        import src.data.akshare_client as ak_mod|
+|        import src.data.portfolio as portfolio_mod|
+|    |
+|        monkeypatch.setattr(ak_mod.AKShareClient, "prefetch_realtime_quotes",|
+|                            staticmethod(lambda codes: len(codes)))|
+|        pm = mock.MagicMock(name="PortfolioManager")|
+|        pm.return_value.request_account_facts.return_value = _fake_account_facts()|
+|        monkeypatch.setattr(portfolio_mod, "PortfolioManager", pm)|
+|        monkeypatch.setattr(ss, "mark_deep_analyzed", lambda *a, **k: True)|
+|    |
+|        def fake_analyze(code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None):|
+|            if code == "000001":|
+|                raise SystemExit|
+|    |
+|        monkeypatch.setattr(cli_main, "analyze_live", fake_analyze)|
+|        start.run_cli("live_multi", {"codes": ["600519", "000001"]})|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"], "l 多代码必须登记任务并接收令牌"|
+|        assert seen["start"][0] == ("l", "手动多代码 " + "600519,000001", ["600519", "000001"])|
+|>       assert "RUN-L-MULTI" in out, "入口必须给用户可见 run 身份"|
+|E       AssertionError: 入口必须给用户可见 run 身份|
+|E       assert 'RUN-L-MULTI' in '\n  批量深分析 2 只（每只约0.5~1分钟，含AI调用）：600519、000001\n  行情预取：2/2 只命中批量源（逐只分析零重复请求）\n\n======================================...========================================================\n  [!] 000001 数据获取失败（已跳过，不影响其余）\n\n  批量完成：1/2 成功；失败: 000001\n'|
+||
+|tests\core\test_batch_task_run_identity.py:289: AssertionError|
+|_____________________ test_live_all_entry_binds_run_token _____________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026C915B06D0>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026C915B27D0>|
+||
+|    def test_live_all_entry_binds_run_token(monkeypatch, capsys):|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-LA")|
+|        import start|
+|        import src.cli.main as cli_main|
+|        import src.data.portfolio as portfolio_mod|
+|    |
+|        e1 = mock.MagicMock(stock_code="600519", stock_name="茅台", from_ledger=False)|
+|        e2 = mock.MagicMock(stock_code="000001", stock_name="平安", from_ledger=False)|
+|        pm = mock.MagicMock(name="PortfolioManager")|
+|        pm.return_value.request_account_facts.return_value = _fake_account_facts([e1, e2])|
+|        monkeypatch.setattr(portfolio_mod, "PortfolioManager", pm)|
+|        monkeypatch.setattr(cli_main, "analyze_live", lambda code, **kw: None)|
+|        start.run_cli("live_all", {})|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"] and seen["start"][0][0] == "la"|
+|>       assert "RUN-LA" in out|
+|E       AssertionError: assert 'RUN-LA' in '\n  一键分析所有持仓（2只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n\n\n============================================================\n  ...=================================\n  [2/2] 平安 (000001)\n============================================================\n'|
+||
+|tests\core\test_batch_task_run_identity.py:310: AssertionError|
+|__________________ test_live_scan_all_entry_binds_run_token ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026C915F7710>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026C915F7910>|
+||
+|    def test_live_scan_all_entry_binds_run_token(monkeypatch, capsys):|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-L-ALL")|
+|        import start|
+|        import src.cli.main as cli_main|
+|        from datetime import datetime|
+|    |
+|        monkeypatch.setattr(ss, "get_last_scan", lambda: {|
+|            "timestamp": datetime.now().isoformat(timespec="seconds"),|
+|            "source": "bz scan 测试",|
+|            "items": [{"code": "600519", "name": "茅台"}, {"code": "000001", "name": "平安"}],|
+|        })|
+|        monkeypatch.setattr(ss, "get_deep_analyzed", lambda: {})|
+|        monkeypatch.setattr(ss, "mark_deep_analyzed", lambda *a, **k: True)|
+|        monkeypatch.setattr("builtins.input", lambda *a: "y")|
+|        monkeypatch.setattr(cli_main, "analyze_live",|
+|                            lambda code, **kw: (_ for _ in ()).throw(SystemExit) if code == "000001" else None)|
+|        start.run_cli("live_scan_all", {})|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"] and seen["start"][0][0] == "l all"|
+|>       assert "RUN-L-ALL" in out|
+|E       AssertionError: assert 'RUN-L-ALL' in '\n  最近扫描：bz scan 测试（2026-10-26 00:12），共 2 只\n  将深分析 2 只，每只一张简明卡（同 la），详情再单独 l <代码>\n\n===============================...========================================================\n  [!] 000001 数据获取失败（已跳过，不影响其余）\n\n  批量完成：1/2 成功；失败: 000001\n'|
+||
+|tests\core\test_batch_task_run_identity.py:335: AssertionError|
+|_________ test_ba_entry_binds_run_token_and_records_structured_status _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026C916E36D0>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026C915F0050>|
+||
+|    def test_ba_entry_binds_run_token_and_records_structured_status(monkeypatch, capsys):|
+|        """ba 只按结构化结果记账：progress 文案不决定成败，末尾不按 kind/key 盲补。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            recs = [|
+|                {"code": "600519", "ok": True, "status": "complete", "total_score": 80},|
+|                {"code": "000001", "ok": True, "status": "degraded",|
+|                 "degraded_dims": ["risk_deduction"]},|
+|                {"code": "300750", "ok": False, "status": "failed", "error": "RuntimeError: 网络挂"},|
+|            ]|
+|            ranked, failures = [], []|
+|            for i, rec in enumerate(recs, 1):|
+|                # progress 文案故意与结构化结果相反，锁“展示不参与记账”|
+|                status_text = "失败" if rec["ok"] else "50/B"|
+|                if progress_cb:|
+|                    progress_cb(i, len(codes), rec["code"], status_text)|
+|                if result_cb:|
+|                    result_cb(dict(rec))|
+|                if rec["ok"]:|
+|                    ranked.append({"code": rec["code"], "name": rec["code"],|
+|                                   "total_score": 50, "normalized_score": 50,|
+|                                   "grade": "B", "effective_grade": "B", "confidence": 0.5,|
+|                                   "dim_scores": {}, "dim_confidences": {},|
+|                                   "warnings": [], "invalidate": False,|
+|                                   "scoring_status": rec["status"],|
+|                                   "degraded_dims": rec.get("degraded_dims", [])})|
+|                else:|
+|                    failures.append({"code": rec["code"], "error": rec["error"]})|
+|            ranked.append({"code": "GHOST", "name": "GHOST", "total_score": 1,|
+|                           "normalized_score": 1, "grade": "F", "effective_grade": "F",|
+|                           "confidence": 0, "dim_scores": {}, "dim_confidences": {}})|
+|            return {"ranked": ranked, "top_n": ranked[:2], "failures": failures,|
+|                    "scanned": len(codes), "scored": len(ranked), "failed": len(failures)}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze(|
+|            [{"code": "600519"}, {"code": "000001"}, {"code": "300750"}],|
+|            src_label="bz scan 测试")|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"] and seen["start"][0] == (|
+|            "ba", "bz scan 测试", ["600519", "000001", "300750"])|
+|>       assert "RUN-BA" in out|
+|E       AssertionError: assert 'RUN-BA' in '\n🧮 笨总批量评分（3 只）\n\n  [1/3] 600519 失败\n  [2/3] 000001 失败\n  [3/3] 300750 50/B\n                  笨总批量评分排名（3 只成功 / 1 只失...───────┴───────────────────────┘\n  ✗ 300750: RuntimeError: 网络挂\n说明：分数是当天缓存，重复跑 ba 不再花 AI 费用；bz <代码> --refresh 可强刷单只\n'|
+||
+|tests\core\test_batch_task_run_identity.py:385: AssertionError|
+|__________________ test_ba_entry_reports_ledger_save_failure __________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026C915F5A10>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026C916A2410>|
+||
+|    def test_ba_entry_reports_ledger_save_failure(monkeypatch, capsys):|
+|        """start 返回 None → 用户可见保存失败提示，分析仍继续（不改业务结果）。"""|
+|        import src.cli.main as cli_main|
+|    |
+|        monkeypatch.setattr(ss, "batch_task_start", lambda kind, key, codes: None)|
+|        monkeypatch.setattr(ss, "batch_task_mark", lambda *a, **k: False)|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            if progress_cb:|
+|                progress_cb(1, len(codes), codes[0], "50/B")|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "complete"})|
+|            return {"ranked": [{"code": codes[0], "name": codes[0], "total_score": 50,|
+|                                "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                                "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                                "warnings": [], "invalidate": False}],|
+|                    "top_n": [], "failures": [], "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|>       assert "保存失败" in out and "不影响" in out|
+|E       AssertionError: assert ('保存失败' in '\n🧮 笨总批量评分（1 只）\n\n  [1/1] 600519 50/B\n           笨总批量评分排名（1 只成功 / 0 只失败）            \n┏━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━...n└─────┴──────────┴────────┴───────┴──────┴────────┴──────────┘\n说明：分数是当天缓存，重复跑 ba 不再花 AI 费用；bz <代码> --refresh 可强刷单只\n')|
+||
+|tests\core\test_batch_task_run_identity.py:418: AssertionError|
+|__________________ test_ba_entry_reports_mark_write_failure ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000026C916C8B90>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vw_yf7qa/pytest/test_ba_entry_reports_mark_wri0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000026C916C8510>|
+||
+|    def test_ba_entry_reports_mark_write_failure(monkeypatch, tmp_path, capsys):|
+|        """mark 写盘失败 → 用户可见“进度可能不完整”，但评分结果照常输出。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            monkeypatch.setattr(ss, "_atomic_write_json", lambda *a, **k: False)|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "complete"})|
+|            return {"ranked": [{"code": codes[0], "name": codes[0], "total_score": 50,|
+|                                "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                                "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                                "warnings": [], "invalidate": False}],|
+|                    "top_n": [], "failures": [], "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|>       assert "写入失败" in out and "进度可能不完整" in out|
+|E       AssertionError: assert ('写入失败' in '\n🧮 笨总批量评分（1 只）\n\n           笨总批量评分排名（1 只成功 / 0 只失败）            \n┏━━━━━┳━━━━━━━━━━┳━━━━━━━━┳━━━━━━━┳━━━━━━┳━━━━━━━━...n└─────┴──────────┴────────┴───────┴──────┴────────┴──────────┘\n说明：分数是当天缓存，重复跑 ba 不再花 AI 费用；bz <代码> --refresh 可强刷单只\n')|
+||
+|tests\core\test_batch_task_run_identity.py:440: AssertionError|
+|__________ test_result_cb_structured_complete_and_ranking_preserved ___________|
+||
+|    def test_result_cb_structured_complete_and_ranking_preserved():|
+|        """完整维度结果 → 只回调一次结构化成功；ranked/top_n 业务语义不变。"""|
+|        records, progress = [], []|
+|>       with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|E       TypeError: 'tuple' object does not support the context manager protocol|
+||
+|tests\benzong\test_benzong_batch_scorer.py:156: TypeError|
+|_____ test_result_cb_degraded_when_partial_confidence_unrated_or_illegal ______|
+||
+|    def test_result_cb_degraded_when_partial_confidence_unrated_or_illegal():|
+|        """部分维度 confidence 缺失/0/非法 → 降级（仍算已返回结果，不记失败）。"""|
+|        bad = [|
+|            {"risk_deduction": 0},|
+|            {"market_recognition": None},|
+|            {"industry_leader": "bad"},|
+|            {"valuation_position": float("nan")},|
+|            {"industry_leader": -0.2},|
+|        ]|
+|        records = []|
+|>       with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|E       TypeError: 'tuple' object does not support the context manager protocol|
+||
+|tests\benzong\test_benzong_batch_scorer.py:183: TypeError|
+|________________________ test_result_cb_failure_record ________________________|
+||
+|    def test_result_cb_failure_record():|
+|        """auto_score 抛异常 → 结构化失败记录；ranked 不含该股、failures 照旧。"""|
+|        records = []|
+|>       with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|E       TypeError: 'tuple' object does not support the context manager protocol|
+||
+|tests\benzong\test_benzong_batch_scorer.py:204: TypeError|
+|_________ test_result_cb_exception_does_not_reclassify_accepted_score _________|
+||
+|    def test_result_cb_exception_does_not_reclassify_accepted_score():|
+|        """记账回调异常：已接受评分不得改判失败/双计；批次继续并告知记录不可靠。"""|
+|        records = []|
+|        progress = []|
+|    |
+|        def _cb(rec):|
+|            records.append(rec["code"])|
+|            if rec["code"] == "A":|
+|                raise RuntimeError("账本坏了")|
+|    |
+|>       with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|E       TypeError: 'tuple' object does not support the context manager protocol|
+||
+|tests\benzong\test_benzong_batch_scorer.py:229: TypeError|
+|___________________ test_progress_cb_exception_is_isolated ____________________|
+||
+|    def test_progress_cb_exception_is_isolated():|
+|        """展示回调异常不得把已评分结果算失败，也不中断批次。"""|
+|        calls = []|
+|    |
+|        def _progress(i, total, code, status):|
+|            calls.append(code)|
+|            raise RuntimeError("rich 挂了")|
+|    |
+|>       with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|E       TypeError: 'tuple' object does not support the context manager protocol|
+||
+|tests\benzong\test_benzong_batch_scorer.py:250: TypeError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_batch_task_run_identity.py::test_each_start_opens_distinct_run_and_does_not_inherit|
+|FAILED tests/core/test_batch_task_run_identity.py::test_same_key_changed_roster_new_run_starts_from_zero|
+|FAILED tests/core/test_batch_task_run_identity.py::test_interrupted_batch_rerun_records_new_results_only|
+|FAILED tests/core/test_batch_task_run_identity.py::test_legacy_record_without_run_id_is_readonly|
+|FAILED tests/core/test_batch_task_run_identity.py::test_mark_requires_exact_latest_run_token_and_roster|
+|FAILED tests/core/test_batch_task_run_identity.py::test_success_failure_degraded_transitions_are_mutually_exclusive|
+|FAILED tests/core/test_batch_task_run_identity.py::test_atomic_write_failure_keeps_old_file|
+|FAILED tests/core/test_batch_task_run_identity.py::test_atomic_write_raise_keeps_old_file|
+|FAILED tests/core/test_batch_task_run_identity.py::test_keep_latest_five_runs_with_identity|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_shows_run_identity_counts_and_legacy_label|
+|FAILED tests/core/test_batch_task_run_identity.py::test_live_multi_entry_binds_run_token|
+|FAILED tests/core/test_batch_task_run_identity.py::test_live_all_entry_binds_run_token|
+|FAILED tests/core/test_batch_task_run_identity.py::test_live_scan_all_entry_binds_run_token|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_binds_run_token_and_records_structured_status|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_reports_ledger_save_failure|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_reports_mark_write_failure|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_structured_complete_and_ranking_preserved|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_degraded_when_partial_confidence_unrated_or_illegal|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_failure_record|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_exception_does_not_reclassify_accepted_score|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_progress_cb_exception_is_isolated|
+|21 failed, 6 passed in 6.24s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H/logs/red-phase-new-tests.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H/logs/red-phase-scorer-tests-2.meta.json", "bytes": 1114, "sha256": "1358196b9070ee94c66c7f77991be30f375a0428a9e7e3dd19c02f504f6b65ce"}
+|{|
+|    "label":  "red-phase-scorer-tests-2",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/benzong/test_benzong_batch_scorer.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  1,|
+|    "started_at":  "2026-10-26T00:12:23.1561573+08:00",|
+|    "ended_at":  "2026-10-26T00:12:26.2399356+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\red-phase-scorer-tests-2.stdout.txt",|
+|                   "bytes":  7289,|
+|                   "sha256":  "6d655c5d1be16f14cc678f5aff53a8bb706ea5168024d8a5be435e472daf4c7d"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\red-phase-scorer-tests-2.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H/logs/red-phase-scorer-tests-2.stdout.txt", "bytes": 7289, "sha256": "6d655c5d1be16f14cc678f5aff53a8bb706ea5168024d8a5be435e472daf4c7d"}
+|......FFFFF                                                              [100%]|
+|================================== FAILURES ===================================|
+|__________ test_result_cb_structured_complete_and_ranking_preserved ___________|
+||
+|    def test_result_cb_structured_complete_and_ranking_preserved():|
+|        """完整维度结果 → 只回调一次结构化成功；ranked/top_n 业务语义不变。"""|
+|        records, progress = [], []|
+|        with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|            m_auto.side_effect = lambda code, **kw: _make_structured_result(|
+|                {"A": 80, "B": 60, "C": 70}[code], name=code)|
+|            from src.core.benzong.batch_scorer import auto_score_batch|
+|>           r = auto_score_batch(["A", "B", "C"], top_n=2,|
+|                                 progress_cb=lambda i, t, c, s: progress.append(c),|
+|                                 result_cb=lambda rec: records.append(rec))|
+|E           TypeError: auto_score_batch() got an unexpected keyword argument 'result_cb'|
+||
+|tests\benzong\test_benzong_batch_scorer.py:161: TypeError|
+|_____ test_result_cb_degraded_when_partial_confidence_unrated_or_illegal ______|
+||
+|    def test_result_cb_degraded_when_partial_confidence_unrated_or_illegal():|
+|        """部分维度 confidence 缺失/0/非法 → 降级（仍算已返回结果，不记失败）。"""|
+|        bad = [|
+|            {"risk_deduction": 0},|
+|            {"market_recognition": None},|
+|            {"industry_leader": "bad"},|
+|            {"valuation_position": float("nan")},|
+|            {"industry_leader": -0.2},|
+|        ]|
+|        records = []|
+|        with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|            def fake(code, **kw):|
+|                idx = ["D0", "D1", "D2", "D3", "D4", "OK"].index(code)|
+|                confs = bad[idx] if idx < len(bad) else {}|
+|                return _make_structured_result(70, confs=confs, name=code)|
+|            m_auto.side_effect = fake|
+|            from src.core.benzong.batch_scorer import auto_score_batch|
+|>           r = auto_score_batch(["D0", "D1", "D2", "D3", "D4", "OK"],|
+|                                 top_n=10, result_cb=lambda rec: records.append(rec))|
+|E           TypeError: auto_score_batch() got an unexpected keyword argument 'result_cb'|
+||
+|tests\benzong\test_benzong_batch_scorer.py:191: TypeError|
+|________________________ test_result_cb_failure_record ________________________|
+||
+|    def test_result_cb_failure_record():|
+|        """auto_score 抛异常 → 结构化失败记录；ranked 不含该股、failures 照旧。"""|
+|        records = []|
+|        with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|            def fake(code, **kw):|
+|                if code == "BAD":|
+|                    raise RuntimeError("网络挂")|
+|                return _make_structured_result(60, name=code)|
+|            m_auto.side_effect = fake|
+|            from src.core.benzong.batch_scorer import auto_score_batch|
+|>           r = auto_score_batch(["GOOD", "BAD"], top_n=10,|
+|                                 result_cb=lambda rec: records.append(rec))|
+|E           TypeError: auto_score_batch() got an unexpected keyword argument 'result_cb'|
+||
+|tests\benzong\test_benzong_batch_scorer.py:212: TypeError|
+|_________ test_result_cb_exception_does_not_reclassify_accepted_score _________|
+||
+|    def test_result_cb_exception_does_not_reclassify_accepted_score():|
+|        """记账回调异常：已接受评分不得改判失败/双计；批次继续并告知记录不可靠。"""|
+|        records = []|
+|        progress = []|
+|    |
+|        def _cb(rec):|
+|            records.append(rec["code"])|
+|            if rec["code"] == "A":|
+|                raise RuntimeError("账本坏了")|
+|    |
+|        with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|            m_auto.side_effect = lambda code, **kw: _make_structured_result(70, name=code)|
+|            from src.core.benzong.batch_scorer import auto_score_batch|
+|>           r = auto_score_batch(["A", "B"], top_n=10,|
+|                                 progress_cb=lambda i, t, c, s: progress.append(c),|
+|                                 result_cb=_cb)|
+|E           TypeError: auto_score_batch() got an unexpected keyword argument 'result_cb'|
+||
+|tests\benzong\test_benzong_batch_scorer.py:233: TypeError|
+|___________________ test_progress_cb_exception_is_isolated ____________________|
+||
+|i = 1, total = 2, code = 'A', status = '49/A'|
+||
+|    def _progress(i, total, code, status):|
+|        calls.append(code)|
+|>       raise RuntimeError("rich 挂了")|
+|E       RuntimeError: rich 挂了|
+||
+|tests\benzong\test_benzong_batch_scorer.py:249: RuntimeError|
+||
+|During handling of the above exception, another exception occurred:|
+||
+|    def test_progress_cb_exception_is_isolated():|
+|        """展示回调异常不得把已评分结果算失败，也不中断批次。"""|
+|        calls = []|
+|    |
+|        def _progress(i, total, code, status):|
+|            calls.append(code)|
+|            raise RuntimeError("rich 挂了")|
+|    |
+|        with _patch_scorer_env(mock.MagicMock()) as (m_auto, m_build, m_turn):|
+|            m_auto.side_effect = lambda code, **kw: _make_structured_result(70, name=code)|
+|            from src.core.benzong.batch_scorer import auto_score_batch|
+|>           r = auto_score_batch(["A", "B"], top_n=10, progress_cb=_progress)|
+|                ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+||
+|tests\benzong\test_benzong_batch_scorer.py:254: |
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|src\core\benzong\batch_scorer.py:109: in auto_score_batch|
+|    progress_cb(i, total, code, "失败")|
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+||
+|i = 1, total = 2, code = 'A', status = '失败'|
+||
+|    def _progress(i, total, code, status):|
+|        calls.append(code)|
+|>       raise RuntimeError("rich 挂了")|
+|E       RuntimeError: rich 挂了|
+||
+|tests\benzong\test_benzong_batch_scorer.py:249: RuntimeError|
+|---------------------------- Captured stderr call -----------------------------|
+|2026-10-26 00:12:25,985 - src.core.benzong.batch_scorer - ERROR - [auto_score_batch] A 评分失败: rich 挂了|
+||
+|------------------------------ Captured log call ------------------------------|
+|ERROR    src.core.benzong.batch_scorer:batch_scorer.py:106 [auto_score_batch] A 评分失败: rich 挂了|
+|=========================== short test summary info ===========================|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_structured_complete_and_ranking_preserved|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_degraded_when_partial_confidence_unrated_or_illegal|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_failure_record|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_result_cb_exception_does_not_reclassify_accepted_score|
+|FAILED tests/benzong/test_benzong_batch_scorer.py::test_progress_cb_exception_is_isolated|
+|5 failed, 6 passed in 0.89s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H/logs/red-phase-scorer-tests-2.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H/logs/green-final-1.meta.json", "bytes": 1438, "sha256": "4e0edeecc28a760ae997a649adb8a7a98df4a964ad8ef166e9b1897df0213004"}
+|{|
+|    "label":  "green-final-1",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py tests/core/test_session_state.py tests/benzong/test_ba_task_ledger_timing.py tests/benzong/test_benzong_batch_scorer.py tests/core/test_t04e_dispatch_golden.py tests/core/test_live_scan_all.py tests/core/test_multi_code_parse.py tests/core/test_doctor.py tests/core/test_plain_errors.py tests/core/test_bzscan_parse.py tests/core/test_iss082_review_sweep.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T00:16:44.9110668+08:00",|
+|    "ended_at":  "2026-10-26T00:16:57.0573522+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\green-final-1.stdout.txt",|
+|                   "bytes":  536,|
+|                   "sha256":  "5444e8f87628b19f1f240069a1ad6a29acd522f7001f70abc269f11007aa3bda"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H\\logs\\green-final-1.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H/logs/green-final-1.stdout.txt", "bytes": 536, "sha256": "5444e8f87628b19f1f240069a1ad6a29acd522f7001f70abc269f11007aa3bda"}
+|........................................................................ [ 26%]|
+|........................................................................ [ 53%]|
+|........................................................................ [ 80%]|
+|....................................................                     [100%]|
+|268 passed in 8.79s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H/logs/green-final-1.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/red-fix2-identity.meta.json", "bytes": 1104, "sha256": "2b148c1f74239b0741e6ed361c3b325998e649939c8f6a45bc1b111ad1816a41"}
+|{|
+|    "label":  "red-fix2-identity",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  1,|
+|    "started_at":  "2026-10-26T01:25:38.9828160+08:00",|
+|    "ended_at":  "2026-10-26T01:25:46.0615615+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\red-fix2-identity.stdout.txt",|
+|                   "bytes":  29379,|
+|                   "sha256":  "e9186c7740243d44677fa954a57df4c3b0970c469d6f60c23e0a4592669b6eb4"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\red-fix2-identity.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FIX2/logs/red-fix2-identity.stdout.txt", "bytes": 29379, "sha256": "e9186c7740243d44677fa954a57df4c3b0970c469d6f60c23e0a4592669b6eb4"}
+|.F........FFFFF...FFFF..FF                                               [100%]|
+|================================== FAILURES ===================================|
+|___________ test_run_id_stores_full_uuid_even_when_prefix_collides ____________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000285908F4FD0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_run_id_stores_full_uuid_e0')|
+||
+|    def test_run_id_stores_full_uuid_even_when_prefix_collides(monkeypatch, tmp_path):|
+|        """同秒两次启动、UUID 前 6 位相同也不得碰撞（不能只存短前缀）。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        from datetime import datetime as _real_datetime|
+|        import uuid as _uuid|
+|    |
+|        class _FixedDateTime(_real_datetime):|
+|            @classmethod|
+|            def now(cls, tz=None):|
+|                return cls(2026, 10, 26, 1, 2, 3)|
+|    |
+|        monkeypatch.setattr(ss, "datetime", _FixedDateTime)|
+|        same_prefix = ["abcdef" + "0" * 24 + "01", "abcdef" + "0" * 24 + "02"]|
+|        seq = iter([_uuid.UUID(hex=h) for h in same_prefix])|
+|        monkeypatch.setattr(ss.uuid, "uuid4", lambda: next(seq))|
+|    |
+|        first = ss.batch_task_start("l", "k", ["A", "B"])|
+|        second = ss.batch_task_start("l", "k", ["A", "B"])|
+|        assert isinstance(first, str) and isinstance(second, str)|
+|>       assert first != second, "同秒 + 前6位相同的 UUID 也必须产生不同 run 令牌（存完整 UUID）"|
+|E       AssertionError: 同秒 + 前6位相同的 UUID 也必须产生不同 run 令牌（存完整 UUID）|
+|E       assert '20261026-010203-abcdef' != '20261026-010203-abcdef'|
+||
+|tests\core\test_batch_task_run_identity.py:110: AssertionError|
+|_________ test_tasks_view_shows_run_identity_counts_and_legacy_label __________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000285906B15D0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_tasks_view_shows_run_iden0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x00000285906B2A50>|
+||
+|    def test_tasks_view_shows_run_identity_counts_and_legacy_label(monkeypatch, tmp_path, capsys):|
+|        path = _redirect_ledger(monkeypatch, tmp_path)|
+|        _seed_ledger(path, [_legacy_record(kind="l all", key="用户旧记录",|
+|                                           codes=("600519", "000001"))])|
+|        token = ss.batch_task_start("ba", "bz scan 测试", ["A", "B", "C", "D"])|
+|        ss.batch_task_mark("ba", "bz scan 测试", "A", True, run_id=token)|
+|        ss.batch_task_mark("ba", "bz scan 测试", "B", True, run_id=token, degraded=True)|
+|        ss.batch_task_mark("ba", "bz scan 测试", "C", False, "AI 超时", run_id=token)|
+|    |
+|        from src.cli import main as cli_main|
+|        cli_main.batch_tasks_cmd()|
+|        out = capsys.readouterr().out|
+|        flat = out.replace("\n", "").replace(" ", "")   # rich 按终端宽度折行，断言前拉平|
+|    |
+|        assert token in out, "任务视图必须显示本次 run 身份"|
+|>       assert "已完成 1" in out and "降级 1" in out and "失败 1" in out and "未记录结果 1" in out|
+|E       AssertionError: assert ('已完成 1' in '\n📋 最近批量任务\n\n  ba bz scan 测试（启动 2026-10-26T01:25:43；更新 2026-10-26T01:25:43）\n  运行: run 20261026-012543-a79bea\n  配置:...开新的独立 \nrun（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓\n存资格。\n  账本: ~/.muyun/batch_tasks.json（保留最近 5 条运行记录；启动时间只标本次开始）\n\n')|
+||
+|tests\core\test_batch_task_run_identity.py:282: AssertionError|
+|__________________ test_tasks_view_isolates_bad_field_types ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590699990>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_tasks_view_isolates_bad_f0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590698B50>|
+||
+|    def test_tasks_view_isolates_bad_field_types(monkeypatch, tmp_path, capsys):|
+|        """codes=['A'], done='A', degraded/failed=['A'] → 标记录异常，不假成功、不 .items 崩溃。"""|
+|>       out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [_bad_record()])|
+|                    ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^|
+||
+|tests\core\test_batch_task_run_identity.py:312: |
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|tests\core\test_batch_task_run_identity.py:298: in _render_tasks|
+|    cli_main.batch_tasks_cmd()          # 坏账本也不得抛|
+|    ^^^^^^^^^^^^^^^^^^^^^^^^^^|
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+||
+|    def batch_tasks_cmd():|
+|        """批量任务账本（C2，v0.8.17；T05-H 运行身份）：每次 run 的完成/降级/失败/未跑。|
+|    |
+|        只读展示：旧无 run_id 记录标注为旧记录且不补造身份。任务记录只描述运行可见性，|
+|        不改变各命令原缓存规则，也不代表缓存消费资格——重跑是否复用当日缓存另由各命令决定。|
+|        """|
+|        from src.cli import session_state as _ss|
+|        tasks = _ss.get_recent_batch_tasks(3)|
+|        console.print(f"\n[bold cyan]📋 最近批量任务[/bold cyan]")|
+|        if not tasks:|
+|            console.print("  [yellow]还没有批量任务记录[/yellow]（l all / la / ba / l 多代码 会自动记账）")|
+|            return|
+|        for t in tasks:|
+|            codes = t.get("codes") or []|
+|            done = t.get("done") or {}|
+|            degraded = t.get("degraded") or {}|
+|            failed = t.get("failed") or {}|
+|            ok_n = sum(1 for c in codes if c in done)|
+|            deg_n = sum(1 for c in codes if c in degraded)|
+|            fail_n = sum(1 for c in codes if c in failed)|
+|            pending_n = max(0, len(codes) - ok_n - deg_n - fail_n)|
+|            console.print(f"\n  [cyan]{t.get('kind')}[/cyan] {t.get('key')}（启动 {t.get('ts_started', '?')}；更新 {t.get('ts_updated', '?')}）")|
+|            run_id = t.get("run_id")|
+|            if isinstance(run_id, str) and run_id:|
+|                console.print(f"  运行: run {run_id}")|
+|                console.print("  配置: 未冻结（本次运行未记录有效配置身份，不作为配置/数据时点依据）")|
+|            else:|
+|                console.print("  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）")|
+|                console.print("  配置: 未记录（旧记录不补造）")|
+|            console.print(f"  进度: 完整成功 {ok_n}/{len(codes)}，降级 {deg_n}，失败 {fail_n}，未跑 {pending_n}")|
+|>           for c, note in list(degraded.items())[:5]:|
+|                                ^^^^^^^^^^^^^^|
+|E           AttributeError: 'list' object has no attribute 'items'|
+||
+|src\cli\main.py:4293: AttributeError|
+|---------------------------- Captured stdout call -----------------------------|
+||
+|📋 最近批量任务|
+||
+|  l all 坏记录（启动 2026-10-26T01:00:00；更新 2026-10-26T01:01:00）|
+|  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）|
+|  配置: 未记录（旧记录不补造）|
+|  进度: 完整成功 1/1，降级 1，失败 1，未跑 0|
+|________________ test_tasks_view_flags_conflicting_code_states ________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002859036F190>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_tasks_view_flags_conflict0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x000002859036C190>|
+||
+|    def test_tasks_view_flags_conflicting_code_states(monkeypatch, tmp_path, capsys):|
+|        """同一 code 同时在 done+failed / degraded+failed → 标状态冲突，不计入任何状态。"""|
+|        rec = {"kind": "ba", "key": "冲突记录", "codes": ["A", "B"],|
+|               "done": {"A": "2026-10-26T01:00:00"}, "degraded": {"B": "降级"},|
+|               "failed": {"A": "失败A", "B": "失败B"},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "状态冲突 2" in flat|
+|E       AssertionError: assert '状态冲突 2' in '📋最近批量任务ba冲突记录（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:完整成功1/2，降级1，失败2，未跑0⚠B:降级✗A:失败A✗B:失败B账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:326: AssertionError|
+|______________ test_tasks_view_bad_codes_is_unknown_not_success _______________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590A1E910>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_tasks_view_bad_codes_is_u0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590A1DA10>|
+||
+|    def test_tasks_view_bad_codes_is_unknown_not_success(monkeypatch, tmp_path, capsys):|
+|        """codes 非列表 → 进度未知（无法核对），不得把 done 条目冒充完成。"""|
+|        rec = {"kind": "l", "key": "坏清单", "codes": "A", "done": {"A": "t"},|
+|               "degraded": {}, "failed": {}, "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "记录异常" in flat|
+|E       AssertionError: assert '记录异常' in '📋最近批量任务l坏清单（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:完整成功1/1，降级0，失败0，未跑0账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:338: AssertionError|
+|___________________ test_tasks_view_ignores_foreign_entries ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590699C50>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_d9m_w0f6/pytest/test_tasks_view_ignores_foreig0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590698150>|
+||
+|    def test_tasks_view_ignores_foreign_entries(monkeypatch, tmp_path, capsys):|
+|        """状态映射含清单外代码 → 标清单外、不计入完成/失败。"""|
+|        rec = {"kind": "l all", "key": "外来条目", "codes": ["A"],|
+|               "done": {"A": "t", "Z": "t"}, "degraded": {}, "failed": {"Z2": "坏"},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "清单外" in flat|
+|E       AssertionError: assert '清单外' in '📋最近批量任务lall外来条目（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:完整成功1/1，降级0，失败0，未跑0✗Z2:坏账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:349: AssertionError|
+|_________ test_ba_entry_binds_run_token_and_records_structured_status _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590A52110>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590858AD0>|
+||
+|    def test_ba_entry_binds_run_token_and_records_structured_status(monkeypatch, capsys):|
+|        """ba 只按结构化结果记账：progress 文案不决定成败，末尾不按 kind/key 盲补。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            recs = [|
+|                {"code": "600519", "ok": True, "status": "complete", "total_score": 80},|
+|                {"code": "000001", "ok": True, "status": "degraded",|
+|                 "degraded_dims": ["risk_deduction"]},|
+|                {"code": "300750", "ok": False, "status": "failed", "error": "RuntimeError: 网络挂"},|
+|            ]|
+|            ranked, failures = [], []|
+|            for i, rec in enumerate(recs, 1):|
+|                # progress 文案故意与结构化结果相反，锁“展示不参与记账”|
+|                status_text = "失败" if rec["ok"] else "50/B"|
+|                if progress_cb:|
+|                    progress_cb(i, len(codes), rec["code"], status_text)|
+|                if result_cb:|
+|                    result_cb(dict(rec))|
+|                if rec["ok"]:|
+|                    ranked.append({"code": rec["code"], "name": rec["code"],|
+|                                   "total_score": 50, "normalized_score": 50,|
+|                                   "grade": "B", "effective_grade": "B", "confidence": 0.5,|
+|                                   "dim_scores": {}, "dim_confidences": {},|
+|                                   "warnings": [], "invalidate": False,|
+|                                   "scoring_status": rec["status"],|
+|                                   "degraded_dims": rec.get("degraded_dims", [])})|
+|                else:|
+|                    failures.append({"code": rec["code"], "error": rec["error"]})|
+|            ranked.append({"code": "GHOST", "name": "GHOST", "total_score": 1,|
+|                           "normalized_score": 1, "grade": "F", "effective_grade": "F",|
+|                           "confidence": 0, "dim_scores": {}, "dim_confidences": {}})|
+|            return {"ranked": ranked, "top_n": ranked[:2], "failures": failures,|
+|                    "scanned": len(codes), "scored": len(ranked), "failed": len(failures)}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze(|
+|            [{"code": "600519"}, {"code": "000001"}, {"code": "300750"}],|
+|            src_label="bz scan 测试")|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"] and seen["start"][0] == (|
+|            "ba", "bz scan 测试", ["600519", "000001", "300750"])|
+|        assert "RUN-BA" in out|
+|        by_code = {m["code"]: m for m in seen["mark"]}|
+|        assert by_code["600519"]["run_id"] == "RUN-BA" and by_code["600519"]["ok"] is True|
+|        assert by_code["000001"]["run_id"] == "RUN-BA" and by_code["000001"]["ok"] is True|
+|        assert by_code["000001"]["degraded"] is True, "部分维度未评出必须记降级而非已完成"|
+|        assert by_code["300750"]["ok"] is False and by_code["300750"]["run_id"] == "RUN-BA"|
+|        assert "GHOST" not in by_code, "结束不得按 kind/key 盲目补记 ranked 条目"|
+|        assert len(seen["mark"]) == 3, "每个结构化结果只记一次（progress 不重复记账）"|
+|>       assert "已完成 1" in out and "降级 1" in out and "失败 1" in out and "未记录结果 0" in out|
+|E       AssertionError: assert ('已完成 1' in '  任务记录：run RUN-BA（配置未冻结；本次独立 run，不继承旧成功）\n\n🧮 笨总批量评分（3 只）\n\n  [1/3] 600519 失败\n  [2/3] 000001 失败\n  [3/3] 300750 50/...n  ✗ 300750: RuntimeError: 网络挂\n说明：维度命中当日缓存时不再花 AI \n费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz \n<代码> --refresh 可强刷单只\n')|
+||
+|tests\core\test_batch_task_run_identity.py:491: AssertionError|
+|_______________ test_ba_entry_ignores_unknown_structured_result _______________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000285906780D0>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590BB6D10>|
+||
+|    def test_ba_entry_ignores_unknown_structured_result(monkeypatch, capsys):|
+|        """坏/未知结构化结果（缺 ok、状态非法）不伪造成功也不伪造失败。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA-UNKNOWN")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            if result_cb:|
+|                result_cb({"code": codes[0]})   # 缺 ok/status：未知|
+|            return {"ranked": [{"code": codes[0], "name": codes[0], "total_score": 50,|
+|                                "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                                "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                                "warnings": [], "invalidate": False}],|
+|                    "top_n": [], "failures": [], "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|        assert seen["mark"] == [], "未知结果不得记成功或失败"|
+|>       assert "结果记录不可靠" in out, "未知结果必须显式告知记录不可靠（不能静默）"|
+|E       AssertionError: 未知结果必须显式告知记录不可靠（不能静默）|
+|E       assert '结果记录不可靠' in '  任务记录：run RUN-BA-UNKNOWN（配置未冻结；本次独立 run，不继承旧成功）\n\n🧮 笨总批量评分（1 只）\n\n  任务记录：run RUN-BA-UNKNOWN（完整 0 / 降级 0 / 失败 0 / 未...──┴──────┴────────┴──────────┘\n说明：维度命中当日缓存时不再花 AI \n费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz \n<代码> --refresh 可强刷单只\n'|
+||
+|tests\core\test_batch_task_run_identity.py:513: AssertionError|
+|______________ test_ba_entry_ignores_unknown_status_on_ok_record ______________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590CD6610>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x000002859097F6D0>|
+||
+|    def test_ba_entry_ignores_unknown_status_on_ok_record(monkeypatch, capsys):|
+|        """ok=True 但 status 非 complete/degraded → 未知状态不冒充完整成功。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA-UNKNOWN-2")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "weird"})|
+|            return {"ranked": [{"code": codes[0], "name": codes[0], "total_score": 50,|
+|                                "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                                "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                                "warnings": [], "invalidate": False}],|
+|                    "top_n": [], "failures": [], "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|        assert seen["mark"] == [], "非法状态不得伪造成功"|
+|>       assert "结果记录不可靠" in out, "未知状态必须显式告知记录不可靠（不能静默 return）"|
+|E       AssertionError: 未知状态必须显式告知记录不可靠（不能静默 return）|
+|E       assert '结果记录不可靠' in '  任务记录：run RUN-BA-UNKNOWN-2（配置未冻结；本次独立 run，不继承旧成功）\n\n🧮 笨总批量评分（1 只）\n\n  任务记录：run RUN-BA-UNKNOWN-2（完整 0 / 降级 0 / 失败 0...──┴──────┴────────┴──────────┘\n说明：维度命中当日缓存时不再花 AI \n费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz \n<代码> --refresh 可强刷单只\n'|
+||
+|tests\core\test_batch_task_run_identity.py:537: AssertionError|
+|_______ test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590BC2C10>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000028590BC3490>|
+||
+|    def test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events(monkeypatch, capsys):|
+|        """回调事件须属于本 roster 且合法才计数：外来/矛盾/重复一律不记完成并报不可靠。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA-BAD")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            legal = {"code": codes[0], "ok": True, "status": "complete"}|
+|            events = [|
+|                {"code": "999999", "ok": True, "status": "complete"},     # 外来代码|
+|                {"code": codes[0], "ok": True, "status": "complete",|
+|                 "degraded_dims": ["risk_deduction"]},                   # complete 却有降级维（矛盾）|
+|                {"code": codes[0], "ok": True, "status": "degraded",|
+|                 "degraded_dims": []},                                   # degraded 却无降级维（矛盾）|
+|                {"code": codes[0], "ok": "yes", "status": "complete"},   # ok 非 bool|
+|                {"code": codes[0], "ok": False, "status": "complete"},   # failed 状态非法|
+|                {"code": None, "ok": True, "status": "complete"},        # code 缺失|
+|                [1, 2, 3],                                               # 非 dict 事件|
+|            ]|
+|            for ev in events:|
+|                result_cb(ev)|
+|            result_cb(dict(legal))|
+|            result_cb(dict(legal))                                       # 重复事件|
+|            row = {"code": codes[0], "name": codes[0], "total_score": 50,|
+|                   "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                   "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                   "warnings": [], "invalidate": False}|
+|            return {"ranked": [row], "top_n": [row], "failures": [],|
+|                    "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|>       cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+||
+|tests\core\test_batch_task_run_identity.py:573: |
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+|src\cli\main.py:2061: in benzong_batch_analyze|
+|    res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,|
+|tests\core\test_batch_task_run_identity.py:562: in fake_batch|
+|    result_cb(ev)|
+|_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _|
+||
+|record = [1, 2, 3]|
+||
+|    def _on_result(record):|
+|        """结构化逐项结果记账——progress 文案不参与成败判定。"""|
+|>       code = record.get("code")|
+|               ^^^^^^^^^^|
+|E       AttributeError: 'list' object has no attribute 'get'|
+||
+|src\cli\main.py:2032: AttributeError|
+|---------------------------- Captured stdout call -----------------------------|
+|  任务记录：run RUN-BA-BAD（配置未冻结；本次独立 run，不继承旧成功）|
+||
+|🧮 笨总批量评分（1 只）|
+||
+|_________ test_ba_dim_cell_hides_degraded_dim_even_with_numeric_score _________|
+||
+|    def test_ba_dim_cell_hides_degraded_dim_even_with_numeric_score():|
+|        from src.cli.main import _ba_dim_cell|
+|        row = {"dim_scores": {"industry_prosperity": 95},|
+|               "dim_confidences": {"industry_prosperity": None},|
+|               "degraded_dims": ["industry_prosperity"]}|
+|>       assert _ba_dim_cell(row, "industry_prosperity") == "未评出", \|
+|            "degraded_dims 内的维度即使有数值分也必须显示未评出"|
+|E       AssertionError: degraded_dims 内的维度即使有数值分也必须显示未评出|
+|E       assert '95' == '未评出'|
+|E         |
+|E         - 未评出|
+|E         + 95|
+||
+|tests\core\test_batch_task_run_identity.py:635: AssertionError|
+|______ test_ba_presentation_excludes_degraded_dim_values_and_commentary _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000028590430850>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x000002859260F8D0>|
+||
+|    def test_ba_presentation_excludes_degraded_dim_values_and_commentary(monkeypatch, capsys):|
+|        """实际 ba 呈现：降级维不显示数值、不参与最强/最弱点评。"""|
+|        _spy_ledger(monkeypatch, run_id="RUN-BA-PRES")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "degraded",|
+|                           "degraded_dims": ["industry_prosperity"]})|
+|            row = {|
+|                "code": codes[0], "name": "茅台", "total_score": 80,|
+|                "normalized_score": 80, "grade": "B", "effective_grade": "B",|
+|                "confidence": 0.6, "invalidate": False,|
+|                "dim_scores": {"industry_prosperity": 95, "business_purity": 70,|
+|                               "valuation_position": 60, "industry_leader": 65,|
+|                               "market_recognition": 55, "risk_deduction": 50},|
+|                "dim_confidences": {"industry_prosperity": None, "business_purity": 0.8,|
+|                                    "valuation_position": 0.8, "industry_leader": 0.8,|
+|                                    "market_recognition": 0.8, "risk_deduction": 0.8},|
+|                "degraded_dims": ["industry_prosperity"],|
+|                "scoring_status": "degraded", "warnings": [],|
+|            }|
+|            return {"ranked": [row], "top_n": [row], "failures": [],|
+|                    "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|        flat = out.replace("\n", "").replace(" ", "")|
+|    |
+|>       assert "行业景气最强" not in flat, "降级维度不得作为最强点评"|
+|E       AssertionError: 降级维度不得作为最强点评|
+|E       assert '行业景气最强' not in '任务记录：runRUN...refresh可强刷单只'|
+|E         |
+|E         '行业景气最强' is contained here:|
+|E           台│80│B│95│行业景气最强(95)，风险控制最││││││││弱(50)││││││││⚠1维未评出（行业景气），非完││││││││整评分│└─────┴──────────┴──────┴───────┴──────┴────────┴──────────────────────────────┘说明：维度命中当日缓存时不再花AI费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz<代码>--refresh可强刷单只|
+|E         ?           ++++++|
+||
+|tests\core\test_batch_task_run_identity.py:670: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_batch_task_run_identity.py::test_run_id_stores_full_uuid_even_when_prefix_collides|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_shows_run_identity_counts_and_legacy_label|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_isolates_bad_field_types|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_flags_conflicting_code_states|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_bad_codes_is_unknown_not_success|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_ignores_foreign_entries|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_binds_run_token_and_records_structured_status|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_ignores_unknown_structured_result|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_ignores_unknown_status_on_ok_record|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_dim_cell_hides_degraded_dim_even_with_numeric_score|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_presentation_excludes_degraded_dim_values_and_commentary|
+|12 failed, 14 passed in 4.35s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FIX2/logs/red-fix2-identity.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-1.meta.json", "bytes": 1116, "sha256": "da9ffd1763154112692fe7c102dcdabba13fd0fd9bed9da5cc47ffafc8617684"}
+|{|
+|    "label":  "green-fix2-identity-1",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  1,|
+|    "started_at":  "2026-10-26T01:26:55.4856917+08:00",|
+|    "ended_at":  "2026-10-26T01:27:00.5600754+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-identity-1.stdout.txt",|
+|                   "bytes":  17946,|
+|                   "sha256":  "2ea442f137744f1e2266f8fb2e8d206a88e3944f0711b80bd3232ae38c3c4bc8"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-identity-1.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-1.stdout.txt", "bytes": 17946, "sha256": "2ea442f137744f1e2266f8fb2e8d206a88e3944f0711b80bd3232ae38c3c4bc8"}
+|...........FF.F...F..F.F.F                                               [100%]|
+|================================== FAILURES ===================================|
+|__________________ test_tasks_view_isolates_bad_field_types ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A1210AD10>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vosb0oel/pytest/test_tasks_view_isolates_bad_f0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A12109210>|
+||
+|    def test_tasks_view_isolates_bad_field_types(monkeypatch, tmp_path, capsys):|
+|        """codes=['A'], done='A', degraded/failed=['A'] → 标记录异常，不假成功、不 .items 崩溃。"""|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [_bad_record()])|
+|        assert "记录异常" in flat|
+|        assert "字段类型非法" in flat|
+|>       assert "已完成 0" in flat, "非法状态不得假成功"|
+|E       AssertionError: 非法状态不得假成功|
+|E       assert '已完成 0' in '📋最近批量任务lall坏记录（启动2026-10-26T01:00:00；更新2026-10-26T01:01:00）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成0/1，降级0，...展示，不改旧文件）重跑同类命令会开新的独立run（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓存资格。账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:315: AssertionError|
+|________________ test_tasks_view_flags_conflicting_code_states ________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A11DCBB10>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vosb0oel/pytest/test_tasks_view_flags_conflict0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A11D92B50>|
+||
+|    def test_tasks_view_flags_conflicting_code_states(monkeypatch, tmp_path, capsys):|
+|        """同一 code 同时在 done+failed / degraded+failed → 标状态冲突，不计入任何状态。"""|
+|        rec = {"kind": "ba", "key": "冲突记录", "codes": ["A", "B"],|
+|               "done": {"A": "2026-10-26T01:00:00"}, "degraded": {"B": "降级"},|
+|               "failed": {"A": "失败A", "B": "失败B"},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "状态冲突 2" in flat|
+|E       AssertionError: assert '状态冲突 2' in '📋最近批量任务ba冲突记录（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成0/2，降级0，失败0，未记录结果0，状态冲突2⚠A:状态冲突（已完成、失败），待确认，不...认，不计入任何状态重跑同类命令会开新的独立run（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓存资格。账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:326: AssertionError|
+|___________________ test_tasks_view_ignores_foreign_entries ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A11CFC950>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vosb0oel/pytest/test_tasks_view_ignores_foreig0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A11CFC090>|
+||
+|    def test_tasks_view_ignores_foreign_entries(monkeypatch, tmp_path, capsys):|
+|        """状态映射含清单外代码 → 标清单外、不计入完成/失败。"""|
+|        rec = {"kind": "l all", "key": "外来条目", "codes": ["A"],|
+|               "done": {"A": "t", "Z": "t"}, "degraded": {}, "failed": {"Z2": "坏"},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|        assert "清单外" in flat|
+|>       assert "已完成 1" in flat|
+|E       AssertionError: assert '已完成 1' in '📋最近批量任务lall外来条目（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成1/1，降级0，失败0，未记录结果0记录异常:done含清单外代码1个（不计数）；failed含清单外代码1个（不计数）（只读展示，不改旧文件）账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:350: AssertionError|
+|_________ test_ba_entry_binds_run_token_and_records_structured_status _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A11B84090>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A11B84250>|
+||
+|    def test_ba_entry_binds_run_token_and_records_structured_status(monkeypatch, capsys):|
+|        """ba 只按结构化结果记账：progress 文案不决定成败，末尾不按 kind/key 盲补。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            recs = [|
+|                {"code": "600519", "ok": True, "status": "complete", "total_score": 80},|
+|                {"code": "000001", "ok": True, "status": "degraded",|
+|                 "degraded_dims": ["risk_deduction"]},|
+|                {"code": "300750", "ok": False, "status": "failed", "error": "RuntimeError: 网络挂"},|
+|            ]|
+|            ranked, failures = [], []|
+|            for i, rec in enumerate(recs, 1):|
+|                # progress 文案故意与结构化结果相反，锁“展示不参与记账”|
+|                status_text = "失败" if rec["ok"] else "50/B"|
+|                if progress_cb:|
+|                    progress_cb(i, len(codes), rec["code"], status_text)|
+|                if result_cb:|
+|                    result_cb(dict(rec))|
+|                if rec["ok"]:|
+|                    ranked.append({"code": rec["code"], "name": rec["code"],|
+|                                   "total_score": 50, "normalized_score": 50,|
+|                                   "grade": "B", "effective_grade": "B", "confidence": 0.5,|
+|                                   "dim_scores": {}, "dim_confidences": {},|
+|                                   "warnings": [], "invalidate": False,|
+|                                   "scoring_status": rec["status"],|
+|                                   "degraded_dims": rec.get("degraded_dims", [])})|
+|                else:|
+|                    failures.append({"code": rec["code"], "error": rec["error"]})|
+|            ranked.append({"code": "GHOST", "name": "GHOST", "total_score": 1,|
+|                           "normalized_score": 1, "grade": "F", "effective_grade": "F",|
+|                           "confidence": 0, "dim_scores": {}, "dim_confidences": {}})|
+|            return {"ranked": ranked, "top_n": ranked[:2], "failures": failures,|
+|                    "scanned": len(codes), "scored": len(ranked), "failed": len(failures)}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze(|
+|            [{"code": "600519"}, {"code": "000001"}, {"code": "300750"}],|
+|            src_label="bz scan 测试")|
+|        out = capsys.readouterr().out|
+|    |
+|        assert seen["start"] and seen["start"][0] == (|
+|            "ba", "bz scan 测试", ["600519", "000001", "300750"])|
+|        assert "RUN-BA" in out|
+|        by_code = {m["code"]: m for m in seen["mark"]}|
+|>       assert by_code["600519"]["run_id"] == "RUN-BA" and by_code["600519"]["ok"] is True|
+|               ^^^^^^^^^^^^^^^^^|
+|E       KeyError: '600519'|
+||
+|tests\core\test_batch_task_run_identity.py:485: KeyError|
+|_______ test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A12D8A750>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A12D8A890>|
+||
+|    def test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events(monkeypatch, capsys):|
+|        """回调事件须属于本 roster 且合法才计数：外来/矛盾/重复一律不记完成并报不可靠。"""|
+|        seen = _spy_ledger(monkeypatch, run_id="RUN-BA-BAD")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            legal = {"code": codes[0], "ok": True, "status": "complete"}|
+|            events = [|
+|                {"code": "999999", "ok": True, "status": "complete"},     # 外来代码|
+|                {"code": codes[0], "ok": True, "status": "complete",|
+|                 "degraded_dims": ["risk_deduction"]},                   # complete 却有降级维（矛盾）|
+|                {"code": codes[0], "ok": True, "status": "degraded",|
+|                 "degraded_dims": []},                                   # degraded 却无降级维（矛盾）|
+|                {"code": codes[0], "ok": "yes", "status": "complete"},   # ok 非 bool|
+|                {"code": codes[0], "ok": False, "status": "complete"},   # failed 状态非法|
+|                {"code": None, "ok": True, "status": "complete"},        # code 缺失|
+|                [1, 2, 3],                                               # 非 dict 事件|
+|            ]|
+|            for ev in events:|
+|                result_cb(ev)|
+|            result_cb(dict(legal))|
+|            result_cb(dict(legal))                                       # 重复事件|
+|            row = {"code": codes[0], "name": codes[0], "total_score": 50,|
+|                   "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                   "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                   "warnings": [], "invalidate": False}|
+|            return {"ranked": [row], "top_n": [row], "failures": [],|
+|                    "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|        assert "结果记录不可靠" in out|
+|>       assert "已完成 1" in out, "合法事件只计一次（重复/外来/矛盾均不重复计数）"|
+|E       AssertionError: 合法事件只计一次（重复/外来/矛盾均不重复计数）|
+|E       assert '已完成 1' in '  任务记录：run RUN-BA-BAD（配置未冻结；本次独立 run，不继承旧成功）\n\n🧮 笨总批量评分（1 只）\n\n  ⚠ \n结果记录不可靠：存在未知/非法/外来/重复逐项结果，未计入已完成（以屏幕输出与实际\n结果为...──┴──────┴────────┴──────────┘\n说明：维度命中当日缓存时不再花 AI \n费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz \n<代码> --refresh 可强刷单只\n'|
+||
+|tests\core\test_batch_task_run_identity.py:576: AssertionError|
+|__________________ test_ba_entry_reports_mark_write_failure ___________________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A12EB23D0>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_vosb0oel/pytest/test_ba_entry_reports_mark_wri0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A12EB26D0>|
+||
+|    def test_ba_entry_reports_mark_write_failure(monkeypatch, tmp_path, capsys):|
+|        """mark 写盘失败 → 用户可见“进度可能不完整”，但评分结果照常输出。"""|
+|        _redirect_ledger(monkeypatch, tmp_path)|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            monkeypatch.setattr(ss, "_atomic_write_json", lambda *a, **k: False)|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "complete"})|
+|            return {"ranked": [{"code": codes[0], "name": codes[0], "total_score": 50,|
+|                                "normalized_score": 50, "grade": "B", "effective_grade": "B",|
+|                                "confidence": 0.5, "dim_scores": {}, "dim_confidences": {},|
+|                                "warnings": [], "invalidate": False}],|
+|                    "top_n": [], "failures": [], "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|>       assert "写入失败" in out and "进度可能不完整" in out|
+|E       AssertionError: assert ('写入失败' in '  任务记录：run \n20261026-012659-c4b2d10600d04a5f8b1a3cc7a02d6b41（配置未冻结；本次独立 \nrun，不继承旧成功）\n\n🧮 笨总批量评分（1 只）\n\n  ⚠ \n结果记录...──┴──────┴────────┴──────────┘\n说明：维度命中当日缓存时不再花 AI \n费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz \n<代码> --refresh 可强刷单只\n')|
+||
+|tests\core\test_batch_task_run_identity.py:625: AssertionError|
+|______ test_ba_presentation_excludes_degraded_dim_values_and_commentary _______|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024A12DD3D90>|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000024A12DD3610>|
+||
+|    def test_ba_presentation_excludes_degraded_dim_values_and_commentary(monkeypatch, capsys):|
+|        """实际 ba 呈现：降级维不显示数值、不参与最强/最弱点评。"""|
+|        _spy_ledger(monkeypatch, run_id="RUN-BA-PRES")|
+|        import src.cli.main as cli_main|
+|    |
+|        def fake_batch(codes, top_n=None, force_refresh=False, config=None,|
+|                       progress_cb=None, result_cb=None):|
+|            if result_cb:|
+|                result_cb({"code": codes[0], "ok": True, "status": "degraded",|
+|                           "degraded_dims": ["industry_prosperity"]})|
+|            row = {|
+|                "code": codes[0], "name": "茅台", "total_score": 80,|
+|                "normalized_score": 80, "grade": "B", "effective_grade": "B",|
+|                "confidence": 0.6, "invalidate": False,|
+|                "dim_scores": {"industry_prosperity": 95, "business_purity": 70,|
+|                               "valuation_position": 60, "industry_leader": 65,|
+|                               "market_recognition": 55, "risk_deduction": 50},|
+|                "dim_confidences": {"industry_prosperity": None, "business_purity": 0.8,|
+|                                    "valuation_position": 0.8, "industry_leader": 0.8,|
+|                                    "market_recognition": 0.8, "risk_deduction": 0.8},|
+|                "degraded_dims": ["industry_prosperity"],|
+|                "scoring_status": "degraded", "warnings": [],|
+|            }|
+|            return {"ranked": [row], "top_n": [row], "failures": [],|
+|                    "scanned": 1, "scored": 1, "failed": 0}|
+|    |
+|        monkeypatch.setattr("src.core.benzong.batch_scorer.auto_score_batch", fake_batch)|
+|        cli_main.benzong_batch_analyze([{"code": "600519"}], src_label="x")|
+|        out = capsys.readouterr().out|
+|        flat = out.replace("\n", "").replace(" ", "")|
+|    |
+|        assert "行业景气最强" not in flat, "降级维度不得作为最强点评"|
+|>       assert "业务纯度最强" in flat, "点评应使用未降级维度中的真实最高分"|
+|E       AssertionError: 点评应使用未降级维度中的真实最高分|
+|E       assert '业务纯度最强' in '任务记录：runRUN-BA-PRES（配置未冻结；本次独立run，不继承旧成功）🧮笨总批量评分（1只）任务记录：runRUN-BA-PRES（已完成0/降级1/失败0/未记录结果0）笨总批量评分排名（已完成0只/降级1只/失败0只）...──┴────────┴──────────────────────────────┘说明：维度命中当日缓存时不再花AI费用（是否命中由笨总原缓存规则决定）；任务记录只记运行进度，不等于缓存资格。bz<代码>--refresh可强刷单只'|
+||
+|tests\core\test_batch_task_run_identity.py:671: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_isolates_bad_field_types|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_flags_conflicting_code_states|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_ignores_foreign_entries|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_binds_run_token_and_records_structured_status|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_entry_reports_mark_write_failure|
+|FAILED tests/core/test_batch_task_run_identity.py::test_ba_presentation_excludes_degraded_dim_values_and_commentary|
+|7 failed, 19 passed in 2.55s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-1.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-2.meta.json", "bytes": 1114, "sha256": "c0744a36832d46ac816eb263f81f6a9b122f948c57240d7de11bc7b598cbd7af"}
+|{|
+|    "label":  "green-fix2-identity-2",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T01:27:30.1396689+08:00",|
+|    "ended_at":  "2026-10-26T01:27:35.2380573+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-identity-2.stdout.txt",|
+|                   "bytes":  292,|
+|                   "sha256":  "2bb1166fce0dfb714cb45cbb47d6f08ff0f399e1e316936c45c07c9e8abc2ece"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-identity-2.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-2.stdout.txt", "bytes": 292, "sha256": "2bb1166fce0dfb714cb45cbb47d6f08ff0f399e1e316936c45c07c9e8abc2ece"}
+|..........................                                               [100%]|
+|26 passed in 2.14s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FIX2/logs/green-fix2-identity-2.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-1.meta.json", "bytes": 1466, "sha256": "60e22906577b279fc66218883e24d0ad46a6b18ad4c0f058c37c53241bf857fb"}
+|{|
+|    "label":  "green-fix2-matrix-1",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py tests/core/test_session_state.py tests/benzong/test_ba_task_ledger_timing.py tests/benzong/test_benzong_batch_scorer.py tests/core/test_t04e_dispatch_golden.py tests/core/test_live_scan_all.py tests/core/test_multi_code_parse.py tests/core/test_doctor.py tests/core/test_plain_errors.py tests/core/test_bzscan_parse.py tests/core/test_iss082_review_sweep.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T01:27:42.3779939+08:00",|
+|    "ended_at":  "2026-10-26T01:27:55.5204460+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-1.stdout.txt",|
+|                   "bytes":  536,|
+|                   "sha256":  "884b274c43f808f3a37b46a6eae4a21332a0a64224945d485effd6d90f1dfd1a"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-1.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-1.stdout.txt", "bytes": 536, "sha256": "884b274c43f808f3a37b46a6eae4a21332a0a64224945d485effd6d90f1dfd1a"}
+|........................................................................ [ 26%]|
+|........................................................................ [ 52%]|
+|........................................................................ [ 78%]|
+|............................................................             [100%]|
+|276 passed in 9.69s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-1.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-final.meta.json", "bytes": 1478, "sha256": "bc3519713bce775a6f1288da38511ea58e1f79585a97e6870cda8d54b384e581"}
+|{|
+|    "label":  "green-fix2-matrix-final",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py tests/core/test_session_state.py tests/benzong/test_ba_task_ledger_timing.py tests/benzong/test_benzong_batch_scorer.py tests/core/test_t04e_dispatch_golden.py tests/core/test_live_scan_all.py tests/core/test_multi_code_parse.py tests/core/test_doctor.py tests/core/test_plain_errors.py tests/core/test_bzscan_parse.py tests/core/test_iss082_review_sweep.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T01:28:32.3118755+08:00",|
+|    "ended_at":  "2026-10-26T01:28:43.4393616+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-final.stdout.txt",|
+|                   "bytes":  536,|
+|                   "sha256":  "c88e044dbf9ce0a92949b48fae0c9d3f5d32a943d73bb98d1997d3ff39eab319"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-final.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-final.stdout.txt", "bytes": 536, "sha256": "c88e044dbf9ce0a92949b48fae0c9d3f5d32a943d73bb98d1997d3ff39eab319"}
+|........................................................................ [ 26%]|
+|........................................................................ [ 52%]|
+|........................................................................ [ 78%]|
+|............................................................             [100%]|
+|276 passed in 8.38s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FIX2/logs/green-fix2-matrix-final.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FIX2/logs/ui-smoke-fix2-2.meta.json", "bytes": 1570, "sha256": "b83a182a74f2497aa536debca8febcbf62e087eb197f043f4025661ca4cfd7a9"}
+|{|
+|    "label":  "ui-smoke-fix2-2",|
+|    "kind":  "ui-smoke",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\ui_smoke.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "fake_home":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\smoke-home-ui-smoke-fix2-2",|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T01:28:26.3829998+08:00",|
+|    "ended_at":  "2026-10-26T01:28:28.4403608+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\ui-smoke-fix2-2.stdout.txt",|
+|                   "bytes":  10903,|
+|                   "sha256":  "35373c66b4ca3a38e8ef837fa37048b523d6e8ed52c6b2429c79c5bd7d418f0a"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\ui-smoke-fix2-2.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               },|
+|    "checks":  {|
+|                   "legacy_label":  true,|
+|                   "config_frozen":  true,|
+|                   "run_identity_visible":  true,|
+|                   "counts_real":  true,|
+|                   "not_cache_equivalent":  true,|
+|                   "help_line":  true,|
+|                   "rerun_opens_new_run":  true|
+|               },|
+|    "all_pass":  true|
+|}|
+
+{"file": "T05H_FIX2/logs/ui-smoke-fix2-2.stdout.txt", "bytes": 10903, "sha256": "35373c66b4ca3a38e8ef837fa37048b523d6e8ed52c6b2429c79c5bd7d418f0a"}
+|=== TASKS VIEW: LEGACY ONLY ===|
+||
+|📋 最近批量任务|
+||
+|  ba 旧扫描 2026-10-01（启动 2026-10-01T08:59:00；更新 2026-10-01T09:00:00）|
+|  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）|
+|  配置: 未记录（旧记录不补造）|
+|  进度: 已完成 1/2，降级 0，失败 0，未记录结果 1|
+|  重跑同类命令会开新的独立 |
+|run（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓|
+|存资格。|
+|  账本: ~/.muyun/batch_tasks.json（保留最近 5 条运行记录；启动时间只标本次开始）|
+||
+|RUN_TOKEN 20261026-012827-f8733c8d55b34e4da997fb19de391dc0|
+|=== TASKS VIEW: NEW RUN ===|
+||
+|📋 最近批量任务|
+||
+|  l all 最近扫描 bz scan 测试（启动 2026-10-26T01:28:27；更新 |
+|2026-10-26T01:28:27）|
+|  运行: run 20261026-012827-f8733c8d55b34e4da997fb19de391dc0|
+|  配置: 未冻结（本次运行未记录有效配置身份，不作为配置/数据时点依据）|
+|  进度: 已完成 1/3，降级 1，失败 1，未记录结果 0|
+|    ⚠ 000001: 部分维度未评出|
+|    ✗ 300750: 数据获取失败|
+||
+|  ba 旧扫描 2026-10-01（启动 2026-10-01T08:59:00；更新 2026-10-01T09:00:00）|
+|  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）|
+|  配置: 未记录（旧记录不补造）|
+|  进度: 已完成 1/2，降级 0，失败 0，未记录结果 1|
+|  重跑同类命令会开新的独立 |
+|run（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓|
+|存资格。|
+|  账本: ~/.muyun/batch_tasks.json（保留最近 5 条运行记录；启动时间只标本次开始）|
+||
+|=== HELP (tasks line) ===|
+|┌────────────────────────────────────────────────────────────────────────┐|
+|│ 暮云思辨投资助手 · 命令菜单                                            │|
+|│ 典型流程: today 看待办 → scan / bz scan 选股 → l all 深分析 → pos add 建仓 │|
+|│           → diff 看变化 → scan review 复盘检验                         │|
+|│                                                                        │|
+|│ ● 每日入口                                                             │|
+|│   today                     今日工作台（待办/持仓/等待——建议≠成交）    │|
+|│   shadow                    影子对照报告（legacy vs fusion 决策表差异观察） │|
+|│   plan2 <代码> mid|long <意图> 立中期/长期投资计划（影子出真判断的前提） │|
+|│   research <代码>           研究工作台：--cash-materials 清单.json 导入材料；--cash-verify 回执ID 核对数字，加 --source-check 核官方字段，再加 --industry-check 查询SSE行业适用性并比较现金；--capture 采财务；--claims/--checkpoint 绑证据 │|
+|│                                                                        │|
+|│ ● 分析                                                                 │|
+|│   l <代码>                  实时深分析（证据卡+本地只读研究状态）      │|
+|│   l <代码>,<代码2>          多代码批量（逗号/空格分隔均可）            │|
+|│   l all [-f]                批量深分析最近扫描（-f 强制重析当天已析）  │|
+|│   la                        一键分析所有持仓（简明卡）                 │|
+|│   <6位代码>                 直接输代码，等同 l <代码>                  │|
+|│   #N                        取最近扫描第 N 只（l/bz/pos 通用）         │|
+|│   diff                      列出可对比的股票（要两次分析记录）         │|
+|│   diff <代码>               同股最近两次分析对比（变化点）             │|
+|│                                                                        │|
+|│ ● 扫描与复盘                                                           │|
+|│   scan [s]                  一键分析所有持仓（非全市场扫描）           │|
+|│   scan market [规则|主题]   全市场扫描（主题词如 AI,半导体）           │|
+|│   scan market deep          扫描 + 自动深度分析                        │|
+|│   scan review [天数]        复盘近N天扫描涨跌+按方法分组（默认7）      │|
+|│   scan review import        一次性导入旧扫描报告（幂等可重跑）         │|
+|│   rules                     列出全部扫描规则                           │|
+|│   industries [词] / concepts [词] 行业 / 概念板块                      │|
+|│                                                                        │|
+|│ ● 笨总评分（超景气价值投机）                                           │|
+|│   bz <代码>[,代码2]         AI 6维评分排名（当日缓存不重复计费）       │|
+|│   bz <代码> --refresh       强制刷新单只评分                           │|
+|│   bz scan [主题] [--top N]  主题选股初筛 + 批量评分排名                │|
+|│   bz scan <规则> [主题]     规则初筛 + 评分（规则名可模糊匹配）        │|
+|│   bz scan --allrules        五规则全跑合并去重（各 Top5）              │|
+|│   bz scan ... --backtest [起 止] 评分后批量回测验证                    │|
+|│   ba                        批量评分最近扫描结果（缓存优先）           │|
+|│   bz --check                数据源连通性体检                           │|
+|│   bz --manual               旧交互式手动打分（兜底）                   │|
+|│                                                                        │|
+|│ ● 观察池                                                               │|
+|│   watch                     在池股 入池价→现价 + 走势（即复盘）        │|
+|│   watch add <代码|#N> [名] [价] 手动入池（缺省拉实时价）               │|
+|│   watch rm <代码>           移出（出池后分析 WATCH 会重新入池）        │|
+|│   分析出 WATCH 的票自动入池；scan review 用 ✓ 标注在池股               │|
+|│                                                                        │|
+|│ ● 持仓                                                                 │|
+|│   pos [list]                持仓列表                                   │|
+|│   pos add <代码> [名] [价] [仓位] 建仓（带价格才生成计划草稿）         │|
+|│   pos confirm <代码> [--qty 股数 --price 价] 确认实际成交（带 --qty 入事件账本） │|
+|│   pos opening <现金> / openinglot <码 量 成本 [日]> 期初导入（现金锚定/持仓批次） │|
+|│   pos rm <代码>             删除持仓记录                               │|
+|│   pos plan <代码>|all [--update] 查看 / 生成 / 更新交易计划            │|
+|│   pos overweight <代码> [依据] 超配策略（教学十，只出手一次）          │|
+|│                                                                        │|
+|│ ● 回测                                                                 │|
+|│   b <代码> [起 止 资金]     单只回测（默认近1年，10万）                │|
+|│   bb <代码,代码> [起 止]    批量回测验证                               │|
+|│                                                                        │|
+|│ ● 市场情报                                                             │|
+|│   expect [天数]             预期事件日历 + 透支面板（默认30天）        │|
+|│   events                    事件驱动预警（事后）                       │|
+|│   fear                      市场恐慌指数 0-100（越高越恐慌）           │|
+|│   fear history              多周期回顾 + 走势图（--no-chart 跳绘图）   │|
+|│   fear backfill [天数]      涨停池历史回填（断点续传，首次建议跑）     │|
+|│   chains                    产业链图谱列表 / 管理                      │|
+|│                                                                        │|
+|│ ● 工具与开关                                                           │|
+|│   doctor                    运行诊断（环境/依赖/配置/缓存）            │|
+|│   tasks                     批量任务：run 身份/已完成/降级/失败/未记录结果 │|
+|│   noai / debug              切换 AI 开关 / AI 调试模式                 │|
+|│   chat                      AI 对话（自然语言跑任意命令+改持仓）       │|
+|│   h | help | ?  显示本菜单        q | quit  退出                       │|
+|│                                                                        │|
+|│ ● 扫描规则速查（scan market / bz scan <规则> 通用）                    │|
+|│   healthy_pullback 健康回调★   steady_advance  温和上涨                │|
+|│   shrink_pullback 缩量回调      value_pick      低估值                 │|
+|│   theme_members   主题成分      oversold_watch  超跌错杀               │|
+|│   （来源：B站「笨笨的韭菜」教学体系；rules 可看全部参数）              │|
+|│                                                                        │|
+|│ ● 示例                                                                 │|
+|│   scan market AI,半导体    主题扫描 → l all → tasks 看进度             │|
+|│   bz scan 氮化镓 --top 5   主题选股评分                                │|
+|│   pos add #1 融捷股份 35.20 0.20   扫描第1只直接建仓                   │|
+|│   b 000001 2025-01-01 2026-01-01 200000   自定义区间回测               │|
+|│                                                                        │|
+|│ ● 提示                                                                 │|
+|│   数据源超时会停止等待并降级；底层请求可能仍在运行，避免连续重试       │|
+|│   已放弃的嵌套取数同样跳过快照/K线缓存写入                             │|
+|│   主题代码查询与读取共用15秒等待，登录同会话                           │|
+|│   备用行情查询与读取共用30秒等待，登录同会话                           │|
+|│   Baostock 共享会话忙或超时：立即降级，不另起会话                      │|
+|└────────────────────────────────────────────────────────────────────────┘|
+||
+
+{"file": "T05H_FIX2/logs/ui-smoke-fix2-2.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "parent-initial-counterexample.json", "bytes": 253, "sha256": "0327ee7d73ec0c2f2673c7881daacd87d446a79a74fe690b52be6c7b4acf86b4"}
+|{|
+|  "same_label_new_roster_inherited_done": [|
+|    "000001"|
+|  ],|
+|  "late_old_code_accepted_outside_roster": true,|
+|  "roster": [|
+|    "000001",|
+|    "000002"|
+|  ],|
+|  "expected_no_inheritance_and_no_late_write": true,|
+|  "real_provider_calls": 0|
+|}|
+
+{"file": "external-result.txt", "bytes": 4383, "sha256": "23c42b9561edc8df9fdbfbc4277ad23bd6e690d2ab3b1b72369c8f499a9cce5a"}
+|已按 4 项 BLOCKER 修复并停写：未 Git、未改主控文档/9 保护/218 原 untracked。新证据目录 `C:\Users\Crux\AppData\Local\Temp\muyun-batch-budget-20261025\T05H_FIX2\`（旧 T05H 日志保留未覆盖），完整摘要见该目录 `RESULTS_SUMMARY_FIX2.md`。|
+||
+|## 修复文件/行为（4 个）|
+||
+|- [session_state.py](src/cli/session_state.py)：`_new_batch_run_id` 改存**完整 UUID**（时间+32hex），同秒且 UUID 前 6 位相同的两次启动令牌不同；旧 token 写新 run 一律拒绝（固定时钟+同前缀 UUID mock 反例）。|
+|- [main.py](src/cli/main.py)：`_on_result` 只对本 roster 且合法事件计数；坏 dict、外来/缺 code、重复、ok 非 bool、complete/degraded 与 degraded_dims 矛盾、failed 状态非法→标“结果记录不可靠”且不计数/不 mark；`未跑→未记录结果`、`完整成功→已完成`；`_ba_dim_cell` 与最强/最弱点评直接排除 `degraded_dims`（覆盖 conf=None/0/NaN/负值），不改 grade/评分公式/cache；`tasks` 加只读安全视图：codes/done/degraded/failed 类型非法、同 code 多状态冲突、清单外条目标“记录异常/状态冲突/清单外”，不假成功、不 `.items` 崩溃、不改旧文件。|
+|- [start.py](start.py)：`l` 多代码/`la`/`l all` 终态改“已完成/失败/未记录结果”；help 与 hints 同步。|
+|- [test_batch_task_run_identity.py](tests/core/test_batch_task_run_identity.py)：新增 run 令牌碰撞、未知/外来/矛盾/重复事件、坏账本类型/冲突/清单外、`_ba_dim_cell` 与 ba 实际呈现反例；更新旧错误文案断言。|
+||
+|## 红（先于修复，guard 内）|
+||
+|`logs/red-fix2-identity.meta.json`：rc=1，**12 failed / 14 passed**，stdout sha256 `e9186c77…6eb4`、29379B。12 条红 nodeid 全部在 `tests/core/test_batch_task_run_identity.py::`：`test_run_id_stores_full_uuid_even_when_prefix_collides`、`test_tasks_view_shows_run_identity_counts_and_legacy_label`、`test_tasks_view_isolates_bad_field_types`（旧代码 `.items` 崩溃）、`test_tasks_view_flags_conflicting_code_states`、`test_tasks_view_bad_codes_is_unknown_not_success`、`test_tasks_view_ignores_foreign_entries`、`test_ba_entry_binds_run_token_and_records_structured_status`、`test_ba_entry_ignores_unknown_structured_result`、`test_ba_entry_ignores_unknown_status_on_ok_record`、`test_ba_entry_rejects_foreign_inconsistent_and_duplicate_events`、`test_ba_dim_cell_hides_degraded_dim_even_with_numeric_score`、`test_ba_presentation_excludes_degraded_dim_values_and_commentary`。首轮修复后 `green-fix2-identity-1`（7 failed）为测试断言/校验口径迭代，日志已保留。|
+||
+|## 绿（最终一次相关守卫）|
+||
+|`logs/green-fix2-matrix-final.meta.json`：**276 passed in 8.38s**，rc=0；命令沿用 green-final-1 同矩阵（identity+session_state+ba_timing+batch_scorer+t04e_golden+live_scan_all+multi_code_parse+doctor+plain_errors+bzscan_parse+iss082，共 11 文件，`.venv\Scripts\python.exe -B -X utf8 plan\fusion\iteration9\review_test_runner.py`）；stdout 536B sha256 `c88e044d…b319`、meta sha `bc351971…e581`。目标 identity 文件 26 passed（2.14s，`green-fix2-identity-2`）。每次均 IO 阻断全 0、保护 hash True、知识索引集不变。fake-HOME 冒烟 `ui-smoke-fix2-2` rc=0 ALL_PASS（stdout sha `35373c66…8f0a`），核到“已完成1/3/降级1/失败1/未记录结果1”等。|
+||
+|## 指纹/保护|
+||
+|`fingerprints/{before,after,compare}.json`：before `d2bdb126…`、after `8bd86d7e…`、compare `9f9140d5…`。本次 affected 变化 4；218/218 原 untracked 存在、缺失 0；9 保护变化 0；新增 untracked 仅原新测试文件；tracked 相对 baseline 仍 10=DSH 前批 8+Codex 并发文档 2（DSH 未写）。文件 hash：session_state `375ef960→be76863f`、main `de5dc2e5→7ee20d58`、start `e2a44ccb→0d3c8a9b`、测试 `a2a6d50c→5786a2b9`。|
+||
+|## 限制/未验|
+||
+|未跑全量（交独立审查决定）；未真实交互跑 start.py（仅 mock+fake-HOME 冒烟）；配置快照/整批 deadline/缓存资格仍待，已完成≠全数据质量、记录≠缓存资格；“结果记录不可靠”仅当次屏幕提示、不落盘为账本字段；tasks 坏账本只读不修复；未执行真实网络/产品 AI/账户/索引/报告写（guard 阻断 0）；docs 归主控。|
+||
+|已停写，等 Codex 收尾/审批。|
+
+{"file": "review-pass.txt", "bytes": 715, "sha256": "c72b1a71070a846c583a34880c8c576e5a37d2fe042ebe4c456279ba3d0582f9"}
+|PASS: independent task_quality_guard reviewed final delta without running tests. Non-string/blank values are excluded before status conflicts/counting; invalid done does not hide valid failed; rendering preserves ledger bytes. Original four blockers, four entrance token chains and callback isolation remain passed. Red 3 failed/26 deselected -> green 29 passed2.22s/IO0; prior 276 matrix retained incrementally. Main SHA a914caa9998473fe41ef5f1ea0db610539369a0d509d13156fcfde691369db9c; identity SHA ee2a558f4df678a505f7e7d75a6cf7a35f86b4eebbc52ba3dc86538732b8a35f. Configuration, whole-batch budgets/cache/fees remain open; no score increase. Role configured Sol/high; actual model runtime metadata unavailable.|
+
+{"file": "final-values.json", "bytes": 3469, "sha256": "5be71b574ccd7b6dd9677eee52ef6569ce2659634eb55948d0b19e1ddef21d24"}
+|{|
+|  "task": "muyun-t05h-final-values-20261026",|
+|  "session": "codex-fd73d051-ad2c-4fff-805c-cf1bf5913532",|
+|  "contract_sha256": "18f69ad1a098e56e91cc9e5665a929314c4bc48643994b55b97478427ce7b388",|
+|  "request": "8e97318b-7f11-4c0b-8b01-7915c6f26fb4",|
+|  "state": "COMPLETED",|
+|  "terminal_seq": 248,|
+|  "result_file": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\final-values-result.txt",|
+|  "result_sha256": "dd206e5990684a360f1e66fbac032248f774fafda6e539b601d1d9b59255ce16",|
+|  "source_hashes": {|
+|    "src/cli/main.py": "a914caa9998473fe41ef5f1ea0db610539369a0d509d13156fcfde691369db9c",|
+|    "tests/core/test_batch_task_run_identity.py": "ee2a558f4df678a505f7e7d75a6cf7a35f86b4eebbc52ba3dc86538732b8a35f"|
+|  },|
+|  "red": {|
+|    "label": "red-final-values-invalid",|
+|    "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py -k invalid",|
+|    "cwd": "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard": true,|
+|    "rc": 1,|
+|    "started_at": "2026-10-26T01:38:04.3048060+08:00",|
+|    "ended_at": "2026-10-26T01:38:07.3668665+08:00",|
+|    "stdout": {|
+|      "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stdout.txt",|
+|      "bytes": 5547,|
+|      "sha256": "7c1be4d1c631c297435217ed6c055827a5047c8cf10ae6008201ed09e9de9107"|
+|    },|
+|    "stderr": {|
+|      "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stderr.txt",|
+|      "bytes": 0,|
+|      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|    }|
+|  },|
+|  "green": {|
+|    "label": "green-final-values-identity-1",|
+|    "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",|
+|    "cwd": "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard": true,|
+|    "rc": 0,|
+|    "started_at": "2026-10-26T01:38:23.1986817+08:00",|
+|    "ended_at": "2026-10-26T01:38:28.2921481+08:00",|
+|    "stdout": {|
+|      "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stdout.txt",|
+|      "bytes": 292,|
+|      "sha256": "51f515904e4c8c63345ec109149bef6e6566bd59559b26e9e9331ec4f69c8b34"|
+|    },|
+|    "stderr": {|
+|      "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stderr.txt",|
+|      "bytes": 0,|
+|      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|    }|
+|  },|
+|  "counts": {|
+|    "red_failed": 3,|
+|    "red_deselected": 26,|
+|    "red_pytest_seconds": 0.98,|
+|    "green_passed": 29,|
+|    "green_pytest_seconds": 2.22|
+|  },|
+|  "guard": {|
+|    "network": 0,|
+|    "subprocess": 0,|
+|    "real_state": 0|
+|  },|
+|  "stop": {|
+|    "state": "STOP_PENDING",|
+|    "blocked": true,|
+|    "running": false,|
+|    "queue_count": 0,|
+|    "cancel_ack_accepted": true,|
+|    "all_background_stopped_proven": false|
+|  },|
+|  "coverage": "Only main.py state-value view and identity tests changed after 276-file-matrix evidence; final 29 identity tests cover exact delta. No final-tree full suite/matrix claimed."|
+|}|
+
+{"file": "final-values-result.txt", "bytes": 3797, "sha256": "dd206e5990684a360f1e66fbac032248f774fafda6e539b601d1d9b59255ce16"}
+|Now I'll append the failing regression tests (red phase first).Red confirmed — the false “已完成 5/5” is reproduced exactly. Now the minimal fix.Green: 29 passed, guard clean. Now collect the F3 evidence bundle.本轮 P2 补修已完成并停写，未扩大范围，等 Codex 审查与 Git 归属。|
+||
+|## 修法（仅 2 文件，F1）|
+||
+|- [src/cli/main.py:4330](src/cli/main.py#L4330) `_safe_batch_status_map`：坏键与非字符串/空白字符串的记录值一律只读隔离——坏值只记「待确认」，不进入 `done/degraded/failed` 任何状态计数；只判类型与非空，不解析日期格式，返回 `(map, issues, pending)`。同一函数按 label 扫描三个状态映射。|
+|- [src/cli/main.py:4355](src/cli/main.py#L4355) `batch_tasks_cmd`：解包 `pending`，逐项输出「⚠ {code}: {done|degraded|failed} 记录值无效（类型/空字符串），待确认，不参与计数」（最多 5 条），异常汇总同步追加。|
+|- 新增 3 个反例测试：[test_batch_task_run_identity.py:355](tests/core/test_batch_task_run_identity.py#L355)（done × None/[]/{}/空串）、[:371](tests/core/test_batch_task_run_identity.py#L371)（degraded/failed 同类坏值）、[:386](tests/core/test_batch_task_run_identity.py#L386)（坏 done + 真 failed 不伪造冲突）。`_render_tasks` 继续断言账本字节不变。|
+||
+|## 红 → 绿原始证据（项目 .venv + 复用守卫 runner）|
+||
+|| 阶段 | rc | 命令时间 | stdout sha256 ||
+||---|---|---|---||
+|| 红 `red-final-values-invalid` | 1 | 01:38:04.3048060 → 01:38:07.3668665 (+08:00) | `7c1be4d1…e9107` ||
+|| 绿 `green-final-values-identity-1` | 0 | 01:38:23.1986817 → 01:38:28.2921481 (+08:00) | `51f51590…8b34` ||
+||
+|- 红：`3 failed, 26 deselected in 0.98s`，原样复现复核阻断：`进度:已完成5/5，降级0，失败0，未记录结果0`（坏 done 值全部假计完成）。|
+|- 绿：`29 passed in 2.22s`；守卫 `BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}`，`PROTECTED_PORTFOLIO_HASHES_UNCHANGED True`。只在 identity 单文件做精确增量，未跑全量/原 276 矩阵。|
+||
+|## 改动前后 hash 与 diff|
+||
+|| 文件 | before sha256 | after sha256 | 本轮 diff ||
+||---|---|---|---||
+|| `src/cli/main.py` | `7ee20d58…4af8` | `a914caa9…db9c` | +29/−11 ||
+|| `tests/core/test_batch_task_run_identity.py` | `5786a2b9…667c` | `ee2a558f…a35f` | +43/−0 ||
+||
+|## 保护与范围（F3）|
+||
+|- 9 个保护文件 baseline==当前（`portfolio.yaml*`、`.codex/config.toml`、`knowledge/index/{config,docs,embedder_metadata,fingerprint}.json`、`index.faiss`）。|
+|- 原 218 条 untracked 全部仍存在（`baseline_missing=[]`）；当前 219 = 原 218 + 本批既有交付 identity 测试文件，本轮新增 untracked 为 0。|
+|- `check_scope.py` rc=0：`changed=10`（均为此前批次既有 dirty，未恢复/覆盖）、`added=[identity 测试]`、`protected_changed=[]`、`unauthorized=[]`。git status 与修改前一致，仅 2 个允许文件发生变化。|
+||
+|证据目录（原始 stdout/stderr/meta、两份 patch、evidence.json、scope-check、git status）：[RESULTS_SUMMARY_FINAL_VALUES.md](C:/Users/Crux/AppData/Local/Temp/muyun-batch-budget-20261025/T05H_FINAL_VALUES/RESULTS_SUMMARY_FINAL_VALUES.md)、[evidence.json](C:/Users/Crux/AppData/Local/Temp/muyun-batch-budget-20261025/T05H_FINAL_VALUES/evidence.json)、[diff-main.py.patch](C:/Users/Crux/AppData/Local/Temp/muyun-batch-budget-20261025/T05H_FINAL_VALUES/diff-main.py.patch)。|
+||
+|边界：未改配置/总预算/cache 资格/百分比；未 Git、未网络、未产品 AI、未账户读写；守卫 runner 复用 `T05H_FIX2/run_test.ps1`（仅日志根改为 `T05H_FINAL_VALUES`，复制多 1 个行尾空行，语义一致）。不自行宣布总任务完成，等待 Codex 审查。|
+
+{"file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.meta.json", "bytes": 1154, "sha256": "b1160e5a906a57b91fd1d75bdc8af41975b1b2f0b85d3118d6c94e486e7fa6ba"}
+|{|
+|    "label":  "green-final-values-identity-1",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  0,|
+|    "started_at":  "2026-10-26T01:38:23.1986817+08:00",|
+|    "ended_at":  "2026-10-26T01:38:28.2921481+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stdout.txt",|
+|                   "bytes":  292,|
+|                   "sha256":  "51f515904e4c8c63345ec109149bef6e6566bd59559b26e9e9331ec4f69c8b34"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.meta.json", "bytes": 1151, "sha256": "d7c9836410149250205f1ac82c345860167ba11a9d24249dce0e019f03cd9a3a"}
+|{|
+|    "label":  "red-final-values-invalid",|
+|    "command":  "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py -k invalid",|
+|    "cwd":  "G:\\Tools\\暮云思辨投资助手",|
+|    "with_guard":  true,|
+|    "rc":  1,|
+|    "started_at":  "2026-10-26T01:38:04.3048060+08:00",|
+|    "ended_at":  "2026-10-26T01:38:07.3668665+08:00",|
+|    "stdout":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stdout.txt",|
+|                   "bytes":  5547,|
+|                   "sha256":  "7c1be4d1c631c297435217ed6c055827a5047c8cf10ae6008201ed09e9de9107"|
+|               },|
+|    "stderr":  {|
+|                   "path":  "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stderr.txt",|
+|                   "bytes":  0,|
+|                   "sha256":  "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"|
+|               }|
+|}|
+
+{"file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.stdout.txt", "bytes": 292, "sha256": "51f515904e4c8c63345ec109149bef6e6566bd59559b26e9e9331ec4f69c8b34"}
+|.............................                                            [100%]|
+|29 passed in 2.22s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.stdout.txt", "bytes": 5547, "sha256": "7c1be4d1c631c297435217ed6c055827a5047c8cf10ae6008201ed09e9de9107"}
+|FFF                                                                      [100%]|
+|================================== FAILURES ===================================|
+|_________ test_tasks_view_invalid_done_values_do_not_count_as_success _________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C121A5250>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_e4ozi5nh/pytest/test_tasks_view_invalid_done_v0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000022C127C8F90>|
+||
+|    def test_tasks_view_invalid_done_values_do_not_count_as_success(monkeypatch, tmp_path, capsys):|
+|        """done 值为 None/[]/{}/空串 → 只读隔离待确认，绝不假计已完成；真实记录照常计数。"""|
+|        rec = {"kind": "l all", "key": "坏 done 值", "codes": ["A", "B", "C", "D", "E"],|
+|               "done": {"A": None, "B": [], "C": {}, "D": "",|
+|                        "E": "2026-10-26T01:00:00"},|
+|               "degraded": {}, "failed": {},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "记录异常" in flat and "无效记录值" in flat and "待确认" in flat|
+|E       AssertionError: assert ('记录异常' in '📋最近批量任务lall坏done值（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成5/5，降级0，失败0，未记录结果0账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）')|
+||
+|tests\core\test_batch_task_run_identity.py:363: AssertionError|
+|_______ test_tasks_view_invalid_degraded_and_failed_values_not_counted ________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C125F1410>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_e4ozi5nh/pytest/test_tasks_view_invalid_degrad0')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000022C125F02D0>|
+||
+|    def test_tasks_view_invalid_degraded_and_failed_values_not_counted(monkeypatch, tmp_path, capsys):|
+|        """degraded/failed 同类坏值（None/空串/[]/数字）→ 隔离待确认，不假计降级/失败。"""|
+|        rec = {"kind": "ba", "key": "坏 degraded/failed 值", "codes": ["A", "B", "C", "D", "E"],|
+|               "done": {"A": "2026-10-26T01:00:00"},|
+|               "degraded": {"B": None, "C": ""},|
+|               "failed": {"D": [], "E": 0},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "B:degraded记录值无效" in flat and "C:degraded记录值无效" in flat|
+|E       AssertionError: assert ('B:degraded记录值无效' in '📋最近批量任务ba坏degraded/failed值（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成1/5，降级2，失败2，未记录结果0⚠B:None⚠C:✗D:[]✗E:0账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）')|
+||
+|tests\core\test_batch_task_run_identity.py:379: AssertionError|
+|________ test_tasks_view_invalid_done_value_does_not_hide_valid_failed ________|
+||
+|monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000022C121E0550>|
+|tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_e4ozi5nh/pytest/test_tasks_view_invalid_done_v1')|
+|capsys = <_pytest.capture.CaptureFixture object at 0x0000022C12155990>|
+||
+|    def test_tasks_view_invalid_done_value_does_not_hide_valid_failed(monkeypatch, tmp_path, capsys):|
+|        """同一代码 done 值坏、failed 记录真实 → 只标 done 待确认，失败照常计数、不伪造冲突。"""|
+|        rec = {"kind": "ba", "key": "done坏值+失败真实", "codes": ["A"],|
+|               "done": {"A": None}, "degraded": {}, "failed": {"A": "AI 超时"},|
+|               "ts_started": "t", "ts_updated": "t"}|
+|        out, flat = _render_tasks(monkeypatch, tmp_path, capsys, [rec])|
+|>       assert "A:done记录值无效" in flat|
+|E       AssertionError: assert 'A:done记录值无效' in '📋最近批量任务badone坏值+失败真实（启动t；更新t）运行:旧记录（无run令牌；只读展示，不补造身份/配置版本）配置:未记录（旧记录不补造）进度:已完成0/1，降级0，失败0，未记录结果0，状态冲突1⚠A:状态冲突（已完成、失败...认，不计入任何状态重跑同类命令会开新的独立run（不继承本记录）；成功项是否复用当日缓存由各命令原规则决定——任务记录不等于缓存资格。账本:~/.muyun/batch_tasks.json（保留最近5条运行记录；启动时间只标本次开始）'|
+||
+|tests\core\test_batch_task_run_identity.py:392: AssertionError|
+|=========================== short test summary info ===========================|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_invalid_done_values_do_not_count_as_success|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_invalid_degraded_and_failed_values_not_counted|
+|FAILED tests/core/test_batch_task_run_identity.py::test_tasks_view_invalid_done_value_does_not_hide_valid_failed|
+|3 failed, 26 deselected in 0.98s|
+|BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}|
+|PROTECTED_PORTFOLIO_HASHES_UNCHANGED True|
+|PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7|
+|KNOWLEDGE_FILE_SET_UNCHANGED True|
+
+{"file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}
+
+{"file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.stderr.txt", "bytes": 0, "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"}

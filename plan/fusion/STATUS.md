@@ -1,3 +1,5 @@
+**2026-10-26 T05-H限定接收：批量任务每次独立完整UUID，旧运行/清单外结果不能串账；ba按结构化结果区分已完成/降级/失败/未记录结果，降级维度不作数值或强弱点评；tasks只读隔离坏账本（包括空/非字符串状态值）并展示配置未冻结。修订反例12红→276相关通过（8.38s，守卫IO=0），末项精确红绿增量见回执，独立复核通过；本批未跑全量，也不声称最后增量后重跑了276矩阵。整批deadline/资源、有效配置及cache资格仍待，E48.0%/A36.0%/P42.0%–68.6%、18/47不变，G7/T05/V1未关闭。** 证据见[本批回执](iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json)。当前已按用户要求停止派发，Git收尾后不自动继续。
+
 **2026-10-25 V1-G7-SESSION限定接收**：统一12个生产消费者及CLI/chat关闭入口，实施非阻塞独占Baostock租约与worker内生命周期/monotonic截止。忙请求立即降级；实际worker finally释放租约；调用方超时不释放、不另登出。单查询从登录前计；DataFeeder双query+正常close整体60秒；scanner整批预算保持。入口/边界及未知真实外源、AI/账户、全CLI退出限制见[第十轮合同](iteration10/DELIVERY_PLAN.md)和[RESUME](RESUME.md)。独立Sol/high PASS；全量3611 passed/1 failed，唯一失败为旧无限mock；有限fixture修后相关148 passed/1 skipped，无最终树单次全绿全量声明。回执/指纹/结果：`iteration10/T05G_SESSION_ACCEPTANCE.json`、`T05G_SESSION_SOURCE_PINS.json`、`T05G_SESSION_RESULTS.txt`。工程/验收各+3；唯一进度账本见PROGRESS。G7/T05及V1整体仍未完成。
 
 **2026-10-25管理交付：V1量化基线建立**。任务/权重/当前状态只维护[PROGRESS.json](PROGRESS.json)，用户看[任务账本](PROGRESS.md)或[可筛选看板](../../docs/开发进度看板.html)。本批不改产品代码，不新增产品完成点；E3/F1/F2是该基线已有成果，缺同口径历史前值不虚构百分点。未来批次必须报告关联ID、实际交付、证据、进度前后与范围变化；下面保留各批验收原范围。

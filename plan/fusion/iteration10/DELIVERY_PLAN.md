@@ -6,6 +6,12 @@
 
 本批`V1-G7-SESSION`已限定接收；唯一量化事实见PROGRESS。下一产品合同为`V1-G7-BATCH-BUDGET`，先核既有批量deadline/资源界和续跑合同，再决定有限实施范围。每张后续卡须带任务ID，回执列E/A/P前后与范围影响；验收撤销重开原条款，新需求才修订分母。
 
+## 2026-10-26 T05-H 已限定接收并收尾停止
+
+2026-10-26 T05-H限定接收：批量任务每次独立完整UUID，旧运行/清单外结果不能串账；ba按结构化结果区分已完成/降级/失败/未记录结果，降级维度不作数值或强弱点评；tasks只读隔离坏账本（包括空/非字符串状态值）并展示配置未冻结。修订反例12红→276相关通过（8.38s，守卫IO=0），末项精确红绿增量见回执，独立复核通过；本批未跑全量，也不声称最后增量后重跑了276矩阵。整批deadline/资源、有效配置及cache资格仍待，E48.0%/A36.0%/P42.0%–68.6%、18/47不变，G7/T05/V1未关闭。
+
+证据：[验收回执](T05H_BATCH_IDENTITY_ACCEPTANCE.json)、[源码指纹](T05H_BATCH_IDENTITY_SOURCE_PINS.json)、[结果原件派生视图](T05H_BATCH_IDENTITY_RESULTS.txt)。原生task/session、手动重试turn3及STOP_PENDING含义见RESUME；只阻止后续派发，不声称共享Host所有后台已停。
+
 ## 2026-10-25 已限定接收：V1-G7-SESSION 完整共享会话生命周期
 
 用户恢复Codex+DSH协作；正式task/session与最新完成请求见[RESUME](../RESUME.md)。基线main=`5dcfaa74ef4920cc782994bde0c3d04b2f58e5bd`；合同`muyun-v1-g7-session` rev3，hash=`ab5c64ad394ac4cac91a147b34e0e02b9b4dc7970e7d555b7686fa15d54370f7`。交付SHA以Git实际日志为准。源码/测试归DSH，文档归主控；保护9项用户文件及原218未跟踪。用户可见帮助行及source/plain_errors已更新；报错速查手册由主控另行同步。

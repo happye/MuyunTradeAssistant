@@ -1,6 +1,18 @@
 # 融合项目恢复入口
 
-## 当前入口：2026-10-25 V1-G7-SESSION 限定接收
+末项补修身份：原任务锁定后，新建同批有限目标`muyun-t05h-final-values-20261026`，session=`codex-fd73d051-ad2c-4fff-805c-cf1bf5913532`，合同SHA=`18f69ad1a098e56e91cc9e5665a929314c4bc48643994b55b97478427ce7b388`；仅补状态值异常隔离，不是下一产品批次。最新请求、红绿与停止状态见T05H回执的final_incremental_repair；新入口不得重投已完请求。
+
+## 当前入口：2026-10-26 T05-H 已限定接收；按用户要求收尾停止
+
+2026-10-26 T05-H限定接收：批量任务每次独立完整UUID，旧运行/清单外结果不能串账；ba按结构化结果区分已完成/降级/失败/未记录结果，降级维度不作数值或强弱点评；tasks只读隔离坏账本（包括空/非字符串状态值）并展示配置未冻结。修订反例12红→276相关通过（8.38s，守卫IO=0），末项精确红绿增量见回执，独立复核通过；本批未跑全量，也不声称最后增量后重跑了276矩阵。整批deadline/资源、有效配置及cache资格仍待，E48.0%/A36.0%/P42.0%–68.6%、18/47不变，G7/T05/V1未关闭。
+
+**停止边界**：仅本批必要验收、文档和Git交付；交付后停止，不开启下一批、不追加缓存/AI实验。未来继续须按用户新指派恢复。
+
+**身份与证据**：main基线`ce49724`；task=`muyun-batch-budget-20261025`，session=`codex-3f90283a-5f9a-4775-ada8-e90240268a42`；合同`muyun-v1-g7-batch-identity` rev1 SHA=`cc90d83e0a0848e1414a48d124b469d308f007642d943a752e125a1c679470d3`。bridge请求`1eb16278-ebe0-4777-9294-17d9c3ad82f3`缺凭证失败，用户启动正确Host后原生手动重试turn3，COMPLETED seq1013；不得盲重投。主控已读完整答复及真实diff/证据。回执：`iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json`、`T05H_BATCH_IDENTITY_SOURCE_PINS.json`、`T05H_BATCH_IDENTITY_RESULTS.txt`；Git交付SHA以实际日志为准。
+
+**停止状态**：已阻止新派发；工具STOP_PENDING因用户原生重试属于未绑定活动，未取消共享活动；实测running=false、queue=0，不能据此宣称整个Host后台全部停净。不要再次启动任务。9保护hash未变、原218未跟踪均存在（非218内容hash证明）；临时原件`C:/Users/Crux/AppData/Local/Temp/muyun-batch-budget-20261025`。
+
+## 上一批：2026-10-25 V1-G7-SESSION 限定接收
 
 **当前摘要**：用户恢复Codex+DSH协作；Codex审批/独立验收/Git，DSH实施。正式task=`muyun-dev-native-20261020`、session=`codex-1de974ba-34f0-4de8-a092-6fdfa43e822c`；最新完成请求`32577d22-b00e-4628-8ad0-6fce6a7e6763`/seq4096，已停写。基线main=`5dcfaa74ef4920cc782994bde0c3d04b2f58e5bd`；本段记录实施基线，交付SHA以Git实际日志为准。合同`muyun-v1-g7-session` rev3，hash=`ab5c64ad394ac4cac91a147b34e0e02b9b4dc7970e7d555b7686fa15d54370f7`。
 

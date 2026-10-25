@@ -1,0 +1,376 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-26",
+  "status": "ACCEPTED_BATCH_RUN_IDENTITY_SCOPE_ONLY",
+  "base_commit": "ce4972408c2157d561da533c489bbbe96a90a2ef",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-batch-identity",
+    "revision": 1,
+    "sha256": "cc90d83e0a0848e1414a48d124b469d308f007642d943a752e125a1c679470d3",
+    "git_owner": "Codex",
+    "test_owner": "DSH",
+    "bridge_testPlan": [],
+    "formal_bridge_run_receipt": false
+  },
+  "native": {
+    "task": "muyun-batch-budget-20261025",
+    "session": "codex-3f90283a-5f9a-4775-ada8-e90240268a42",
+    "accepted_turn": 3,
+    "terminal_seq": 1013,
+    "completion": "completed",
+    "source": "User manually retried repair in original native session after credential failure",
+    "bridge_last_request": "1eb16278-ebe0-4777-9294-17d9c3ad82f3",
+    "bridge_last_request_state": "FAILED_MISSING_CREDENTIAL_NOT_CURRENT_TURN",
+    "result_sha256": "23c42b9561edc8df9fdbfbc4277ad23bd6e690d2ab3b1b72369c8f499a9cce5a",
+    "stop_state": "STOP_PENDING",
+    "new_submissions_blocked": true,
+    "observed_running": false,
+    "observed_queue_count": 0,
+    "cancel_skipped": "foreign-or-unknown-native-activity; no shared Host killed"
+  },
+  "accepted_scope": [
+    "Independent full-UUID run identity and immutable request roster; stale/foreign/missing-token writes rejected",
+    "Four existing batch entrances bind run tokens; retain latest five and atomic-write caller failure handling",
+    "ba records structured actual outcomes; callbacks do not reclassify scoring; degraded dimensions excluded from numeric cells and strongest/weakest comments",
+    "Unknown outcomes are unrecorded/pending confirmation, never unrun; corrupt/conflicting legacy ledgers displayed read-only without fabricated success"
+  ],
+  "validation": {
+    "fix2_red": "12 failed / 14 passed in 4.35s before fixes",
+    "final_related": {
+      "label": "green-fix2-matrix-final",
+      "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py tests/core/test_session_state.py tests/benzong/test_ba_task_ledger_timing.py tests/benzong/test_benzong_batch_scorer.py tests/core/test_t04e_dispatch_golden.py tests/core/test_live_scan_all.py tests/core/test_multi_code_parse.py tests/core/test_doctor.py tests/core/test_plain_errors.py tests/core/test_bzscan_parse.py tests/core/test_iss082_review_sweep.py",
+      "cwd": "G:\\Tools\\暮云思辨投资助手",
+      "with_guard": true,
+      "rc": 0,
+      "started_at": "2026-10-26T01:28:32.3118755+08:00",
+      "ended_at": "2026-10-26T01:28:43.4393616+08:00",
+      "stdout": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-final.stdout.txt",
+        "bytes": 536,
+        "sha256": "c88e044dbf9ce0a92949b48fae0c9d3f5d32a943d73bb98d1997d3ff39eab319"
+      },
+      "stderr": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FIX2\\logs\\green-fix2-matrix-final.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "final_counts": {
+      "passed": 276,
+      "skipped": 0,
+      "failed": 0,
+      "pytest_seconds": 8.38,
+      "process_seconds": 11.1274861,
+      "basis": "Prior 11-file matrix; only main.py status-value isolation and its identity tests changed afterward, covered by final_incremental_repair. No final-tree single 276-test rerun claimed."
+    },
+    "guard": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "smoke": "fake-HOME ui-smoke-fix2-2 ALL_PASS; no real interactive session",
+    "full_suite_run_this_batch": false,
+    "independent_review": "PASS: independent task_quality_guard reviewed final delta without running tests. Non-string/blank values are excluded before status conflicts/counting; invalid done does not hide valid failed; rendering preserves ledger bytes. Original four blockers, four entrance token chains and callback isolation remain passed. Red 3 failed/26 deselected -> green 29 passed2.22s/IO0; prior 276 matrix retained incrementally. Main SHA a914caa9998473fe41ef5f1ea0db610539369a0d509d13156fcfde691369db9c; identity SHA ee2a558f4df678a505f7e7d75a6cf7a35f86b4eebbc52ba3dc86538732b8a35f. Configuration, whole-batch budgets/cache/fees remain open; no score increase. Role configured Sol/high; actual model runtime metadata unavailable.\n",
+    "runtime_file_count": 536,
+    "atomic_failure_limit": "New tests mock atomic-writer failure return; not evidence of an actual OS disk fault",
+    "raw_manifest": [
+      {
+        "file": "T05H/logs/red-phase-new-tests.meta.json",
+        "bytes": 1143,
+        "sha256": "d1b3f83c8d1cdfcddb4f3260f6be64dd60500c3c145355e4e0e217d413a7a81b"
+      },
+      {
+        "file": "T05H/logs/red-phase-new-tests.stdout.txt",
+        "bytes": 28816,
+        "sha256": "e79af1dce43cb78d831f3f9c4e5d6aa945e9a7bb06027bc724a6c206f3241a6f"
+      },
+      {
+        "file": "T05H/logs/red-phase-new-tests.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H/logs/red-phase-scorer-tests-2.meta.json",
+        "bytes": 1114,
+        "sha256": "1358196b9070ee94c66c7f77991be30f375a0428a9e7e3dd19c02f504f6b65ce"
+      },
+      {
+        "file": "T05H/logs/red-phase-scorer-tests-2.stdout.txt",
+        "bytes": 7289,
+        "sha256": "6d655c5d1be16f14cc678f5aff53a8bb706ea5168024d8a5be435e472daf4c7d"
+      },
+      {
+        "file": "T05H/logs/red-phase-scorer-tests-2.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H/logs/green-final-1.meta.json",
+        "bytes": 1438,
+        "sha256": "4e0edeecc28a760ae997a649adb8a7a98df4a964ad8ef166e9b1897df0213004"
+      },
+      {
+        "file": "T05H/logs/green-final-1.stdout.txt",
+        "bytes": 536,
+        "sha256": "5444e8f87628b19f1f240069a1ad6a29acd522f7001f70abc269f11007aa3bda"
+      },
+      {
+        "file": "T05H/logs/green-final-1.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/red-fix2-identity.meta.json",
+        "bytes": 1104,
+        "sha256": "2b148c1f74239b0741e6ed361c3b325998e649939c8f6a45bc1b111ad1816a41"
+      },
+      {
+        "file": "T05H_FIX2/logs/red-fix2-identity.stdout.txt",
+        "bytes": 29379,
+        "sha256": "e9186c7740243d44677fa954a57df4c3b0970c469d6f60c23e0a4592669b6eb4"
+      },
+      {
+        "file": "T05H_FIX2/logs/red-fix2-identity.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-1.meta.json",
+        "bytes": 1116,
+        "sha256": "da9ffd1763154112692fe7c102dcdabba13fd0fd9bed9da5cc47ffafc8617684"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-1.stdout.txt",
+        "bytes": 17946,
+        "sha256": "2ea442f137744f1e2266f8fb2e8d206a88e3944f0711b80bd3232ae38c3c4bc8"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-1.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-2.meta.json",
+        "bytes": 1114,
+        "sha256": "c0744a36832d46ac816eb263f81f6a9b122f948c57240d7de11bc7b598cbd7af"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-2.stdout.txt",
+        "bytes": 292,
+        "sha256": "2bb1166fce0dfb714cb45cbb47d6f08ff0f399e1e316936c45c07c9e8abc2ece"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-identity-2.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-1.meta.json",
+        "bytes": 1466,
+        "sha256": "60e22906577b279fc66218883e24d0ad46a6b18ad4c0f058c37c53241bf857fb"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-1.stdout.txt",
+        "bytes": 536,
+        "sha256": "884b274c43f808f3a37b46a6eae4a21332a0a64224945d485effd6d90f1dfd1a"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-1.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-final.meta.json",
+        "bytes": 1478,
+        "sha256": "bc3519713bce775a6f1288da38511ea58e1f79585a97e6870cda8d54b384e581"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-final.stdout.txt",
+        "bytes": 536,
+        "sha256": "c88e044dbf9ce0a92949b48fae0c9d3f5d32a943d73bb98d1997d3ff39eab319"
+      },
+      {
+        "file": "T05H_FIX2/logs/green-fix2-matrix-final.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FIX2/logs/ui-smoke-fix2-2.meta.json",
+        "bytes": 1570,
+        "sha256": "b83a182a74f2497aa536debca8febcbf62e087eb197f043f4025661ca4cfd7a9"
+      },
+      {
+        "file": "T05H_FIX2/logs/ui-smoke-fix2-2.stdout.txt",
+        "bytes": 10903,
+        "sha256": "35373c66b4ca3a38e8ef837fa37048b523d6e8ed52c6b2429c79c5bd7d418f0a"
+      },
+      {
+        "file": "T05H_FIX2/logs/ui-smoke-fix2-2.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "parent-initial-counterexample.json",
+        "bytes": 253,
+        "sha256": "0327ee7d73ec0c2f2673c7881daacd87d446a79a74fe690b52be6c7b4acf86b4"
+      },
+      {
+        "file": "external-result.txt",
+        "bytes": 4383,
+        "sha256": "23c42b9561edc8df9fdbfbc4277ad23bd6e690d2ab3b1b72369c8f499a9cce5a"
+      },
+      {
+        "file": "review-pass.txt",
+        "bytes": 715,
+        "sha256": "c72b1a71070a846c583a34880c8c576e5a37d2fe042ebe4c456279ba3d0582f9"
+      },
+      {
+        "file": "final-values.json",
+        "bytes": 3469,
+        "sha256": "5be71b574ccd7b6dd9677eee52ef6569ce2659634eb55948d0b19e1ddef21d24"
+      },
+      {
+        "file": "final-values-result.txt",
+        "bytes": 3797,
+        "sha256": "dd206e5990684a360f1e66fbac032248f774fafda6e539b601d1d9b59255ce16"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.meta.json",
+        "bytes": 1154,
+        "sha256": "b1160e5a906a57b91fd1d75bdc8af41975b1b2f0b85d3118d6c94e486e7fa6ba"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.meta.json",
+        "bytes": 1151,
+        "sha256": "d7c9836410149250205f1ac82c345860167ba11a9d24249dce0e019f03cd9a3a"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.stdout.txt",
+        "bytes": 292,
+        "sha256": "51f515904e4c8c63345ec109149bef6e6566bd59559b26e9e9331ec4f69c8b34"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.stdout.txt",
+        "bytes": 5547,
+        "sha256": "7c1be4d1c631c297435217ed6c055827a5047c8cf10ae6008201ed09e9de9107"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/green-final-values-identity-1.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "file": "T05H_FINAL_VALUES/logs/red-final-values-invalid.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    ]
+  },
+  "protection": {
+    "protected_hashes_unchanged": 9,
+    "original_untracked_still_present": 218,
+    "untracked_content_hashes_claimed": false
+  },
+  "progress": {
+    "before": {
+      "E": 47.95918367346938,
+      "A": 36.03603603603604,
+      "P_lower": 41.99760985475271,
+      "P_upper": 68.6201507630079,
+      "closed_tasks": 18,
+      "tasks": 47,
+      "weight": 111
+    },
+    "after": "same as before",
+    "scope_weight_applicability_change": false,
+    "reason": "Partial identity/recording sub-contract; whole batch-budget criterion remains unknown/unmet"
+  },
+  "remaining": [
+    "Whole-chain batch deadlines and resource limits",
+    "Effective configuration snapshot and cache reuse qualification, including deep_analyzed",
+    "All-dimension cache hits may still fetch data and invoke sector metadata AI; no cost-free promise",
+    "Real providers/product AI/accounts and complete CLI exit not exercised",
+    "G3/G4/G7/T04 and V1 remain open; real MID NO_VALID"
+  ],
+  "artifacts": {
+    "source_pins": "T05H_BATCH_IDENTITY_SOURCE_PINS.json",
+    "results": "T05H_BATCH_IDENTITY_RESULTS.txt"
+  },
+  "stop_boundary": "Finish this batch, documents and authorized normal Git push, then STOP; no next batch automatically",
+  "final_incremental_repair": {
+    "task": "muyun-t05h-final-values-20261026",
+    "session": "codex-fd73d051-ad2c-4fff-805c-cf1bf5913532",
+    "contract_sha256": "18f69ad1a098e56e91cc9e5665a929314c4bc48643994b55b97478427ce7b388",
+    "request": "8e97318b-7f11-4c0b-8b01-7915c6f26fb4",
+    "state": "COMPLETED",
+    "terminal_seq": 248,
+    "result_file": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\final-values-result.txt",
+    "result_sha256": "dd206e5990684a360f1e66fbac032248f774fafda6e539b601d1d9b59255ce16",
+    "source_hashes": {
+      "src/cli/main.py": "a914caa9998473fe41ef5f1ea0db610539369a0d509d13156fcfde691369db9c",
+      "tests/core/test_batch_task_run_identity.py": "ee2a558f4df678a505f7e7d75a6cf7a35f86b4eebbc52ba3dc86538732b8a35f"
+    },
+    "red": {
+      "label": "red-final-values-invalid",
+      "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py -k invalid",
+      "cwd": "G:\\Tools\\暮云思辨投资助手",
+      "with_guard": true,
+      "rc": 1,
+      "started_at": "2026-10-26T01:38:04.3048060+08:00",
+      "ended_at": "2026-10-26T01:38:07.3668665+08:00",
+      "stdout": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stdout.txt",
+        "bytes": 5547,
+        "sha256": "7c1be4d1c631c297435217ed6c055827a5047c8cf10ae6008201ed09e9de9107"
+      },
+      "stderr": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\red-final-values-invalid.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "green": {
+      "label": "green-final-values-identity-1",
+      "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests/core/test_batch_task_run_identity.py",
+      "cwd": "G:\\Tools\\暮云思辨投资助手",
+      "with_guard": true,
+      "rc": 0,
+      "started_at": "2026-10-26T01:38:23.1986817+08:00",
+      "ended_at": "2026-10-26T01:38:28.2921481+08:00",
+      "stdout": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stdout.txt",
+        "bytes": 292,
+        "sha256": "51f515904e4c8c63345ec109149bef6e6566bd59559b26e9e9331ec4f69c8b34"
+      },
+      "stderr": {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-batch-budget-20261025\\T05H_FINAL_VALUES\\logs\\green-final-values-identity-1.stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      }
+    },
+    "counts": {
+      "red_failed": 3,
+      "red_deselected": 26,
+      "red_pytest_seconds": 0.98,
+      "green_passed": 29,
+      "green_pytest_seconds": 2.22
+    },
+    "guard": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "stop": {
+      "state": "STOP_PENDING",
+      "blocked": true,
+      "running": false,
+      "queue_count": 0,
+      "cancel_ack_accepted": true,
+      "all_background_stopped_proven": false
+    },
+    "coverage": "Only main.py state-value view and identity tests changed after 276-file-matrix evidence; final 29 identity tests cover exact delta. No final-tree full suite/matrix claimed."
+  }
+}

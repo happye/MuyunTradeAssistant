@@ -1,3 +1,5 @@
+T05-H（2026-10-26）已修批量运行身份串账及逐项误记，限定接收见[回执](plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json)。LEG-066-NETWORK/PERF-COST：六维cache全命中仍可能有取数和sector-meta AI；deep_analyzed缺配置/账户资格、全链总预算仍待，不因记账修复关闭。按用户要求本批推送后停止。
+
 # 暮云思辨投资助手 - 问题追踪与待办
 
 > 所有重要问题、待解决事项、技术债务统一记录于此。

@@ -282,7 +282,7 @@ def test_save_last_scan_reports_partial_success(monkeypatch, tmp_path):
     assert not r  # 整体不算成功（__bool__ = 两者都成）
 
 
-# ── C2（v0.8.17）：批量任务账本 ──────────────────────────────
+# ── C2（v0.8.17）/ T05-H：批量任务账本（每次运行独立 run）────
 
 def _redirect_batch(monkeypatch, tmp_path):
     monkeypatch.setattr(session_state, "_BATCH_TASKS_FILE", tmp_path / "batch_tasks.json")
@@ -290,41 +290,57 @@ def _redirect_batch(monkeypatch, tmp_path):
 
 def test_batch_task_start_mark_and_progress(monkeypatch, tmp_path):
     _redirect_batch(monkeypatch, tmp_path)
-    session_state.batch_task_start("l all", "scan market 健康", ["A", "B", "C"])
-    session_state.batch_task_mark("l all", "scan market 健康", "A", True)
-    session_state.batch_task_mark("l all", "scan market 健康", "B", False, "数据获取失败")
+    token = session_state.batch_task_start("l all", "scan market 健康", ["A", "B", "C"])
+    assert isinstance(token, str) and token, "start 必须返回本次 run 令牌"
+    assert session_state.batch_task_mark("l all", "scan market 健康", "A", True,
+                                         run_id=token) is True
+    assert session_state.batch_task_mark("l all", "scan market 健康", "B", False,
+                                         "数据获取失败", run_id=token) is True
     tasks = session_state.get_recent_batch_tasks()
     assert len(tasks) == 1
     t = tasks[0]
+    assert t["run_id"] == token and t["codes"] == ["A", "B", "C"]
     assert "A" in t["done"] and "B" in t["failed"] and "B" not in t["done"]
     assert t["failed"]["B"] == "数据获取失败"
-    assert "C" not in t["done"] and "C" not in t["failed"]   # 未跑项
+    assert "C" not in t["done"] and "C" not in t["failed"] and "C" not in t["degraded"]   # 未跑项
 
 
-def test_batch_task_reinherit_on_restart(monkeypatch, tmp_path):
-    """同名任务重启 → 继承既有逐项状态（done 保留，可继续记账）。"""
+def test_batch_task_restart_opens_new_run_without_inherit(monkeypatch, tmp_path):
+    """同名任务重启 → 新 run 独立记账（不继承旧 done）；旧 run 记录保留可查。"""
     _redirect_batch(monkeypatch, tmp_path)
-    session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])
-    session_state.batch_task_mark("ba", "bz scan AI", "A", True)
-    session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])   # 中断后重跑
-    session_state.batch_task_mark("ba", "bz scan AI", "B", True)
-    t = session_state.get_recent_batch_tasks()[0]
-    assert "A" in t["done"] and "B" in t["done"]   # 继承 + 新增
+    first = session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])
+    session_state.batch_task_mark("ba", "bz scan AI", "A", True, run_id=first)
+    second = session_state.batch_task_start("ba", "bz scan AI", ["A", "B", "C"])   # 中断后重跑
+    assert isinstance(second, str) and second != first
+    session_state.batch_task_mark("ba", "bz scan AI", "B", True, run_id=second)
+    tasks = session_state.get_recent_batch_tasks()
+    assert len(tasks) == 2
+    assert tasks[0]["run_id"] == second and set(tasks[0]["done"]) == {"B"}   # 新 run 不继承 A
+    assert tasks[1]["run_id"] == first and set(tasks[1]["done"]) == {"A"}    # 旧记录原样保留
 
 
 def test_batch_task_mark_unknown_is_noop(monkeypatch, tmp_path):
     _redirect_batch(monkeypatch, tmp_path)
-    session_state.batch_task_mark("l", "不存在", "A", True)   # 不抛不建
+    assert session_state.batch_task_mark("l", "不存在", "A", True) is False   # 缺令牌不写不建
     assert session_state.get_recent_batch_tasks() == []
+
+
+def test_batch_task_mark_wrong_token_leaves_store_untouched(monkeypatch, tmp_path):
+    _redirect_batch(monkeypatch, tmp_path)
+    session_state.batch_task_start("l", "k", ["A"])
+    path = tmp_path / "batch_tasks.json"
+    before = path.read_bytes()
+    assert session_state.batch_task_mark("l", "k", "A", True, run_id="not-a-run") is False
+    assert path.read_bytes() == before
 
 
 def test_batch_tasks_keep_latest_five(monkeypatch, tmp_path):
     _redirect_batch(monkeypatch, tmp_path)
-    for i in range(7):
-        session_state.batch_task_start("l all", f"任务{i}", ["A"])
+    tokens = [session_state.batch_task_start("l all", f"任务{i}", ["A"]) for i in range(7)]
     assert len(session_state.get_recent_batch_tasks(99)) == 5
     keys = [t["key"] for t in session_state.get_recent_batch_tasks(99)]
     assert "任务6" in keys and "任务0" not in keys   # 最新的留下
+    assert [t["run_id"] for t in session_state.get_recent_batch_tasks(99)] == list(reversed(tokens))[:5]
 
 
 def test_batch_tasks_corrupt_file_resets(monkeypatch, tmp_path):

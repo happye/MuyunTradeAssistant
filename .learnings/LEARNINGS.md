@@ -1,3 +1,7 @@
+## LRN-20261026-T05H：运行事实和展示事实分开
+
+状态：本批修复并限定验证。每次批量执行独立完整UUID并绑定不可混用清单；实际结构化回调才记账，展示文案不判成功。未知结果不能称未运行；坏嵌套记录只读隔离，降级维度同时从表格和点评剔除。修订12红→276相关绿，见[回执](../plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json)。记录身份不等于配置/缓存资格，总预算仍待。DSH断线先恢复核原生活动，手动重试不得重投；独立审批PASS后再锁派发，避免提前锁任务迫使另建补修上下文；启动须沿用用户`G:/Tools/DeepseekHarness/dsh-web.cmd`，不能假定直接源码入口有相同凭证环境。
+
 # Learnings
 
 Corrections, insights, and knowledge gaps captured during development.

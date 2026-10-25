@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope_revision": "V1-progress-1",
-  "as_of": "2026-10-25",
+  "as_of": "2026-10-26",
   "product_base_commit": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
   "basis": "existing_contracts_and_acceptance_records_not_full_code_audit",
   "scope_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
@@ -1911,9 +1911,13 @@
             "path": "plan/README.md",
             "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
             "anchor": "C2配置版本识别任务、ADR-06全链预算仍登记未修；当前T05批量/资源范围"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json",
+            "anchor": "T05-H partial run identity/recording accepted; whole criterion not closed"
           }
         ],
-        "basis": "current_plan_record"
+        "basis": "Partial T05-H accepted; whole-chain deadline/resources/config/cache qualification still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1922,21 +1926,25 @@
             "path": "plan/README.md",
             "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
             "anchor": "C2配置版本识别任务、ADR-06全链预算仍登记未修；当前T05批量/资源范围"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json",
+            "anchor": "T05-H partial run identity/recording accepted; whole criterion not closed"
           }
         ],
-        "basis": "current_plan_record"
+        "basis": "Partial T05-H accepted; whole-chain deadline/resources/config/cache qualification still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "先盘点现有l all/ba/bz scan等入口与已验范围，确定必要剩余和有限矩阵，已有保障不重复实现。",
+          "reason": "T05-H运行身份及可靠记账已限定接收；整批deadline/资源、有效配置、成功缓存资格尚待核定，不能由本批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "先盘点现有l all/ba/bz scan等入口与已验范围，确定必要剩余和有限矩阵，已有保障不重复实现。"
+      "next_action": "用户要求当前批后停止；重新获继续指派后，先核整批deadline/资源、有效配置及缓存资格的有限合同，不重复身份子合同。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2479,6 +2487,57 @@
       "evidence": [
         "plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json"
       ]
+    },
+    {
+      "id": "T05H-20261026",
+      "date": "2026-10-26",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "T05-H身份与逐项记账有限交付，276相关通过及独立复核；整条未闭合，E48.0%/A36.0%/P42.0%–68.6%、18/47保持，范围/权重/适用性不变。按用户要求本批推送后停止。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json"
+      ]
     }
   ],
   "history_batches": [
@@ -2755,7 +2814,7 @@
         "V1-G7-SESSION"
       ],
       "source": "ISSUES.md",
-      "reason": "涉及重复公告/沪深300、评分缓存全命中仍取数与标注、趋势补算重复、心跳频繁、K线降级链回头；本轮未做源码审计。",
+      "reason": "涉及重复公告/沪深300、评分缓存全命中仍取数与标注、趋势补算重复、心跳频繁、K线降级链回头；本轮未做源码审计。 2026-10-26有限源码核对：auto_scorer在维度cache前仍取数，六维cache后sector-meta在具备模型/名称/行业时仍可能额外AI；本批只修运行记账，未改该费用路径。",
       "next_action": "逐项对当前调用链和请求账单核定；已被后续覆盖者不重做，真缺陷归并现有条款，不重复加六项分。",
       "scored": false
     },
