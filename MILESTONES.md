@@ -1,5 +1,7 @@
 # 暮云长期路线与持续里程碑
 
+**2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。**
+
 **2026-10-22 T04-L**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected；留下 scan-portfolio/chat/noai-debug 等更厚内联；不触评分/MID/G7/v43/Baostock。
 
 **2026-10-22 T04-K**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected。其余 backtest/chat/scan-portfolio 内联视厚薄；不触评分/MID/G7/v43/Baostock。

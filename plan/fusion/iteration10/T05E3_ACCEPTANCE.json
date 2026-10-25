@@ -1,0 +1,111 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-25",
+  "test_execution_date": "2026-10-24",
+  "status": "ACCEPTED_NESTED_ABANDON_INCREMENTAL_VERIFICATION_ONLY",
+  "base_commit": "2727141799ab48befcb0f172ff43367adb595a06",
+  "full_before_test_isolation_fix": {
+    "passed": 3514,
+    "failed": 2,
+    "skipped": 11,
+    "deselected": 1,
+    "seconds": 550.35,
+    "failure_nodeids": [
+      "tests/core/test_report_dir_isolation.py::test_red_without_isolation_would_write_repo_dir",
+      "tests/rag/test_iss123_index_dir_repo_root.py::test_faiss_path_call_ascii_passthrough"
+    ],
+    "source_count": 530,
+    "source_unchanged_during_run": true,
+    "blocked_io": {
+      "network": 1457,
+      "subprocess": 12,
+      "real_state": 0
+    }
+  },
+  "final_affected_files": {
+    "passed": 10,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 3.77,
+    "files": [
+      "tests/core/test_report_dir_isolation.py",
+      "tests/rag/test_iss123_index_dir_repo_root.py"
+    ],
+    "raw_log_sha256": "870ec63febda46eaab1f385892fef2aa6a2b36678de697d39901cac91e0f65fd"
+  },
+  "incremental_proof": {
+    "unchanged_source_files": 528,
+    "changed_only_local_test_functions": {
+      "tests/core/test_report_dir_isolation.py": {
+        "changed_test_function": "test_red_without_isolation_would_write_repo_dir",
+        "old_worktree_sha256": "35f93e6874bd1cc41ed8c5aa8d4fde0346243aeb51c815e9bb5740bcc6cce456",
+        "new_worktree_sha256": "068f8d46f8a8c4780f8d5a574760881e843a49c9e8464c9c9b92b9bc392599b4",
+        "other_executable_ast_unchanged": true,
+        "collected_test_name_preserved": true
+      },
+      "tests/rag/test_iss123_index_dir_repo_root.py": {
+        "changed_test_function": "test_faiss_path_call_ascii_passthrough",
+        "old_worktree_sha256": "6d91ab38ae9cc69f6a07b520a69df61451d88adfcf0703dd0e327e32b32640dd",
+        "new_worktree_sha256": "8202b0c1071899cae709ea595678fa57a68a78859b7cbe94596d2d25dcdfeb04",
+        "other_executable_ast_unchanged": true,
+        "collected_test_name_preserved": true
+      }
+    },
+    "limits": "not a new all-green full run; full 3514pass2fail and final targeted10pass reported separately"
+  },
+  "final_all_green_full_run": false,
+  "dedicated_exit": {
+    "passed": 8,
+    "deselected": 28,
+    "seconds": 10.3,
+    "reused": true,
+    "basis": "helper, exit probe and fixture dependencies unchanged; only runner and two unrelated local test bodies changed after probe"
+  },
+  "protection": {
+    "protected_files": 8,
+    "hashes_unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "original_untracked_existing": 207,
+    "untracked_bytes_not_all_hashed": true
+  },
+  "setup_failure": {
+    "errors": 3506,
+    "skipped": 11,
+    "deselected": 1,
+    "seconds": 140.24,
+    "test_bodies_run": 0,
+    "raw_bytes": 8182127,
+    "raw_sha256": "fb1f8fa7f4a2d370be7232267eab54131f30bda466fca1c4002683a64df2d544",
+    "lossless_gzip": "plan/fusion/iteration10/T05E3_SETUP_ERROR.log.gz"
+  },
+  "reviews": {
+    "product": "PASS after cache readback assertion revision",
+    "validator": "PASS scoped read-only fixture permission",
+    "final_test_isolation_and_reuse": "PASS, see TARGETED raw review",
+    "requested_model": "gpt-6.1-sol/high",
+    "actual_execution_model_verified": false,
+    "review_tests_executed": false
+  },
+  "source_manifest": {
+    "path": "plan/fusion/iteration10/T05E3_SOURCE_PINS.json",
+    "sha256": "a98de043ea67e103ff9dc42a71cbe302394a2a1e4c4f9d3fa306f186e1378d1b",
+    "count": 530,
+    "before_test_isolation_raw_pins_sha256": "da46384bfa9383c59a989ea3b6303bccbee133e50f760c5fd6fdd3147061c4c0",
+    "final_raw_pins_sha256": "341d93d31267e290a675ff4d33dec617c6db776752f9382f6a89eaf510c16538"
+  },
+  "evidence": {
+    "plan/fusion/iteration9/TARGETED_TEST_RESULTS_P.txt": "adba7295852861fdd61b8db929fd746842e6bc469bdbec1f27d88e9fb7af0dbb",
+    "plan/fusion/iteration9/FULL_TEST_RESULTS_P.txt": "3d57464e44b6c3b60db64b2d384425828b1676c0f6e6e9d47ef046a53b78b019"
+  },
+  "limits": [
+    "final tree has incremental verification, not a fresh all-green full run",
+    "underlying calls cannot be forcibly cancelled",
+    "guard-check-to-write race remains",
+    "Baostock session overlap not addressed",
+    "real MID NO_VALID and G7/T05/V1 incomplete",
+    "audit hook is not OS sandbox",
+    "no live product network or business AI invoked"
+  ],
+  "git": "Codex owns main commit and normal push; delivery SHA from actual main history",
+  "evidence_canonicalization": "Evidence hashes refer to Git blob bytes (text logs normalized by Git); compressed setup log preserves exact raw bytes."
+}

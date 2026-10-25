@@ -19,6 +19,14 @@
 > **2026-10-22 T05-E 本提交关闭**：晚到缓存写抑制（`is_call_abandoned` + MarketCache/K线写跳过）。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（均缺有限反例与产品裁决，不抢道）；T04 大函数拆分（不急）。不绑 G7/v43。
 # 融合项目恢复入口
 
+## 当前入口：2026-10-25 Codex原生Subagent（测试执行2026-10-24）
+
+用户改派只在Codex实施，主控规划/审批/Git，原生Subagent开发与复核；不调用DSH。main@2727141与origin/main已核一致，原8项保护文件和207个未跟踪文件保持。
+
+2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。 见[验收回执](iteration10/T05E3_ACCEPTANCE.json)与[合同](iteration10/DELIVERY_PLAN.md)。产品、runner与最后两项测试均独立复核PASS；主控负责本提交和普通推送，交付SHA核main实际历史。下一批先限定Baostock查询与迭代会话边界合同；不追加无收益T04机械拆分。
+
+下方Claude/DSH身份与旧“下一张”保留为历史。恢复先读本段与实际Git；3494项全量是2026-10-22 T04-L历史证据，不是T05-E3结果。
+
 > **第十轮（2026-10-21 起，Claude Code 主控）**：用户指派 Claude Code 接手迭代并兼任架构师，方案落盘即推送。T05-D（ISS-120 剩余 4 个旧并行 executor 的退出界）与 BUG-OW（ISS-122 超配涨幅禁入被 rich 未配对标签绕过）已实施完成并过独立复核，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s），commit T05-D `ac6ce8a`、BUG-OW `c67b85e`；BUG-IDX 测试侧修复 `28b7e68`；T04-A 账本编排下沉 `c7fb92b`（全量 3210 passed/0 failed/11 skipped）。T04-B（TUI 加仓假成功修复 + chat 删仓去 CLI 桥）`03cab94`，全量3252 passed/0 failed/11 skipped/1 deselected（764.51s）。BUG-FEE `9d13a3f`（ISS-125），全量3259 passed/0 failed/11 skipped/1 deselected（626.36s）。BUG-FINITE 写侧 `7de1e59`（ISS-126），全量3294 passed/0 failed/11 skipped/1 deselected（659.74s）。**本提交**合入 BUG-FINITE-READ（ISS-126 读侧：重放 `_isolate` 非有限事件 → PARTIAL；nan 成本可读可再写；today/NAV 未知语义；定向35+相关161；全量3293 passed/1 failed（cash_material折行无关）/11 skipped）——系 Claude 写侧后明确留下的下一张队列卡，非平行新轨。Claude 本轮已接受主线（T05-D/BUG-OW/BUG-IDX/T04-A/T04-B/BUG-FEE/BUG-FINITE 写侧）不动。**本提交**合入 **T04-C**（草稿编排下沉 + chat add/plan/overweight 去 CLI 桥；全量 3308 passed/0 failed/11 skipped/2 deselected）。**本提交**关闭 ISS-123 生产残余（索引/知识目录锚仓库根）。**本提交**关闭 BUG-CASH-WRAP（ISS-128）。此前提交关闭 BUG-TUI-MARKUP（ISS-127：分析面板字面 markup → `rich.Text`）。**本提交**关闭候选 **测试写报告目录隔离**（ISS-123 残余：`evidence._REPORT_DIR` conftest session 隔离+守卫；定测 `test_report_dir_isolation`；全量 3323 passed/0 failed/11 skipped/1 deselected（339.82s））。**本提交**关闭 **T04-D**（CLI pos plan --update 再抽：prepare_generate_or_update_plan + CLI 薄封装保留 Y/n）。下一张按候选：T05-G7 剩余等；不因本卡改道。合同与执行记录见 [iteration10/DELIVERY_PLAN.md](iteration10/DELIVERY_PLAN.md)。Claude Code 分工按 `CLAUDE.md`「Claude Code role routing」。下方 DSH 身份段仅适用于 Codex 那台机器。
 
 更新2026-10-21。读AGENTS/CODEX→MILESTONES→STATUS→本文件。T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。

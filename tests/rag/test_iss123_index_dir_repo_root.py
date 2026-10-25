@@ -83,29 +83,21 @@ def test_faiss_path_call_unicode_parent_uses_basename(tmp_path: Path):
     assert seen["cwd"] == uni.resolve()
 
 
-def test_faiss_path_call_ascii_passthrough():
+def test_faiss_path_call_ascii_passthrough(tmp_path: Path):
+    """ASCII 临时根内的路径原样传递；非 ASCII 临时根不逃逸到固定目录。"""
     from src.rag.store import _faiss_path_call
 
-    ascii_root = (
-        Path("C:/muyun_iss123_ascii_tmp")
-        if os.name == "nt"
-        else Path("/tmp/muyun_iss123_ascii_tmp")
-    )
-    ascii_root.mkdir(parents=True, exist_ok=True)
+    ascii_root = tmp_path / "ascii_index"
+    if not str(ascii_root).isascii():
+        pytest.skip("ASCII passthrough requires an ASCII temporary root")
+    ascii_root.mkdir()
     target = ascii_root / "index.faiss"
-    try:
-        target.write_bytes(b"x")
-        seen = {}
+    target.write_bytes(b"x")
+    seen = {}
 
-        def _fn(name: str):
-            seen["name"] = name
-            return 1
+    def _fn(name: str):
+        seen["name"] = name
+        return 1
 
-        assert _faiss_path_call(target, _fn) == 1
-        assert seen["name"] == str(target)
-    finally:
-        try:
-            target.unlink(missing_ok=True)
-            ascii_root.rmdir()
-        except OSError:
-            pass
+    assert _faiss_path_call(target, _fn) == 1
+    assert seen["name"] == str(target)

@@ -27,22 +27,19 @@ _ERROR = "error"
 
 
 class _AbandonStack:
-    """按线程维护嵌套超时调用的 abandoned 事件栈（T05-E）。"""
+    """按线程保存祖先与本次调用的事件引用，不共享可变栈（T05-E3）。"""
 
     def __init__(self):
         self._local = threading.local()
 
-    def push(self, event: threading.Event) -> None:
-        stack = getattr(self._local, "stack", None)
-        if stack is None:
-            stack = []
-            self._local.stack = stack
-        stack.append(event)
+    def snapshot(self) -> tuple:
+        return tuple(getattr(self._local, "stack", ()))
 
-    def pop(self) -> None:
-        stack = getattr(self._local, "stack", None)
-        if stack:
-            stack.pop()
+    def install(self, ancestors: tuple, event: threading.Event) -> None:
+        self._local.stack = (*ancestors, event)
+
+    def clear(self) -> None:
+        del self._local.stack
 
     def is_abandoned(self) -> bool:
         stack = getattr(self._local, "stack", None) or ()
@@ -78,9 +75,10 @@ def call_with_timeout(fn, *args, timeout: float, **kwargs):
         budget = 0.0
     slot = queue.Queue(maxsize=1)
     abandoned = threading.Event()
+    ancestors = _ABANDON.snapshot()
 
     def _run():
-        _ABANDON.push(abandoned)
+        _ABANDON.install(ancestors, abandoned)
         try:
             try:
                 item = (_OK, fn(*args, **kwargs))
@@ -88,7 +86,7 @@ def call_with_timeout(fn, *args, timeout: float, **kwargs):
                 item = (_ERROR, error)
             slot.put(item)
         finally:
-            _ABANDON.pop()
+            _ABANDON.clear()
 
     worker = threading.Thread(target=_run, name="muyun-timeout-call", daemon=True)
     worker.start()
@@ -140,9 +138,10 @@ def run_parallel_with_deadline(fns, *, max_workers: int, timeout: float):
         tasks.put((index, fn))
     done = queue.Queue()
     abandoned = threading.Event()
+    ancestors = _ABANDON.snapshot()
 
     def _work():
-        _ABANDON.push(abandoned)
+        _ABANDON.install(ancestors, abandoned)
         try:
             while not abandoned.is_set():
                 try:
@@ -155,7 +154,7 @@ def run_parallel_with_deadline(fns, *, max_workers: int, timeout: float):
                     item = (index, _ERROR, error)
                 done.put(item)
         finally:
-            _ABANDON.pop()
+            _ABANDON.clear()
 
     for _ in range(max(1, min(int(max_workers), total))):
         threading.Thread(target=_work, name="muyun-parallel-call", daemon=True).start()

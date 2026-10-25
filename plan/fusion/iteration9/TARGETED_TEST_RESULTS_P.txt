@@ -23378,3 +23378,627 @@ PROTECTED_HASHES_UNCHANGED True BASELINE_PROTECTED_UNCHANGED True
 KNOWLEDGE_SET_UNCHANGED True
 INDEPENDENT_EXIT_REVIEW_PASS
 
+
+===== T05_E3_FINAL_2026_10_25 =====
+
+--- PRODUCT_OLD_SOURCE_RED ---
+FFFFF.FFF...                                                             [100%]
+================================== FAILURES ===================================
+___________ test_nested_ancestor_timeout_propagates[single-single] ____________
+
+outer = 'single', inner = 'single', nested_workers = None
+
+    @pytest.mark.parametrize("outer,inner", [
+        ("single", "single"), ("single", "parallel"),
+        ("parallel", "single"), ("parallel", "parallel"),
+    ])
+    def test_nested_ancestor_timeout_propagates(outer, inner, nested_workers):
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+    
+        def parent():
+            try:
+                return _invoke_nested(inner, leaf)
+            finally:
+                finished.set()
+    
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested(outer, parent, timeout=0.15)
+            assert started.wait(_CAP)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:90: AssertionError
+__________ test_nested_ancestor_timeout_propagates[single-parallel] ___________
+
+outer = 'single', inner = 'parallel', nested_workers = None
+
+    @pytest.mark.parametrize("outer,inner", [
+        ("single", "single"), ("single", "parallel"),
+        ("parallel", "single"), ("parallel", "parallel"),
+    ])
+    def test_nested_ancestor_timeout_propagates(outer, inner, nested_workers):
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+    
+        def parent():
+            try:
+                return _invoke_nested(inner, leaf)
+            finally:
+                finished.set()
+    
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested(outer, parent, timeout=0.15)
+            assert started.wait(_CAP)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:90: AssertionError
+__________ test_nested_ancestor_timeout_propagates[parallel-single] ___________
+
+outer = 'parallel', inner = 'single', nested_workers = None
+
+    @pytest.mark.parametrize("outer,inner", [
+        ("single", "single"), ("single", "parallel"),
+        ("parallel", "single"), ("parallel", "parallel"),
+    ])
+    def test_nested_ancestor_timeout_propagates(outer, inner, nested_workers):
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+    
+        def parent():
+            try:
+                return _invoke_nested(inner, leaf)
+            finally:
+                finished.set()
+    
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested(outer, parent, timeout=0.15)
+            assert started.wait(_CAP)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:90: AssertionError
+_________ test_nested_ancestor_timeout_propagates[parallel-parallel] __________
+
+outer = 'parallel', inner = 'parallel', nested_workers = None
+
+    @pytest.mark.parametrize("outer,inner", [
+        ("single", "single"), ("single", "parallel"),
+        ("parallel", "single"), ("parallel", "parallel"),
+    ])
+    def test_nested_ancestor_timeout_propagates(outer, inner, nested_workers):
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+    
+        def parent():
+            try:
+                return _invoke_nested(inner, leaf)
+            finally:
+                finished.set()
+    
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested(outer, parent, timeout=0.15)
+            assert started.wait(_CAP)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:90: AssertionError
+_____________ test_nested_three_level_ancestor_timeout_propagates _____________
+
+nested_workers = None
+
+    def test_nested_three_level_ancestor_timeout_propagates(nested_workers):
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+    
+        def outer():
+            try:
+                return _invoke_nested("parallel", lambda: _invoke_nested("single", leaf))
+            finally:
+                finished.set()
+    
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested("single", outer, timeout=0.15)
+            assert started.wait(_CAP)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [True]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:117: AssertionError
+_______________ test_nested_real_cache_writes[late-market_disk] _______________
+
+path = 'market_disk', abandon = True
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1201/test_nested_real_cache_writes_0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024BAD07FC90>
+nested_workers = None
+
+    @pytest.mark.parametrize("path", ["market_disk", "snapshot", "kline_disk"])
+    @pytest.mark.parametrize("abandon", [True, False], ids=["late", "normal"])
+    def test_nested_real_cache_writes(path, abandon, tmp_path, monkeypatch, nested_workers):
+        monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+        monkeypatch.setattr(AKShareClient, "_kline_cache_dir", classmethod(lambda cls: tmp_path))
+        for name, value in [("_shared_stock_df", None), ("_shared_stock_ts", 0.0),
+                            ("_shared_stock_count", 0), ("_shared_fail_ts", 0.0)]:
+            monkeypatch.setattr(MarketCache, name, value)
+        df = pd.DataFrame({"����": ["600000"]})
+        cache = MarketCache()
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            if path == "market_disk":
+                market_cache._disk_save("stocks_df", df)
+            elif path == "snapshot":
+                cache._accept_snapshot(df, "T05-E3-nested")
+            else:
+                AKShareClient._kline_disk_save("600000_daily_qfq_test", df)
+            seen.append(is_call_abandoned())
+    
+        def outer():
+            try:
+                return _invoke_nested("parallel", leaf)
+            finally:
+                finished.set()
+    
+        try:
+            if abandon:
+                with pytest.raises(TimeoutError):
+                    _invoke_nested("single", outer, timeout=0.15)
+                assert started.wait(_CAP)
+            else:
+                release.set()
+                _invoke_nested("single", outer)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [abandon]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:190: AssertionError
+________________ test_nested_real_cache_writes[late-snapshot] _________________
+
+path = 'snapshot', abandon = True
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1201/test_nested_real_cache_writes_1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024BAD069A50>
+nested_workers = None
+
+    @pytest.mark.parametrize("path", ["market_disk", "snapshot", "kline_disk"])
+    @pytest.mark.parametrize("abandon", [True, False], ids=["late", "normal"])
+    def test_nested_real_cache_writes(path, abandon, tmp_path, monkeypatch, nested_workers):
+        monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+        monkeypatch.setattr(AKShareClient, "_kline_cache_dir", classmethod(lambda cls: tmp_path))
+        for name, value in [("_shared_stock_df", None), ("_shared_stock_ts", 0.0),
+                            ("_shared_stock_count", 0), ("_shared_fail_ts", 0.0)]:
+            monkeypatch.setattr(MarketCache, name, value)
+        df = pd.DataFrame({"����": ["600000"]})
+        cache = MarketCache()
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            if path == "market_disk":
+                market_cache._disk_save("stocks_df", df)
+            elif path == "snapshot":
+                cache._accept_snapshot(df, "T05-E3-nested")
+            else:
+                AKShareClient._kline_disk_save("600000_daily_qfq_test", df)
+            seen.append(is_call_abandoned())
+    
+        def outer():
+            try:
+                return _invoke_nested("parallel", leaf)
+            finally:
+                finished.set()
+    
+        try:
+            if abandon:
+                with pytest.raises(TimeoutError):
+                    _invoke_nested("single", outer, timeout=0.15)
+                assert started.wait(_CAP)
+            else:
+                release.set()
+                _invoke_nested("single", outer)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [abandon]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:190: AssertionError
+_______________ test_nested_real_cache_writes[late-kline_disk] ________________
+
+path = 'kline_disk', abandon = True
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1201/test_nested_real_cache_writes_2')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000024BAD02E390>
+nested_workers = None
+
+    @pytest.mark.parametrize("path", ["market_disk", "snapshot", "kline_disk"])
+    @pytest.mark.parametrize("abandon", [True, False], ids=["late", "normal"])
+    def test_nested_real_cache_writes(path, abandon, tmp_path, monkeypatch, nested_workers):
+        monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", tmp_path)
+        monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+        monkeypatch.setattr(AKShareClient, "_kline_cache_dir", classmethod(lambda cls: tmp_path))
+        for name, value in [("_shared_stock_df", None), ("_shared_stock_ts", 0.0),
+                            ("_shared_stock_count", 0), ("_shared_fail_ts", 0.0)]:
+            monkeypatch.setattr(MarketCache, name, value)
+        df = pd.DataFrame({"����": ["600000"]})
+        cache = MarketCache()
+        started, release, finished = (threading.Event() for _ in range(3))
+        seen = []
+    
+        def leaf():
+            started.set()
+            assert release.wait(_CAP)
+            if path == "market_disk":
+                market_cache._disk_save("stocks_df", df)
+            elif path == "snapshot":
+                cache._accept_snapshot(df, "T05-E3-nested")
+            else:
+                AKShareClient._kline_disk_save("600000_daily_qfq_test", df)
+            seen.append(is_call_abandoned())
+    
+        def outer():
+            try:
+                return _invoke_nested("parallel", leaf)
+            finally:
+                finished.set()
+    
+        try:
+            if abandon:
+                with pytest.raises(TimeoutError):
+                    _invoke_nested("single", outer, timeout=0.15)
+                assert started.wait(_CAP)
+            else:
+                release.set()
+                _invoke_nested("single", outer)
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+>       assert seen == [abandon]
+E       assert [False] == [True]
+E         
+E         At index 0 diff: False != True
+E         Use -v to get more diff
+
+tests\core\test_t05e_late_cache_write.py:190: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_ancestor_timeout_propagates[single-single]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_ancestor_timeout_propagates[single-parallel]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_ancestor_timeout_propagates[parallel-single]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_ancestor_timeout_propagates[parallel-parallel]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_three_level_ancestor_timeout_propagates
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_real_cache_writes[late-market_disk]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_real_cache_writes[late-snapshot]
+FAILED tests/core/test_t05e_late_cache_write.py::test_nested_real_cache_writes[late-kline_disk]
+8 failed, 4 passed, 10 deselected in 3.25s
+
+
+--- GREEN_BEFORE_PAYLOAD_ASSERTIONS ---
+....................................................................ssss [ 94%]
+ssss                                                                     [100%]
+68 passed, 8 skipped in 11.50s
+
+
+--- FINAL_PAYLOAD_CASES ---
+......                                                                   [100%]
+6 passed in 1.35s
+
+
+--- SHOW_HELP_ACTUAL_AST_RENDER ---
+┌────────────────────────────────────────────────────────────────────────┐
+│ 暮云思辨投资助手 · 命令菜单                                            │
+│ 典型流程: today 看待办 → scan / bz scan 选股 → l all 深分析 → pos add 建仓 │
+│           → diff 看变化 → scan review 复盘检验                         │
+│                                                                        │
+│ ● 每日入口                                                             │
+│   today                     今日工作台（待办/持仓/等待——建议≠成交）    │
+│   shadow                    影子对照报告（legacy vs fusion 决策表差异观察） │
+│   plan2 <代码> mid|long <意图> 立中期/长期投资计划（影子出真判断的前提） │
+│   research <代码>           研究工作台：--cash-materials 清单.json 导入材料；--cash-verify 回执ID 核对数字，加 --source-check 核官方字段，再加 --industry-check 查询SSE行业适用性并比较现金；--capture 采财务；--claims/--checkpoint 绑证据 │
+│                                                                        │
+│ ● 分析                                                                 │
+│   l <代码>                  实时深分析（证据卡+本地只读研究状态）      │
+│   l <代码>,<代码2>          多代码批量（逗号/空格分隔均可）            │
+│   l all [-f]                批量深分析最近扫描（-f 强制重析当天已析）  │
+│   la                        一键分析所有持仓（简明卡）                 │
+│   <6位代码>                 直接输代码，等同 l <代码>                  │
+│   #N                        取最近扫描第 N 只（l/bz/pos 通用）         │
+│   diff                      列出可对比的股票（要两次分析记录）         │
+│   diff <代码>               同股最近两次分析对比（变化点）             │
+│                                                                        │
+│ ● 扫描与复盘                                                           │
+│   scan [s]                  一键分析所有持仓（非全市场扫描）           │
+│   scan market [规则|主题]   全市场扫描（主题词如 AI,半导体）           │
+│   scan market deep          扫描 + 自动深度分析                        │
+│   scan review [天数]        复盘近N天扫描涨跌+按方法分组（默认7）      │
+│   scan review import        一次性导入旧扫描报告（幂等可重跑）         │
+│   rules                     列出全部扫描规则                           │
+│   industries [词] / concepts [词] 行业 / 概念板块                      │
+│                                                                        │
+│ ● 笨总评分（超景气价值投机）                                           │
+│   bz <代码>[,代码2]         AI 6维评分排名（当日缓存不重复计费）       │
+│   bz <代码> --refresh       强制刷新单只评分                           │
+│   bz scan [主题] [--top N]  主题选股初筛 + 批量评分排名                │
+│   bz scan <规则> [主题]     规则初筛 + 评分（规则名可模糊匹配）        │
+│   bz scan --allrules        五规则全跑合并去重（各 Top5）              │
+│   bz scan ... --backtest [起 止] 评分后批量回测验证                    │
+│   ba                        批量评分最近扫描结果（缓存优先）           │
+│   bz --check                数据源连通性体检                           │
+│   bz --manual               旧交互式手动打分（兜底）                   │
+│                                                                        │
+│ ● 观察池                                                               │
+│   watch                     在池股 入池价→现价 + 走势（即复盘）        │
+│   watch add <代码|#N> [名] [价] 手动入池（缺省拉实时价）               │
+│   watch rm <代码>           移出（出池后分析 WATCH 会重新入池）        │
+│   分析出 WATCH 的票自动入池；scan review 用 ✓ 标注在池股               │
+│                                                                        │
+│ ● 持仓                                                                 │
+│   pos [list]                持仓列表                                   │
+│   pos add <代码> [名] [价] [仓位] 建仓（带价格才生成计划草稿）         │
+│   pos confirm <代码> [--qty 股数 --price 价] 确认实际成交（带 --qty 入事件账本） │
+│   pos opening <现金> / openinglot <码 量 成本 [日]> 期初导入（现金锚定/持仓批次） │
+│   pos rm <代码>             删除持仓记录                               │
+│   pos plan <代码>|all [--update] 查看 / 生成 / 更新交易计划            │
+│   pos overweight <代码> [依据] 超配策略（教学十，只出手一次）          │
+│                                                                        │
+│ ● 回测                                                                 │
+│   b <代码> [起 止 资金]     单只回测（默认近1年，10万）                │
+│   bb <代码,代码> [起 止]    批量回测验证                               │
+│                                                                        │
+│ ● 市场情报                                                             │
+│   expect [天数]             预期事件日历 + 透支面板（默认30天）        │
+│   events                    事件驱动预警（事后）                       │
+│   fear                      市场恐慌指数 0-100（越高越恐慌）           │
+│   fear history              多周期回顾 + 走势图（--no-chart 跳绘图）   │
+│   fear backfill [天数]      涨停池历史回填（断点续传，首次建议跑）     │
+│   chains                    产业链图谱列表 / 管理                      │
+│                                                                        │
+│ ● 工具与开关                                                           │
+│   doctor                    运行诊断（环境/依赖/配置/缓存）            │
+│   tasks                     批量任务进度与失败项（中断续跑可见）       │
+│   noai / debug              切换 AI 开关 / AI 调试模式                 │
+│   chat                      AI 对话（自然语言跑任意命令+改持仓）       │
+│   h | help | ?  显示本菜单        q | quit  退出                       │
+│                                                                        │
+│ ● 扫描规则速查（scan market / bz scan <规则> 通用）                    │
+│   healthy_pullback 健康回调★   steady_advance  温和上涨                │
+│   shrink_pullback 缩量回调      value_pick      低估值                 │
+│   theme_members   主题成分      oversold_watch  超跌错杀               │
+│   （来源：B站「笨笨的韭菜」教学体系；rules 可看全部参数）              │
+│                                                                        │
+│ ● 示例                                                                 │
+│   scan market AI,半导体    主题扫描 → l all → tasks 看进度             │
+│   bz scan 氮化镓 --top 5   主题选股评分                                │
+│   pos add #1 融捷股份 35.20 0.20   扫描第1只直接建仓                   │
+│   b 000001 2025-01-01 2026-01-01 200000   自定义区间回测               │
+│                                                                        │
+│ ● 提示                                                                 │
+│   数据源超时会停止等待并降级；底层请求可能仍在运行，避免连续重试       │
+│   已放弃的嵌套取数同样跳过快照/K线缓存写入                             │
+└────────────────────────────────────────────────────────────────────────┘
+
+
+
+--- VALIDATOR_DEFAULT_DENY_RED ---
+FF........                                                               [100%]
+================================== FAILURES ===================================
+_______________ test_index_fixture_read_permission[digest-True] _______________
+
+case = 'digest', allowed = True
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1204/test_index_fixture_read_permis0')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BE8E6D4190>
+
+    @pytest.mark.parametrize("case,allowed", [
+        ("digest", True), ("copy", True), ("write_mode", False),
+        ("write_flags", False), ("wrong_path", False), ("wrong_function", False),
+        ("wrong_init", False), ("product", False), ("portfolio", False),
+        ("broken_frame", False),
+    ])
+    def test_index_fixture_read_permission(case, allowed, tmp_path, monkeypatch):
+        # Synthetic repository and frames: no real user or knowledge file is opened.
+        monkeypatch.setattr(runner, "REPO", tmp_path)
+        path = tmp_path / "knowledge" / "index" / "index.faiss"
+        conftest = tmp_path / "tests" / "conftest.py"
+        frame = _frame(conftest, "_index_digest")
+        mode, flags = "rb", os.O_RDONLY
+        if case == "copy":
+            frame = _frame(tmp_path / "stdlib" / "shutil.py", "copyfile", back=_frame(
+                conftest, "_init", "_isolate_rag_index_dir.<locals>._init"))
+            mode = None  # os.open's audited read form
+        elif case == "write_mode":
+            mode = "r+b"
+        elif case == "write_flags":
+            flags = os.O_RDONLY | os.O_APPEND
+        elif case == "wrong_path":
+            frame = _frame(tmp_path / "other" / "conftest.py", "_index_digest")
+        elif case == "wrong_function":
+            frame = _frame(conftest, "_protect_knowledge_index")
+        elif case == "wrong_init":
+            frame = _frame(conftest, "_init", "_other_fixture.<locals>._init")
+        elif case == "product":
+            frame = _frame(tmp_path / "src" / "rag" / "service.py", "_index_digest")
+        elif case == "portfolio":
+            path = tmp_path / "portfolio.yaml"
+        elif case == "broken_frame":
+            frame = object()
+>       assert runner._allow_index_fixture_read(path, mode, flags, frame=frame) is allowed
+E       AssertionError: assert False is True
+E        +  where False = <function _allow_index_fixture_read at 0x000001BE8E043740>(WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1204/test_index_fixture_read_permis0/knowledge/index/index.faiss'), 'rb', 0, frame=namespace(f_code=namespace(co_filename='C:\\Users\\Crux\\AppData\\Local\\Temp\\pytest-of-Crux\\pytest-1204\\test_index_fixture_read_permis0\\tests\\conftest.py', co_name='_index_digest', co_qualname='_index_digest'), f_back=None))
+E        +    where <function _allow_index_fixture_read at 0x000001BE8E043740> = runner._allow_index_fixture_read
+
+tests\core\test_review_runner_index_guard.py:51: AssertionError
+________________ test_index_fixture_read_permission[copy-True] ________________
+
+case = 'copy', allowed = True
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1204/test_index_fixture_read_permis1')
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001BE8E691E10>
+
+    @pytest.mark.parametrize("case,allowed", [
+        ("digest", True), ("copy", True), ("write_mode", False),
+        ("write_flags", False), ("wrong_path", False), ("wrong_function", False),
+        ("wrong_init", False), ("product", False), ("portfolio", False),
+        ("broken_frame", False),
+    ])
+    def test_index_fixture_read_permission(case, allowed, tmp_path, monkeypatch):
+        # Synthetic repository and frames: no real user or knowledge file is opened.
+        monkeypatch.setattr(runner, "REPO", tmp_path)
+        path = tmp_path / "knowledge" / "index" / "index.faiss"
+        conftest = tmp_path / "tests" / "conftest.py"
+        frame = _frame(conftest, "_index_digest")
+        mode, flags = "rb", os.O_RDONLY
+        if case == "copy":
+            frame = _frame(tmp_path / "stdlib" / "shutil.py", "copyfile", back=_frame(
+                conftest, "_init", "_isolate_rag_index_dir.<locals>._init"))
+            mode = None  # os.open's audited read form
+        elif case == "write_mode":
+            mode = "r+b"
+        elif case == "write_flags":
+            flags = os.O_RDONLY | os.O_APPEND
+        elif case == "wrong_path":
+            frame = _frame(tmp_path / "other" / "conftest.py", "_index_digest")
+        elif case == "wrong_function":
+            frame = _frame(conftest, "_protect_knowledge_index")
+        elif case == "wrong_init":
+            frame = _frame(conftest, "_init", "_other_fixture.<locals>._init")
+        elif case == "product":
+            frame = _frame(tmp_path / "src" / "rag" / "service.py", "_index_digest")
+        elif case == "portfolio":
+            path = tmp_path / "portfolio.yaml"
+        elif case == "broken_frame":
+            frame = object()
+>       assert runner._allow_index_fixture_read(path, mode, flags, frame=frame) is allowed
+E       AssertionError: assert False is True
+E        +  where False = <function _allow_index_fixture_read at 0x000001BE8E043740>(WindowsPath('C:/Users/Crux/AppData/Local/Temp/pytest-of-Crux/pytest-1204/test_index_fixture_read_permis1/knowledge/index/index.faiss'), None, 0, frame=namespace(f_code=namespace(co_filename='C:\\Users\\Crux\\AppData\\Local\\Temp\\pytest-of-Crux\\pytest-1204\\test_index...read_permis1\\tests\\conftest.py', co_name='_init', co_qualname='_isolate_rag_index_dir.<locals>._init'), f_back=None)))
+E        +    where <function _allow_index_fixture_read at 0x000001BE8E043740> = runner._allow_index_fixture_read
+
+tests\core\test_review_runner_index_guard.py:51: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_review_runner_index_guard.py::test_index_fixture_read_permission[digest-True]
+FAILED tests/core/test_review_runner_index_guard.py::test_index_fixture_read_permission[copy-True]
+2 failed, 8 passed in 1.80s
+
+
+--- VALIDATOR_POLICY_GREEN ---
+..........                                                               [100%]
+10 passed in 0.91s
+
+
+--- VALIDATOR_SETUP_SMOKE ---
+......................                                                   [100%]
+22 passed in 6.12s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+--- AFFECTED_TEST_FILES_FINAL_GREEN ---
+..........                                                               [100%]
+10 passed in 3.77s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+--- EIGHT_CHILD_UNCHANGED_DEPENDENCIES ---
+T05-E3 FINAL exit / main base 2727141799ab48befcb0f172ff43367adb595a06
+COMMAND ["G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe", "-B", "-X", "utf8", "-m", "pytest", "-q", "-s", "-p", "no:cacheprovider", "tests/core/test_t05_timeout_exit.py", "-k", "helper_returns_before_process_exit_deadline"]
+T05_EXIT_OK case=safe_call import_done=0.718s call_started=0.718s returned=0.812s call_elapsed=0.094s exit_after=0.031s worker_wall=1792848760.501 observed_wall=1792848760.581 window_margin=6.921s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=call_with_timeout import_done=1.265s call_started=1.265s returned=1.328s call_elapsed=0.063s exit_after=0.078s worker_wall=1792848762.030 observed_wall=1792848762.091 window_margin=6.939s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=probe_t import_done=0.719s call_started=0.719s returned=0.782s call_elapsed=0.063s exit_after=0.032s worker_wall=1792848763.021 observed_wall=1792848763.096 window_margin=6.925s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=robust_call_timeout import_done=0.719s call_started=0.719s returned=0.781s call_elapsed=0.062s exit_after=0.047s worker_wall=1792848763.994 observed_wall=1792848764.059 window_margin=6.935s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=industry_outer import_done=0.734s call_started=0.734s returned=0.797s call_elapsed=0.063s exit_after=0.031s worker_wall=1792848764.974 observed_wall=1792848765.044 window_margin=6.930s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=industry_chain_sections import_done=0.734s call_started=0.734s returned=1.250s call_elapsed=0.516s exit_after=0.031s worker_wall=1792848765.944 observed_wall=1792848766.462 window_margin=6.482s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=industry_commodity_sections import_done=0.734s call_started=0.734s returned=1.250s call_elapsed=0.500s exit_after=0.031s worker_wall=1792848767.379 observed_wall=1792848767.897 window_margin=6.482s cleanup=child exited before cleanup rc=0
+.T05_EXIT_OK case=sina_parallel import_done=1.266s call_started=1.266s returned=1.344s call_elapsed=0.063s exit_after=0.063s worker_wall=1792848769.347 observed_wall=1792848769.424 window_margin=6.923s cleanup=child exited before cleanup rc=0
+.
+8 passed, 28 deselected in 10.30s
+
+T05E3_DRIVER_CHECKS {"exit_code": 0, "source_pins": 529, "source_unchanged": true, "protected_files": 8, "protected_unchanged": true, "knowledge_files_unchanged": true, "original_untracked_present": true, "original_untracked_count": 207, "driver_seconds": 11.875}
+
+
+--- INDEPENDENT_FINAL_REVIEW ---
+2026-10-25 independent task_quality_guard final narrow review: PASS
+Read-only; no tests or file modifications. Requested gpt-6.1-sol/high; actual execution model metadata unavailable/unverified.
+
+Report test writes under tmp_path/synthetic_repo and retains record-created and new-card assertions. Manual cleanup and its restored-directory assertion were removed because tmp_path owns lifecycle. Other real-directory/session isolation assertions are unchanged. Describe this as preserving behavior assertions, not every assertion verbatim.
+ASCII path test uses tmp_path/ascii_index and retains return-value and exact-path assertions. It can skip on non-ASCII temp roots; this run was 10 passed, no skip, so the branch executed.
+
+Independently recomputed 530 raw hashes: 528 unchanged, only the two specified test files changed. Old source/hash correspondence and CRLF handling verified. ASTs excluding each named test function and module docstring match; imports, other tests, top-level execution and shared fixtures unchanged. Eight protected hashes and knowledge file set unchanged; HEAD is original baseline.
+Full original log has exactly the two expected unsafe-write failures: 3514 passed / 2 failed / 11 skipped / 1 deselected in 550.35s. Final two-file log: 10 passed in 3.77s, zero blocked IO attempts, protected checks pass.
+
+Incremental reuse is valid while product, runner, shared fixtures, config and dependencies stay unchanged. Changes only relocate local test writes; monkeypatch is fixture-restored, no new shared state or widened permissions. Accept prior full passed portion plus final affected-file verification; no third full required. Do not claim a final-tree single 3516-all-green full run.
+

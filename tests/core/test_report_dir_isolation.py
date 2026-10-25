@@ -1,7 +1,7 @@
 """ISS-123 残余：测试不得写入仓库 分析报告/analysis（evidence._REPORT_DIR 隔离）。
 
 红→绿约定（对齐 BUG-IDX）：
-- 红：把 _REPORT_DIR 指回仓库生产目录再 record_evidence → 生产目录出现新卡
+- 红的合成复现：把 _REPORT_DIR 指向 tmp_path 下的仓库报告目录 → 出现新卡
 - 绿：session 隔离生效时，record_evidence 只写临时目录；生产目录文件名集合不变
 """
 from __future__ import annotations
@@ -71,31 +71,25 @@ def test_record_evidence_under_isolation_skips_repo_dir(tmp_path, monkeypatch):
 
 
 def test_red_without_isolation_would_write_repo_dir(monkeypatch, tmp_path):
-    """红（受控演示）：临时把 _REPORT_DIR 指回生产目录 → 出现新文件；测末清理。
+    """红的合成复现：未隔离模块常量时，卡片会写入其指向的仓库报告目录。
 
-    不依赖 session 守卫（本文件写入会在单测内删除）；证明污染根因是模块常量
-    锚仓库根，而非调用方故意写盘。
+    仓库与报告目录均位于 tmp_path，由夹具清理，不触碰真实生产目录。
     """
-    _REAL_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+    report_dir = tmp_path / "synthetic_repo" / "分析报告" / "analysis"
+    report_dir.mkdir(parents=True, exist_ok=True)
     marker = f"ISO-RED-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
-    monkeypatch.setattr(ev, "_REPORT_DIR", _REAL_REPORT_DIR)
+    monkeypatch.setattr(ev, "_REPORT_DIR", report_dir)
     monkeypatch.setattr(ev, "_EVIDENCE_FILE", tmp_path / "evidence.jsonl")
     monkeypatch.setattr(ev, "_STATE_DIR", tmp_path)
 
-    before = set(os.listdir(_REAL_REPORT_DIR))
+    before = set(os.listdir(report_dir))
     rec = ev.record_evidence(
         _mk_result(name=marker), _mk_strategy(), source="test-iso-red",
     )
     assert rec is not None
-    after = set(os.listdir(_REAL_REPORT_DIR))
+    after = set(os.listdir(report_dir))
     added = after - before
-    assert added, "未隔离时应向仓库分析报告/analysis 新增文件（红灯前提）"
-    for name in added:
-        try:
-            (_REAL_REPORT_DIR / name).unlink()
-        except OSError:
-            pass
-    assert set(os.listdir(_REAL_REPORT_DIR)) == before
+    assert added, "未隔离时应向合成仓库分析报告/analysis 新增文件（红灯前提）"
 
 
 def test_report_dir_names_helper_detects_added_file(tmp_path, monkeypatch):

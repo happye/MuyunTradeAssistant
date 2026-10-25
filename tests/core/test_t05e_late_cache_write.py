@@ -15,7 +15,9 @@ from __future__ import annotations
 
 import threading
 import time
+from datetime import datetime
 from pathlib import Path
+from types import SimpleNamespace
 
 import pandas as pd
 import pytest
@@ -29,9 +31,187 @@ from src.data.timeout_call import (
 import src.scanner.market_cache as market_cache
 from src.scanner.market_cache import MarketCache
 from src.data.akshare_client import AKShareClient
+import src.data.akshare_client as akshare_client
+import src.data.timeout_call as timeout_call
 
 
 _CAP = 5.0
+
+
+@pytest.fixture
+def nested_workers(monkeypatch):
+    """Join this test's helper workers before any cache mocks are restored."""
+    workers = []
+
+    def tracked_thread(*args, **kwargs):
+        worker = threading.Thread(*args, **kwargs)
+        workers.append(worker)
+        return worker
+
+    monkeypatch.setattr(timeout_call, "threading", SimpleNamespace(
+        Event=threading.Event, Thread=tracked_thread,
+    ))
+    yield
+    for worker in workers:
+        worker.join(_CAP)
+        assert not worker.is_alive(), "nested worker did not finish"
+
+
+def _invoke_nested(kind, fn, timeout=_CAP):
+    if kind == "single":
+        return call_with_timeout(fn, timeout=timeout)
+    return run_parallel_with_deadline([fn], max_workers=1, timeout=timeout)[0]
+
+
+@pytest.mark.parametrize("outer,inner", [
+    ("single", "single"), ("single", "parallel"),
+    ("parallel", "single"), ("parallel", "parallel"),
+])
+def test_nested_ancestor_timeout_propagates(outer, inner, nested_workers):
+    started, release, finished = (threading.Event() for _ in range(3))
+    seen = []
+
+    def leaf():
+        started.set()
+        assert release.wait(_CAP)
+        seen.append(is_call_abandoned())
+
+    def parent():
+        try:
+            return _invoke_nested(inner, leaf)
+        finally:
+            finished.set()
+
+    try:
+        with pytest.raises(TimeoutError):
+            _invoke_nested(outer, parent, timeout=0.15)
+        assert started.wait(_CAP)
+    finally:
+        release.set()
+        assert finished.wait(_CAP)
+    assert seen == [True]
+    assert _invoke_nested(inner, is_call_abandoned) is False
+    assert is_call_abandoned() is False
+
+
+def test_nested_three_level_ancestor_timeout_propagates(nested_workers):
+    started, release, finished = (threading.Event() for _ in range(3))
+    seen = []
+
+    def leaf():
+        started.set()
+        assert release.wait(_CAP)
+        seen.append(is_call_abandoned())
+
+    def outer():
+        try:
+            return _invoke_nested("parallel", lambda: _invoke_nested("single", leaf))
+        finally:
+            finished.set()
+
+    try:
+        with pytest.raises(TimeoutError):
+            _invoke_nested("single", outer, timeout=0.15)
+        assert started.wait(_CAP)
+    finally:
+        release.set()
+        assert finished.wait(_CAP)
+    assert seen == [True]
+
+
+def test_nested_child_timeout_does_not_abandon_parent_or_sibling(nested_workers):
+    started, release, finished = (threading.Event() for _ in range(3))
+    seen = []
+
+    def leaf():
+        try:
+            started.set()
+            assert release.wait(_CAP)
+            seen.append(is_call_abandoned())
+        finally:
+            finished.set()
+
+    def parent():
+        try:
+            with pytest.raises(TimeoutError):
+                _invoke_nested("single", leaf, timeout=0.15)
+            assert started.wait(_CAP)
+            assert is_call_abandoned() is False
+            assert _invoke_nested("parallel", is_call_abandoned) is False
+        finally:
+            release.set()
+            assert finished.wait(_CAP)
+
+    _invoke_nested("parallel", parent)
+    assert seen == [True]
+    assert _invoke_nested("single", is_call_abandoned) is False
+
+
+@pytest.mark.parametrize("path", ["market_disk", "snapshot", "kline_disk"])
+@pytest.mark.parametrize("abandon", [True, False], ids=["late", "normal"])
+def test_nested_real_cache_writes(path, abandon, tmp_path, monkeypatch, nested_workers):
+    class CacheClock(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return cls(2026, 10, 24, 12, tzinfo=tz)
+
+    # Keep same-day readback outside the production 17:30-18:00 refresh window.
+    monkeypatch.setattr(akshare_client, "datetime", CacheClock)
+    monkeypatch.setattr(market_cache, "_DISK_CACHE_DIR", tmp_path)
+    monkeypatch.setattr(market_cache, "_disk_enabled", lambda: True)
+    monkeypatch.setattr(AKShareClient, "_kline_cache_dir", classmethod(lambda cls: tmp_path))
+    for name, value in [("_shared_stock_df", None), ("_shared_stock_ts", 0.0),
+                        ("_shared_stock_count", 0), ("_shared_fail_ts", 0.0)]:
+        monkeypatch.setattr(MarketCache, name, value)
+    df = pd.DataFrame({"代码": ["600000"]})
+    cache = MarketCache()
+    started, release, finished = (threading.Event() for _ in range(3))
+    seen = []
+
+    def leaf():
+        started.set()
+        assert release.wait(_CAP)
+        if path == "market_disk":
+            market_cache._disk_save("stocks_df", df)
+        elif path == "snapshot":
+            cache._accept_snapshot(df, "T05-E3-nested")
+        else:
+            AKShareClient._kline_disk_save("600000_daily_qfq_test", df)
+        seen.append(is_call_abandoned())
+
+    def outer():
+        try:
+            return _invoke_nested("parallel", leaf)
+        finally:
+            finished.set()
+
+    try:
+        if abandon:
+            with pytest.raises(TimeoutError):
+                _invoke_nested("single", outer, timeout=0.15)
+            assert started.wait(_CAP)
+        else:
+            release.set()
+            _invoke_nested("single", outer)
+    finally:
+        release.set()
+        assert finished.wait(_CAP)
+    assert seen == [abandon]
+    files = list(tmp_path.iterdir())
+    assert bool(files) is (not abandon)
+    if not abandon:
+        assert len(files) == 1
+        assert files[0].suffix == (".json" if path == "kline_disk" else ".pkl")
+    if path == "kline_disk":
+        payload = AKShareClient._kline_disk_load("600000_daily_qfq_test")
+    else:
+        entry = market_cache._disk_load("stocks_df")
+        payload = None if entry is None else entry["data"]
+    if abandon:
+        assert payload is None
+    else:
+        pd.testing.assert_frame_equal(payload, df)
+    assert (MarketCache._shared_stock_df is df) is (path == "snapshot" and not abandon)
 
 
 def test_is_call_abandoned_false_outside_worker():

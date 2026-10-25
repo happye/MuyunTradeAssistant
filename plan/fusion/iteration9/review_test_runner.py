@@ -35,6 +35,35 @@ def _require_writable(path, root):
         raise RuntimeError("Review test write outside temporary root blocked")
 
 
+def _allow_index_fixture_read(path, mode, flags, *, frame=None):
+    """Qualify the two repository fixtures' read-only protected-index access."""
+    try:
+        if mode is not None and mode not in ("r", "rb", "rt"):
+            return False
+        write_flags = (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC
+                       | os.O_APPEND | os.O_EXCL | getattr(os, "O_TEMPORARY", 0)
+                       | getattr(os, "O_TMPFILE", 0))
+        if not isinstance(flags, int) or flags & write_flags:
+            return False
+        index = _resolved_path(REPO / "knowledge" / "index")
+        if not _resolved_path(path).is_relative_to(index):
+            return False
+        conftest = _resolved_path(REPO / "tests" / "conftest.py")
+        current = sys._getframe(1) if frame is None else frame
+        while current is not None:
+            code = current.f_code
+            if _resolved_path(code.co_filename) == conftest and (
+                code.co_name == "_index_digest"
+                or (code.co_name == "_init"
+                    and code.co_qualname == "_isolate_rag_index_dir.<locals>._init")
+            ):
+                return True
+            current = current.f_back
+        return False
+    except Exception:
+        return False
+
+
 def main():
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
@@ -77,10 +106,13 @@ def main():
                 raise RuntimeError("Review test external IO blocked")
             if event == "open" and isinstance(args[0], (str, bytes, os.PathLike)):
                 path = _resolved_path(args[0])
-                if path.is_relative_to(real_state) or (path in protected_paths and not checking_protection):
+                mode, flags = args[1:3]
+                if path.is_relative_to(real_state) or (
+                    path in protected_paths and not checking_protection
+                    and not _allow_index_fixture_read(path, mode, flags)
+                ):
                     blocked_io["real_state"] += 1
                     raise RuntimeError("Review test real account access blocked")
-                mode, flags = args[1:3]
                 if (isinstance(mode, str) and any(c in mode for c in "wax+")) or (
                     isinstance(flags, int) and flags & (os.O_WRONLY | os.O_RDWR | os.O_CREAT | os.O_TRUNC)
                 ):

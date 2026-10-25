@@ -595,3 +595,13 @@ Status: resolved_for_this_continuation / low. 当前运行时未暴露read_threa
 ### ERR-20261021-T05-REVIEW-GUARD
 
 Status: resolved / parent temporary review fixture only。独立退出复验先3例误拒NUL stdin设备（admitted child=0），再3例误认Windows subprocess审计的list2cmdline字符串为列表（admitted child=0）。仅修OS Temp父夹具：精确NUL别名、精确重建命令字符串；最终3通过，admitted children=3，其他外联/账户0，7源码pins和8保护hash不变。两次夹具失败原始日志保留，未改产品或普通review_test_runner。
+
+
+### ERR-20261024-NESTED-ABANDON｜外层超时内层迟到缓存仍写
+
+基线2727141：call_with_timeout(outer,.05s)，outer另起inner(2s)，等待外层TimeoutError后释放inner；inner is_call_abandoned为False。正式pytest -k nested：8 failed/4 passed/10 deselected（3.25s），四交叉/三层/三真实缓存负例红；正常与兄弟正例保留。T05-E3实现后受影响三文件68 passed/8 skipped（11.50s），最终验收见第十轮记录。原始日志归档到现有TARGETED/FULL，不抹红。
+
+
+### ERR-20261025-VALIDATOR-ISOLATION｜两类验证设施失败不可伪称产品全绿
+
+首次3506 setup errors（140.24s）由旧索引只读门阻断，无正文；完整8182127字节原件gzip保真。修复门后全量3514 passed/2 failed（550.35s），二者均测试写出隔离临时根。保留失败，测试改用tmp_path后两文件10 passed（3.77s）。最后只修改两测试局部body和docstring，528项及全局AST未变，独立复核后增量接收，无最终树一次全绿全量；边界见T05E3_ACCEPTANCE.json。

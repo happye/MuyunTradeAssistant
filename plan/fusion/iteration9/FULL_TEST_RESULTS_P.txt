@@ -2043,3 +2043,126 @@ KNOWLEDGE_FILE_SET_UNCHANGED True
 DELIVERY_FINAL_PINS_UNCHANGED True
 ORIGINAL_ROOT_PROTECTED_8_UNCHANGED True
 
+
+===== T05_E3_FINAL_2026_10_25 =====
+Setup-only failed run: 3506 errors / 11 skipped / 1 deselected, 140.24s; no test bodies ran. Original complete log: iteration10/T05E3_SETUP_ERROR.log.gz.
+T05-E3 FINAL full / main base 2727141799ab48befcb0f172ff43367adb595a06
+COMMAND ["G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe", "-B", "-X", "utf8", "plan/fusion/iteration9/review_test_runner.py", "tests"]
+........................................................................ [  2%]
+........................................................................ [  4%]
+........................................................................ [  6%]
+........................................................................ [  8%]
+........................................................................ [ 10%]
+........................................................................ [ 12%]
+........................................................................ [ 14%]
+........................................................................ [ 16%]
+....................................................................s... [ 18%]
+........................................................................ [ 20%]
+........................................................................ [ 22%]
+........................................................................ [ 24%]
+........................................................................ [ 26%]
+........................................................................ [ 28%]
+........................................................................ [ 30%]
+........................................................................ [ 32%]
+........................................................................ [ 34%]
+........................................................................ [ 36%]
+........................................................................ [ 38%]
+........................................................................ [ 40%]
+........................................................................ [ 42%]
+........................................................................ [ 44%]
+........................................................................ [ 46%]
+........................................................................ [ 48%]
+........................................................................ [ 51%]
+........................................................................ [ 53%]
+........................................................................ [ 55%]
+........................................................................ [ 57%]
+........................................................................ [ 59%]
+........................................................................ [ 61%]
+........................................................................ [ 63%]
+........................................................................ [ 65%]
+........................................................................ [ 67%]
+........................................................................ [ 69%]
+.........F.............................................................. [ 71%]
+........................................................................ [ 73%]
+........................................................................ [ 75%]
+........................................................................ [ 77%]
+........................................................................ [ 79%]
+........................................................................ [ 81%]
+........................................................................ [ 83%]
+........................................................................ [ 85%]
+........................................................................ [ 87%]
+.........................................................ssssssss....... [ 89%]
+...............ss....................................................... [ 91%]
+........................................................................ [ 93%]
+........................................................................ [ 95%]
+........................................F............................... [ 97%]
+.......................................................................  [100%]
+================================== FAILURES ===================================
+_______________ test_red_without_isolation_would_write_repo_dir _______________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015ADD824990>
+tmp_path = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_sp55f3qx/pytest/test_red_without_isolation_wou0')
+
+    def test_red_without_isolation_would_write_repo_dir(monkeypatch, tmp_path):
+        """红（受控演示）：临时把 _REPORT_DIR 指回生产目录 → 出现新文件；测末清理。
+    
+        不依赖 session 守卫（本文件写入会在单测内删除）；证明污染根因是模块常量
+        锚仓库根，而非调用方故意写盘。
+        """
+        _REAL_REPORT_DIR.mkdir(parents=True, exist_ok=True)
+        marker = f"ISO-RED-{datetime.now().strftime('%Y%m%d%H%M%S%f')}"
+        monkeypatch.setattr(ev, "_REPORT_DIR", _REAL_REPORT_DIR)
+        monkeypatch.setattr(ev, "_EVIDENCE_FILE", tmp_path / "evidence.jsonl")
+        monkeypatch.setattr(ev, "_STATE_DIR", tmp_path)
+    
+        before = set(os.listdir(_REAL_REPORT_DIR))
+        rec = ev.record_evidence(
+            _mk_result(name=marker), _mk_strategy(), source="test-iso-red",
+        )
+>       assert rec is not None
+E       assert None is not None
+
+tests\core\test_report_dir_isolation.py:89: AssertionError
+___________________ test_faiss_path_call_ascii_passthrough ____________________
+
+    def test_faiss_path_call_ascii_passthrough():
+        from src.rag.store import _faiss_path_call
+    
+        ascii_root = (
+            Path("C:/muyun_iss123_ascii_tmp")
+            if os.name == "nt"
+            else Path("/tmp/muyun_iss123_ascii_tmp")
+        )
+>       ascii_root.mkdir(parents=True, exist_ok=True)
+
+tests\rag\test_iss123_index_dir_repo_root.py:94: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\pathlib.py:1116: in mkdir
+    os.mkdir(self, mode)
+plan\fusion\iteration9\review_test_runner.py:123: in audit
+    writable(args[0])
+plan\fusion\iteration9\review_test_runner.py:90: in writable
+    _require_writable(path, root)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+path = 'C:\\muyun_iss123_ascii_tmp'
+root = WindowsPath('C:/Users/Crux/AppData/Local/Temp/muyun_review_tests_sp55f3qx')
+
+    def _require_writable(path, root):
+        if not _resolved_path(path).is_relative_to(root):
+>           raise RuntimeError("Review test write outside temporary root blocked")
+E           RuntimeError: Review test write outside temporary root blocked
+
+plan\fusion\iteration9\review_test_runner.py:35: RuntimeError
+=========================== short test summary info ===========================
+FAILED tests/core/test_report_dir_isolation.py::test_red_without_isolation_would_write_repo_dir
+FAILED tests/rag/test_iss123_index_dir_repo_root.py::test_faiss_path_call_ascii_passthrough
+2 failed, 3514 passed, 11 skipped, 1 deselected in 550.35s (0:09:10)
+BLOCKED_IO_ATTEMPTS {'network': 1457, 'subprocess': 12, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+T05E3_DRIVER_CHECKS {"exit_code": 1, "source_pins": 530, "source_unchanged": true, "protected_files": 8, "protected_unchanged": true, "knowledge_files_unchanged": true, "original_untracked_present": true, "original_untracked_count": 207, "driver_seconds": 585.532}
+
+Final acceptance is incremental: the two failing tests had unsafe non-temp writes. Only their local bodies and a module docstring changed; 528 remaining files, including runtime, guard and global fixtures unchanged. Final two-file rerun: 10 passed / 0 skipped, 3.77s. No all-green full run on the final tree is claimed.

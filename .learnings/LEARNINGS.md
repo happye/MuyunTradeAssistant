@@ -2675,3 +2675,15 @@ Status: applied / 第十轮T05-D（commit `ac6ce8a`）。`ThreadPoolExecutor.shu
 Status: applied / 第十轮BUG-OW（ISS-122，commit `c67b85e`）。rich文案里未配对的`[/red]`在运行时才抛`MarkupError`；它放进「数据获取失败则继续」的宽`except Exception`的`try`内，就把展示异常变成fail-open：「拒绝超配」打出后被吞，随后「超配已激活」，3倍涨幅禁入形同虚设。规则：`try`只包数据获取与计算，展示与`return`等控制流放在`try`外；新增`console.print`文案要成对核开闭标签，并用含该分支的测试从磁盘回读最终状态，不只看输出文字。
 
 同类扫描用ast遍历`src/`与`start.py`共544处`console.print`/`rprint`首个字符串参数，MarkupError 0处；局限是变量传入的文案扫不到，不称全仓无此类问题。
+
+
+### LRN-20261024-NESTED-ABANDON｜线程局部取消状态须显式跨线程传递
+
+Status: applied / T05-E3增量限定接收（2026-10-25）。threading.local的栈只属于当前线程；内层另开daemon线程不继承外层Event，文档声称任一祖先放弃即True并不构成实现。正式8个反例在外层超时后放行内层，False及真实临时缓存写入证明缺口。启动前捕获不可变Event引用元组，在worker安装祖先和自身标记并finally清理；不能复制bool或共享可变栈。四种single/parallel组合、深层、兄弟与后继隔离都要验证，缓存负例必须等worker实际完成后再读回，不能凭短暂没有文件假绿。原生Subagent实施，主控唯一执行最终全量与八child矩阵；不因换角色复制全套。底层不可强杀、guard检查后竞态和Baostock会话仍不在本批关闭范围。
+
+
+### LRN-20261025-VALIDATOR-FIXTURE｜兼容审计器与测试临时写入；有证据才复用
+
+Status: applied。旧runner与当前索引摘要/复制fixture冲突导致3506 setup errors，无测试正文。仅为精确conftest函数链开放knowledge/index只读；2红→10绿、smoke22后重跑正文全量。禁止把setup失败记为产品通过。完整重复错误栈gzip保真，模型只读首因/摘要，避免巨量重复上下文。
+
+正文全量3514通过/2失败来自旧测试写真实目录；只修两测试本地body到tmp_path，不放宽生产写门。指纹证明其余528项与AST全局fixture/顶层执行不变，修复后两文件10通过，独立复核支持增量接收，不重复全仓或八child。必须分别报原全量含失败及定向通过，不合成为一次全绿；依赖变化则重新判断复用。保护文件8项hash未变、原207未跟踪仅核存在，不虚称逐字节校验。

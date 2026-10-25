@@ -1,5 +1,34 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 2026-10-24 当前合同：T05-E3 嵌套放弃状态与缓存保护
+
+状态：2026-10-25增量限定接收。用户最新指派只在Codex实施，主控规划/Git、原生Subagent开发与复核；下方Claude/DSH身份为历史。基线main@2727141，已fetch核origin/main一致。
+
+- 对应G7/T05、ISS-120，补T05-E/E2祖先放弃标记：外层.05s超时后，内层2s预算的worker仍读False，已实际复现。
+- 设计：两helper启动线程前捕获祖先Event引用的不可变快照，worker继承祖先与自身Event并finally清理；不复制bool、不共享可变栈、不改父线程状态。
+- 开发Sol/medium所有权：timeout_call.py、test_t05e_late_cache_write.py、start.py帮助一行；主控拥有文档/Git；Sol/high只读核并发。Luna/high核T04剩余无实证行为收益，机械拆分暂缓。型号缺执行元数据时标未核实。
+- 正式先红后绿：四种交叉嵌套、深层/兄弟/下一独立调用隔离、正常写；Event控制完成后回读MarketCache磁盘/共享快照和K线磁盘，迟到拒写且正常写成功；所有阻塞有限，finally释放，mock还原前worker完成。
+- 不改预算/None/负数/NaN、返回与异常实例、daemon/并发、评分/CACHE_VERSION/账户/真实MID/Baostock会话，不新增全局登记或取消服务；不能承诺强杀请求或写入检查后的原子取消。
+- 测试负责人：开发仅普通定向红绿/helper；主控在审查阻塞项归零且源冻结后跑一次守卫全量（显式tests）、一次现有八child退出矩阵；不因换角色重复全仓，默认skip不算child已验。
+- 保护当前8项持仓/备份/知识hash、知识文件集合与原207未跟踪文件；venv/-B/UTF8，禁真实外源/业务AI，只显式add，不stash/reset/覆盖用户状态。默认main普通提交推送。
+- 反例与继承无关或需扩大到Baostock/研究资格时停相关修改；合同内缺陷追修。接收只针对本批，G7/T05/V1不整体关闭。结果追加现有验收资产，不提前标通过。
+
+### 本批验收入口兼容辅项 T05-E3-V
+
+第一次守卫全量在session fixture准备阶段报3506 errors/11 skipped/1 deselected（140.24s），无产品测试体执行，源529项及8项保护文件稳定。原因是第九轮runner禁止读取受保护索引，与第十轮`tests/conftest.py::_index_digest`摘要守卫/临时索引复制不兼容；不算T05-E3生产回归失败，也不算全量通过。
+
+开发者新增有限所有权：`plan/fusion/iteration9/review_test_runner.py`与`tests/core/test_review_runner_index_guard.py`，仅为当前仓精确conftest函数链（`_index_digest`、RAG隔离`_init`）开放knowledge/index只读摘要与临时复制；写flags、其它产品直接读、portfolio和真实home始终拒绝，根外写不豁免。先正式小回归再一个setup smoke，主控独立核权限边界后重新冻结并执行全量。已通过八child专用矩阵的代码/运行器未变，复用该结果，不再次重跑；全量重跑原因明确为验证入口修复。失败原始输出和新结果分开保留。
+
+### T05-E3-V 两项旧测试写入隔离与验收修订
+
+守卫全量实际执行正文：3514 passed/2 failed/11 skipped/1 deselected（550.35s）。两个失败为`test_red_without_isolation_would_write_repo_dir`写真实报告目录、`test_faiss_path_call_ascii_passthrough`写固定C盘/全局tmp目录；不放宽写保护。开发追加所有权仅这两测试函数：改用tmp_path合成目录并保留行为断言。最终两文件10 passed/0 skipped（3.77s）。
+
+2026-10-25合同验收修订：源指纹证明530项中仅上述2文件变化；AST去除模块docstring与指定单个测试函数后相等，imports、顶层执行、共享fixture及其余528项含产品/runner未变。独立Sol/high复核PASS后复用此前全量已通过部分和八child8通过（10.30s），接受增量验证；不以此声称最终树有一次3516全绿全量。产品全局状态已在正文全量验证；如后续改产品、fixture、隔离器或依赖须按影响重新验证。
+
+产品8红→修复、缓存回读6通过、审计器2红→10绿与smoke22通过分步归档，不累加为全量。8项保护hash、知识集合、原207未跟踪保持；审计阻断network1457/subprocess12/real_state0。最终530指纹仅一份清单[T05E3_SOURCE_PINS.json](T05E3_SOURCE_PINS.json)，机器回执[T05E3_ACCEPTANCE.json](T05E3_ACCEPTANCE.json)含增量证明与限制。产品/运行器/末两项测试分别限定PASS；角色指定型号无执行元数据，标未核实。
+
+下一批先定位Baostock完整查询/结果迭代共享会话边界，固定有限反例与合同；真实MID不以模拟晋级，G7/T05/V1仍未关闭。T04机械拆分暂缓。
+
 更新 2026-10-21。本文件是第十轮唯一合同与执行入口；第九轮历史合同与证据仍在 [iteration9/DELIVERY_PLAN.md](../iteration9/DELIVERY_PLAN.md)，不重算。
 
 ## 角色与分工（本轮）

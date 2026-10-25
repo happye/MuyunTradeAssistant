@@ -173,6 +173,7 @@ def show_help():
     L.append(_row())
     L.append(_row("● 提示"))
     L.append(_row("  数据源超时会停止等待并降级；底层请求可能仍在运行，避免连续重试"))
+    L.append(_row("  已放弃的嵌套取数同样跳过快照/K线缓存写入"))
     L.append("└" + "─" * (W + 2) + "┘")
     print("\n".join(L))
     print()
