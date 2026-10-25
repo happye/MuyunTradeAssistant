@@ -87,3 +87,27 @@ S1–S5是工作流分组，不要求一个阶段所有历史基础重复验收�
 ```
 
 正式视图由脚本生成，不手改HTML/Markdown。`--self-test`只验证计算和拒绝边界，不是产品回归。纯进度/文档变更不触发投资产品全量；修改计分器时运行有意义的计算回归和视图检查，产品有改动才按影响执行对应验收。
+
+## 7. 跨会话跨工具恢复与看板更新
+
+这套记忆保存在仓库文件与Git中，不依赖某一聊天是否还打开。同一仓库的新对话、不同工具可以读取同一进度；另一台机器/工作副本须先同步对应提交。工具未获工作区访问、禁用项目规则或普通网页聊天没有本地文件时，不能声称会自动继承。
+
+**新会话入口：**
+
+1. 阅读根`AGENTS.md`、本节与`RESUME.md`；确认实际工作区、Git与未提交修改，不覆盖别人的成果。
+2. 用项目解释器执行`check_progress.py --check`，只读摘要和当前任务段；以磁盘/Git状态为准，不沿用聊天里的旧百分比。
+3. 核对当前任务ID、验收边界、依赖和已有证据，再规划/派发。校验报告视图过期时先核JSON变更归属，由指定写入者重新生成；不要为通过校验擅改任务状态。
+
+**每批结束或交接：**唯一账本写入者合并任务ID、状态与证据增量，登记progress/reopen/scope_change等适用记录，执行`--render`再`--check`，并同步RESUME与实际交付。其余Agent提供增量，不各自保存一份进度表或并行覆盖JSON。任务未整体验收也须报告本批做了什么、尚差哪条；纯维护允许指标不变。
+
+**看板刷新：**当前HTML是账本生成的快照。Agent执行上述交付流程后，页面文件随之更新；已打开的标签页刷新即可看到新结果。没有后台监视器从代码/测试自动猜测完成度；刷新网页本身也不会重新评分。这里没有安装跨工具强制hook或新后台服务。
+
+| 工具 | 持久入口 |
+|---|---|
+| Codex | 根AGENTS.md；CODEX.md补充本节指针 |
+| Claude Code | 根CLAUDE.md显式要求本节流程，不只依赖AGENTS兼容加载 |
+| Grok Build | 根AGENTS.md及.grok/rules/project-progress.md |
+| Copilot | .github/copilot-instructions.md |
+| Cursor | 根.cursorrules的兼容入口；实际加载方式以所用版本/设置为准 |
+
+已核官方入口文档：[Codex项目规则](https://learn.chatgpt.com/docs/agent-configuration/agents-md)、[Claude项目记忆](https://code.claude.com/docs/en/memory)、[Grok Build项目规则](https://docs.x.ai/build/features/project-rules)。项目规则是可持久化的指令，不是对模型服从性的绝对保证；本次只核仓库入口/引用，没有另启各平台付费会话验证。

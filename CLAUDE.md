@@ -6,6 +6,10 @@
 >
 > Note: AGENTS.md and most project docs are written in Chinese. Read them as-is.
 
+## Persistent project progress across conversations
+
+At each new conversation and batch handoff, follow [the shared progress lifecycle](plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新). Read `plan/fusion/RESUME.md`, check Git and run the project interpreter's `scripts/check_progress.py --check`, then read the active task. The shared `PROGRESS.json` owns progress; Claude auto-memory and chat history are not separate authorities. After status/evidence changes, the designated ledger owner updates JSON and runs `--render` then `--check` before delivery. Other agents return task IDs and evidence deltas; do not overwrite each other's ledger edits.
+
 ## Before any non-trivial work: read the discipline skill
 
 **Read `skills/muyun-dev-discipline/SKILL.md` first.** It is the tool-neutral master copy of this project's engineering discipline gates (fix-in-four-steps, same-class scanning, docs≠fix, verification-by-running, tuning red lines, pre-commit checklist). A synced copy also lives in `.claude/skills/muyun-dev-discipline/`.
@@ -85,7 +89,7 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 ## Context Management & Memory
 
 - **Reuse the existing handoff.** Before a context reset, update `plan/fusion/RESUME.md`; do not create another per-session handoff or duplicate archive.
-- **Read order at session start:** [AGENTS.md](AGENTS.md) → [MILESTONES.md](MILESTONES.md) → [STATUS](plan/fusion/STATUS.md) → [RESUME](plan/fusion/RESUME.md) → the current acceptance/plan and Git worktree. `ISSUES.md` provides issue detail; old handoffs are historical evidence only.
+- **Read order at session start:** [AGENTS.md](AGENTS.md) → [progress lifecycle](plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新) → progress check summary/current task → [MILESTONES.md](MILESTONES.md) → [STATUS](plan/fusion/STATUS.md) → [RESUME](plan/fusion/RESUME.md) → current acceptance/plan and Git worktree. `ISSUES.md` provides issue detail; old handoffs are historical evidence only.
 - Auto-memory (`~/.claude/projects/.../memory/`) is injected automatically; consult `MEMORY.md` for user preferences and project direction — no need to read memory files manually.
 - When a lesson, constraint, or decision matters for future work, persist it as a memory file (one fact per file, with frontmatter) and add a one-line pointer in `MEMORY.md`. Record the root cause, the fix, and the guardrail that prevents recurrence — do not repeat the same mistake.
 - Revisit the current plan before making changes so prior decisions are not lost. Use the `neat-freak` skill to sync docs and memory at phase transitions or session end, preventing knowledge rot.

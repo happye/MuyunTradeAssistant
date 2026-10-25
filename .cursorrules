@@ -2,6 +2,8 @@
 
 Single source of truth: [AGENTS.md](AGENTS.md) (Chinese). Read it before non-trivial work.
 
+New conversations and batch handoffs must follow [the shared progress lifecycle](plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新): restore the active task from RESUME/shared JSON and run the project interpreter's `check_progress.py --check`. After status/evidence changes, the one designated ledger owner updates `plan/fusion/PROGRESS.json` and runs `--render` then `--check`; other agents return task/evidence deltas. Do not keep a separate progress authority in private chat memory.
+
 ## Before any non-trivial work
 
 **Read `skills/muyun-dev-discipline/SKILL.md` first.** Tool-neutral master copy of this project's

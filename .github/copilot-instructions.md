@@ -2,6 +2,10 @@
 
 This repository is a Windows-first Python CLI project for an AI-assisted A-share trading workflow. Prefer repository-specific guidance over generic Python habits when they conflict.
 
+## Persistent project progress
+
+Read the shared `AGENTS.md` and follow [the cross-session progress lifecycle](../plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新) at conversation start and batch delivery. Restore the active task from `plan/fusion/RESUME.md` and the shared progress ledger; run the project interpreter's `scripts/check_progress.py --check`. After status/evidence changes, the designated ledger owner updates `PROGRESS.json`, then runs `--render` and `--check`. Do not create a separate chat-memory progress table or overwrite another agent's ledger edits.
+
 ## Core working mode
 
 - Treat non-obvious failures as a workflow event, not just a bug to patch. This is mandatory, not optional.

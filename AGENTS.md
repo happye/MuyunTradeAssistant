@@ -7,7 +7,9 @@
 
 ### 量化任务与每批交付
 
-V1任务/权重/状态唯一登记在`plan/fusion/PROGRESS.json`，读`PROGRESS.md`或`docs/开发进度看板.html`查看生成视图；计分规则见`plan/fusion/PROGRESS_CONTRACT.md`。实质开发先关联稳定任务ID，交付报告说明行为、证据、工程/验收/合同指数前后与剩余/阻断；维护任务允许进度不变。改账本后运行`python -B -X utf8 scripts/check_progress.py --render`及`--check`；不手改生成文件、不用测试数或commit数涨分。范围/权重/适用性变更须留版本与前后影响，未知证据不当作未实施，百分比不能绕过必需验收门。
+V1任务/权重/状态唯一登记在`plan/fusion/PROGRESS.json`，读`plan/fusion/PROGRESS.md`或`docs/开发进度看板.html`查看生成视图；计分规则见`plan/fusion/PROGRESS_CONTRACT.md`。实质开发先关联稳定任务ID，交付报告说明行为、证据、工程/验收/合同指数前后与剩余/阻断；维护任务允许进度不变。改账本后运行`python -B -X utf8 scripts/check_progress.py --render`及`--check`；不手改生成文件、不用测试数或commit数涨分。范围/权重/适用性变更须留版本与前后影响，未知证据不当作未实施，百分比不能绕过必需验收门。
+
+**跨会话、跨工具必须执行**：在同一项目打开任何新对话，先读`plan/fusion/PROGRESS_CONTRACT.md`第7节、`plan/fusion/RESUME.md`，核Git/工作树并运行项目解释器的`check_progress.py --check`，再读取当前任务段；不假定聊天历史或某工具私有memory已共享。批次状态/证据变化后由唯一账本写入者更新JSON及变更记录、执行`--render`与`--check`后再交付；其余Agent只提交任务ID/证据增量，避免相互覆盖。关闭对话前同步恢复指针；无证据或纯维护允许分数不变。规则与账本随Git持久化，不代表浏览器后台跟踪代码或模型绝对服从规则。
 
 > **多 Agent 共用规则**：本文件只定义项目共同规范，不给阅读者自动分配架构师或实施者身份。角色以用户对当前会话的指派为准；Codex 专属约定见 `CODEX.md`，Claude Code 专属约定见 `CLAUDE.md`。共享交接文档中的作者职责不得覆盖当前 Agent 已获指派的任务。
 
