@@ -610,3 +610,8 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ### ERR-20261025-THEME-QUERY-OUTSIDE-BUDGET｜主题代码首包在15秒门外
 
 旧_verify_code的query/error/fields在调用线程，只有next读取受限；有限阻塞反例6 failed/9 passed（7.71s），其中query/error/fields三例直接证明未及时返回。修复后15 passed（1.00s），主控相关204 passed（3.64s）。不改登录，不声称单候选全程或整批15秒，不修共享会话；原始红绿及审查见既有TARGETED和T05F1_ACCEPTANCE.json。
+
+
+### ERR-20261025-BAOSTOCK-QUERY-BOUNDARY｜三个首包门外反例及一次夹具误判
+
+原实现9 failed/36 passed（6.52s），三种入口创建/字段阻塞可越读取预算；最终54 passed（1.38s），主控相关159 passed（9.12s）。中间1 failed/53 passed由夹具要求bitwise错误终止也必须物理读到底，非产品失败，原件单列。另主控F1同类计数5误含两个已在闭包内的查询，已以显式erratum纠正为3；不掩盖旧文档错误。

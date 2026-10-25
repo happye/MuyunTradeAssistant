@@ -2691,4 +2691,9 @@ Status: applied。旧runner与当前索引摘要/复制fixture冲突导致3506 s
 
 ### LRN-20261025-QUERY-CREATION-DEADLINE｜读取预算必须包含查询创建
 
-Status: applied / T05-F1。供应商query返回ResultData前就可能send/recv；只包next()无法限制首包。限定主题核验登录后将query/error/fields复制/耗尽放同一既有15秒worker，返回物化数据，不能让游标逃逸。6红→15绿，相关守卫204通过；无全局状态改动，独立复核后未复制全仓。创建/error/fields/next/row各用有限Event阻塞，finally释放且mock还原前join，迟到数据不改变本次None。新test没有下一请求实测，不夸大证据。已知AKShareClient同类5处另列ISS-120，局部超时不等于共享socket会话安全；shim模式须独立区分。
+Status: applied / T05-F1。供应商query返回ResultData前就可能send/recv；只包next()无法限制首包。限定主题核验登录后将query/error/fields复制/耗尽放同一既有15秒worker，返回物化数据，不能让游标逃逸。6红→15绿，相关守卫204通过；无全局状态改动，独立复核后未复制全仓。创建/error/fields/next/row各用有限Event阻塞，finally释放且mock还原前join，迟到数据不改变本次None。新test没有下一请求实测，不夸大证据。F1曾误计AKShareClient同类5处，F2闭包回读核正3处并处理；股名/预告原已覆盖，显式更正见ISS-120，局部超时不等于共享socket会话安全；shim模式须独立区分。
+
+
+### LRN-20261025-TIMEOUT-PHASE-AND-AUDIT｜移动超时边界须保留异常阶段，行号只作定位
+
+Status: applied / T05-F2。query自己抛TimeoutError原在等待catch之外，直接移进helper会误进本地等待超时降级并丢掉原socket重置。创建/原门外error/fields异常用局部结果送回，在等待catch之后重抛；迭代异常仍原路径。三方法9红→54绿，相关159通过，无全局状态/helper/fixture改动，不复制全仓。不要仅看rg匹配位置判断超时覆盖：股名/预告query已在_read闭包，前批主控误记5处，实际3处；回读调用层级后更正文档和F1机器回执，不冒称另修两点。中间夹具误要求错误终止也读到底，保留失败并修正确合同；错误停止与正常耗尽分别验证。

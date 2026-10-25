@@ -1,29 +1,12 @@
-> **2026-10-22 T04-L 本提交关闭**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected（323.53s）。**下一张**：T04 剩余主要为更厚项（scan-portfolio/chat/noai-debug）需判断，停；T05-G7 仍待产品裁决。
-> **2026-10-22 T04-K 本提交关闭**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected（321.44s）。**下一张**：T04 其余薄内联（backtest/batch_backtest）可继续；scan-portfolio/chat/noai-debug 更厚则停；T05-G7 仍待（不抢道）。
-
-> **2026-10-22 T04-J 本提交关闭**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。**下一张**：T04 其余薄内联（shadow/plan2/research/backtest/scan/chat）若无产品判断则可继续，否则停；T05-G7 仍待（不抢道）。
-
-> **2026-10-22 T04-I 本提交关闭**：抽出 _dispatch_observe_cli（expect/fear/watch_pool）；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）。**下一张**：T04 其余 CLI 内联拆分（doctor/diff/today/…，不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
-
-> **2026-10-22 T04-H 本提交关闭**：抽出 `_dispatch_scan_cli`（scan_market/rules/industries/concepts/events/scan_review/scan_review_import）；定测 132；相关 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s）。**下一张**：T04 其余 CLI 内联拆分（不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
-
-> **2026-10-22 T04-G 本提交关闭**：抽出 `_dispatch_live_cli`（live/live_multi/live_all/live_scan_all）；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）。**下一张**：T04 其余 scan 内联拆分（不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
-
-> **2026-10-22 T04-F 本提交关闭**：抽出 `_dispatch_benzong_cli`（benzong_*）；定测 121；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）。**下一张**：T04 其余大分支拆分（live_multi/live_*/scan 内联，不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
-
-> **2026-10-22 T04-E 本提交关闭**：parse_input/run_cli 分发黄金锁 + `_dispatch_pos_cli` 抽出（定测 118；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s））。**下一张**：T04 其余大分支拆分（不急）；T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）。
-
-
-> **2026-10-22 T05-E2 本提交关闭**：MarketCache ETF/行业/概念共享内存写亦受 `_live_cache_write_allowed` 抑制。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）；T04 大函数拆分（不急）。
-
-> **2026-10-22 T05-E 本提交关闭**：晚到缓存写抑制（`is_call_abandoned` + MarketCache/K线写跳过）。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（均缺有限反例与产品裁决，不抢道）；T04 大函数拆分（不急）。不绑 G7/v43。
 # 融合项目恢复入口
 
 ## 当前入口：2026-10-25 Codex原生Subagent
 
+2026-10-25 T05-F2限定接收：备用行情、历史K线、指数趋势的query创建与耗尽共用各自既有登录后30秒预算，保留供应商异常/socket重置、迭代异常、空/error与正常输出。正式9红→54绿，主控8文件守卫159 passed（9.12s），532项受测指纹、9保护hash和原218未跟踪存在性稳定。本批未跑全量；登录/心跳、整批预算与原生会话重叠仍待，G7/T05/V1未关闭。 本批生产与测试独立复核PASS，见[验收回执](iteration10/T05F2_ACCEPTANCE.json)和[合同](iteration10/DELIVERY_PLAN.md)。E3/F1已分别推送e28c674/ba0fc87；本批SHA核main实际Git日志。下一项是完整Baostock非阻塞会话租约合同，需覆盖全部消费者的登录/心跳/查询/迭代/关闭，不能单站点加锁或仅补更多计数探针。当前只用Codex原生Subagent，主控审批与Git；保留用户配置/账户/索引。
+
 2026-10-25 T05-F1限定接收：主题代码核验的查询创建、错误/字段读取与结果耗尽共用既有登录后15秒预算，首包挂起可降级；正常名称与退市过滤保持。正式6红→15绿，主控五文件守卫204 passed（3.64s），531项受测指纹、9保护hash及原218未跟踪存在性稳定。未跑本批全量；登录/心跳、整批预算及原生共享会话仍未解决，G7/T05/V1未关闭。 生产与回归独立复核PASS，当前证据见[回执](iteration10/T05F1_ACCEPTANCE.json)和[第十轮合同](iteration10/DELIVERY_PLAN.md)。E3已推送`e28c674`；本批交付SHA以main实际Git历史核对。主控只在Codex+原生Subagent实施/Git，不调用DSH。下一项先将非阻塞会话租约的完整消费者范围落合同再实施；不加只覆盖单站点的伪全局锁。
 
-用户改派只在Codex实施，主控规划/审批/Git，原生Subagent开发与复核；不调用DSH。本批基线main@e28c674；当前9项保护文件（含用户本地.codex/config.toml）与218个原有未跟踪文件保持，Git交付核实际main/origin/main。
+用户改派只在Codex实施，主控规划/审批/Git，原生Subagent开发与复核；不调用DSH。本批基线main@ba0fc87；当前9项保护文件（含用户本地.codex/config.toml）与218个原有未跟踪文件保持，Git交付核实际main/origin/main。
 
 2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。 见[验收回执](iteration10/T05E3_ACCEPTANCE.json)与[合同](iteration10/DELIVERY_PLAN.md)。产品、runner与最后两项测试均独立复核PASS；主控负责本提交和普通推送，交付SHA核main实际历史。下一批先限定Baostock查询与迭代会话边界合同；不追加无收益T04机械拆分。
 
@@ -52,3 +35,25 @@
 portfolio/备份、knowledge/index原有脏改与原109个未跟踪文件只保护，不恢复、不提交。项目venv、-B、显式UTF8；review_test_runner全量显式传tests，专用四child另行精确许可，不放宽普通守卫；不git add -A。原生模型实施获用户授权，无产品AI/真实账户迁移；费用未量化，不承诺节省比例或额度耗尽后常驻主控。
 
 本次Codex运行时未提供read_thread/create_thread，引用聊天未读取、新Codex聊天未创建；工作依据已读磁盘交接。下次运行时若工具可用按用户指派处理，不能把本次缺失推广为产品永久限制。
+
+## 历史置顶摘要（仅历史，不作为当前指派）
+
+> **2026-10-22 T04-L 本提交关闭**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected（323.53s）。**下一张**：T04 剩余主要为更厚项（scan-portfolio/chat/noai-debug）需判断，停；T05-G7 仍待产品裁决。
+> **2026-10-22 T04-K 本提交关闭**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected（321.44s）。**下一张**：T04 其余薄内联（backtest/batch_backtest）可继续；scan-portfolio/chat/noai-debug 更厚则停；T05-G7 仍待（不抢道）。
+
+> **2026-10-22 T04-J 本提交关闭**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。**下一张**：T04 其余薄内联（shadow/plan2/research/backtest/scan/chat）若无产品判断则可继续，否则停；T05-G7 仍待（不抢道）。
+
+> **2026-10-22 T04-I 本提交关闭**：抽出 _dispatch_observe_cli（expect/fear/watch_pool）；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）。**下一张**：T04 其余 CLI 内联拆分（doctor/diff/today/…，不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
+
+> **2026-10-22 T04-H 本提交关闭**：抽出 `_dispatch_scan_cli`（scan_market/rules/industries/concepts/events/scan_review/scan_review_import）；定测 132；相关 172；全量 3475 passed/0 failed/11 skipped/1 deselected（380.07s）。**下一张**：T04 其余 CLI 内联拆分（不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
+
+> **2026-10-22 T04-G 本提交关闭**：抽出 `_dispatch_live_cli`（live/live_multi/live_all/live_scan_all）；定测 127；相关 167；全量 3470 passed/0 failed/11 skipped/1 deselected（476.46s）。**下一张**：T04 其余 scan 内联拆分（不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
+
+> **2026-10-22 T04-F 本提交关闭**：抽出 `_dispatch_benzong_cli`（benzong_*）；定测 121；全量 3464 passed/0 failed/11 skipped/1 deselected（484.94s）。**下一张**：T04 其余大分支拆分（live_multi/live_*/scan 内联，不急）；T05-G7 仍待 Baostock 会话回流 / 真实 MID（需产品裁决，不抢道）。
+
+> **2026-10-22 T04-E 本提交关闭**：parse_input/run_cli 分发黄金锁 + `_dispatch_pos_cli` 抽出（定测 118；全量 3461 passed/0 failed/11 skipped/1 deselected（427.50s））。**下一张**：T04 其余大分支拆分（不急）；T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）。
+
+
+> **2026-10-22 T05-E2 本提交关闭**：MarketCache ETF/行业/概念共享内存写亦受 `_live_cache_write_allowed` 抑制。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（需产品裁决，不抢道）；T04 大函数拆分（不急）。
+
+> **2026-10-22 T05-E 本提交关闭**：晚到缓存写抑制（`is_call_abandoned` + MarketCache/K线写跳过）。**下一张**：T05-G7 仍待 Baostock 会话重叠 / 真实 MID（均缺有限反例与产品裁决，不抢道）；T04 大函数拆分（不急）。不绑 G7/v43。

@@ -68,10 +68,17 @@
     "not an entire bzscan batch deadline",
     "underlying worker cannot be forcibly killed",
     "Baostock shared-socket concurrency and late side effects not fixed",
-    "five explicitly known AKShareClient query-creation sites remain; not an exhaustive all-source count",
+    "F1 count corrected: three AKShareClient query-creation sites remained; stock name/forecast already wrapped. See same_class_count_erratum.",
     "no new direct next-request-isolation empirical test; helper unchanged",
     "real MID NO_VALID, G7/T05/V1 incomplete",
     "audit hook is not OS sandbox"
   ],
-  "git": "Codex owns main commit/push; delivery SHA from actual Git history"
+  "git": "Codex owns main commit/push; delivery SHA from actual Git history",
+  "same_class_count_erratum": {
+    "date": "2026-10-25",
+    "initial_count": 5,
+    "confirmed_count": 3,
+    "reason": "Re-read actual closure bodies: stock-name and forecast query creation already occurs inside their timeout workers. This was a documentation audit error, not two further code fixes.",
+    "next_scope": "T05-F2 realtime/kline/index"
+  }
 }

@@ -2245,7 +2245,9 @@ P3（已取消）:
 
 ### ISS-120: 三个共享超时包装器返回后仍阻塞解释器退出
 
-- **2026-10-25 T05-F1限定接收（基线e28c674，交付SHA见本项Git历史）**：`src/core/benzong/theme_locator.py:125`将query创建/错误/fields复制/耗尽放入既有15秒worker；登录另计，正常匹配过滤保持。6红→15绿，守卫相关204通过（3.64s），531源/9保护hash稳定；回执iteration10/T05F1_ACCEPTANCE.json。本批未跑全量。已知同类剩余5个AKShareClient站点（股名/预告/备用报价/K线/指数）另处理；原生共享socket晚到logout/重登风险需完整消费者会话合同，真实串证券未复现，shim替换路径不套用该原生推断；G7/T05不关闭。
+- **2026-10-25 T05-F2限定接收（基线ba0fc87，交付SHA核本项Git历史）**：`src/data/akshare_client.py::_fetch_baostock_realtime/_fetch_baostock_kline/_get_index_trend_uncached`的query创建/读取共用各自原30秒，登录另计；query自身TimeoutError仍走原外层socket重置，迭代异常/参数/正常输出保持。9红→54绿，守卫相关159通过（9.12s），532源/9保护hash稳定，回执iteration10/T05F2_ACCEPTANCE.json；本批无全量。F1旧5计数明确更正为3，股名/预告先已覆盖；该3处现修复，原生共享会话及其它消费者仍待全合同，不关闭G7/T05。
+
+- **2026-10-25 T05-F1限定接收（基线e28c674，交付SHA见本项Git历史）**：`src/core/benzong/theme_locator.py:125`将query创建/错误/fields复制/耗尽放入既有15秒worker；登录另计，正常匹配过滤保持。6红→15绿，守卫相关204通过（3.64s），531源/9保护hash稳定；回执iteration10/T05F1_ACCEPTANCE.json。本批未跑全量。初记5个同类站点，随后闭包回读纠正：股名/预告已覆盖，真正3个由F2处理；原生共享socket晚到logout/重登风险需完整消费者会话合同，真实串证券未复现，shim替换路径不套用该原生推断；G7/T05不关闭。
 
 - **2026-10-25 T05-E3增量限定接收（基线2727141，修复SHA见本项Git历史）**：两helper祖先Event继承，正式8红后修复；源码`src/data/timeout_call.py:30`与两helper、回归`tests/core/test_t05e_late_cache_write.py`。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）；其余528项未变，八child8通过。回执iteration10/T05E3_ACCEPTANCE.json；无最终树全绿全量声明，仅补T05-E/E2，Baostock会话/写检查后竞态及G7/T05仍待。
 

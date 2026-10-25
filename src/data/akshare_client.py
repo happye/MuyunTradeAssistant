@@ -1061,38 +1061,47 @@ class AKShareClient:
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=10)).strftime("%Y-%m-%d")
 
-            rs = bs.query_history_k_data_plus(
-                bs_code,
-                "date,code,open,high,low,close,preclose,volume,amount",
-                start_date=start_date,
-                end_date=end_date,
-                frequency="d"
-            )
-
-            if rs.error_code != '0':
-                logger.warning(f"Baostock实时行情查询失败 {stock_code}: {rs.error_msg}")
-                return None
-
-            # v0.8.9.5（彻查批 P1-2）：bs.next() 读取包线程级硬超时——本文件其余
-            # baostock 读取点（K线/大盘/股名）均有保护，唯独此处漏网（ISS-047 同类点）
+            # 创建与完整读取共用预算；原门外异常作为载荷送回，保留重置路径。
             def _read_all():
+                try:
+                    rs = bs.query_history_k_data_plus(
+                        bs_code,
+                        "date,code,open,high,low,close,preclose,volume,amount",
+                        start_date=start_date,
+                        end_date=end_date,
+                        frequency="d"
+                    )
+                    if rs.error_code != '0':
+                        return {"query_error": rs.error_msg}
+                except Exception as e:
+                    return {"exception": e}
                 data_list = []
                 while rs.next():
                     data_list.append(rs.get_row_data())
-                return data_list
+                try:
+                    fields = list(rs.fields) if data_list else []
+                except Exception as e:
+                    return {"exception": e}
+                return {"data": data_list, "fields": fields}
 
             try:
-                data_list = _call_with_timeout(_read_all, timeout=30)
+                result = _call_with_timeout(_read_all, timeout=30)
             except FuturesTimeout:
                 logger.warning(f"Baostock 读取实时行情超时 {stock_code}，走降级")
                 return None
 
+            if "exception" in result:
+                raise result["exception"]
+            if "query_error" in result:
+                logger.warning(f"Baostock实时行情查询失败 {stock_code}: {result['query_error']}")
+                return None
+            data_list = result["data"]
             if not data_list:
                 return None
 
             # 取最近一条（最后一行）
             latest = data_list[-1]
-            return cls._baostock_quote_from_row(rs.fields, latest, code)
+            return cls._baostock_quote_from_row(result["fields"], latest, code)
 
         except Exception as e:
             logger.warning(f"_fetch_baostock_realtime异常 {stock_code}: {e}")
@@ -1182,35 +1191,45 @@ class AKShareClient:
                 fields = "date,code,open,high,low,close,preclose,volume,amount"
             else:
                 fields = "date,code,open,high,low,close,volume,amount"
-            rs = bs.query_history_k_data_plus(
-                bs_code,
-                fields,
-                start_date=start_date,
-                end_date=end_date,
-                frequency=freq,
-                adjustflag=cls._BAOSTOCK_ADJUST_FLAG.get(adjust, "3")
-            )
-
-            if rs.error_code != '0':
-                logger.error(f"Baostock查询失败: {rs.error_msg}")
-                return None
-
-            # v0.8.6.4：bs.next() 读取结果可能 socket 卡住，线程级超时保护
+            # 创建与完整读取共用预算；保留原查询/字段异常与迭代异常的分界。
             def _read_all():
+                try:
+                    rs = bs.query_history_k_data_plus(
+                        bs_code,
+                        fields,
+                        start_date=start_date,
+                        end_date=end_date,
+                        frequency=freq,
+                        adjustflag=cls._BAOSTOCK_ADJUST_FLAG.get(adjust, "3")
+                    )
+                    if rs.error_code != '0':
+                        return {"query_error": rs.error_msg}
+                except Exception as e:
+                    return {"exception": e}
                 data = []
                 while (rs.error_code == '0') & rs.next():
                     data.append(rs.get_row_data())
-                return data
+                try:
+                    result_fields = list(rs.fields) if data else []
+                except Exception as e:
+                    return {"exception": e}
+                return {"data": data, "fields": result_fields}
             try:
-                data_list = _call_with_timeout(_read_all, timeout=30)
+                result = _call_with_timeout(_read_all, timeout=30)
             except FuturesTimeout:
                 logger.warning(f"Baostock 读取K线超时 {stock_code}，走降级")
                 return None
 
+            if "exception" in result:
+                raise result["exception"]
+            if "query_error" in result:
+                logger.error(f"Baostock查询失败: {result['query_error']}")
+                return None
+            data_list = result["data"]
             if not data_list:
                 return None
 
-            df = pd.DataFrame(data_list, columns=rs.fields)
+            df = pd.DataFrame(data_list, columns=result["fields"])
 
             # 标准化列名
             df = df.rename(columns={
@@ -1732,30 +1751,39 @@ class AKShareClient:
             end_date = datetime.now().strftime("%Y-%m-%d")
             start_date = (datetime.now() - timedelta(days=400)).strftime("%Y-%m-%d")
 
-            rs = bs.query_history_k_data_plus(
-                index_code,
-                "date,close,high,preclose",
-                start_date=start_date,
-                end_date=end_date,
-                frequency="d",
-            )
-
             def _read_index_rows():
+                try:
+                    rs = bs.query_history_k_data_plus(
+                        index_code,
+                        "date,close,high,preclose",
+                        start_date=start_date,
+                        end_date=end_date,
+                        frequency="d",
+                    )
+                except Exception as e:
+                    return {"exception": e}
                 rows = []
                 while (rs.error_code == '0') and rs.next():
                     rows.append(rs.get_row_data())
-                return rows
+                try:
+                    fields = list(rs.fields) if len(rows) >= 20 else []
+                except Exception as e:
+                    return {"exception": e}
+                return {"data": rows, "fields": fields}
             try:
-                rows = _call_with_timeout(_read_index_rows, timeout=30)
+                result = _call_with_timeout(_read_index_rows, timeout=30)
             except FuturesTimeout:
                 logger.warning(f"Baostock 读取大盘数据超时 {index_code}，走降级")
                 return None
 
+            if "exception" in result:
+                raise result["exception"]
+            rows = result["data"]
             if not rows or len(rows) < 20:
                 logger.warning(f"大盘数据不足（{len(rows)}行），无法判断趋势")
                 return None
 
-            df = pd.DataFrame(rows, columns=rs.fields)
+            df = pd.DataFrame(rows, columns=result["fields"])
             df['close'] = pd.to_numeric(df['close'], errors='coerce')
             df['preclose'] = pd.to_numeric(df['preclose'], errors='coerce')
             if 'high' in df.columns:

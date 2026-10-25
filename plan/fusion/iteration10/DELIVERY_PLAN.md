@@ -1,5 +1,20 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 2026-10-25 当前合同：T05-F2 三个备用行情查询创建等待界
+
+状态：2026-10-25限定接收，基线main@ba0fc87已推送，本批SHA核实际Git历史。范围只含AKShareClient的`_fetch_baostock_realtime`、`_fetch_baostock_kline`、`_get_index_trend_uncached`，将query创建与读取共用各自既有30秒预算，登录另计；由Astra/low核异常边界、Sol/medium实施、Sol/high独立复核，型号无执行元数据时标未核实。
+
+- 计数纠正：F1曾记5处剩余，重读实际闭包后发现股名/预告早已把query创建纳入worker；真正同类是上述3处。不能仅凭rg行号判断超时覆盖，旧计数不作为扩大实施的依据。
+- 开发所有权仅`src/data/akshare_client.py`这3方法、新`tests/core/test_baostock_query_deadline.py`、start.py帮助短行；主控文档/Git，保留所有其他用户修改，不递归委派。
+- worker完成创建、原错误检查、耗尽与必要fields复制，返回物化载荷；原数据转换/quote构造/指数计算在调用方。真实query抛的TimeoutError原走外层异常/socket重置，不能因迁入helper而误当等待预算耗尽：创建/原门外fields异常作为局部载荷返回，在内层超时捕获之后重抛。原迭代异常路径保持；指数原error/空行语义、K线`&`循环求值、参数/复权/日期/日志文本和等级保持。
+- 有限矩阵：三方法创建阻塞先红后绿、迭代阻塞、正常query参数及quote/DF/指数输出、错误/空、供应商普通异常与`TimeoutError(socket...)`重置行为、迟到完成不触发调用方转换。线程在mock恢复前全部有限释放/join，禁止外源/业务AI。
+- 开发只定向红绿；主控一次守卫组合含新test、F1主题、batch_quotes/iss089、fundamental_alert、signal_authority_iss117和v0895正确性，独立审查不复制。不新改全局状态/helper/fixture，不预设全仓；发现影响扩大再核验证范围。
+- 不改30秒预算、登录/心跳/logout机制、缓存策略、决策/评分/阈值、shim、其他模块、真实MID/整个会话串行化。无法强杀底层调用，超时后仍可能运行。若需修改这些边界停止本卡转合同；G7/T05/V1保持未完成。
+
+**F2最终验收**：旧实现9 failed/36 passed（6.52s），最终新文件54 passed（1.38s）；中间一次1 failed/53 passed是测试夹具误要求错误终止也必须物理读到底，修夹具并保留原件，不记为产品回归。主控一次8文件守卫159 passed/0 failed（9.12s），包含新test、F1主题、batch_quotes、iss089、fundamental_alert、signal_authority_iss117、v0895_correctness_batch、t05e_late_cache_write。532受测指纹与9保护hash/知识集合/原218未跟踪存在性保持，阻断IO为{'network': 1, 'subprocess': 0, 'real_state': 0}。实际help相关行74列。独立只读审查PASS，不复制测试；无全局状态/helper/fixture改动，本批不跑全仓，不将E3全量记作F2全量。回执[T05F2_ACCEPTANCE.json](T05F2_ACCEPTANCE.json)，源清单[T05F2_SOURCE_PINS.json](T05F2_SOURCE_PINS.json)，红绿/夹具失败/审查归档既有TARGETED。
+
+**本卡同类核对**：原报5处中股名/预告本已受限，已留显式更正；本次3个明确门外站点已修。只对这组已核定入口成立，不证明其它模块、登录/心跳或共享会话整体安全。下一张全会话租约须先落跨模块合同与有限矩阵，再实施。
+
 ## 2026-10-25 当前合同：T05-F1 主题代码核验查询等待界
 
 状态：2026-10-25限定接收，基线main@e28c674（已推送），本批交付SHA核main日志。Codex主控/Git，Sol/medium开发、Sol/high只读审查；架构Astra/low已裁决此有限切片。实际型号缺运行元数据时标未核实。
@@ -13,7 +28,7 @@
 
 **F1最终验收**：旧源码6 failed/9 passed（7.71s），修复后新文件15 passed（1.00s）；主控一次5文件守卫204 passed/0 failed/0 skipped（3.64s），包含新test、scan_caches、candidate_lineage、bzscan_parse与t04e_dispatch_golden。531项指纹起止一致，9项保护hash/知识集合及原218未跟踪存在性不变，阻断IO三项计数均0。真实AST帮助渲染相关行74列。只读独立复核PASS，未复制测试；本批没有全量，不将E3旧全量称为F1全量。见[T05F1_ACCEPTANCE.json](T05F1_ACCEPTANCE.json)、[531项清单](T05F1_SOURCE_PINS.json)及既有TARGETED原始日志。迟到结果不改变本次返回已实测，下一请求隔离基于未改helper与局部状态，不冒称新增测试已覆盖。
 
-**同类明确剩余5处**：AKShareClient的股名、预告、实时备用报价、历史K线和指数趋势，query创建仍在各自读取helper外；本批不扩大。其他直接Baostock消费者及登录/心跳/关闭入口另按全会话合同核定，不把5当全源穷尽。
+**F1同类计数更正**：原记5处，2026-10-25实际闭包回读确认股名/预告创建已在worker内，真正剩余3处为实时备用报价、历史K线、指数趋势；由后续F2处理，不能把rg行号当覆盖判断。其他直接Baostock消费者及登录/心跳/关闭入口另按全会话合同核定，不把5当全源穷尽。
 
 后续会话合同候选为完整查询worker的非阻塞独占租约：旧worker实际结束前保持busy，新请求立即降级、无排队；登录/心跳/创建/分页/登出全部消费者共同接入。该候选尚未批准实施，不引入actor或单站点伪全局锁；真实数据串证券尚无复现证据。
 

@@ -24269,3 +24269,426 @@ HELP_ROWS_WIDTH_74 True
 Verified query creation, error_code, fields copy and complete iteration share existing timeout=15. Login and existing normal/name/delist/empty/exception behavior unchanged. Old red query/error/fields cases prove actual unbounded wait, not just payload shape; 6failed/9passed7.71s, final15passed1.00s.
 Event barriers release in finally; caller and owned workers joined before monkeypatch restoration. Late worker really consumes rows and expired return remains None. New tests do not directly issue a subsequent verification, so do not claim a new empirical no-cross-request test; local state and unchanged helper per-call queue support isolation. Shared Baostock socket and late side effects remain out of scope.
 Planned five-file guarded related suite sufficient; no reason found to require full suite. Guard result was pending at review and subsequently verified by parent:204passed3.64s, source531/protected9 unchanged, original218untracked present.
+
+===== T05_F2_FINAL_2026_10_25 =====
+
+--- ORIGINAL_SOURCE_RED ---
+F.FF.FF.FFFF.................................                            [100%]
+================================== FAILURES ===================================
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[realtime-query] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF723B7D0>
+env = namespace(kind='realtime', invoke=<function env.<locals>.invoke at 0x0000015BF7588220>, workers=[<Thread(muyun-timeout-call, stopped daemon 31272)>], budgets=[30], logouts=[], conversions=[<Thread(Thread-1 (invoke), stopped daemon 39992)>])
+stage = 'query'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: realtime/query escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf71d9990: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[realtime-fields] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF72CD210>
+env = namespace(kind='realtime', invoke=<function env.<locals>.invoke at 0x0000015BF72C7B00>, workers=[<Thread(muyun-timeout-call, stopped daemon 34876)>], budgets=[30], logouts=[], conversions=[<Thread(Thread-3 (invoke), stopped daemon 42460)>])
+stage = 'fields'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: realtime/fields escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf72cd1d0: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[kline-query] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF726E510>
+env = namespace(kind='kline', invoke=<function env.<locals>.invoke at 0x0000015BF7588180>, workers=[<Thread(muyun-timeout-ca... daemon 38964)>, <Thread(Thread-4 (invoke), stopped daemon 38964)>, <Thread(Thread-4 (invoke), stopped daemon 38964)>])
+stage = 'query'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: kline/query escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf6edf810: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[kline-fields] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF71D9550>
+env = namespace(kind='kline', invoke=<function env.<locals>.invoke at 0x0000015BF73CA7A0>, workers=[<Thread(muyun-timeout-ca... daemon 28872)>, <Thread(Thread-6 (invoke), stopped daemon 28872)>, <Thread(Thread-6 (invoke), stopped daemon 28872)>])
+stage = 'fields'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: kline/fields escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf7185d90: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[index-query] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF746E210>
+env = namespace(kind='index', invoke=<function env.<locals>.invoke at 0x0000015BF7588400>, workers=[<Thread(muyun-timeout-ca... daemon 16352)>, <Thread(Thread-7 (invoke), stopped daemon 16352)>, <Thread(Thread-7 (invoke), stopped daemon 16352)>])
+stage = 'query'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: index/query escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf746c410: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+_ test_blocked_query_returns_before_release_and_late_rows_do_not_convert[index-fields] _
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF723B390>
+env = namespace(kind='index', invoke=<function env.<locals>.invoke at 0x0000015BF6EF7F60>, workers=[<Thread(muyun-timeout-ca...ped daemon 6028)>, <Thread(Thread-9 (invoke), stopped daemon 6028)>, <Thread(Thread-9 (invoke), stopped daemon 6028)>])
+stage = 'fields'
+
+    @pytest.mark.parametrize("stage", ["query", "next", "fields"])
+    def test_blocked_query_returns_before_release_and_late_rows_do_not_convert(monkeypatch, env, stage):
+        entered, release, finished = threading.Event(), threading.Event(), threading.Event()
+        returned = []
+    
+        def hook(current):
+            if stage == current:
+                entered.set()
+                assert release.wait(3), "test barrier was not released"
+    
+        result = Result(env.kind, hook=hook)
+        install(monkeypatch, result, lambda: hook("query"))
+    
+        def invoke():
+            try:
+                returned.append(env.invoke())
+            finally:
+                finished.set()
+    
+        caller = threading.Thread(target=invoke, daemon=True)
+        caller.start()
+        try:
+            assert entered.wait(2)
+>           assert finished.wait(0.7), f"{env.kind}/{stage} escaped wait budget"
+E           AssertionError: index/fields escaped wait budget
+E           assert False
+E            +  where False = wait(0.7)
+E            +    where wait = <threading.Event at 0x15bf7238790: unset>.wait
+
+tests\core\test_baostock_query_deadline.py:145: AssertionError
+________ test_normal_query_parameters_and_caller_conversion[realtime] _________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF723BA10>
+env = namespace(kind='realtime', invoke=<function env.<locals>.invoke at 0x0000015BF70C44A0>, workers=[<Thread(muyun-timeout-call, stopped daemon 39364)>], budgets=[30], logouts=[], conversions=[<_MainThread(MainThread, started 40368)>])
+
+    def test_normal_query_parameters_and_caller_conversion(monkeypatch, env):
+        operations = []
+        result = Result(env.kind, hook=lambda stage: operations.append(threading.current_thread()))
+        calls = install(monkeypatch, result)
+        value = env.invoke(adjust="qfq")
+        args, kwargs, query_thread = calls[0]
+        if env.kind == "index":
+            assert args == ("sh.000300", "date,close,high,preclose")
+            assert kwargs == {"start_date": "2025-09-20", "end_date": "2026-10-25", "frequency": "d"}
+            assert value == {"trend": "BULLISH", "ma20": 114.5, "ma60": None,
+                             "ma250": None, "close": 124.0, "change_pct": 0.81,
+                             "high_250d": None, "change_20d": 19.23}
+        else:
+            assert args == ("sh.600519", ",".join(result._fields))
+            expected = {"start_date": "2026-10-01" if env.kind == "kline" else "2026-10-15",
+                        "end_date": "2026-10-25", "frequency": "d"}
+            if env.kind == "kline":
+                expected["adjustflag"] = "2"
+                assert value.iloc[0].to_dict() == {
+                    "日期": "2026-10-23", "代码": "sh.600519", "开盘": 10,
+                    "最高": 12, "最低": 9, "收盘": 11, "preclose": 10,
+                    "成交量": 100, "成交额": 1100,
+                }
+            else:
+                assert value["price"] == 11 and value["change_pct"] == 10
+                assert value["effective_at"] == "2026-10-23"
+                assert value["volume"] == 100 and value["source"] == "baostock"
+            assert kwargs == expected
+>       assert query_thread is not threading.current_thread()
+E       assert <_MainThread(MainThread, started 40368)> is not <_MainThread(MainThread, started 40368)>
+E        +  where <_MainThread(MainThread, started 40368)> = <function current_thread at 0x0000015BBF12A8E0>()
+E        +    where <function current_thread at 0x0000015BBF12A8E0> = threading.current_thread
+
+tests\core\test_baostock_query_deadline.py:189: AssertionError
+__________ test_normal_query_parameters_and_caller_conversion[kline] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF527D5D0>
+env = namespace(kind='kline', invoke=<function env.<locals>.invoke at 0x0000015BF72C7F60>, workers=[<Thread(muyun-timeout-ca...hread(MainThread, started 40368)>, <_MainThread(MainThread, started 40368)>, <_MainThread(MainThread, started 40368)>])
+
+    def test_normal_query_parameters_and_caller_conversion(monkeypatch, env):
+        operations = []
+        result = Result(env.kind, hook=lambda stage: operations.append(threading.current_thread()))
+        calls = install(monkeypatch, result)
+        value = env.invoke(adjust="qfq")
+        args, kwargs, query_thread = calls[0]
+        if env.kind == "index":
+            assert args == ("sh.000300", "date,close,high,preclose")
+            assert kwargs == {"start_date": "2025-09-20", "end_date": "2026-10-25", "frequency": "d"}
+            assert value == {"trend": "BULLISH", "ma20": 114.5, "ma60": None,
+                             "ma250": None, "close": 124.0, "change_pct": 0.81,
+                             "high_250d": None, "change_20d": 19.23}
+        else:
+            assert args == ("sh.600519", ",".join(result._fields))
+            expected = {"start_date": "2026-10-01" if env.kind == "kline" else "2026-10-15",
+                        "end_date": "2026-10-25", "frequency": "d"}
+            if env.kind == "kline":
+                expected["adjustflag"] = "2"
+                assert value.iloc[0].to_dict() == {
+                    "日期": "2026-10-23", "代码": "sh.600519", "开盘": 10,
+                    "最高": 12, "最低": 9, "收盘": 11, "preclose": 10,
+                    "成交量": 100, "成交额": 1100,
+                }
+            else:
+                assert value["price"] == 11 and value["change_pct"] == 10
+                assert value["effective_at"] == "2026-10-23"
+                assert value["volume"] == 100 and value["source"] == "baostock"
+            assert kwargs == expected
+>       assert query_thread is not threading.current_thread()
+E       assert <_MainThread(MainThread, started 40368)> is not <_MainThread(MainThread, started 40368)>
+E        +  where <_MainThread(MainThread, started 40368)> = <function current_thread at 0x0000015BBF12A8E0>()
+E        +    where <function current_thread at 0x0000015BBF12A8E0> = threading.current_thread
+
+tests\core\test_baostock_query_deadline.py:189: AssertionError
+__________ test_normal_query_parameters_and_caller_conversion[index] __________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000015BF5095910>
+env = namespace(kind='index', invoke=<function env.<locals>.invoke at 0x0000015BF73CA700>, workers=[<Thread(muyun-timeout-ca...hread(MainThread, started 40368)>, <_MainThread(MainThread, started 40368)>, <_MainThread(MainThread, started 40368)>])
+
+    def test_normal_query_parameters_and_caller_conversion(monkeypatch, env):
+        operations = []
+        result = Result(env.kind, hook=lambda stage: operations.append(threading.current_thread()))
+        calls = install(monkeypatch, result)
+        value = env.invoke(adjust="qfq")
+        args, kwargs, query_thread = calls[0]
+        if env.kind == "index":
+            assert args == ("sh.000300", "date,close,high,preclose")
+            assert kwargs == {"start_date": "2025-09-20", "end_date": "2026-10-25", "frequency": "d"}
+            assert value == {"trend": "BULLISH", "ma20": 114.5, "ma60": None,
+                             "ma250": None, "close": 124.0, "change_pct": 0.81,
+                             "high_250d": None, "change_20d": 19.23}
+        else:
+            assert args == ("sh.600519", ",".join(result._fields))
+            expected = {"start_date": "2026-10-01" if env.kind == "kline" else "2026-10-15",
+                        "end_date": "2026-10-25", "frequency": "d"}
+            if env.kind == "kline":
+                expected["adjustflag"] = "2"
+                assert value.iloc[0].to_dict() == {
+                    "日期": "2026-10-23", "代码": "sh.600519", "开盘": 10,
+                    "最高": 12, "最低": 9, "收盘": 11, "preclose": 10,
+                    "成交量": 100, "成交额": 1100,
+                }
+            else:
+                assert value["price"] == 11 and value["change_pct"] == 10
+                assert value["effective_at"] == "2026-10-23"
+                assert value["volume"] == 100 and value["source"] == "baostock"
+            assert kwargs == expected
+>       assert query_thread is not threading.current_thread()
+E       assert <_MainThread(MainThread, started 40368)> is not <_MainThread(MainThread, started 40368)>
+E        +  where <_MainThread(MainThread, started 40368)> = <function current_thread at 0x0000015BBF12A8E0>()
+E        +    where <function current_thread at 0x0000015BBF12A8E0> = threading.current_thread
+
+tests\core\test_baostock_query_deadline.py:189: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[realtime-query]
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[realtime-fields]
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[kline-query]
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[kline-fields]
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[index-query]
+FAILED tests/core/test_baostock_query_deadline.py::test_blocked_query_returns_before_release_and_late_rows_do_not_convert[index-fields]
+FAILED tests/core/test_baostock_query_deadline.py::test_normal_query_parameters_and_caller_conversion[realtime]
+FAILED tests/core/test_baostock_query_deadline.py::test_normal_query_parameters_and_caller_conversion[kline]
+FAILED tests/core/test_baostock_query_deadline.py::test_normal_query_parameters_and_caller_conversion[index]
+9 failed, 36 passed in 6.52s
+
+
+--- FIXTURE_ONLY_INTERMEDIATE_FAILURE ---
+....................................................F.                   [100%]
+================================== FAILURES ===================================
+_____ test_index_short_rows_and_changed_error_keep_read_semantics[kline] ______
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001CDDC8BFC50>
+env = namespace(kind='kline', invoke=<function env.<locals>.invoke at 0x000001CDDC8CC0E0>, workers=[<Thread(muyun-timeout-ca...sh.600519', '10', '12', '9', '11', ...]] = <test_baostock_query_deadline.Result object at 0x000001CDDC8BCED0>.rows")}])
+
+    def test_index_short_rows_and_changed_error_keep_read_semantics(monkeypatch, env):
+        result = Result(env.kind)
+        result.rows = result.rows[:3] if env.kind == "index" else result.rows * 2
+    
+        def hook(stage):
+            if stage == "row":
+                result.error = "1"
+    
+        result.hook = hook
+        install(monkeypatch, result)
+        value = env.invoke()
+        if env.kind == "kline":
+            # Bitwise &: next() still runs when the changed error code is nonzero.
+>           assert result.next_calls == 2 and len(value) == 1
+                                              ^^^^^^^^^^
+E           TypeError: object of type 'NoneType' has no len()
+
+tests\core\test_baostock_query_deadline.py:262: TypeError
+------------------------------ Captured log call ------------------------------
+ERROR    src.data.akshare_client:akshare_client.py:1257 Baostock获取K线异常 600519: fields consumed before iteration ended
+assert 1 >= 2
+ +  where 1 = <test_baostock_query_deadline.Result object at 0x000001CDDC8BCED0>.index
+ +  and   2 = len([['2026-10-23', 'sh.600519', '10', '12', '9', '11', ...], ['2026-10-23', 'sh.600519', '10', '12', '9', '11', ...]])
+ +    where [['2026-10-23', 'sh.600519', '10', '12', '9', '11', ...], ['2026-10-23', 'sh.600519', '10', '12', '9', '11', ...]] = <test_baostock_query_deadline.Result object at 0x000001CDDC8BCED0>.rows
+=========================== short test summary info ===========================
+FAILED tests/core/test_baostock_query_deadline.py::test_index_short_rows_and_changed_error_keep_read_semantics[kline]
+1 failed, 53 passed in 2.51s
+
+
+--- FINAL_DEVELOPER_GREEN ---
+......................................................                   [100%]
+54 passed in 1.38s
+
+
+--- PARENT_GUARDED_RELATED ---
+T05-F2 guarded related verification; native provider mocked, shim env unset
+COMMAND ["G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe", "-B", "-X", "utf8", "plan/fusion/iteration9/review_test_runner.py", "tests/core/test_baostock_query_deadline.py", "tests/benzong/test_theme_verify_query_timeout.py", "tests/core/test_batch_quotes.py", "tests/core/test_iss089_realtime_quote.py", "tests/core/test_fundamental_alert.py", "tests/core/test_signal_authority_iss117.py", "tests/core/test_v0895_correctness_batch.py", "tests/core/test_t05e_late_cache_write.py"]
+........................................................................ [ 45%]
+........................................................................ [ 90%]
+...............                                                          [100%]
+159 passed in 9.12s
+BLOCKED_IO_ATTEMPTS {'network': 1, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+
+--- ACTUAL_AST_HELP_RENDER ---
+│   expect [天数]             预期事件日历 + 透支面板（默认30天）        │
+│   已放弃的嵌套取数同样跳过快照/K线缓存写入                             │
+│   主题代码查询与读取共用15秒等待，登录另计                             │
+│   备用行情查询与读取共用30秒等待，登录另计                             │
+HELP_ROWS_WIDTH_74 True
+
+
+--- INDEPENDENT_NARROW_REVIEW ---
+2026-10-25 independent T05-F2 quality review: PASS scoped three methods/new tests/help. Requested Sol/high; actual execution model metadata unverified. Read-only, no tests/file edits/delegation.
+AST comparison confirmed only the three approved AKShareClient methods changed. Query creation, consumption and necessary fields copy share existing30seconds each; login separate. Creation/original outside error+fields exceptions return local payload and are rethrown after inner timeout catch, preserving outer log/socket logout. Iteration TimeoutError remains old inner degrade path. Index error_code remains its original iteration phase.
+Kline bitwise &, index short-circuit and, initial error/empty/less-than20 skip-fields behavior unchanged. Query args/adjust/date, quote/DF/index transformations unchanged. Red query/fields six cases directly show outside-budget blocking, not only payload assertions. Normal tests check same worker/field copies/materialized rows/caller-side conversions.
+Finally releases Event, joins caller; fixture joins all workers before monkeypatch restore. After late completion return stays None and caller conversion never executes. No thread/mock leak found. Red9failed36passed6.52s; final54passed1.38s. Intermediate1failed53passed is a fixture assumption error demanding physical EOF after legitimate error termination; fix permits correct state and raw failure retained.
+Reviewed source SHA2561427e497e3a15cbd19d447238943f00fbca11d0f4308d7cd8a473534e9ac3058.
+One planned eight-file guarded related run sufficient; no concrete full-suite requirement found. Guard run pending at review; parent must verify before acceptance. Does not prove login bound, underlying cancellation or Baostock shared-session concurrency safe.
+

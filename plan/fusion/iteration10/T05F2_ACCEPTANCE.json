@@ -1,0 +1,86 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-25",
+  "status": "ACCEPTED_THREE_FALLBACK_QUERY_WAIT_SCOPES_ONLY",
+  "base_commit": "ba0fc87d653f6b1893da4018797a51ff713a1489",
+  "product_scope": [
+    "AKShareClient._fetch_baostock_realtime",
+    "AKShareClient._fetch_baostock_kline",
+    "AKShareClient._get_index_trend_uncached"
+  ],
+  "budget_seconds_each": 30,
+  "budget_starts_after_login": true,
+  "development_red": {
+    "failed": 9,
+    "passed": 36,
+    "seconds": 6.52
+  },
+  "development_green": {
+    "passed": 54,
+    "failed": 0,
+    "seconds": 1.38
+  },
+  "intermediate_fixture_failure": {
+    "failed": 1,
+    "passed": 53,
+    "reason": "test fixture incorrectly required physical end-of-stream after error termination",
+    "raw_retained": true
+  },
+  "guarded_related": {
+    "passed": 159,
+    "failed": 0,
+    "seconds": 9.12,
+    "file_count": 8,
+    "blocked_io_text": "{'network': 1, 'subprocess': 0, 'real_state': 0}",
+    "shim_env": "unset; supplier operations mocked"
+  },
+  "full_suite_run_this_batch": false,
+  "validation_scope_basis": "Only three local method bodies/help row/new tests; no global state/helper/fixture/dependency changes. Independent review accepts related scope.",
+  "checks": {
+    "exit_code": 0,
+    "source_count": 532,
+    "source_unchanged": true,
+    "protected_files": 9,
+    "protected_unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "original_untracked_present": true,
+    "original_untracked_count": 218,
+    "driver_seconds": 11.453
+  },
+  "help_rows_width": 74,
+  "reviews": {
+    "architecture": "bounded F2 approved, supplier-origin TimeoutError routing must remain",
+    "code": "PASS, read-only no test rerun",
+    "requested_roles": "Astra/low architecture; Sol/medium developer; Sol/high quality guard",
+    "actual_execution_model_verified": false
+  },
+  "source_manifest": {
+    "path": "plan/fusion/iteration10/T05F2_SOURCE_PINS.json",
+    "sha256": "25898bcc40d7e6fd96e61627d2c792b8a91b9b7b266b34e80813d23abc3939cb",
+    "count": 532
+  },
+  "evidence": {
+    "path": "plan/fusion/iteration9/TARGETED_TEST_RESULTS_P.txt",
+    "sha256": "7ff8bd4e7a9ce74e69c0adf55783fbdf0966e5a367ddaeade061c49bb60b22a2",
+    "hash_basis": "committed Git text blob bytes; existing raw-text log line endings normalized by Git"
+  },
+  "audit_correction": {
+    "old_f1_count": 5,
+    "correct_count": 3,
+    "already_wrapped": [
+      "get_stock_basic_name",
+      "get_latest_forecast"
+    ],
+    "f1_receipt_has_explicit_erratum": true
+  },
+  "limits": [
+    "login/heartbeat are outside this wait budget",
+    "not a whole batch deadline",
+    "underlying workers cannot be forcibly killed",
+    "shared Baostock socket concurrency/logout/relogin not fixed",
+    "other consumers require a full session contract",
+    "real MID NO_VALID; G7/T05/V1 incomplete",
+    "audit hook is not OS sandbox"
+  ],
+  "git": "Codex owns main commit and normal push; delivery SHA from actual Git history"
+}
