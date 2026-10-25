@@ -2,7 +2,7 @@
 
 2026-09-25 第一轮原始任务卡（保留原验收条款）。实施方已在 [EXECUTION_RECORD.md](EXECUTION_RECORD.md) 记录 F0–F9 VERIFIED；2026-09-26 架构师作出[有条件验收](iteration2/README.md)，未满足的原始条款及新增能力由 [R0–R9](iteration2/TASKS.md) 承接。本文不是当前 TODO 清单，也不因实施报告更新而删除原验收要求。
 
-当前工作只按[原第九轮计划](iteration9/DELIVERY_PLAN.md)；本文件保留第一轮历史任务，勿重复执行。
+当前任务见[量化账本](PROGRESS.md)与[第十轮执行合同](iteration10/DELIVERY_PLAN.md)；本文件保留第一轮历史任务，勿重复执行。
 
 ## 协作规则
 

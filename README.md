@@ -1,5 +1,7 @@
 # 暮云思辨投资助手
 
+开发路线与剩余任务：[进度看板](docs/开发进度看板.html) · [量化任务账本](plan/fusion/PROGRESS.md) · [长期里程碑](MILESTONES.md)。
+
 AI驱动的A股交易行为约束系统 - 基于规则引擎的投资策略系统
 
 > 🧭 **AI Agent 入口**：所有 AI 编码工具（Claude Code / Copilot / Codex 等）打开本仓库时，请先阅读 `AGENTS.md` 为单一事实源（架构、约束、踩坑、当前状态）。本文件偏向人类读者的项目概述。

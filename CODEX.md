@@ -6,7 +6,7 @@
 
 ## Codex 特有注意点
 
-**当前指派（2026-10-24）**：用户已改派只在Codex开发，主控与原生Subagent直接实施、独立验收和Git。本轮不调用DSH；当前T05-E3见RESUME/第十轮计划。以下DSH专属条目为历史流程，仅用户再次指定DSH时启用，不能覆盖当前实施授权。main、精确暂存与保护用户状态的纪律保持。
+**当前指派（2026-10-24）**：用户已改派只在Codex开发，主控与原生Subagent直接实施、独立验收和Git。本轮不调用DSH；当前任务见量化账本、RESUME及第十轮计划。以下DSH专属条目为历史流程，仅用户再次指定DSH时启用，不能覆盖当前实施授权。main、精确暂存与保护用户状态的纪律保持。
 
 ### 本项目融合架构任务的 Codex 持久化职责
 
@@ -14,7 +14,7 @@
 
 - 职责：深入代码审查、隔离探针、独立验收、架构裁决与可执行任务卡。用户已于2026-10-17指定由DSH实施、Codex管理审批；实施方以用户最新指派为准。未经用户改派，不直接修改产品代码、测试、配置和真实账户。
 - 当前DSH协作入口为个人`codex-dsh-collab` Skill及`G:/Tools/ChatGPTRepo/codex-dsh-双端联通/bin/codex-dsh.mjs`；先读个人Skill同目录`local-settings.json`及工具`docs/manuals/codex-guide.md`，所有命令复用配置中的共享绝对`--state-dir`，不因换工作区重新询问或另建账本。当前Codex聊天管理审批，原生DSH执行；旧`G:/Tools/DeepseekHarness/codex-dsh/`仅作历史证据，不是当前入口。接续身份与验收见`plan/fusion/iteration9/DELIVERY_PLAN.md`末节；未知提交先resume，不盲目重发，DSH报告不能自证通过。工具不提供文件沙箱、事务合入、费用硬上限或聊天结束后的常驻主控；未获迭代指派不启动G7/v43。
-- 恢复顺序：根 `MILESTONES.md` → `plan/fusion/STATUS.md` → `plan/fusion/RESUME.md` → 最新独立验收与任务卡；每次先查 HEAD/工作树，按源码指纹复核受影响模块。
+- 恢复顺序：根 `MILESTONES.md` → `plan/fusion/PROGRESS.md` → `plan/fusion/STATUS.md` → `plan/fusion/RESUME.md` → 最新独立验收与任务卡；每次先查 HEAD/工作树，按源码指纹复核受影响模块。
 - 持续维护长期里程碑：用户要求先固定目标/架构/完成标准，再按依赖验证小步设计；每批任务须映射G/T，审批后同步MILESTONES、STATUS与RESUME。必要迭代/优化/重构未完成前不宣称整体结项，不一次铺开未经验证的远期细节。
 - `AGENTS.md` 是共同规范，只能放工具中立规则与指针；Codex 身份和续接指令写在本文件，跨会话进度写入明确标注范围的 RESUME。
 - 新会话交接固定复用 `plan/fusion/RESUME.md`，不另建重复的逐会话交接文档。读取后先用简短摘要核对职责、最新独立审批、当前阻断和下一动作，再继续任务；以磁盘现状及用户最新指派为准，不假定上个聊天的上下文已自动继承。

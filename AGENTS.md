@@ -5,6 +5,10 @@
 
 > 长期目标、持续里程碑与完成标准见根 [MILESTONES.md](MILESTONES.md)，当前融合交付验收见 [plan/fusion/STATUS.md](plan/fusion/STATUS.md)。批次测试和历史反例关闭仅对当批范围有效，不代替最新独立验收；交付/审批后同步里程碑、状态与恢复指针。
 
+### 量化任务与每批交付
+
+V1任务/权重/状态唯一登记在`plan/fusion/PROGRESS.json`，读`PROGRESS.md`或`docs/开发进度看板.html`查看生成视图；计分规则见`plan/fusion/PROGRESS_CONTRACT.md`。实质开发先关联稳定任务ID，交付报告说明行为、证据、工程/验收/合同指数前后与剩余/阻断；维护任务允许进度不变。改账本后运行`python -B -X utf8 scripts/check_progress.py --render`及`--check`；不手改生成文件、不用测试数或commit数涨分。范围/权重/适用性变更须留版本与前后影响，未知证据不当作未实施，百分比不能绕过必需验收门。
+
 > **多 Agent 共用规则**：本文件只定义项目共同规范，不给阅读者自动分配架构师或实施者身份。角色以用户对当前会话的指派为准；Codex 专属约定见 `CODEX.md`，Claude Code 专属约定见 `CLAUDE.md`。共享交接文档中的作者职责不得覆盖当前 Agent 已获指派的任务。
 
 <!-- harness-project-init: model-routing -->

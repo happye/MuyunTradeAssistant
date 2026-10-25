@@ -1,5 +1,11 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 当前量化关联（2026-10-25）
+
+本文件保存实施合同与历史执行记录；任务/权重/当前验收状态唯一见[PROGRESS](../PROGRESS.md)。T04-A–D映射`V1-G7-SERVICES`，E–L映射`V1-G7-DISPATCH`，T05-D/F1/F2映射`V1-G7-WAIT-EXIT`，E/E2/E3映射`V1-G7-LATE-CACHE`。同条款多个补修不重复加分；先前缺冻结分母，不追造每批百分点。
+
+下一产品合同对应`V1-G7-SESSION`，沿现有完整会话方案补齐文件所有权、有限矩阵与停止条件后开工；本次量化不是该产品项完成。每张后续卡须带任务ID，回执列E/A/P前后与范围影响；验收撤销重开原条款，新需求才修订分母。
+
 ## 2026-10-25 当前合同：T05-F2 三个备用行情查询创建等待界
 
 状态：2026-10-25限定接收，基线main@ba0fc87已推送，本批SHA核实际Git历史。范围只含AKShareClient的`_fetch_baostock_realtime`、`_fetch_baostock_kline`、`_get_index_trend_uncached`，将query创建与读取共用各自既有30秒预算，登录另计；由Astra/low核异常边界、Sol/medium实施、Sol/high独立复核，型号无执行元数据时标未核实。

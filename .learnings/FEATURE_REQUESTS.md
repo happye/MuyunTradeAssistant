@@ -7,7 +7,7 @@ Capabilities requested by the user.
 
 **Logged**: 2026-07-23
 **Priority**: high
-**Status**: pending
+**Status**: needs_scope_revalidation（2026-10-25；归V1-G8-OPERATIONS，已有M6/doctor基础，需核chat特定缺口）
 **Area**: backend
 
 ### Requested Capability
@@ -21,11 +21,11 @@ medium
 
 ### Suggested Implementation
 chat 启动前加 _preflight_check():
-1. 检查 .venv（uv sync）
+1. 检查 .venv（uv pip install -r requirements.txt）
 2. 检查 openai/jieba/faiss 可 import
 3. 检查 RAG 模型（BAAI/bge-small-zh-v1.5）+ 索引（knowledge/）
 4. 检查 API key（settings.local.yaml / 环境变量）
-5. 缺失给清晰提示+安装命令（uv sync / 配 key / build RAG）
+5. 缺失给清晰提示+安装命令（uv pip install -r requirements.txt / 配 key / build RAG）
 
 ### Metadata
 - Frequency: first_time
@@ -35,7 +35,7 @@ chat 启动前加 _preflight_check():
 
 **Logged**: 2026-08-16
 **Priority**: high
-**Status**: pending
+**Status**: historical_implemented（2026-10-25核对较新ISS-083实施记录；本轮未重跑，旧pending不再作为新立项依据）
 **Area**: backend
 
 ### Requested Capability
@@ -61,11 +61,11 @@ data_provider.get_data_summary 加 industry_data 字段（复用 build_industry_
 
 **Logged**: 2026-08-16
 **Priority**: medium
-**Status**: pending
+**Status**: implemented_path_present（2026-10-25核到src/chat/agent.py::_call_api_stream及tests/chat/test_chat_streaming.py；本轮未重跑）
 **Area**: backend
 
 ### Requested Capability
-chat 最终回答 token 级流式输出（当前是生成完一次性打印，长回答等待感强；工具调用进度已是流式）。
+历史请求：chat最终回答token级流式输出。该路径现已存在；下文保留原请求动机，不当作当前未实现结论。
 
 ### User Context
 工具进度流式已做（ISS-059），最终回答流式两次提及未拍板。

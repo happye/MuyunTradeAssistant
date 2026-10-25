@@ -1,30 +1,14 @@
 # 暮云长期路线与持续里程碑
 
-**2026-10-25 T05-F2限定接收：备用行情、历史K线、指数趋势的query创建与耗尽共用各自既有登录后30秒预算，保留供应商异常/socket重置、迭代异常、空/error与正常输出。正式9红→54绿，主控8文件守卫159 passed（9.12s），532项受测指纹、9保护hash和原218未跟踪存在性稳定。本批未跑全量；登录/心跳、整批预算与原生会话重叠仍待，G7/T05/V1未关闭。**
+## 当前阅读入口：V1量化基线
 
-**2026-10-25 T05-F1限定接收：主题代码核验的查询创建、错误/字段读取与结果耗尽共用既有登录后15秒预算，首包挂起可降级；正常名称与退市过滤保持。正式6红→15绿，主控五文件守卫204 passed（3.64s），531项受测指纹、9保护hash及原218未跟踪存在性稳定。未跑本批全量；登录/心跳、整批预算及原生共享会话仍未解决，G7/T05/V1未关闭。**
+2026-10-25起，任务、权重、工程/验收状态与证据统一登记在[PROGRESS.json](plan/fusion/PROGRESS.json)；本文件保留目标、架构、G/T含义和结项标准，不手写第二份百分比。
 
-**2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。**
-
-**2026-10-22 T04-L**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected；留下 scan-portfolio/chat/noai-debug 等更厚内联；不触评分/MID/G7/v43/Baostock。
-
-**2026-10-22 T04-K**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected。其余 backtest/chat/scan-portfolio 内联视厚薄；不触评分/MID/G7/v43/Baostock。
-
-**2026-10-22 T04-J**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。其余 shadow/plan2/research/backtest/scan/chat 内联视产品判断；不触评分/MID/G7/v43/Baostock。
-
-**2026-10-22 T04-I**：抽出 `_dispatch_observe_cli`（expect/fear/watch_pool）；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）；不触 Baostock/MID/G7/v43。见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
-
-T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
-
-**2026-10-22 T05-E**：ISS-120 晚到写缓存有界切片已合入（`is_call_abandoned` + MarketCache/K线写抑制）。G7/T05 整体仍不关闭；Baostock 会话重叠与真实 MID 仍缺实证。详见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
-
-**唯一长期路线入口｜更新：2026-10-21｜当前限定接收：v0.8.42；本轮main整合，直接交付、无需PR｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
-
-**当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 BUG-TUI-MARKUP / ISS-127；先已关 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
-
-**2026-10-20历史main整合**：v42限定观察及此前各批接收边界保持；已完成本轮main整合验收与双仓库收尾。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 原账户/知识库脏改及109个未跟踪文件不提交。真实MID、历史行业/PIT、ROE、现金持续性及G4/V1仍未完成，后续只按既有G/T路线安排，不因工具接通自动启动v43。
-
-本文件回答“最终做成什么、现在在哪、还差什么、什么时候算完成”。每批实现与审批状态见 [STATUS](plan/fusion/STATUS.md)，当前审批见 [R15](plan/fusion/iteration9/R15_ACCEPTANCE.md)，下一执行窗口见 [第九轮](plan/fusion/iteration9/DELIVERY_PLAN.md)。F/R/J/K/L/M/N/O/P 是实施批次，下面 G0–G8 是稳定的产品里程碑，两者不可混用。
+- 用户直接查看：[可筛选进度看板](docs/开发进度看板.html) / [完整任务账本](plan/fusion/PROGRESS.md)。
+- 计分与每批更新规则：[量化合同](plan/fusion/PROGRESS_CONTRACT.md)。G0是持续治理门，不因写计划加产品分。
+- 当前执行：[第十轮合同](plan/fusion/iteration10/DELIVERY_PLAN.md)；恢复：[RESUME](plan/fusion/RESUME.md)；范围接收历史：[STATUS](plan/fusion/STATUS.md)。
+- 早期M0-M6/F0-F9及各轮R/J/K等是历史批次证据，不重复计入当前分母。原顶部批次摘要移至文末保留。
+- 初始量化基于现有合同/验收记录，未进行全面代码审计；unknown表示证据待核，不等于未开发。当前产品仍为v0.8.42限定接收，真实MID及V1整体未完成。
 
 ## 一、长期期望与范围基线
 
@@ -66,9 +50,9 @@ flowchart LR
 
 ## 三、持续里程碑总表
 
-状态：`已验收`必须有指定范围的独立证据；`部分完成`含已实现和未达门槛项；`待实施`没有实现；`证据受阻`不能算完成。当前没有整体完成的产品里程碑，不以批次测试数量计算百分比。
+状态：`已验收`必须有指定范围的独立证据；`部分完成`含已实现和未达门槛项；`待实施`没有实现；`证据受阻`不能算完成。整体验收门与量化指数分开：分数按PROGRESS固定权重计算，批次测试数量不参与计分；未关闭的门不等于其全部条款零进展。
 
-| ID | 能力里程碑 | 当前状态（2026-10-17） | 已有基础 | 达成标准与关键剩余 |
+| ID | 能力里程碑 | 当前状态（2026-10-25；限定范围） | 已有基础 | 达成标准与关键剩余 |
 |---|---|---|---|---|
 | G0 | 目标、基线和长期路线可持续恢复 | 框架已建立；随批维护 | 早期ADR、验证规范、本文件、R15 | 需求都有里程碑和验证；每次审批同步状态、证据和下阶段；读入口无冲突 |
 | G1 | 事实与账户可信 | 指定账户事实业务读出口已通过，整体部分完成；ISS-126 写侧+读侧（BUG-FINITE / BUG-FINITE-READ）已合入：新写入拒非有限，旧毒事件重放隔离为 PARTIAL | P0历史、同请求ctx及原计划、v35显式快照结构边界；7de1e59 写侧 + 本提交读侧 | T01登记范围关闭不代表全部成交/并发或组合事实完成；其余按G5与验收范围继续；本读侧卡为 iteration10 队列续作，不替代 T04/T05/G7 |
@@ -77,7 +61,7 @@ flowchart LR
 | G4 | 长期企业研究与估值能力 | 部分完成；v37至v42限定范围逐步接收，长期判据与数据资格未完成 | LONG模板、既有两期规则、L3负债率六点原件、cash_materials安全进入及只读回读 | v42仅接收当前SSE转述C15条件下的1组2期现金观察；历史行业/PIT、ROE、现金持续性仍UNKNOWN，不能称长期TRUE/MID。G4整体不关闭，不得填values_by_period激活旧TRUE |
 | G5 | 候选召回、组合分配与成交约束 | 部分完成 | 三路候选/因子登记、预算求解、事件账本 | 固定预算下召回增益；同组合快照分配；净现金/NAV/价格时点/日期化交易规则齐，未知则条件化；逐股数量与组合上限一致 |
 | G6 | 可比较的观察与效果晋级 | v14历史及v15本批工程合同冻结；真实观察与效果待办 | 同源记录、完整版本门与捕获时点回放已验 | 工程冻结不代表真实MID、策略默认晋级或投资效果，真实样本按预注册与前瞻周期推进 |
-| G7 | 必要重构、性能、诊断与多入口一致 | T01登记范围和T04配置小步通过，整体未完成 | 共享请求事实；9配置消费者迁移、零配置反依赖、4有意CLI桥保留 | T02/T04剩余边界、T05性能、T06质量、T07便携与实际效果按既定合同继续 |
+| G7 | 必要重构、性能、诊断与多入口一致 | T01登记范围、T04-A–L及T05核定退出/缓存/查询等待切片通过，整体未完成 | 共享请求事实；9配置消费者迁移、零配置反依赖、4有意CLI桥保留 | T02/T04剩余边界、T05性能、T06质量、T07便携与实际效果按既定合同继续 |
 | G8 | V1整体结项与维护移交 | 待实施 | 历史知识资产与回滚机制 | G0–G7按范围过门；必要缺陷/优化/重构清零，用户场景与运维演练通过，文档/依赖/迁移可复现；保留维护流程，不再无目标增加迭代 |
 
 ## 四、推进路线与依赖
@@ -96,7 +80,7 @@ flowchart LR
 | T02 研究与计划命令归并 | B1问题明确，M2有限l/la只读接线已验收 | G2/G3，后续入口整合按依赖实施 | 查询不写研究；候选不替换接受态；l/la共用视图；不把run(capture=False)当只读 |
 | T03 终态/观察共用字段语义 | 两臂规范包/版本门、O1时点与O2 LONG通过；P0/P1/P2限定补修独立通过 | G6，shadow_v14观察合同已冻结；表v4保持 | ctx/state/packet/同源shadow/公开消费者一致；失败保持UNKNOWN；真实观察及效果仍未完成 |
 | T04 UI反向依赖与大函数拆分 | 配置入口归位小步已验，整体部分完成 | 原盘点12处非CLI导入main；v35迁移9处配置调用，现保留4个有意命令/规范化桥 | 保留兼容wrapper，不按剩余数量拆桥；后续必要边界先验证，不声称性能或大函数拆分完成；2026-10-21第十轮T04-A把持仓确认数量路径的账本编排下沉`account_service.confirm_quantity_from_proposal`（c7fb92b，黄金输出逐字锁定），T04-B把TUI加仓与chat删仓改调`portfolio.add_position_checked`/`remove_position_checked`并修TUI假成功（03cab94，ISS-124）；T04-C已合入：chat add/plan/overweight改调prepare_trade_plan_draft/activate_overweight_checked；T04-D本提交合入：CLI pos plan --update再抽为prepare_generate_or_update_plan（Y/n仍在CLI） |
-| T05 外源超时、缓存、批量与资源成本 | ADR02/04、C2/C3；既有装配重放基线仅用于比较 | G7；v36缓存时点/原子写和v41专用取证退出界实际修复已验，整体未关闭；3个共享helper及新增robust入口自身退出等待已通过，远端扫描批等待/缓存/日期主体边界已限定接收；原剩余4个旧并行executor站点已于2026-10-21第十轮T05-D用daemon并行helper修复，4个专用退出反例先红后绿（commit `ac6ce8a`，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）） | 限定包装器与旧并行入口退出界均已修复；晚到写缓存副作用与Baostock会话重叠继续待办。保留降级/重试/缓存语义；成本与性能改善另须证据，不以探针计数替代 |
+| T05 外源超时、缓存、批量与资源成本 | ADR02/04、C2/C3；既有装配重放基线仅用于比较 | G7；v36缓存时点/原子写和v41专用取证退出界实际修复已验，整体未关闭；3个共享helper及新增robust入口自身退出等待已通过，远端扫描批等待/缓存/日期主体边界已限定接收；原剩余4个旧并行executor站点已于2026-10-21第十轮T05-D用daemon并行helper修复，4个专用退出反例先红后绿（commit `ac6ce8a`，全量3184 passed/0 failed/11 skipped/1 deselected（656.61s）） | 限定包装器/旧并行入口退出界、E/E2/E3核定迟到缓存门与F1/F2查询创建等待界已补；检查后竞态、Baostock会话重叠和资源成本仍待。保留降级/重试/缓存语义；成本与性能改善另须证据，不以探针计数替代 |
 | T06 AI/RAG质量与评分口径 | C4/C6及E5；已有独立工具不等于效果完成 | G3/G4/G7；冻结独立集，付费另授权 | 引用正确性/检索质量/提取准确率及成本对照；不自评自证，不擅改legacy公式 |
 | T07 数据证据便携与版本化 | L3脚本/清单已跟踪，raw/mapped已分离；2026-10-16再次6/6离线复验，000002_2024Q2来源URL已按逐字节一致的官方PDF补记 | G4/G6部分接收；供应商raw、更正检索、PIT、异机获取与旧登记迁移仍待办。download_log仍无该半年报行。显式重建仅在file_hash一致时保留已记录source_url，默认覆盖交付清单仍不做。负债率原件不证明现金语义 | 原件可获取且可离线重建；修订追加不覆盖；测试不能写真实账户；长期范围按既有G7/T07门槛验收 |
 
@@ -167,3 +151,31 @@ V1结项必须同时满足：R01–R09都有验收证据；G1–G7达到明示�
 - 2026-10-21 第十轮 BUG-TUI-MARKUP（ISS-127）合入：分析面板失败提示统一 `rich.Text`，消除字面 `[red]`/`[green]`；定测 `test_bug_tui_markup.py` 4 项先红后绿；相关 TUI 12 passed；不捆绑 BUG-CASH-WRAP；下一张候选测试写报告目录隔离 / BUG-CASH-WRAP；T05/G7 不抢道。
 - 2026-10-21 第十轮 ISS-126 读侧（BUG-FINITE-READ）合入：Claude 在 BUG-FINITE 写侧 `7de1e59` 后留在 iteration10 队列的下一张 P1（非平行新轨）。重放隔离非有限事件→PARTIAL；nan 成本账本可读可再写；today/NAV 未知语义。本轮 Claude 已接受主线（T05-D/BUG-OW/BUG-IDX/T04-A/T04-B/BUG-FEE/写侧）保持；T04-C 已于同日合入（草稿编排下沉+chat去CLI桥）；下一张见候选（RAG CWD/BUG-TUI-MARKUP等）；T05/G7 剩余（晚到缓存、Baostock、真实 MID 等）仍按本表推进。证据见 `tests/core/test_bug_finite_ledger.py` 35 passed 与 plan/fusion/iteration10/DELIVERY_PLAN 执行记录。
 - 2026-10-20 main整合收尾：`ACCEPTED_MAIN_INTEGRATION_SCOPE_ONLY`。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 NAV纯查询与pipeline数量边界补修；双仓库分开交付。具体指纹、分轮失败及限制见第九轮最新验收，不重算历史各批数字。
+
+## 九、历史置顶摘要（仅历史，当前任务见量化账本）
+
+**2026-10-25 T05-F2限定接收：备用行情、历史K线、指数趋势的query创建与耗尽共用各自既有登录后30秒预算，保留供应商异常/socket重置、迭代异常、空/error与正常输出。正式9红→54绿，主控8文件守卫159 passed（9.12s），532项受测指纹、9保护hash和原218未跟踪存在性稳定。本批未跑全量；登录/心跳、整批预算与原生会话重叠仍待，G7/T05/V1未关闭。**
+
+**2026-10-25 T05-F1限定接收：主题代码核验的查询创建、错误/字段读取与结果耗尽共用既有登录后15秒预算，首包挂起可降级；正常名称与退市过滤保持。正式6红→15绿，主控五文件守卫204 passed（3.64s），531项受测指纹、9保护hash及原218未跟踪存在性稳定。未跑本批全量；登录/心跳、整批预算及原生共享会话仍未解决，G7/T05/V1未关闭。**
+
+**2026-10-25 T05-E3增量限定接收：嵌套取数继承祖先放弃Event，迟到快照/K线写入受既有门约束。守卫全量3514 passed/2 failed/11 skipped/1 deselected（550.35s）；修正两项测试越界写入后，受影响两文件10 passed（3.77s）。其余528项受测源码/配置/全局fixture未变，最终530项指纹登记；8保护hash与原207未跟踪保留，八child专用8通过。没有最终树全绿全量声明；Baostock会话、写检查后竞态、真实MID及G7/T05/V1仍未关闭。**
+
+**2026-10-22 T04-L**：抽出 `_dispatch_backtest_cli`（backtest/batch_backtest）；定测 151；相关 503；全量 3494 passed/0 failed/11 skipped/1 deselected；留下 scan-portfolio/chat/noai-debug 等更厚内联；不触评分/MID/G7/v43/Baostock。
+
+**2026-10-22 T04-K**：抽出 `_dispatch_fusion_cli`（shadow/plan2/research）；定测 147；相关 378；全量 3490 passed/0 failed/11 skipped/1 deselected。其余 backtest/chat/scan-portfolio 内联视厚薄；不触评分/MID/G7/v43/Baostock。
+
+**2026-10-22 T04-J**：抽出 `_dispatch_ops_cli`（doctor/diff_evidence/diff_list/batch_tasks/today）；定测 140；相关 290；全量 3483 passed/0 failed/11 skipped/1 deselected。其余 shadow/plan2/research/backtest/scan/chat 内联视产品判断；不触评分/MID/G7/v43/Baostock。
+
+**2026-10-22 T04-I**：抽出 `_dispatch_observe_cli`（expect/fear/watch_pool）；定测 135；相关 236；全量 3478 passed/0 failed/11 skipped/1 deselected（292.25s）；不触 Baostock/MID/G7/v43。见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
+
+T05共享等待与远端4cc3bf6增量限定接收；最终隔离全量3157 passed/0 failed/7 skipped/1 external deselected（265.49s），494项指纹稳定，原8保护项/109未跟踪保留。独立四退出4通过，静态审查限定PASS；G7/T05整体、真实MID及G4/V1仍未完成。
+
+**2026-10-22 T05-E**：ISS-120 晚到写缓存有界切片已合入（`is_call_abandoned` + MarketCache/K线写抑制）。G7/T05 整体仍不关闭；Baostock 会话重叠与真实 MID 仍缺实证。详见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)。
+
+**唯一长期路线入口｜更新：2026-10-21｜当前限定接收：v0.8.42；本轮main整合，直接交付、无需PR｜原发布基线：v0.8.33｜目标基线：V1｜整体：未完成。**
+
+**当前执行入口**：第十轮合同见 [iteration10/DELIVERY_PLAN.md](plan/fusion/iteration10/DELIVERY_PLAN.md)（本提交关闭 BUG-TUI-MARKUP / ISS-127；先已关 ISS-123 生产残余；不抢 T05/G7）；历史第九轮见 [iteration9/DELIVERY_PLAN.md](plan/fusion/iteration9/DELIVERY_PLAN.md)；ISS-117原已验范围保持接收，行动说明与独立止盈抑制尾项已按P2补齐并验收，不重新开工。原实施范围和验收记录保留在现有[S2AC计划](plan/fusion/signal_authority_review/S2AC_FINAL_CLOSEOUT_TASK.md)与[S2AC验收](plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md)，只作历史依据。
+
+**2026-10-20历史main整合**：v42限定观察及此前各批接收边界保持；已完成本轮main整合验收与双仓库收尾。最终隔离全量3091 passed/0 failed/3 skipped/1 external deselected，2条既有测试转义警告（399.29s）；486项源码/测试/公开材料/隔离器指纹起止一致，6项保护hash与知识库集合不变。network 1011、subprocess 12、real_state 2次尝试均被守卫阻断。 原账户/知识库脏改及109个未跟踪文件不提交。真实MID、历史行业/PIT、ROE、现金持续性及G4/V1仍未完成，后续只按既有G/T路线安排，不因工具接通自动启动v43。
+
+本文件回答“最终做成什么、现在在哪、还差什么、什么时候算完成”。每批实现与审批状态见 [STATUS](plan/fusion/STATUS.md)，当前审批见 [R15](plan/fusion/iteration9/R15_ACCEPTANCE.md)，下一执行窗口见 [第九轮](plan/fusion/iteration9/DELIVERY_PLAN.md)。F/R/J/K/L/M/N/O/P 是实施批次，下面 G0–G8 是稳定的产品里程碑，两者不可混用。

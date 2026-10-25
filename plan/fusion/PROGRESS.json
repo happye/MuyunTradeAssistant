@@ -1,0 +1,2832 @@
+{
+  "schema_version": 1,
+  "scope_revision": "V1-progress-1",
+  "as_of": "2026-10-25",
+  "product_base_commit": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+  "basis": "existing_contracts_and_acceptance_records_not_full_code_audit",
+  "scope_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
+  "metric_mix": {
+    "engineering": 0.5,
+    "acceptance": 0.5
+  },
+  "weight_policy": {
+    "1": "小范围独立交付条款",
+    "2": "中等范围条款",
+    "3": "较大/跨路径或关键能力条款",
+    "meaning": "相对交付份量的管理权重，不是工时、费用或收益；由Codex按现有V1条款建立v1，后续修订显式记录，不自称用户已逐条批准。"
+  },
+  "milestones": [
+    {
+      "id": "G1",
+      "title": "事实与账户可信"
+    },
+    {
+      "id": "G2",
+      "title": "统一日常工作流"
+    },
+    {
+      "id": "G3",
+      "title": "中期研究闭环"
+    },
+    {
+      "id": "G4",
+      "title": "长期研究与估值"
+    },
+    {
+      "id": "G5",
+      "title": "候选召回与组合约束"
+    },
+    {
+      "id": "G6",
+      "title": "真实观察与效果晋级"
+    },
+    {
+      "id": "G7",
+      "title": "工程可靠性、质量与便携"
+    },
+    {
+      "id": "G8",
+      "title": "V1结项和维护移交"
+    }
+  ],
+  "tasks": [
+    {
+      "id": "V1-G1-READ",
+      "title": "登记业务账户事实统一读出口",
+      "primary_g": "G1",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R03",
+        "R05"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "ISS-116/T01登记的l/la/chat/today/行业/TUI/Web读取出口满足已接收快照边界；管理投影豁免不扩范围。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G1/T01指定读取范围"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G1/T01指定读取范围"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G1-OBS-PROPOSAL",
+      "title": "分析观察、建议与确认成交分离",
+      "primary_g": "G1",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R04",
+        "R05"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "已核定分析路径只落观察/建议，确认成交才修改持仓；本条不包含全部成交异常或组合预算。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "账户事实与建议分离、ISS-117已验范围"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "账户事实与建议分离、ISS-117已验范围"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G1-FINITE",
+      "title": "非有限账户输入与旧毒事件隔离",
+      "primary_g": "G1",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "ISS-126写入拒非有限值，旧毒事件读侧隔离为PARTIAL，未知事实不伪造成零。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "BUG-FINITE / BUG-FINITE-READ"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "BUG-FINITE / BUG-FINITE-READ"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G1-TRANSACTION-MATRIX",
+      "title": "成交异常恢复与跨入口事实完整验收",
+      "primary_g": "G1",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "核定的部分成交、异常恢复和并发更新场景不丢失/重复成交事实，各业务入口一致；组合资金规则另计G5。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G1整体仍部分完成，不扩大T01限定范围"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G1整体仍部分完成，不扩大T01限定范围"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "先列既有成交场景和已验映射，未覆盖者才补反例与实现。",
+          "release_condition": "核定的部分成交、异常恢复和并发更新场景不丢失/重复成交事实，各业务入口一致；组合资金规则另计G5。"
+        }
+      ],
+      "depends_on": [
+        "V1-G1-READ",
+        "V1-G1-OBS-PROPOSAL",
+        "V1-G1-FINITE"
+      ],
+      "next_action": "先列既有成交场景和已验映射，未覆盖者才补反例与实现。"
+    },
+    {
+      "id": "V1-G2-ENTRY",
+      "title": "M2有限l/la只读研究接线",
+      "primary_g": "G2",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R03"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "仅M2已接收l/la有限只读研究接线；账户快照读取由G1-READ唯一计分，完整跨端packet由G2-PACKET另验。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G2/M2有限生产只读接线，不重复计T01账户读取"
+          },
+          {
+            "path": "plan/fusion/iteration9/R15_ACCEPTANCE.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "M2 ACCEPTED_READONLY有限l/la只读研究接线"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G2/M2有限生产只读接线，不重复计T01账户读取"
+          },
+          {
+            "path": "plan/fusion/iteration9/R15_ACCEPTANCE.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "M2 ACCEPTED_READONLY有限l/la只读研究接线"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G2-RESEARCH-READ",
+      "title": "研究查询和计划入口剩余归并",
+      "primary_g": "G2",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R03",
+        "R04"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "T02核定消费者查询不写研究、候选不覆盖接受态、l/la共用研究视图；逐条有接线证据。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T02剩余条款未整体验收"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T02剩余条款未整体验收"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "把M2已验与T02剩余消费者分列，核对真实调用链，证据不足项先复核。",
+          "release_condition": "T02核定消费者查询不写研究、候选不覆盖接受态、l/la共用研究视图；逐条有接线证据。"
+        }
+      ],
+      "depends_on": [
+        "V1-G2-ENTRY"
+      ],
+      "next_action": "把M2已验与T02剩余消费者分列，核对真实调用链，证据不足项先复核。"
+    },
+    {
+      "id": "V1-G2-PACKET",
+      "title": "跨入口统一行动包与研究展示",
+      "primary_g": "G2",
+      "tags": [
+        "T02",
+        "T04"
+      ],
+      "requirements": [
+        "R02",
+        "R03"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "支持范围内today/l/la/chat/Web/TUI对同一终态packet展示一致，保留依据、冲突和触发条件，不由语言改写动作。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G2完整跨端packet/研究视图仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G2完整跨端packet/研究视图仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "先固定跨入口消费者矩阵和黄金场景，再迁移实际不一致路径。",
+          "release_condition": "支持范围内today/l/la/chat/Web/TUI对同一终态packet展示一致，保留依据、冲突和触发条件，不由语言改写动作。"
+        }
+      ],
+      "depends_on": [
+        "V1-G2-RESEARCH-READ",
+        "V1-G1-READ"
+      ],
+      "next_action": "先固定跨入口消费者矩阵和黄金场景，再迁移实际不一致路径。"
+    },
+    {
+      "id": "V1-G3-EVIDENCE",
+      "title": "冻结范围的证据、主张与核验资格门",
+      "primary_g": "G3",
+      "tags": [
+        "T02",
+        "T06"
+      ],
+      "requirements": [
+        "R04",
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "仅在已验cv6/binding_v4范围内，原文/谓词/引用与时点资格分开，弱证据不自升强事实。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "cv6/binding_v4工程冻结与既有核验边界"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "cv6/binding_v4工程冻结与既有核验边界"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G3-LOOP",
+      "title": "中期候选、命题、计划和复核工程闭环",
+      "primary_g": "G3",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R01",
+        "R04"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "已验范围的完整条件、幂等存储、计划接受版本及复核记录可回放；不据此宣称真实MID成立。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G3本批工程合同通过，真实样板未成立"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G3本批工程合同通过，真实样板未成立"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G3-REAL-MID",
+      "title": "真实中期样板满足三命题支撑",
+      "primary_g": "G3",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R01",
+        "R04"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "按既有合同取得真实、合法、可解析且时点合格的三命题支撑，独立核验成立；当前002957仍EXCERPT/UNESTABLISHED。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G3真实MID NO_VALID"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G3真实MID NO_VALID"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "选一个既有候选，列三命题缺证清单并取得合格公开材料，不重复计证。",
+          "release_condition": "按既有合同取得真实、合法、可解析且时点合格的三命题支撑，独立核验成立；当前002957仍EXCERPT/UNESTABLISHED。"
+        }
+      ],
+      "depends_on": [
+        "V1-G3-EVIDENCE",
+        "V1-G3-LOOP"
+      ],
+      "next_action": "选一个既有候选，列三命题缺证清单并取得合格公开材料，不重复计证。"
+    },
+    {
+      "id": "V1-G4-TEMPLATE",
+      "title": "LONG模板和已验规则框架",
+      "primary_g": "G4",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R01"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "LONG模板及既有两期规则框架在其已接收范围存在并受资格门约束；不计长期判据成立。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4已有LONG模板/两期规则"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4已有LONG模板/两期规则"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G4-RAW-MAPPED",
+      "title": "L3六点原件与映射分离限定成果",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R04",
+        "R07"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "L3已登记负债率六点原件的离线复验、raw/mapped分离在已有范围成立；不扩为supplier.raw、现金或历史PIT。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07 L3六点原件限定接收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07 L3六点原件限定接收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G4-CURRENT-CASH",
+      "title": "当次C15条件化两期现金观察",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R01",
+        "R07"
+      ],
+      "weight": 1,
+      "required": true,
+      "acceptance_criterion": "仅v42当次SSE转述C15条件下的一组两期现金观察限定接收，条件和缺口在输出中保留。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "v42 C15一组两期现金观察"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "v42 C15一组两期现金观察"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G4-INDUSTRY-PIT",
+      "title": "历史行业适用性与财务时点资格",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R01",
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "既定证券×已观测期间的行业适用与公开时点可核验，latest-only不进入历史严格PIT；不借当次C15追认历史。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4历史行业/PIT UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4历史行业/PIT UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "按既定首类非金融企业核字段、期间、来源与公开时间，逐期留原件。",
+          "release_condition": "既定证券×已观测期间的行业适用与公开时点可核验，latest-only不进入历史严格PIT；不借当次C15追认历史。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-RAW-MAPPED"
+      ],
+      "next_action": "按既定首类非金融企业核字段、期间、来源与公开时间，逐期留原件。"
+    },
+    {
+      "id": "V1-G4-ROE",
+      "title": "长期ROE字段和判据资格",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R01",
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "核定ROE输入单位、期间、行业适用及长期判据，有正反例和合法数据；不以旧字段直接判TRUE。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4 ROE UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4 ROE UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "核对现有ROE实现与缺口，再冻结当前消费者所需数据和判据。",
+          "release_condition": "核定ROE输入单位、期间、行业适用及长期判据，有正反例和合法数据；不以旧字段直接判TRUE。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-INDUSTRY-PIT"
+      ],
+      "next_action": "核对现有ROE实现与缺口，再冻结当前消费者所需数据和判据。"
+    },
+    {
+      "id": "V1-G4-CASH-PERSISTENCE",
+      "title": "现金持续性资格与判据",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R01",
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "合格多期材料与期间资格支持现金持续性结论，证据不足维持UNKNOWN，不填values_by_period激活旧TRUE。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4现金持续性UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4现金持续性UNKNOWN"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "在已验当次现金观察之外列多期证据缺口，先取数核义再实现必要条款。",
+          "release_condition": "合格多期材料与期间资格支持现金持续性结论，证据不足维持UNKNOWN，不填values_by_period激活旧TRUE。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-CURRENT-CASH",
+        "V1-G4-INDUSTRY-PIT"
+      ],
+      "next_action": "在已验当次现金观察之外列多期证据缺口，先取数核义再实现必要条款。"
+    },
+    {
+      "id": "V1-G4-VALUATION",
+      "title": "长期研究结论与估值情景",
+      "primary_g": "G4",
+      "tags": [
+        "T02"
+      ],
+      "requirements": [
+        "R01",
+        "R02"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "在已核定长期资格上形成有依据的长期命题和估值情景；两种周期条件明确，缺口不被改写成长期成立。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4长期判据与估值能力未完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G4长期判据与估值能力未完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "待长期输入资格过门后，核定一类非金融企业的情景与失效条件。",
+          "release_condition": "在已核定长期资格上形成有依据的长期命题和估值情景；两种周期条件明确，缺口不被改写成长期成立。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-ROE",
+        "V1-G4-CASH-PERSISTENCE"
+      ],
+      "next_action": "待长期输入资格过门后，核定一类非金融企业的情景与失效条件。"
+    },
+    {
+      "id": "V1-G4-SUPPLIER-RAW",
+      "title": "补齐既定财务供应商原始证据",
+      "primary_g": "G4",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R07"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "补齐既定L3范围supplier.raw及来源获取记录；负债率原件不替代现金语义。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07 supplier.raw仍缺"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07 supplier.raw仍缺"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "核对六点缺失的供应商原始响应，合法获取并绑定原件/来源；无法取得如实阻断。",
+          "release_condition": "补齐既定L3范围supplier.raw及来源获取记录；负债率原件不替代现金语义。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-RAW-MAPPED"
+      ],
+      "next_action": "核对六点缺失的供应商原始响应，合法获取并绑定原件/来源；无法取得如实阻断。"
+    },
+    {
+      "id": "V1-G5-CANDIDATES",
+      "title": "三路候选与因子登记基础",
+      "primary_g": "G5",
+      "tags": [],
+      "requirements": [
+        "R06"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "已有技术/产业/长期质量候选来源与因子登记保留来源/缺失语义；本条不计召回增益。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5三路候选/因子登记已有基础"
+          },
+          {
+            "path": "plan/fusion/iteration2/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "第1节E1仅接收当下截面候选集合与截断过程，不接收召回效果"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5三路候选/因子登记已有基础"
+          },
+          {
+            "path": "plan/fusion/iteration2/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "第1节E1仅接收当下截面候选集合与截断过程，不接收召回效果"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G5-SOLVER",
+      "title": "组合预算求解与事件账本实现核定",
+      "primary_g": "G5",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "已有预算求解和事件账本实现，按明示支持范围补齐独立验收映射；本条不计同快照分配/资金规则。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5已有求解/事件账本，但整体部分完成"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5已有求解/事件账本，但整体部分完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "找到既有预算/账本实现的独立验收证据，只有缺口才补测或修复。",
+          "release_condition": "已有预算求解和事件账本实现，按明示支持范围补齐独立验收映射；本条不计同快照分配/资金规则。"
+        }
+      ],
+      "depends_on": [],
+      "next_action": "找到既有预算/账本实现的独立验收证据，只有缺口才补测或修复。"
+    },
+    {
+      "id": "V1-G5-RECALL",
+      "title": "固定研究预算下的候选召回增益",
+      "primary_g": "G5",
+      "tags": [
+        "T06"
+      ],
+      "requirements": [
+        "R06",
+        "R08"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "冻结预算、来源、去重和比较基线，以独立样本证明召回增量及误选/漏选和成本；不只增加扫描数量。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5固定预算召回增益未证明"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5固定预算召回增益未证明"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "先冻结实验合同和可用样本；涉及真实模型费用时沿明确授权执行。",
+          "release_condition": "冻结预算、来源、去重和比较基线，以独立样本证明召回增量及误选/漏选和成本；不只增加扫描数量。"
+        }
+      ],
+      "depends_on": [
+        "V1-G5-CANDIDATES"
+      ],
+      "next_action": "先冻结实验合同和可用样本；涉及真实模型费用时沿明确授权执行。"
+    },
+    {
+      "id": "V1-G5-SNAPSHOT",
+      "title": "同一组合快照上的统一分配",
+      "primary_g": "G5",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "同轮候选基于同一合法组合事实快照求解，不能逐股各自满额，不伪造未知持仓。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5同组合快照分配"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5同组合快照分配"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "核定组合快照身份与分配消费者，先写混用快照/缺持仓反例。",
+          "release_condition": "同轮候选基于同一合法组合事实快照求解，不能逐股各自满额，不伪造未知持仓。"
+        }
+      ],
+      "depends_on": [
+        "V1-G1-READ",
+        "V1-G5-SOLVER"
+      ],
+      "next_action": "核定组合快照身份与分配消费者，先写混用快照/缺持仓反例。"
+    },
+    {
+      "id": "V1-G5-CASH-NAV",
+      "title": "净现金、NAV、价格时点与日期规则",
+      "primary_g": "G5",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "净现金/NAV/价格时点/日期化交易规则在核定范围齐备，缺失时条件化，不把未知变零或伪精确可执行。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5资金、NAV、价格和日期规则未完整验收"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5资金、NAV、价格和日期规则未完整验收"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "对照现有账户字段建立规则与时点矩阵，区分已实现但未验与真实缺陷。",
+          "release_condition": "净现金/NAV/价格时点/日期化交易规则在核定范围齐备，缺失时条件化，不把未知变零或伪精确可执行。"
+        }
+      ],
+      "depends_on": [
+        "V1-G1-TRANSACTION-MATRIX"
+      ],
+      "next_action": "对照现有账户字段建立规则与时点矩阵，区分已实现但未验与真实缺陷。"
+    },
+    {
+      "id": "V1-G5-CAPS",
+      "title": "逐股数量与组合上限一致",
+      "primary_g": "G5",
+      "tags": [
+        "T01"
+      ],
+      "requirements": [
+        "R05"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "分配后的逐股数量、可卖份额与组合上限一致，部分成交/未知数据不绕过资金约束。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5数量与组合上限"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G5数量与组合上限"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "基于同快照与现金规则补齐数量/上限跨股场景，不先扩策略。",
+          "release_condition": "分配后的逐股数量、可卖份额与组合上限一致，部分成交/未知数据不绕过资金约束。"
+        }
+      ],
+      "depends_on": [
+        "V1-G5-SNAPSHOT",
+        "V1-G5-CASH-NAV"
+      ],
+      "next_action": "基于同快照与现金规则补齐数量/上限跨股场景，不先扩策略。"
+    },
+    {
+      "id": "V1-G6-VERSION",
+      "title": "同源影子记录与协议版本隔离",
+      "primary_g": "G6",
+      "tags": [
+        "T03"
+      ],
+      "requirements": [
+        "R08"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "v15及已验协议消费门保持同源、分版本分母和失败UNKNOWN，旧版本不追认新分母。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "v15工程冻结/版本隔离"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/STATUS.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "v15工程冻结/版本隔离"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G6-REPLAY",
+      "title": "捕获时点回放工程基础",
+      "primary_g": "G6",
+      "tags": [
+        "T03"
+      ],
+      "requirements": [
+        "R08"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "已验范围的同源记录按捕获时点回放，不借未来材料回填；仅证明工程正确性。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6捕获时点回放已验"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6捕获时点回放已验"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G6-PREREG",
+      "title": "冻结真实观察指标与比较协议",
+      "primary_g": "G6",
+      "tags": [
+        "T03",
+        "T06"
+      ],
+      "requirements": [
+        "R08"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "真实观察前冻结指标、数据范围、比较基线、成本和相应周期门槛；未知起止/样本阈值不能假填。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6真实样本按预注册推进"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6真实样本按预注册推进"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "读取现有观察协议，补齐未冻结项与合法样本分组、起止和下次评估条件。",
+          "release_condition": "真实观察前冻结指标、数据范围、比较基线、成本和相应周期门槛；未知起止/样本阈值不能假填。"
+        }
+      ],
+      "depends_on": [
+        "V1-G6-VERSION",
+        "V1-G6-REPLAY"
+      ],
+      "next_action": "读取现有观察协议，补齐未冻结项与合法样本分组、起止和下次评估条件。"
+    },
+    {
+      "id": "V1-G6-OBSERVATION",
+      "title": "积累合格前瞻观察样本",
+      "primary_g": "G6",
+      "tags": [
+        "T03"
+      ],
+      "requirements": [
+        "R08"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "取得预注册合同要求的真实时间与可比较样本；模拟/工程测试/等待天数均不能充当样本通过。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6真实观察待办"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6真实观察待办"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "observation",
+          "reason": "协议冻结后记录真实观察起止和样本门槛，按条件评估；目前不虚报启动日期。",
+          "release_condition": "取得预注册合同要求的真实时间与可比较样本；模拟/工程测试/等待天数均不能充当样本通过。"
+        }
+      ],
+      "depends_on": [
+        "V1-G6-PREREG"
+      ],
+      "next_action": "协议冻结后记录真实观察起止和样本门槛，按条件评估；目前不虚报启动日期。"
+    },
+    {
+      "id": "V1-G6-EFFECT",
+      "title": "周期效果、消融与策略晋级证据",
+      "primary_g": "G6",
+      "tags": [
+        "T06"
+      ],
+      "requirements": [
+        "R06",
+        "R08"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "按相应周期独立验证正确性/可用性/投资效果，保留失败；未达门槛不默认晋级，或由用户明确收窄发布范围。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6效果和默认策略晋级未完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G6效果和默认策略晋级未完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "等待合格样本后执行既定对照与消融，单独记录费用许可和失败结果。",
+          "release_condition": "按相应周期独立验证正确性/可用性/投资效果，保留失败；未达门槛不默认晋级，或由用户明确收窄发布范围。"
+        }
+      ],
+      "depends_on": [
+        "V1-G6-OBSERVATION"
+      ],
+      "next_action": "等待合格样本后执行既定对照与消融，单独记录费用许可和失败结果。"
+    },
+    {
+      "id": "V1-G7-CONFIG",
+      "title": "配置消费者归位与依赖方向",
+      "primary_g": "G7",
+      "tags": [
+        "T04"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "已验9个配置消费者迁移、零配置反依赖保持，4个有意命令/规范化桥不机械拆除。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04配置小步接收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04配置小步接收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G7-SERVICES",
+      "title": "T04-A至D业务编排服务下沉",
+      "primary_g": "G7",
+      "tags": [
+        "T04"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "A-D已核定账本/TradePlan等业务编排从UI下沉，兼容入口与黄金行为保留；不重复计账户行为条款。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04-A/B/C/D"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04-A/B/C/D"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G7-DISPATCH",
+      "title": "T04-E至L命令分发边界",
+      "primary_g": "G7",
+      "tags": [
+        "T04"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "E-L核定分发助手及接线黄金行为已交付；不将移动代码当作性能改善。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04-E/F/G/H/I/J/K/L"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04-E/F/G/H/I/J/K/L"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G7-BOUNDARY-RESERVE",
+      "title": "T04必要剩余边界核定额度",
+      "primary_g": "G7",
+      "tags": [
+        "T04"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "先核定scan-portfolio/chat/noai-debug等剩余边界的用户收益；有必要才实施并验收，无必要须有独立裁决。不自动将机械拆分列必做。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04剩余候选需产品判断，机械拆分暂缓"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T04剩余候选需产品判断，机械拆分暂缓"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "decision",
+          "reason": "提交有限必要性裁决；若细分工单，子权重合计必须仍为2。",
+          "release_condition": "先核定scan-portfolio/chat/noai-debug等剩余边界的用户收益；有必要才实施并验收，无必要须有独立裁决。不自动将机械拆分列必做。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-DISPATCH"
+      ],
+      "next_action": "提交有限必要性裁决；若细分工单，子权重合计必须仍为2。"
+    },
+    {
+      "id": "V1-G7-WAIT-EXIT",
+      "title": "共享等待、退出界及核定查询创建等待",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "T05-D及核定helper退出界、F1主题15秒、F2三个备用查询30秒在各自合同范围通过；登录/整批/共享会话除外。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/T05F2_ACCEPTANCE.json",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "D/F1/F2限定等待范围，历史退出结果按未变依赖复用"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/T05F2_ACCEPTANCE.json",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "D/F1/F2限定等待范围，历史退出结果按未变依赖复用"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G7-LATE-CACHE",
+      "title": "E/E2/E3核定迟到缓存写抑制",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "既有快照/K线/共享内存写门与嵌套祖先放弃状态在E3增量验收范围成立；不承诺检查后原子取消。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/T05E3_ACCEPTANCE.json",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "E/E2/E3增量限定验收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/fusion/iteration10/T05E3_ACCEPTANCE.json",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "E/E2/E3增量限定验收"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "blockers": [],
+      "depends_on": [],
+      "next_action": "保持已验边界；后续受影响改动按指纹复验，不例行重跑。"
+    },
+    {
+      "id": "V1-G7-WRITE-RACE",
+      "title": "检查后写竞态的风险裁决额度",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 1,
+      "required": true,
+      "acceptance_criterion": "对已保留检查后竞态给出可验证的风险判断；有真实用户风险则限定修复，无实证不无限追加探针。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "E3保留guard-check-to-write race限制"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "E3保留guard-check-to-write race限制"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "decision",
+          "reason": "先给一个有限反例或有依据的边界裁决，再决定是否需工程变更。",
+          "release_condition": "对已保留检查后竞态给出可验证的风险判断；有真实用户风险则限定修复，无实证不无限追加探针。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-LATE-CACHE"
+      ],
+      "next_action": "先给一个有限反例或有依据的边界裁决，再决定是否需工程变更。"
+    },
+    {
+      "id": "V1-G7-SESSION",
+      "title": "完整Baostock会话协调与生命周期等待界",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "全部核定消费者的登录/心跳/查询/迭代/关闭共同接入非阻塞会话所有权与明确绝对总截止；超时旧worker仍运行时新请求降级且不干扰会话。登录、心跳和单次完整生命周期预算须独立验收，不能只加锁而留无界登录。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S1",
+      "engineering": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "F2保留登录/心跳与完整Baostock会话，尚未实施"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "F2保留登录/心跳与完整Baostock会话，尚未实施"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "code",
+          "reason": "先落完整消费者及登录/心跳/异常/忙时/晚到恢复/总截止合同，再实施非阻塞租约与有限反例。",
+          "release_condition": "全部核定消费者的登录/心跳/查询/迭代/关闭共同接入非阻塞会话所有权与明确绝对总截止；超时旧worker仍运行时新请求降级且不干扰会话。登录、心跳和单次完整生命周期预算须独立验收，不能只加锁而留无界登录。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-WAIT-EXIT"
+      ],
+      "next_action": "先落完整消费者及登录/心跳/异常/忙时/晚到恢复/总截止合同，再实施非阻塞租约与有限反例。"
+    },
+    {
+      "id": "V1-G7-BATCH-BUDGET",
+      "title": "核定批量入口总期限、资源与续跑身份",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S3",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "plan/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "C2配置版本识别任务、ADR-06全链预算仍登记未修；当前T05批量/资源范围"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "plan/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "C2配置版本识别任务、ADR-06全链预算仍登记未修；当前T05批量/资源范围"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "先盘点现有l all/ba/bz scan等入口与已验范围，确定必要剩余和有限矩阵，已有保障不重复实现。",
+          "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-SESSION"
+      ],
+      "next_action": "先盘点现有l all/ba/bz scan等入口与已验范围，确定必要剩余和有限矩阵，已有保障不重复实现。"
+    },
+    {
+      "id": "V1-G7-PERF-COST",
+      "title": "资源、请求量与成本的可比验证",
+      "primary_g": "G7",
+      "tags": [
+        "T05"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "冻结当前必要性能目标，在同环境/输入比较耗时、资源、请求与可取得费用，未知计量如实保留；不以探针数证明收益。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T05性能成本改善另需证据"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T05性能成本改善另需证据"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "先选择一个用户可感知瓶颈并冻结基线/停止条件，复用已有测量工具。",
+          "release_condition": "冻结当前必要性能目标，在同环境/输入比较耗时、资源、请求与可取得费用，未知计量如实保留；不以探针数证明收益。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-SESSION"
+      ],
+      "next_action": "先选择一个用户可感知瓶颈并冻结基线/停止条件，复用已有测量工具。"
+    },
+    {
+      "id": "V1-G7-RAG-QUALITY",
+      "title": "独立检索与引用质量评估",
+      "primary_g": "G7",
+      "tags": [
+        "T06"
+      ],
+      "requirements": [
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "使用冻结独立评估集分别验证召回/排序/引用归属，工具存在不自证效果，不用自动标签循环自证。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "plan/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "C4已有评估工具/分组视图；当前T06效果未完成"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "plan/README.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "C4已有评估工具/分组视图；当前T06效果未完成"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "verification",
+          "reason": "复用已有evaluator，核独立标签与引用归属覆盖后做对照。",
+          "release_condition": "使用冻结独立评估集分别验证召回/排序/引用归属，工具存在不自证效果，不用自动标签循环自证。"
+        }
+      ],
+      "depends_on": [],
+      "next_action": "复用已有evaluator，核独立标签与引用归属覆盖后做对照。"
+    },
+    {
+      "id": "V1-G7-EXTRACTION",
+      "title": "证据提取准确率及成本对照",
+      "primary_g": "G7",
+      "tags": [
+        "T06"
+      ],
+      "requirements": [
+        "R07"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "按独立集验证提取准确率、引用与置信度及可取得成本，不改legacy评分公式；真实费用须明确授权。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S4",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T06提取准确率与成本对照待办"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T06提取准确率与成本对照待办"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "authorization",
+          "reason": "先形成可离线验收的独立样本与错误分层；付费阶段单列授权，不据旧概括推定许可。",
+          "release_condition": "按独立集验证提取准确率、引用与置信度及可取得成本，不改legacy评分公式；真实费用须明确授权。"
+        }
+      ],
+      "depends_on": [],
+      "next_action": "先形成可离线验收的独立样本与错误分层；付费阶段单列授权，不据旧概括推定许可。"
+    },
+    {
+      "id": "V1-G7-CORRECTIONS",
+      "title": "原件更正检索与追加修订",
+      "primary_g": "G7",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R04",
+        "R07"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "更正材料可检索，修订追加而非覆盖旧记录，来源/身份/时点明确。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S2",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07更正检索/版本化仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07更正检索/版本化仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "data",
+          "reason": "固定一组真实更正材料与版本身份，先验证当前缺口再限定改动。",
+          "release_condition": "更正材料可检索，修订追加而非覆盖旧记录，来源/身份/时点明确。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-RAW-MAPPED"
+      ],
+      "next_action": "固定一组真实更正材料与版本身份，先验证当前缺口再限定改动。"
+    },
+    {
+      "id": "V1-G7-PORTABILITY",
+      "title": "异机获取与离线重建",
+      "primary_g": "G7",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R07",
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "既有脚本/清单在独立环境可获取原件并离线重建，结果可核验且不写真实账户；仅本机六点复验不足以过门。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S5",
+      "engineering": {
+        "status": "met",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07脚本已有，异机/便携未验"
+          }
+        ],
+        "basis": "historical_acceptance_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07脚本已有，异机/便携未验"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "复用已跟踪脚本，在明确隔离环境执行一次便携演练并留原件缺口。",
+          "release_condition": "既有脚本/清单在独立环境可获取原件并离线重建，结果可核验且不写真实账户；仅本机六点复验不足以过门。"
+        }
+      ],
+      "depends_on": [
+        "V1-G4-SUPPLIER-RAW",
+        "V1-G7-CORRECTIONS"
+      ],
+      "next_action": "复用已跟踪脚本，在明确隔离环境执行一次便携演练并留原件缺口。"
+    },
+    {
+      "id": "V1-G7-LEGACY-MIGRATION",
+      "title": "旧登记迁移与来源身份保留",
+      "primary_g": "G7",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R07",
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "按迁移合同处理旧登记，hash一致才保留已记录source_url，不默认覆盖交付清单，可回退。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S5",
+      "engineering": {
+        "status": "unknown",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07旧登记迁移仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "T07旧登记迁移仍待"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "先核旧登记集合与迁移前后不变量，再在隔离副本实施演练。",
+          "release_condition": "按迁移合同处理旧登记，hash一致才保留已记录source_url，不默认覆盖交付清单，可回退。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-PORTABILITY"
+      ],
+      "next_action": "先核旧登记集合与迁移前后不变量，再在隔离副本实施演练。"
+    },
+    {
+      "id": "V1-G8-OPERATIONS",
+      "title": "V1安装、恢复、退出与跨入口演练",
+      "primary_g": "G8",
+      "tags": [
+        "T07"
+      ],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 3,
+      "required": true,
+      "acceptance_criterion": "针对V1完整明示范围完成安装/迁移/备份恢复/异常退出/跨入口场景验收；不是重复历史M6一条诊断。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S5",
+      "engineering": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G8结项与运维演练待实施"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G8结项与运维演练待实施"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "在各能力可交付后冻结发布演练矩阵并执行，保留失败与恢复证据。",
+          "release_condition": "针对V1完整明示范围完成安装/迁移/备份恢复/异常退出/跨入口场景验收；不是重复历史M6一条诊断。"
+        }
+      ],
+      "depends_on": [
+        "V1-G7-PORTABILITY",
+        "V1-G7-LEGACY-MIGRATION",
+        "V1-G2-PACKET"
+      ],
+      "next_action": "在各能力可交付后冻结发布演练矩阵并执行，保留失败与恢复证据。"
+    },
+    {
+      "id": "V1-G8-HANDOFF",
+      "title": "V1依赖、文档与维护移交",
+      "primary_g": "G8",
+      "tags": [],
+      "requirements": [
+        "R09"
+      ],
+      "weight": 2,
+      "required": true,
+      "acceptance_criterion": "发布依赖、迁移说明、已知限制与代码一致，恢复入口清楚，维护与回滚可复现。",
+      "applicability": {
+        "engineering": true,
+        "acceptance": true
+      },
+      "phase": "S5",
+      "engineering": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G8文档/依赖/维护移交"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "G8文档/依赖/维护移交"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "沿V1实际发布范围做最终文档/依赖/交接一致性核对；本次进度文档不提前完成此项。",
+          "release_condition": "发布依赖、迁移说明、已知限制与代码一致，恢复入口清楚，维护与回滚可复现。"
+        }
+      ],
+      "depends_on": [
+        "V1-G8-OPERATIONS"
+      ],
+      "next_action": "沿V1实际发布范围做最终文档/依赖/交接一致性核对；本次进度文档不提前完成此项。"
+    },
+    {
+      "id": "V1-G8-RELEASE",
+      "title": "全部必需门和阻断项最终结项",
+      "primary_g": "G8",
+      "tags": [],
+      "requirements": [
+        "R01",
+        "R02",
+        "R03",
+        "R04",
+        "R05",
+        "R06",
+        "R07",
+        "R08",
+        "R09"
+      ],
+      "weight": 1,
+      "required": true,
+      "acceptance_criterion": "R01-R09和G1-G7支持范围及T01-T07必要条款过门、无未处理阻断，策略效果有证据或经用户明确收窄发布范围；指数高分不能替代。",
+      "applicability": {
+        "engineering": false,
+        "acceptance": true
+      },
+      "phase": "S5",
+      "engineering": {
+        "status": "not_applicable",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "MILESTONES第七节V1完成标准"
+          }
+        ],
+        "basis": "current_plan_record",
+        "reason": "本条为数据、观察或裁决交付，不另计工程实现；其验收点仍计入V1。"
+      },
+      "acceptance": {
+        "status": "unmet",
+        "evidence": [
+          {
+            "path": "MILESTONES.md",
+            "revision": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+            "anchor": "MILESTONES第七节V1完成标准"
+          }
+        ],
+        "basis": "current_plan_record"
+      },
+      "blockers": [
+        {
+          "type": "dependency",
+          "reason": "按实际支持范围逐门复验，未过门保持未完成；范围取舍必须显式记录。",
+          "release_condition": "R01-R09和G1-G7支持范围及T01-T07必要条款过门、无未处理阻断，策略效果有证据或经用户明确收窄发布范围；指数高分不能替代。"
+        }
+      ],
+      "depends_on": [
+        "V1-G8-HANDOFF",
+        "V1-G3-REAL-MID",
+        "V1-G4-VALUATION",
+        "V1-G5-CAPS",
+        "V1-G6-EFFECT",
+        "V1-G7-EXTRACTION"
+      ],
+      "next_action": "按实际支持范围逐门复验，未过门保持未完成；范围取舍必须显式记录。"
+    }
+  ],
+  "changes": [
+    {
+      "id": "BASELINE-20261025",
+      "date": "2026-10-25",
+      "type": "baseline",
+      "scope_revision": "V1-progress-1",
+      "reason": "用户要求量化既有V1；根据现有合同及历史接收登记，非全面代码审计；本批只建立管理基线，不自加产品完成点。",
+      "new_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
+      "new_total_weight": 111
+    }
+  ],
+  "history_batches": [
+    {
+      "id": "T05-E3",
+      "commit": "e28c674",
+      "task_ids": [
+        "V1-G7-LATE-CACHE"
+      ],
+      "summary": "嵌套祖先放弃状态及迟到缓存守卫，原全量与修后定向增量验收分开记录。",
+      "progress_delta": null,
+      "reason": "量化基线建立在这些交付之后，没有同口径前值，不伪造历史百分点增量。"
+    },
+    {
+      "id": "T05-F1",
+      "commit": "ba0fc87",
+      "task_ids": [
+        "V1-G7-WAIT-EXIT"
+      ],
+      "summary": "主题代码查询创建/读取共用登录后15秒；204相关通过。",
+      "progress_delta": null,
+      "reason": "量化基线建立在这些交付之后，没有同口径前值，不伪造历史百分点增量。"
+    },
+    {
+      "id": "T05-F2",
+      "commit": "f07b743",
+      "task_ids": [
+        "V1-G7-WAIT-EXIT"
+      ],
+      "summary": "三个备用查询创建/读取共用登录后30秒；159相关通过。",
+      "progress_delta": null,
+      "reason": "量化基线建立在这些交付之后，没有同口径前值，不伪造历史百分点增量。"
+    }
+  ],
+  "roadmap": [
+    {
+      "id": "S1",
+      "title": "可靠性收敛与已验基础",
+      "exit_criteria": "新会话卡及全部核定可靠性条款过门；保持已验基础。",
+      "task_ids": [
+        "V1-G1-READ",
+        "V1-G1-OBS-PROPOSAL",
+        "V1-G1-FINITE",
+        "V1-G2-ENTRY",
+        "V1-G3-EVIDENCE",
+        "V1-G3-LOOP",
+        "V1-G4-TEMPLATE",
+        "V1-G4-RAW-MAPPED",
+        "V1-G4-CURRENT-CASH",
+        "V1-G5-CANDIDATES",
+        "V1-G6-VERSION",
+        "V1-G6-REPLAY",
+        "V1-G7-CONFIG",
+        "V1-G7-SERVICES",
+        "V1-G7-DISPATCH",
+        "V1-G7-WAIT-EXIT",
+        "V1-G7-LATE-CACHE",
+        "V1-G7-SESSION"
+      ]
+    },
+    {
+      "id": "S2",
+      "title": "真实研究样板与数据资格",
+      "exit_criteria": "真实MID与长期所需原件/行业时点资格有独立证据；不能以mock替代。",
+      "task_ids": [
+        "V1-G3-REAL-MID",
+        "V1-G4-INDUSTRY-PIT",
+        "V1-G4-ROE",
+        "V1-G4-CASH-PERSISTENCE",
+        "V1-G4-SUPPLIER-RAW",
+        "V1-G7-CORRECTIONS"
+      ]
+    },
+    {
+      "id": "S3",
+      "title": "工作流和组合业务闭环",
+      "exit_criteria": "支持范围内研究视图、账户和同快照组合约束完成，必要重构有收益。",
+      "task_ids": [
+        "V1-G1-TRANSACTION-MATRIX",
+        "V1-G2-RESEARCH-READ",
+        "V1-G2-PACKET",
+        "V1-G4-VALUATION",
+        "V1-G5-SOLVER",
+        "V1-G5-SNAPSHOT",
+        "V1-G5-CASH-NAV",
+        "V1-G5-CAPS",
+        "V1-G7-BOUNDARY-RESERVE",
+        "V1-G7-WRITE-RACE",
+        "V1-G7-BATCH-BUDGET"
+      ]
+    },
+    {
+      "id": "S4",
+      "title": "独立质量、性能及前瞻效果",
+      "exit_criteria": "独立集/预注册/合格观察与周期效果达到既定门槛；等待不计分。",
+      "task_ids": [
+        "V1-G5-RECALL",
+        "V1-G6-PREREG",
+        "V1-G6-OBSERVATION",
+        "V1-G6-EFFECT",
+        "V1-G7-PERF-COST",
+        "V1-G7-RAG-QUALITY",
+        "V1-G7-EXTRACTION"
+      ]
+    },
+    {
+      "id": "S5",
+      "title": "便携迁移、发布演练和结项",
+      "exit_criteria": "异机/迁移/恢复及全部必需发布门通过，转维护。",
+      "task_ids": [
+        "V1-G7-PORTABILITY",
+        "V1-G7-LEGACY-MIGRATION",
+        "V1-G8-OPERATIONS",
+        "V1-G8-HANDOFF",
+        "V1-G8-RELEASE"
+      ]
+    }
+  ],
+  "plan_catalog": [
+    {
+      "path": "MILESTONES.md",
+      "role": "current",
+      "purpose": "长期目标与里程碑说明；分数只引用PROGRESS。"
+    },
+    {
+      "path": "plan/fusion/PROGRESS.json",
+      "role": "source_of_truth",
+      "purpose": "本V1量化事实源，任务/权重/状态/证据/变更集中登记。"
+    },
+    {
+      "path": "plan/fusion/PROGRESS.md",
+      "role": "generated",
+      "purpose": "自动生成的完整量化任务账本。"
+    },
+    {
+      "path": "plan/fusion/PROGRESS_CONTRACT.md",
+      "role": "contract",
+      "purpose": "计分、范围变化、阶段交付与校验边界的固定合同。"
+    },
+    {
+      "path": "docs/开发进度看板.html",
+      "role": "generated",
+      "purpose": "本地可筛选进度页。"
+    },
+    {
+      "path": "plan/fusion/STATUS.md",
+      "role": "current",
+      "purpose": "当前及历史批次接收范围，不另计百分比。"
+    },
+    {
+      "path": "plan/fusion/RESUME.md",
+      "role": "current",
+      "purpose": "恢复/下一任务/工作区保护。"
+    },
+    {
+      "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
+      "role": "execution",
+      "purpose": "当前可执行合同与第十轮历史实施卡，映射量化ID。"
+    },
+    {
+      "path": "plan/fusion/DESIGN.md",
+      "role": "design",
+      "purpose": "冻结融合架构与不变量，设计不等于验收。"
+    },
+    {
+      "path": "plan/fusion/VALIDATION.md",
+      "role": "validation",
+      "purpose": "真实效果与发布验证原则。"
+    },
+    {
+      "path": "plan/ARCHITECTURE.md",
+      "role": "historical_design",
+      "purpose": "原工程架构，当前执行范围由G/T及量化账本承接。"
+    },
+    {
+      "path": "plan/README.md",
+      "role": "historical",
+      "purpose": "早期M0-M6/C批次实施记录，不复活为当前TODO。"
+    },
+    {
+      "path": "plan/fusion/TASKS.md",
+      "role": "historical",
+      "purpose": "早期F0-F9原卡及条件验收，未完条款已由当前G/T承接。"
+    },
+    {
+      "path": "plan/fusion/iteration9/DELIVERY_PLAN.md",
+      "role": "historical",
+      "purpose": "第九轮实施与验收依据，旧下一张不覆盖当前队列。"
+    },
+    {
+      "path": "plan/fusion/signal_authority_review/S2AC_ACCEPTANCE.md",
+      "role": "historical_acceptance",
+      "purpose": "ISS-117已验信号权限范围，不因盘点重复开工。"
+    }
+  ],
+  "governance": {
+    "id": "G0",
+    "status": "framework_established_ongoing",
+    "scored": false,
+    "reason": "持续维护门，不因增写进度文档获得产品分；每批必须更新当前任务状态/证据及恢复指针。",
+    "historical_foundation": "M0-M6和原F/R等批次只作证据，不重复加七项或十项奖励。",
+    "change_report": "每批列任务ID、行为和证据、E/A/P前后、完成与范围变化分别列、剩余关键项/下一步/阻断；纯维护允许进度不变。",
+    "unknown_policy": "unknown不等于未实施；已知未完成不进入可能上界；旧证据只在受影响或出现反例时降级，不因日期旧自动失效。",
+    "observations": "起止/样本门槛未核定不假填日期；下一评估由真实观察合同决定。",
+    "out_of_scope": [
+      "自动实盘交易",
+      "同股多意图分仓",
+      "微服务或多Agent投资产品平台",
+      "为消耗额度新增无收益重构",
+      "协作插件开发及其费用研究（独立工具项目）"
+    ],
+    "authorization": "已有明确授权在其适用范围持续有效；先核现有授权，不因日期/换会话重复询问，也不以旧标签扩大费用范围。"
+  },
+  "repository_url": "https://github.com/happye/MuyunTradeAssistant",
+  "baseline_audit_notes": [
+    "初稿46条109权重；独立审查收窄G2-ENTRY以免与G1重复计账户读出口。",
+    "同次审查补齐遗漏的批量总预算/资源/续跑身份条款2点；最终首次冻结47条111权重。",
+    "这是首次公开基线前的草案纠正，不追造旧批进度增量；指标以最终JSON自动计算。"
+  ],
+  "legacy_backlog": [
+    {
+      "id": "LEG-038",
+      "title": "早期多因子/事件/基本面方向占位",
+      "classification": "mapped",
+      "task_ids": [
+        "V1-G3-LOOP",
+        "V1-G4-VALUATION",
+        "V1-G5-RECALL"
+      ],
+      "source": "ISSUES.md",
+      "reason": "后续已采用笨总及当前G/T路线，不能把旧五个提案自动重开为五个必做项。",
+      "next_action": "仅按现有V1推进，新的架构提案另作范围裁决。",
+      "scored": false
+    },
+    {
+      "id": "LEG-052",
+      "title": "退出信号数据最小切片与已否决扩展",
+      "classification": "historical_closed",
+      "task_ids": [],
+      "source": "ISSUES.md",
+      "reason": "减持最小切片已有实施记录；换手率fetcher及额外关键词等有不做裁决。",
+      "next_action": "保持原纪律；出现新证据再立有限合同，不复活死代码或擅改阈值。",
+      "scored": false
+    },
+    {
+      "id": "LEG-053",
+      "title": "高点回撤失效条件候选",
+      "classification": "optional_decision",
+      "task_ids": [
+        "V1-G8-RELEASE"
+      ],
+      "source": "ISSUES.md",
+      "reason": "旧高点回撤后续项无当前明确独立合同；持有中阶段转换另有不动裁决，不合并为现存bug。",
+      "next_action": "先核实际代码/后续覆盖和是否影响V1明示支持范围；若是必要缺陷重开现有条款，否则另作可选提案。",
+      "scored": false
+    },
+    {
+      "id": "LEG-065",
+      "title": "Weinstein阶段统一试验回退",
+      "classification": "historical_closed",
+      "task_ids": [],
+      "source": "ISSUES.md",
+      "reason": "历史试验退化后按裁决回退，保留差异不等于必须恢复回退代码。",
+      "next_action": "新策略提案才重开，先冻结基线与回测/费用范围。",
+      "scored": false
+    },
+    {
+      "id": "LEG-066-NETWORK",
+      "title": "六组历史请求/缓存重复遗留",
+      "classification": "needs_revalidation",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET",
+        "V1-G7-PERF-COST",
+        "V1-G7-SESSION"
+      ],
+      "source": "ISSUES.md",
+      "reason": "涉及重复公告/沪深300、评分缓存全命中仍取数与标注、趋势补算重复、心跳频繁、K线降级链回头；本轮未做源码审计。",
+      "next_action": "逐项对当前调用链和请求账单核定；已被后续覆盖者不重做，真缺陷归并现有条款，不重复加六项分。",
+      "scored": false
+    },
+    {
+      "id": "LEG-066-WEB",
+      "title": "Web初始化及tasks资源遗留",
+      "classification": "needs_revalidation",
+      "task_ids": [
+        "V1-G7-BOUNDARY-RESERVE"
+      ],
+      "source": "ISSUES.md",
+      "reason": "旧Web双初始化/tasks字典增长需核当前代码；conf=0展示已有后续修复记录。",
+      "next_action": "先核是否仍可达、是否有用户风险，再确定必要重构；不重开已修展示项。",
+      "scored": false
+    },
+    {
+      "id": "LEG-081",
+      "title": "TRIM类force_exit执行意图核定",
+      "classification": "needs_revalidation",
+      "task_ids": [
+        "V1-G7-BOUNDARY-RESERVE",
+        "V1-G8-RELEASE"
+      ],
+      "source": "ISSUES.md",
+      "reason": "历史明确待办可能影响决策，不能因档位掩盖就销账；后续权限修复是否已覆盖尚未重审。",
+      "next_action": "复核真实可达路径与现权限门；若确认需行为变更，按既有A/B基线和评分/回测红线裁决，阻断不清不结V1。",
+      "scored": false
+    },
+    {
+      "id": "LEG-085-090",
+      "title": "CLI/REPL/scan的RAG接线及质量",
+      "classification": "needs_revalidation",
+      "task_ids": [
+        "V1-G7-RAG-QUALITY"
+      ],
+      "source": "ISSUES.md",
+      "reason": "ISS-085旧缺口与ISS-090后续已解决记录需按范围对齐；本轮未重跑代码，不能只看旧pending或green标签。",
+      "next_action": "核当前接线与行为标注，随后按独立集验质量；确认已有实现不重复写一遍。",
+      "scored": false
+    },
+    {
+      "id": "LEG-107",
+      "title": "E5真实AI消融实验",
+      "classification": "mapped",
+      "task_ids": [
+        "V1-G6-PREREG",
+        "V1-G6-EFFECT",
+        "V1-G7-EXTRACTION"
+      ],
+      "source": "ISSUES.md",
+      "reason": "历史有授权待立项记录；仍是效果/独立集条款，不能由工程通过替代。",
+      "next_action": "先核旧授权是否真实且覆盖同一实验；适用许可持续有效无需重复询问，范围不明或扩大时才补必要确认。本次文档工作不启动实验。",
+      "scored": false
+    },
+    {
+      "id": "LEG-115",
+      "title": "降低plan2手写事实门槛",
+      "classification": "mapped",
+      "task_ids": [
+        "V1-G2-RESEARCH-READ",
+        "V1-G2-PACKET"
+      ],
+      "source": "ISSUES.md",
+      "reason": "用户反馈已由研究与计划工作流承接，登记需求不是功能验收。",
+      "next_action": "在当前视图/草稿流程验收中核无需用户重复手抄可信事实，并保留接受态确认。",
+      "scored": false
+    },
+    {
+      "id": "LEG-VIDEO-OPTIONAL",
+      "title": "超配自动执行、虹吸及其它旧策略扩展",
+      "classification": "optional_decision",
+      "task_ids": [],
+      "source": "docs/2026-08-12_未做事项评估.md",
+      "reason": "旧报告中的低优先级/数据墙项，包括超配自动执行、虹吸、双击/单机及额外市场/边界提醒；已有连续缩量等不重复立项。",
+      "next_action": "先核较新实现与明确裁决；新策略范围、数据和回测要求单独审议，不暗改当前策略。",
+      "scored": false
+    },
+    {
+      "id": "LEG-VIDEO-SCORING",
+      "title": "动态权重/景气度闸门/估值与产能提案",
+      "classification": "optional_decision",
+      "task_ids": [
+        "V1-G6-EFFECT"
+      ],
+      "source": "docs/2026-08-12_未做事项评估.md",
+      "reason": "旧第四档需笨总拍板；五年回测旧债不代表当前效果已验，也不自动新立无限回测。",
+      "next_action": "如与当前V1有关先冻结验证合同；涉及评分公式/维度逻辑遵守CACHE_VERSION及既定回测门。",
+      "scored": false
+    },
+    {
+      "id": "LEG-INDUSTRY-HOOK",
+      "title": "行业数据接笨总景气度的过时待办",
+      "classification": "historical_closed",
+      "task_ids": [
+        "V1-G7-RAG-QUALITY"
+      ],
+      "source": "docs/2026-08-16_行业数据层跨模块适用性评估.md",
+      "reason": "较新ISS-083登记接线四门已过，不能仅凭旧行业评估/FEATURE_REQUESTS的pending重复开工；既有接线不代表新质量效果成立。",
+      "next_action": "保持既有实现；新变更按评分缓存/回测纪律，质量问题归当前T06核定。",
+      "scored": false
+    },
+    {
+      "id": "LEG-FEAT-INIT",
+      "title": "新机器chat初始化与诊断请求",
+      "classification": "needs_revalidation",
+      "task_ids": [
+        "V1-G8-OPERATIONS"
+      ],
+      "source": ".learnings/FEATURE_REQUESTS.md",
+      "reason": "已有M6/doctor基线，chat专用启动缺口需对齐现状；旧uv sync建议不适用于本仓。",
+      "next_action": "在安装演练中核聊天启动依赖/模型/配置提示，按requirements.txt和实际环境复现。",
+      "scored": false
+    },
+    {
+      "id": "LEG-FEAT-STREAM",
+      "title": "chat流式输出旧pending",
+      "classification": "historical_closed",
+      "task_ids": [],
+      "source": ".learnings/FEATURE_REQUESTS.md",
+      "reason": "本轮定向源码核到src/chat/agent.py::_call_api_stream与stream=True，并有tests/chat/test_chat_streaming.py；仅核存在，未重跑。",
+      "next_action": "不因旧pending重写流式；若有新故障按具体反例另开原条款。",
+      "scored": false
+    }
+  ]
+}

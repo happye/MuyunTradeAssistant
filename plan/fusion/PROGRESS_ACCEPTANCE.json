@@ -1,0 +1,81 @@
+{
+  "schema": "muyun-progress-acceptance/v1",
+  "date": "2026-10-25",
+  "product_base_commit": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
+  "scope_revision": "V1-progress-1",
+  "scope_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
+  "status": "ACCEPTED_MANAGEMENT_BASELINE_ONLY",
+  "initialization": "existing contracts/historical acceptance records; not a fresh complete code audit",
+  "tasks": 47,
+  "total_weight": 111,
+  "closed": 17,
+  "remaining_or_unverified": 30,
+  "legacy_groups": 15,
+  "metrics": {
+    "channels": {
+      "engineering": {
+        "met": 44,
+        "unknown": 46,
+        "denominator": 98,
+        "lower": 44.89795918367347,
+        "upper": 91.83673469387755
+      },
+      "acceptance": {
+        "met": 37,
+        "unknown": 7,
+        "denominator": 111,
+        "lower": 33.333333333333336,
+        "upper": 39.63963963963964
+      }
+    },
+    "contract_index": {
+      "lower": 39.1156462585034,
+      "upper": 65.73818716675859
+    },
+    "gate": "not_closed"
+  },
+  "checks": {
+    "existing_product_source_files_unchanged": 532,
+    "protected_hashes_unchanged": 9,
+    "original_untracked_existing": 218,
+    "new_local_links_checked": 70,
+    "pinned_git_evidence_references_exist": 8,
+    "generated_views_match_json": true,
+    "developer_script_selftests": {
+      "passed": 18,
+      "source": "bounded subagent execution report; parent did not duplicate test suite"
+    },
+    "parent_browser": {
+      "total": 47,
+      "closed": 17,
+      "open": 30,
+      "search": 3,
+      "exactTaskVisible": true,
+      "phase": 5,
+      "restored": 47,
+      "hasIndex": true,
+      "hasLegacy": true,
+      "count": "显示 47 条",
+      "title": "V1合同进度看板"
+    },
+    "review": "PASS, independent read-only content/formula/HTML review; no test reruns",
+    "model_execution_metadata_verified": false
+  },
+  "validation_scope": "progress calculator, structure, links, independent arithmetic and actual local-browser filtering; no product pytest/full-suite/real business AI or DSH invocation",
+  "git": "main precise staging and normal push; delivery SHA from actual Git log",
+  "artifact_hash_basis": "committed Git blob bytes; text line endings normalized by Git",
+  "artifacts": {
+    "plan/fusion/PROGRESS.json": "bdbe4863b02e75696661cb4e62769d23b01dfeb4690918504eb9293015fd0ead",
+    "plan/fusion/PROGRESS.md": "b50df01a9350d0196f69ca733fb5409a1e6090256d94bfae885a9c55d208450a",
+    "plan/fusion/PROGRESS_CONTRACT.md": "17e5892466c7c0f025023ba87b56450da06cfafe0aa68099fa61dc5d78f28a13",
+    "docs/开发进度看板.html": "f053bd6937119bad202b4ecd257ffa035136059d42bad179c5d78f1f74f1d7c6",
+    "scripts/check_progress.py": "4fa5d583992dd530538dc2ec9c417cce135e588273922b7eb8412bb2d4e0320d"
+  },
+  "limits": [
+    "weights are explicit v1 management assumptions, not measured effort",
+    "unknown is not unimplemented; upper bound not forecast",
+    "JSON consistency does not prove evidence truth or prevent rewritten history; review Git diff",
+    "baseline creation adds zero product completion credit; no retrospective batch delta invented",
+    "real MID/data/observation/authorization and required release gates remain incomplete"
+  ]
+}
