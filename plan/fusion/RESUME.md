@@ -1,6 +1,31 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-27 T05-K 已限定接收，持续授权有效
+## 当前停止交接：2026-10-27 新额度不足8%，T05-L未验收保留WIP
+
+用户新通知额度不足8%并要求收尾，覆盖本页下方此前恢复持续协作授权。已禁止新send/run/审批和产品测试。T05-K已推送main/origin/main=`3f08bf59a9b17d8176dc2f230061ec975e113e7c`；收尾文档提交SHA核实际Git日志。**T05-L未接收、未提交产品代码**，不能把DSH首轮“完成”自评当通过。
+
+**停止身份**：task=`muyun-t05l-live-budget-20261027`，session=`codex-aac7ae38-2853-41b8-96e1-6cf11d52a6d5`，当前合同rev2 SHA=`f2835c18bd5fb21137308c1bf407da6a9daaa4976fa687cbcca9f2fdc9e91d68`。追修请求=`40c44bfa-1f1a-414f-bf94-6a9520922f6f`已ABORTED/seq1074，resultFile为空（SHA=e3b0c442...b855，已读）；stopAttempt=`a2b3c81a-ad62-4854-ac9e-32c01c04bf4a`，cancelAck.accepted=true，观测running=false、queue=0，工具仍STOP_PENDING/STOP_ACTIVITY_UNRESOLVED。三个Codex子Agent均completed；不重复cancel、不杀共享Host、不改账本解锁，不声称Host所有后台子树停净。
+
+**WIP保存**：main保留K已交付版本；工作树仍有L的9个tracked源码/测试修改，以及2个新测试`tests/core/test_live_batch_budget.py`、`test_live_batch_outcomes.py`，均未验收/未暂存为产品提交。只读快照、完整12项允许文件副本与tracked patch在`C:/Users/Crux/AppData/Local/Temp/muyun-t05l-live-budget-20261027/wip-stop-20261027/`（`manifest.json`/`tracked-wip.patch`/`files/`）。真实基线与flat218未跟踪见同stage/baseline.json；9保护hash未变、原218路径均存在，不虚称未跟踪内容hash证明。禁止为清树回滚/删除这些WIP或夹带原账户/索引/个人配置。
+
+**未闭阻断（一次集中审查，不得只修一处就放行）**：3loop在标题输出后、实际调用前须再核截止且只临近调用登记started；共享ba/live普通mark拒坏map和显式not_started=None，not_started新code不得洗白旧坏/缺stop_reason；L9最小完成资格marker、旧未核记录在原确认前预告费用、raw根合并保其他坏/旧行与历史日期、坏根拒写；语法非法/单股引用预算先拒再resolve_index；live任务文案用分析、ba保评分；补3f08原函数隔离业务红（020仅collection错误）。rev2已授权仅M0额外测试文件局部隔离外部叶，保真实账户/编排/存储断言。若仍有IO，限一次安全nodeid+src栈定位后再精确扩owner，不改globalfixture/runner、不删case/放宽门。
+
+**证据限度**：rev1请求`432f9e34-e973-4b92-badc-6f815bb83d91`COMPLETED/seq1034，全文SHA=`ad179b317bdb1b80fe054cfc4a41ac61c2f4d7ad85d3b79b0b496af2306d3dd9`已读；667相关通过但network552被阻断，独立审查明确不接收，不是离线合格。070未guard宽回归257通过217.41s出现HF加载告警，实际外网/产品AI调用与费用未知，不能自称全程零网络/零产品AI。rev2因新额度信号中止，没有最终红绿/守卫/复核结论。产品评分/CACHE_VERSION/TTL与真实账户未由本卡修改；完整配置/资源/缓存输入身份、其余入口及G7/T05/V1仍待，E48.0%/A36.0%/P42.0%–68.6%、18/47不变。
+
+**将来恢复**：先取得用户新恢复指令、核Git/工作树和check_progress；读rev2合同及上述WIP快照、原始失败与独立阻断。旧task停止锁不可绕过，已中止请求不重投；核原生活动后为明确续修范围建立可用身份/按实际新HEAD绑定，保留现有WIP并明确其所有权。不得以旧667或文档同步冒充修复，不先跑未隔离宽回归；先有界红绿、同相关矩阵IO三项0、完整指纹和独立复核，才可产品交付。
+
+## 历史续工：2026-10-27 T05-L 已派发，未通过验收
+
+用户恢复额度的持续授权有效；T05-K已推送main/origin/main=`3f08bf59a9b17d8176dc2f230061ec975e113e7c`，先前额度信号仅作历史。9保护hash和原218未跟踪存在性保持；进度校验通过。Codex审批/文档/账本/Git，DSH实施并唯一执行测试。
+
+新有限task=`muyun-t05l-live-budget-20261027`，session=`codex-aac7ae38-2853-41b8-96e1-6cf11d52a6d5`；外部材料`C:/Users/Crux/AppData/Local/Temp/muyun-t05l-live-budget-20261027`，合同`muyun-v1-g7-live-budget`当前rev2 SHA=`f2835c18bd5fb21137308c1bf407da6a9daaa4976fa687cbcca9f2fdc9e91d68`（supersedes rev1 `4c636caeefe4c49b2e80432e9559539c6d51858796a4e6c2fa662888c477942e`）。rev1请求=`432f9e34-e973-4b92-badc-6f815bb83d91`已COMPLETED seq1034，全文SHA=`ad179b317bdb1b80fe054cfc4a41ac61c2f4d7ad85d3b79b0b496af2306d3dd9`已读但未接收；rev2追修send已启动，待原进程观察，不重投。Astra/low只读架构建议已由主控批准：一张卡先真实结果后预算，不新增架构层。
+
+**范围**：analyze_live普通Enum返回COMPLETE/QUOTE_ONLY；三个REPL live批循环仅确实完整分析记成功，只有原l多/l all完成才记当日已析，la仍不新增同日缓存。仅行情记降级并可重试，None/bool/字符串等未知不冒充成功/失败/未开始。三入口及已有live_multi别名可选--budget，默认无隐藏上限；同一monotonic截止到期不启动后续股、当前股完成。l all确认后执行准备前计时；la/手动多码不新增确认，预取/账户快照前计时；la同一账户快照兼作roster和全批上下文。live独立typed预算描述，读写与tasks按kind同门；正常帮助/default路径可发现。评分/缓存/账户写门/配置构造/资源硬界不改。先红后绿、相关守卫、独立关键边界审查尚待；整个G7/T05/V1与分数保持。
+
+**rev2集中追修**：独立审查拒绝初版。667guard通过但阻断network552，不作离线合格；首轮未guard宽回归含未隔离HF/外部依赖，实际外网/产品AI调用与费用未知，不能自称全程零调用。020仅collection错误，须补原3f08函数隔离行为红。主控已批准L9旧当日完成资格marker/原确认前费用预告/rawroot合并保旧与历史/坏根拒写；另补调用前最终核钟、共享ba+live坏map/原因不得洗白、引用参数先拒再查、live任务措辞。合法ba协议不变，非法持久化状态同类收紧。所有权仅增加已定位M0测试作局部依赖隔离，DSH当前共12source/tests；后续只守卫测试，零IO为最终准入，残余按一次有界安全栈定位后再精确申请扩owner，禁止删case/放宽guard/擅改globalfixture。原218是flat路径，不使用DSH汇总23目录代替证明。
+
+
+## 上一批：2026-10-27 T05-K 已限定接收，持续授权有效
 
 用户明确恢复额度并撤销此前停止信号，覆盖下方历史停止安排；继续原Codex+DSH目标直到新的额度/停止信号。Codex负责合同/文档/唯一账本/独立验收/Git；原生DSH实施并唯一执行测试。实施基线main=`4e50c64718ffd8e8252b350c68df981b2a61f70f`，交付SHA以Git日志为准；旧I/J交付保持。
 

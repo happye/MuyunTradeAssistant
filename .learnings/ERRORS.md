@@ -4,6 +4,18 @@
 
 # Errors
 
+## [ERR-20261027-T05L-OFFLINE] 既有“离线”账户链用例仍请求外部依赖
+
+**Status**: in_progress | **Area**: test isolation
+
+T05-L首轮070直接pytest宽回归257通过217.41s，其中M0竖向l显示HF下载缓存告警；未使用IO守卫，不能证明无实际外网/产品AI调用或费用。080/090既有守卫虽643/667通过，network阻断均552，不能作为离线合格。现有guard已关闭_cli_rag，残余可能来自AI/event/基本面等外部叶，不能把552全部归RAG。rev2先精确授权M0测试隔离，真实账户/编排/影子/证据/建议断言保留；最终同矩阵IO0，必要时仅一次安全nodeid/src栈定位再扩owner。不改globalfixture/runner、不删case、不用裸pytest重试外部依赖。
+
+## [ERR-20261027-T05L-HANDLE] 观察进程终态后清除旧句柄
+
+**Status**: resolved | **Area**: collaboration observation
+
+续工时重复write_stdin到已exit=0的本地观察进程20985，工具报Unknown process id；未重投原生请求，也未误判DSH任务失败。按已保存task/request及cursor684/generation继续单一follow窗口。CLI进程句柄与原生任务状态分开，观察进程退出后立即失效，不跨窗口复用。
+
 ## [ERR-20261027-T05K-PATHS] 恢复时先枚举真实路径
 
 **Status**: resolved | **Area**: review tooling
