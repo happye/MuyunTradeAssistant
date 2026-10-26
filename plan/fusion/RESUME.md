@@ -1,5 +1,13 @@
 # 融合项目恢复入口
 
+## 停止交接：2026-10-26 用户额度不足，已停止派发
+
+用户通知剩余额度不足4%并要求尽快收尾，停止优先于此前持续推进授权。T05-I已推送`0187474`；T05-J已推送main/origin/main=`932241c20dca9d38e1fd864f30b6578cf73a6470`。T05-J正常菜单/default提示和可选`--budget`已交付；495历史矩阵+最终174定向增量及独立复核，进度不变。未经用户新指派不得继续派发、测试或开启T05-K。
+
+**停止状态**：对task=`muyun-t05j-ba-budget-20261026`已调用stop，新send/run/审批被锁；stopAttempt=`7b8f4466-2840-45a5-b1f4-da2658805dd3`，cancelAck.accepted=true，观测running=false、queue=0，但工具仍`STOP_PENDING/STOP_ACTIVITY_UNRESOLVED`，不能证明整个共享Host及所有后台子树停净。不重复cancel、不杀Host、不改旧账本绕锁。三个Codex子Agent均completed。
+
+**下一卡未实施**：T05-K只做只读定位，未创建DSH任务/合同/请求，产品与测试无待交付改动。恢复先核用户新授权与实际Git，再定有限合同。缓存资格草案须先补核可选字段消费者：主控实际发现`start.py`的来源join/遍历、reasoning.splitlines和CLI缓存market_turnover参与计算；定位员“sources/reasoning无不安全消费”结论不完整，不能直接照抄。复核坐标后再定schema，不先承诺仅score/confidence/invalidate/warnings足够。只用临时缓存反例，禁止真实用户缓存探针/清理；公式/prompt/CACHE_VERSION保持，完整配置/资源界及V1仍待。
+
 ## 当前续工：2026-10-26 T05-J 可选时限与正常发现入口已限定接收
 
 用户`/goal`持续Codex+DSH授权有效，后续明确选择可选总时限且要求使用者知晓选项。T05-J已完成ba/bz多代码子范围：`--budget <秒>`/`--budget=<秒>`默认不启用；费用确认后在共用执行入口取单一monotonic截止，准备及逐股边界检查，到点不再开始下一只，当前只允许完成。正常启动/h菜单与默认命令缓存预览/确认前提示都有真实输出测试。不是硬墙、强取消或费用上限；l/la/l all本卡不支持该参数。

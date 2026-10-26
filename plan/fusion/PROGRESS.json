@@ -1960,7 +1960,7 @@
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "先限定逐维缓存载荷资格子合同，坏条目当miss仅重算对应维度；保持prompt/formula/CACHE_VERSION/TTL及弱正置信度合法结果，另核完整配置与资源界。"
+      "next_action": "用户额度不足已停止，T05-K仅定位未实施；新指派恢复后先复核缓存所有实际消费者及有限schema，再绑定合同。不得按旧持续授权自动续工，进度不变。"
     },
     {
       "id": "V1-G7-PERF-COST",

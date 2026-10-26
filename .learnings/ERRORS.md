@@ -644,3 +644,7 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ## ERR-20261026-DSH-证据路径
 
 状态：resolved。主控误按matrix命名猜定向守卫资产`source_hashes_before_matrix.txt`导致FileNotFoundError；列目录后按实际`source_hashes_before_guarded.txt`读取并验证18项前后/当前相等。未重跑测试、未重投请求；后续先查资产清单再定向读，不能把路径失败当业务失败。
+
+## ERR-20261026-Git与定位路径
+
+状态：resolved。T05-J本地932241c首推直连GitHub443失败；核已有127.0.0.1:7890代理可达后，用单次Git参数同时覆盖http.proxy与http.https://github.com.proxy推送成功，未改全局配置、未重提交或强推。定位缓存消费者时误猜src/core/services/plan_update_prep.py，rg报路径不存在；用rg --files核实实际src/core/trade_plan/plan_update_prep.py。后续先定位再读，不据猜测报告消费者全集。

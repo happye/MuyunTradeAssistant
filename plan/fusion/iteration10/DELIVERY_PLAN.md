@@ -22,9 +22,9 @@
 
 **T05-J最终验收**：初版403相关绿不足以接收，原五项门修复后478绿；用户追加J7正常发现入口后485绿；最后联合门/坏map/未知文案/提示顺序修后495相关绿。新增幂等早返回再补2红/1绿→3绿→174定向守卫（5.81s，IO=0），仅session_state及预算测试较495树改变，其余16依赖不变，独立只读复核PASS。没有最终树单次495或全量声明。539源码清单、9保护hash与原218未跟踪存在性保持，原始分轮记录均留存；见[T05-J回执](T05J_BA_BUDGET_ACCEPTANCE.json)。用户可见菜单/default提示、参数错误零业务、同deadline、真实去重、未开始/未知分离均限定通过，不推及其他入口/资源硬界/cache资格或V1。
 
-## 下一有限卡：T05-K 逐维缓存载荷资格（待新合同）
+## 下一有限卡：T05-K 逐维缓存载荷资格（用户额度不足，未实施）
 
-只核缓存JSON载荷能否安全复用：score有限[0,100]且非bool，confidence正且≤1（0.3弱正不误拒），invalidate缺失/None或bool；坏条目当miss只重算该维，写端也拒坏载荷且保留旧有效文件。缓存键/TTL/版本/prompt/formula不改、不清真实用户缓存、不以类型门自证配置/PIT资格。有限mock覆盖坏字段/NaN/Inf/缺失/布尔、五维命中一维失败续跑、全部有效/force_refresh及CLI摘要/计划miss降级。新warning三处核对；实际数据/sector-meta额外AI路径另裁决，不混入本卡。先核新HEAD与合同，再红绿、独立复核、同步交付。
+用户要求停止，T05-K仅只读定位，未创建任务或合同。新授权后须先复核start.py来源join/reasoning.splitlines及CLI缓存market_turnover消费者，现有可选字段草案不完整，不能直接实施。初步范围只核缓存JSON载荷能否安全复用：score有限[0,100]且非bool，confidence正且≤1（0.3弱正不误拒），invalidate缺失/None或bool；坏条目当miss只重算该维，写端也拒坏载荷且保留旧有效文件。缓存键/TTL/版本/prompt/formula不改、不清真实用户缓存、不以类型门自证配置/PIT资格。有限mock覆盖坏字段/NaN/Inf/缺失/布尔、五维命中一维失败续跑、全部有效/force_refresh及CLI摘要/计划miss降级。新warning三处核对；实际数据/sector-meta额外AI路径另裁决，不混入本卡。先核新HEAD与合同，再红绿、独立复核、同步交付。
 
 ## 当前量化关联（2026-10-25）
 
