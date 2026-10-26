@@ -1,3 +1,9 @@
+## LRN-20261027-T05K：校验实际写入快照，测试也要跨日与状态隔离
+
+状态：逐维缓存载荷范围限定接收，见[回执](../plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json)。版本相同不是字段有效证明；沿真实消费者核score/confidence、来源join、推理splitlines及流动性数值，而非只看get接口。dict浅拷贝仍共享list，必须对实际写入record做深层独立快照后校验；在路径初始化前拒坏输入，写失败保旧。读拒只表示miss，写拒只是缓存未更新，提示不能承诺立刻重算或下次一定重算。新写错误只记固定原因/异常类型，不回显任意正文。
+
+缓存测试必须与生产使用同一注入日期；固定seed日期配真实now在次日即失效。logger状态也属于测试隔离：不要在caplog上下文保存前改level，验证退出时level/handlers/propagate恢复。原428矩阵后仅两测试变更，以最终26两文件守卫替代原20用例，复用408未变项；不合成最终单轮428。遗漏8测试pin用绑定raw/current与拒repo写守卫回溯补强，不虚构原始前后快照或完整安装环境指纹。
+
 ## LRN-20261026-T05J：可选时限的未开始事实不能从未知倒推
 
 状态：有限范围修复并接收，见[回执](../plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json)。全链硬墙与停止启动是不同合同；只用同一monotonic截止在准备/逐股边界协作检查，不把当前股票强取消或费用封顶。执行、roster和汇总必须共用保序去重清单；仅not_started去重仍会重复评分。确认未开始的计数/逐项文案/终止文案共用联合资格：run、kind、typed预算、stop_reason、roster与可读三态；坏旧值不能当空，部分ns+unknown不能说全批没开始或没费用。写入需双向互斥、坏map保字节，幂等成功也核完整元数据。可发现性是实际用户合同：正常启动/help列示例，default提示在cache.get预览工作前，不能只比较输出顺序。495历史矩阵+最终174定向增量接受，不重复未变全套，不声称最终树单次495。控制器首个新hash自动注入完整contract，手动prompt只需增量，避免重复附全文。

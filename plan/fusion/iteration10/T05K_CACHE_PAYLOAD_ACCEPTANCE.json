@@ -1,0 +1,818 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-27",
+  "status": "ACCEPTED_TYPED_CACHE_PAYLOAD_SCOPE_ONLY",
+  "base_commit": "4e50c64718ffd8e8252b350c68df981b2a61f70f",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-cache-payload",
+    "revision": 1,
+    "sha256": "881a762a61842b140b22a604e6295bdb02bcab6114c2fbb5cdd44be487517866",
+    "git_owner": "Codex",
+    "test_owner": "DSH",
+    "bridge_testPlan": [],
+    "formal_bridge_run_receipt": false
+  },
+  "native": {
+    "task": "muyun-t05k-cache-payload-20261027",
+    "session": "codex-9bff526c-a908-466c-9191-c5200e212293",
+    "latest_request": "d4cd197f-b848-4333-8820-d2a2aa0cb430",
+    "terminal_seq": 718,
+    "state": "COMPLETED",
+    "result_sha256": "abfccdeee2a18588ad8074673932c6352f309320a81b72674ef74dac048f9af3",
+    "full_result_read": true,
+    "stopped_writing": true
+  },
+  "accepted_scope": [
+    "Same-version dimension cache uses shared read/write score/confidence and consumed optional-field type/range gates; malformed read is miss without deleting bytes",
+    "Finite numeric score0..100/confidence(0,1], booleans rejected; weak0.3 and boundaries preserved; optional invalidate/list[str]/reasoning/market_turnover compatibility",
+    "set strictly accepts dict, deep-copies actual record before validation, rejects invalid before path initialization, failed persistence preserves old destination",
+    "Real temp-cache consumers: one bad+five good reuse, failed dimension retry, refresh all, start display/report, two CLI summaries, plan missing, fee preview",
+    "Read rejection/write rejection/persistence failure distinct human warnings; new write logs omit raw exception bodies; local test date/logger isolation"
+  ],
+  "validation": {
+    "initial": "90failed30passed ->126targeted; intermediate fixture failures retained; first417 guard not sufficient for acceptance",
+    "repair": "P1/P2 new counterexamples89failed37passed ->137targeted ->300impacted ->428guard(9.78s)",
+    "date_increment": "4failed9deselected ->4passed9deselected ->13consumer guard; production unchanged",
+    "final_increment": {
+      "logger_red": "4failed9deselected; intermediate green had propagate test expectation failure, retained",
+      "logger_green": "4passed9deselected",
+      "guard_passed": 26,
+      "pytest_seconds": 0.94,
+      "files": [
+        "tests/benzong/test_cache_payload_consumers.py",
+        "tests/core/test_plain_errors.py"
+      ],
+      "evidence_dir": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles",
+      "changed_since_428": [
+        "tests/benzong/test_cache_payload_consumers.py",
+        "tests/core/test_plain_errors.py"
+      ],
+      "unchanged_428_tests_reused": 408
+    },
+    "final_tree_single_428_claimed": false,
+    "full_suite_run": false,
+    "guard": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "final_bookend_dependency_count": 28,
+    "final_before_after_current_equal": true,
+    "source_manifest_files": 542,
+    "omitted_initial_test_pins": 8,
+    "initial_missing_pin_supplement": "Binding raw baseline equals current for8 unchanged tests, repository-write guard; retrospective augmentation, not fabricated original bookends",
+    "installed_environment_pinned": false,
+    "independent_review": "PASS read-only task_quality_guard; configured Sol/high, runtime execution model metadata unavailable; no repeated tests",
+    "raw_manifest": [
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003411-635-red4\\command.txt",
+        "bytes": 265,
+        "sha256": "76eebd288f12ba94b7d848b9595ba1ed7ccafea57739cf148626f3e2db96b82f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003411-635-red4\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003411-635-red4\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003411-635-red4\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003411-635-red4\\stdout.txt",
+        "bytes": 24070,
+        "sha256": "c8c02027771a8d96ca39032f3f20c16cf9ce30e4b46ceac91cd0dacf4484f6ae"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003426-159-green4\\command.txt",
+        "bytes": 267,
+        "sha256": "f62725b8d56c11bb05e5637dc224fe1cbc663ddaa5ca69bcc0054bf4ad7afa4f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003426-159-green4\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003426-159-green4\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003426-159-green4\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003426-159-green4\\stdout.txt",
+        "bytes": 114,
+        "sha256": "a17ebdefa285ac96b72105841fcc83e2d62fa7617ed7292aba44004121a21a28"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\command.txt",
+        "bytes": 131,
+        "sha256": "b07147f34f9c625e1f90c71ca536505513c43935a37cdece492c63dc1f70fc25"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\hashes_after_guard.json",
+        "bytes": 3185,
+        "sha256": "193827fe5577381349691e37554c7e878ccdd9763f3c4786aa879e0911b943f2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\hashes_before_guard.json",
+        "bytes": 3185,
+        "sha256": "193827fe5577381349691e37554c7e878ccdd9763f3c4786aa879e0911b943f2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\runtime_manifest.txt",
+        "bytes": 315,
+        "sha256": "ef589ec64c6433cc3a109f7f5f9a5d133bb6f128655a3d89a90944c670fefef8"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003441-683-guard-consumer\\stdout.txt",
+        "bytes": 292,
+        "sha256": "146e44eec9df791d30881ebf52797ecfc1b7392ad09e1cc02b7b7031524675de"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003454-274-final-verify\\command.txt",
+        "bytes": 87,
+        "sha256": "a7468510678b63b919406233646e533040e4b33eed381df3d7f1caa19bfee0eb"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003454-274-final-verify\\hashes_current.json",
+        "bytes": 3185,
+        "sha256": "193827fe5577381349691e37554c7e878ccdd9763f3c4786aa879e0911b943f2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003454-274-final-verify\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003454-274-final-verify\\stderr.txt",
+        "bytes": 5,
+        "sha256": "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\date-fix-20261027-003454-274-final-verify\\stdout.txt",
+        "bytes": 777,
+        "sha256": "bc1cc16fc1347fd28f53bcd089d683ce9568645f7daccd997c59811648a412cb"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-002845-final-diff.txt",
+        "bytes": 23868,
+        "sha256": "da08a2278fe1c8269f2eb426996109d7b45e0121601677e154cb6333e789989b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002733-092-red\\command.txt",
+        "bytes": 272,
+        "sha256": "d56ce73f3cbe63f4bce47b2ba35c5752943866959a251fbadfd5894aea6aa785"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002733-092-red\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002733-092-red\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002733-092-red\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002733-092-red\\stdout.txt",
+        "bytes": 234306,
+        "sha256": "42624794d83815341a27ce239b64514f8a21a6b7d689b5e8c8ed0233549c02e6"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002802-225-green-targeted\\command.txt",
+        "bytes": 329,
+        "sha256": "ed2c34c2a89ac3b258eada7f1e6a3dd0718a0df5bad5a824a12ac6b02ec3a0ba"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002802-225-green-targeted\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002802-225-green-targeted\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002802-225-green-targeted\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002802-225-green-targeted\\stdout.txt",
+        "bytes": 183,
+        "sha256": "202bdc7c6a4bbd086d83df44035f47dbd1763f3f921f79064c2fa9b885f075ce"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002809-960-green-impacted\\command.txt",
+        "bytes": 646,
+        "sha256": "2a28f153a1c40e06d1caedd4fe0fbbe0e4795a80d3ea37fea1fc317f12e75807"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002809-960-green-impacted\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002809-960-green-impacted\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002809-960-green-impacted\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002809-960-green-impacted\\stdout.txt",
+        "bytes": 426,
+        "sha256": "95eb738a81dfc0533e99cc7647bae92fa9efe76d6612472546dcbf695b4a226b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\command.txt",
+        "bytes": 626,
+        "sha256": "b18053f58a78a9d28d3f6a6c5f69a7f4f907cb998b9313fa074a3577bf674ea5"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\hashes_after_guard.json",
+        "bytes": 1874,
+        "sha256": "24ae267ba5dc2456e8987865106389cb027d5e8d2105621992269f2231d8f2a2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\hashes_before_guard.json",
+        "bytes": 1874,
+        "sha256": "24ae267ba5dc2456e8987865106389cb027d5e8d2105621992269f2231d8f2a2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\runtime_manifest.txt",
+        "bytes": 193,
+        "sha256": "70cc95358d12ba54a134c8be1d7945d0127930994abdf0244ceea8bd5ce355a2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002824-367-guard\\stdout.txt",
+        "bytes": 698,
+        "sha256": "df7a95795811432a677ca042079ce3f2fe321f33a50b9073716e6e09eccf19c2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002845-424-final-verify\\command.txt",
+        "bytes": 70,
+        "sha256": "21c33e2c9e4aa9d8c458c9b244fb4160b95d0fcc37f3dc5219908ead71834e2d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002845-424-final-verify\\hashes_current.json",
+        "bytes": 1874,
+        "sha256": "24ae267ba5dc2456e8987865106389cb027d5e8d2105621992269f2231d8f2a2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002845-424-final-verify\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002845-424-final-verify\\stderr.txt",
+        "bytes": 5,
+        "sha256": "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\fix1-20261027-002845-424-final-verify\\stdout.txt",
+        "bytes": 476,
+        "sha256": "ad04b9c35931a88c78e5b57de2254121795364c1884ce79f48606022dd7a449a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003712-858-red\\command.txt",
+        "bytes": 283,
+        "sha256": "ed01f68cfcac305f7f14259f6d3ff2878ed08daec5ae4d66888297683c82fddd"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003712-858-red\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003712-858-red\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003712-858-red\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003712-858-red\\stdout.txt",
+        "bytes": 12810,
+        "sha256": "28fa11784f790e4e1a2fe266e098cd69d58e63ee52ff3dbb9dffd0b4786de452"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003727-865-green\\command.txt",
+        "bytes": 285,
+        "sha256": "856517a594aa2173acc5f30e79d90a7a512a3298b5336a9205b963ea06312029"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003727-865-green\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003727-865-green\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003727-865-green\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003727-865-green\\stdout.txt",
+        "bytes": 13520,
+        "sha256": "5247303ea4e7cda896ae15db2aae08a87e12d96b3c258d44acdcfe4bd3a71e34"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003742-288-green2\\command.txt",
+        "bytes": 286,
+        "sha256": "23d8923fffcc5fda7062dc24ae7c3cee8df9b08104209f6ab7d4c1860b74eff6"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003742-288-green2\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003742-288-green2\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003742-288-green2\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003742-288-green2\\stdout.txt",
+        "bytes": 114,
+        "sha256": "6ddbe7a1f327a2440c4650e3a7c586c29e0a37c421aa52a0cf101cc36a2a9b29"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\command.txt",
+        "bytes": 163,
+        "sha256": "c092db269742e1954d17955565280854bad5eda0b32717ee9a8aaaa3b7a819d9"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\encoding.txt",
+        "bytes": 106,
+        "sha256": "9899b28dbfa1aac6604b7a8cf85977dd1bb9ba9d214d84617a320dc667c3234b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\hashes_after_guard.json",
+        "bytes": 3185,
+        "sha256": "2447c2e6ea6bb8a68b80aa0bed4d81ed86d559695a087d871bf943a1eefcef9d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\hashes_before_guard.json",
+        "bytes": 3185,
+        "sha256": "2447c2e6ea6bb8a68b80aa0bed4d81ed86d559695a087d871bf943a1eefcef9d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\runtime_manifest.txt",
+        "bytes": 315,
+        "sha256": "ef589ec64c6433cc3a109f7f5f9a5d133bb6f128655a3d89a90944c670fefef8"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003751-047-guard-twofiles\\stdout.txt",
+        "bytes": 292,
+        "sha256": "0a51409f3ccdec4c0feb4453461db6a4eb3af1c842b9ea11bd08cfa7bd990b31"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003806-218-final-verify\\command.txt",
+        "bytes": 107,
+        "sha256": "2f69b34c4d29d40ea9e336a14fb94afe96138bf821b22eecc7c9e19cbfbcc24e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003806-218-final-verify\\hashes_current.json",
+        "bytes": 3185,
+        "sha256": "2447c2e6ea6bb8a68b80aa0bed4d81ed86d559695a087d871bf943a1eefcef9d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003806-218-final-verify\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003806-218-final-verify\\stderr.txt",
+        "bytes": 5,
+        "sha256": "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\logger-fix-20261027-003806-218-final-verify\\stdout.txt",
+        "bytes": 1218,
+        "sha256": "d7c33e8808c72028de2d93c165ed6efc5867fd42ed5b833ab7efe37e624365da"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-001-baseline-hashes\\command.txt",
+        "bytes": 27,
+        "sha256": "0f052c6216ebbc7cf4a4661e1d067091317fe47a03b7229df510c74a252ba12c"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-001-baseline-hashes\\git_status_before.txt",
+        "bytes": 1444,
+        "sha256": "f0cb6c168bc689406df595f9b2499397db368b039ccdc03e25f7bd4622262c99"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-001-baseline-hashes\\hashes_before.json",
+        "bytes": 2646,
+        "sha256": "564f7c3bf2e4525b5457f4be9647efd4d5e1f2b3a5385571cfbbb67e1fe365d0"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-001-baseline-hashes\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-001-baseline-hashes\\runtime_manifest.txt",
+        "bytes": 291,
+        "sha256": "37f44f0a913fa86cdc67443226f5e34418798d75b6b773f8b56f12fe1d510801"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-002-red-new2\\command.txt",
+        "bytes": 209,
+        "sha256": "9704a0ff7b5e3c7d7285963a3a5bcf86d0a7b6ed6275aef71c8059ddece4f917"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-002-red-new2\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-002-red-new2\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-002-red-new2\\stdout.txt",
+        "bytes": 314504,
+        "sha256": "42dab9942637d4a4a37b11475ea697763d578d1557c1c4200e9684525996136a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-003-red-plain-errors\\command.txt",
+        "bytes": 153,
+        "sha256": "c41ee3fc399286bcfb81f2895ef90c371f35a054d02424903cc90eb38eeef4a9"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-003-red-plain-errors\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-003-red-plain-errors\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-003-red-plain-errors\\stdout.txt",
+        "bytes": 3868,
+        "sha256": "0411c3489e9adf7ef06896191e649c6b8a1fb6f8ae0c08f59684bddf8357f1ef"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-004-green-targeted\\command.txt",
+        "bytes": 247,
+        "sha256": "44a6027393866b8400bfec58047719148fb2653a92d18752f1d634a4f8533381"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-004-green-targeted\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-004-green-targeted\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-004-green-targeted\\stdout.txt",
+        "bytes": 5378,
+        "sha256": "fcf8cf87a51081ded8c5a880c5999abf365a96029dbd13d5e7864a67231da470"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-005-green-targeted\\command.txt",
+        "bytes": 247,
+        "sha256": "c4cb9932db3f2a33fc0079e7443f878c26c02d8c6adcb886264fcb3962ebcb3a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-005-green-targeted\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-005-green-targeted\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-005-green-targeted\\stdout.txt",
+        "bytes": 368,
+        "sha256": "fc616be1a40d2d354dbf8037af7b18347afe3248d14ddd629eaef799ff4d2ec7"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-006-existing-impacted\\command.txt",
+        "bytes": 567,
+        "sha256": "f2ff33b419c6b3eedac6f0ba2736a307f54760450fdb058facdc5a8ebfdfc6ca"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-006-existing-impacted\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-006-existing-impacted\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-006-existing-impacted\\stdout.txt",
+        "bytes": 854,
+        "sha256": "ee5b6b10d0756a61469e41337d9b55dadb89b4f3a0d8433cea39178e9836f07c"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\command.txt",
+        "bytes": 626,
+        "sha256": "b18053f58a78a9d28d3f6a6c5f69a7f4f907cb998b9313fa074a3577bf674ea5"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\hashes_after_guard.json",
+        "bytes": 1874,
+        "sha256": "3d7c549d81b448a04100e9beb4d84616bd2bd1096885b1f161a294ce90122e5e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\hashes_before_guard.json",
+        "bytes": 1874,
+        "sha256": "3d7c549d81b448a04100e9beb4d84616bd2bd1096885b1f161a294ce90122e5e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\runtime_manifest.txt",
+        "bytes": 188,
+        "sha256": "bb218d7e34c294467ac6feb3a4fd7ea91b70d21c2b2bb92c66df4af6ac35313a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-007-guard-matrix\\stdout.txt",
+        "bytes": 1400,
+        "sha256": "c88b0f05a4b58b8c460631e234e165f0781ed8f6281ae8b009731a220cf60908"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\command.txt",
+        "bytes": 57,
+        "sha256": "6f4fbdde2fa98c840026de929c3b99c8b715284b7b6639475cc0e06cf84e8cd5"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\failure_note.txt",
+        "bytes": 132,
+        "sha256": "eedcdbcfce6798ced085b1362eee87cf0f2b7d83936d0bcc48cc53e31c3c8597"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\hashes_current.json",
+        "bytes": 1874,
+        "sha256": "3d7c549d81b448a04100e9beb4d84616bd2bd1096885b1f161a294ce90122e5e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\rc.txt",
+        "bytes": 6,
+        "sha256": "07846b783c23904a75834c1932bc2fad41e388e18bc32ffd73ed87bfa3844d87"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\stderr.txt",
+        "bytes": 5,
+        "sha256": "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-008-final-verify\\stdout.txt",
+        "bytes": 10299,
+        "sha256": "aaaae7769f67e5f1a6aa815801c5396286ff1d25431b815147b70282b428c223"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-009-final-verify\\command.txt",
+        "bytes": 74,
+        "sha256": "0ef38d5ecefa4cd2f4d69c81fe0f15a71f496e7605bf9c21894d5aa4ab5192ed"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-009-final-verify\\hashes_current.json",
+        "bytes": 1874,
+        "sha256": "3d7c549d81b448a04100e9beb4d84616bd2bd1096885b1f161a294ce90122e5e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-009-final-verify\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-009-final-verify\\stderr.txt",
+        "bytes": 5,
+        "sha256": "f01a374e9c81e3db89b3a42940c4d6a5447684986a1296e42bf13f196eed6295"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-009-final-verify\\stdout.txt",
+        "bytes": 316,
+        "sha256": "66920ee956fa7a2e918c184f480ae9afef63d53e3c987f0c180e9b19747ea472"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-010-final-diff\\command.txt",
+        "bytes": 125,
+        "sha256": "548a040cd245095f74095b2df3463e7c5ea0f2c3a43dbd743393bf85c2c19c94"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-010-final-diff\\git_status.txt",
+        "bytes": 1642,
+        "sha256": "8c510d2046c7dcc6bd52fdcccdf72738ea56450e337e819ce97516b78d82c322"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-010-final-diff\\rc.txt",
+        "bytes": 6,
+        "sha256": "9585fbece5c402088f2d6a2def7e60d1c7ffecc24b16d32d5823a064b008935b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-010-final-diff\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\run-010-final-diff\\stdout.txt",
+        "bytes": 13650,
+        "sha256": "8a6aa4e603bbcda83eea02ed9af2ac48e2dbfb448548d71fd174be6dae19087c"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\T05K_DSH_FIX1_REPORT.md",
+        "bytes": 7541,
+        "sha256": "6e02fb5c8ef45c142174cbf67e0b7cb20b5761a9da3bb63cb447bb0478ed3b4e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\dsh\\T05K_DSH_IMPLEMENTATION_REPORT.md",
+        "bytes": 10212,
+        "sha256": "6a8660d310c1296609e3b354f4974ff93c5e8a5a1df5e42ae07cbd0cff7ca1ba"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\raw_full_manifest.json",
+        "bytes": 358426,
+        "sha256": "af49a0f0363e56eb3a0c20fee14fb3b388d8736b2124378407eb17bc8a9872e9"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\parent_source_audit.json",
+        "bytes": 63900,
+        "sha256": "a2e5fa9228dc4fc17a27fd9b262c032ae34011ad9b661e52c4a1e26df4fe972e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\parent_source_audit_final.json",
+        "bytes": 64338,
+        "sha256": "985a847ea7d8d58211769f3a7a9d1584228c42cecf5cbdbf3fc1b41546790533"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\native-usage.json",
+        "bytes": 56522,
+        "sha256": "162c07ba4f2b244f7627a6d0c4080e870d8fcd9eb032978b4b01f79b243176ff"
+      }
+    ]
+  },
+  "protection": {
+    "protected_hashes_unchanged": 9,
+    "original_untracked_present": 218,
+    "untracked_content_hash_claimed": false
+  },
+  "progress": {
+    "before": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "after": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "closed_count": 18,
+    "task_count": 47,
+    "scope_revision": "V1-progress-1",
+    "scope_or_weight_change": false
+  },
+  "native_usage": {
+    "scope": "single-native-session; not both-side bill or savings proof",
+    "sample_count": 106,
+    "totals": {
+      "uncachedInputTokens": 228844,
+      "cacheReadTokens": 25307648,
+      "cacheWriteTokens": 0,
+      "outputTokens": 152801,
+      "totalInputTokens": 25536492,
+      "totalTokens": 25689293
+    },
+    "artifact": {
+      "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\native-usage.json",
+      "bytes": 56522,
+      "sha256": "162c07ba4f2b244f7627a6d0c4080e870d8fcd9eb032978b4b01f79b243176ff"
+    }
+  },
+  "remaining": [
+    "Whole BATCH-BUDGET/G7/T05/V1 open",
+    "Other live batch entrances, resource boundary and complete configuration/cache input identity pending",
+    "No real productAI/provider/account/cache probes, full installed environment pinning or full-suite claim"
+  ],
+  "artifacts": {
+    "stage": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027",
+    "contract": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\contract.json",
+    "source_audit": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05k-cache-payload-20261027\\parent_source_audit_final.json"
+  }
+}

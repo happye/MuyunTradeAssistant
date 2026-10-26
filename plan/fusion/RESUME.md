@@ -1,5 +1,17 @@
 # 融合项目恢复入口
 
+## 当前续工：2026-10-27 T05-K 已限定接收，持续授权有效
+
+用户明确恢复额度并撤销此前停止信号，覆盖下方历史停止安排；继续原Codex+DSH目标直到新的额度/停止信号。Codex负责合同/文档/唯一账本/独立验收/Git；原生DSH实施并唯一执行测试。实施基线main=`4e50c64718ffd8e8252b350c68df981b2a61f70f`，交付SHA以Git日志为准；旧I/J交付保持。
+
+**T05-K范围与证据**：共享缓存读写门核score/confidence与实际消费者invalidate/warnings/sources/reasoning/market_turnover；坏记录按该维未命中，合法0.3与其他五维复用保持。写端真实深层快照后校验，非法先于路径初始化拒绝，写失败保旧；读拒/写拒/写失败提示分开、写日志不回显异常正文。真实临时缓存连通评分、展示报告、CLI摘要、计划和费用预览。历史428守卫（9.78s）后仅修两测试隔离：日期4红→4绿→13consumer，logger4红→中间夹具错误保留→4绿→最终26两文件guard（0.94s，IO=0）；复用408未变项，不称最终树单次428/全量。独立只读Sol/high有限PASS，配置型号可知、实际执行型号元数据不可得。28最终依赖前后/current一致；542源码清单，初始遗漏8测试pin经绑定raw/current+拒repo写守卫回溯补强，不虚构原前后清单或完整安装环境指纹。9保护hash与原218未跟踪存在性保持。
+
+**原生身份**：task=`muyun-t05k-cache-payload-20261027`，session=`codex-9bff526c-a908-466c-9191-c5200e212293`；合同`muyun-v1-g7-cache-payload` rev1 SHA=`881a762a61842b140b22a604e6295bdb02bcab6114c2fbb5cdd44be487517866`。最终请求=`d4cd197f-b848-4333-8820-d2a2aa0cb430`，COMPLETED seq718，全文SHA=`abfccdeee2a18588ad8074673932c6352f309320a81b72674ef74dac048f9af3`已读，DSH停写。外部原件`C:/Users/Crux/AppData/Local/Temp/muyun-t05k-cache-payload-20261027`；四轮原件/失败保留，非正式bridge run/receipt。见[回执](iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json)、[源码清单](iteration10/T05K_CACHE_PAYLOAD_SOURCE_PINS.json)、[结果](iteration10/T05K_CACHE_PAYLOAD_RESULTS.txt)。原生usage106采样仅单session，不是双方费用或节省证明。
+
+**下一有限卡**：已定位l多/la/l all尚未有可选批期限、每股重载配置；更直接缺口是仅实时行情/未技术分析时analyze_live正常返回None，被loop计为成功并记同日已析。先按实际新HEAD形成明确完成/仅行情/未知结果及可选期限的有界合同；架构审查只设计、未创建下一DSH任务/合同/请求。不得把旧正常return或同日账本当缓存成功授权，不补假完成。公式/prompt/CACHE_VERSION/TTL/账户写门保持；完整配置/输入缓存身份、资源上限及G7/T05/V1仍待，E48.0%/A36.0%/P42.0%–68.6%、18/47不变。
+
+旧J请求已COMPLETED且running=false/unresolved=false，但STOP_PENDING锁保持，不改旧账本绕锁、不重复cancel、不杀共享Host；不声称整个Host子树停净。未来恢复按新任务实际身份核进度与Git，不重投已完请求。
+
 ## 停止交接：2026-10-26 用户额度不足，已停止派发
 
 用户通知剩余额度不足4%并要求尽快收尾，停止优先于此前持续推进授权。T05-I已推送`0187474`；T05-J已推送main/origin/main=`932241c20dca9d38e1fd864f30b6578cf73a6470`。T05-J正常菜单/default提示和可选`--budget`已交付；495历史矩阵+最终174定向增量及独立复核，进度不变。未经用户新指派不得继续派发、测试或开启T05-K。

@@ -4,6 +4,12 @@
 
 # Errors
 
+## [ERR-20261027-T05K-PATHS] 恢复时先枚举真实路径
+
+**Status**: resolved | **Area**: review tooling
+
+恢复时误猜外部合同名contract-v2.json及scripts/review_test_runner.py，实际为既有stage/contract.json和plan/fusion/iteration9/review_test_runner.py；另在PowerShell传目录内*.py作rg路径报无效。已改用rg --files发现后定向读取、rg -g '*.py'指定过滤。本次仅检索失败，没有执行产品测试或据失败输出作验收；原stage与证据保留。后续文档补丁曾用被截短的长行作锚点，校验拒绝且未写入；改为读取完整内容后精确插入，不将失败补丁记为已改。
+
 ## [ERR-20261010-ARCH16] Q审查先猜测路径导致无效搜索
 
 **Logged**: 2026-10-10 | **Status**: resolved | **Area**: review tooling

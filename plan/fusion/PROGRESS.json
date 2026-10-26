@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope_revision": "V1-progress-1",
-  "as_of": "2026-10-26",
+  "as_of": "2026-10-27",
   "product_base_commit": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
   "basis": "existing_contracts_and_acceptance_records_not_full_code_audit",
   "scope_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
@@ -1923,9 +1923,13 @@
           {
             "path": "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-J optional ba stop-starting budget and discoverability partial scope; whole criterion not closed"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json",
+            "anchor": "T05-K typed dimension-cache payload partial acceptance; full config/input cache identity and other entries/resources remain open"
           }
         ],
-        "basis": "Partial T05-H/I/J accepted; other entrances/resources/full config/cache qualification still pending"
+        "basis": "Partial T05-H/I/J/K accepted; other entrances/resources/full configuration and cache input identity still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1946,21 +1950,25 @@
           {
             "path": "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-J optional ba stop-starting budget and discoverability partial scope; whole criterion not closed"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json",
+            "anchor": "T05-K typed dimension-cache payload partial acceptance; full config/input cache identity and other entries/resources remain open"
           }
         ],
-        "basis": "Partial T05-H/I/J accepted; other entrances/resources/full config/cache qualification still pending"
+        "basis": "Partial T05-H/I/J/K accepted; other entrances/resources/full configuration and cache input identity still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "T05-H身份、T05-I ba执行参数快照、T05-J ba协作式可选时限已限定接收；其他入口/资源硬界、完整有效配置与缓存资格仍待，不由子批替代。",
+          "reason": "T05-H/I/J身份、参数快照和ba可选时限，T05-K逐维缓存载荷资格已限定接收；其他入口/资源边界、完整有效配置与缓存输入身份仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "用户额度不足已停止，T05-K仅定位未实施；新指派恢复后先复核缓存所有实际消费者及有限schema，再绑定合同。不得按旧持续授权自动续工，进度不变。"
+      "next_action": "按已定位l多/la/l all真实路径设计下一有限合同：先解决仅行情未分析被记成功/同日跳过的实际缺口，再核可选停止启动预算；保留用户可发现、默认无上限及未知/未开始分离，配置/资源资格独立核定。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2655,6 +2663,57 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json"
+      ]
+    },
+    {
+      "id": "T05K-20261027",
+      "date": "2026-10-27",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "用户恢复额度并撤销旧停止；逐维缓存读写载荷资格有限交付，历史428加最终26两文件增量、独立PASS。E/A/P及18/47不变，范围/权重/适用性不变，完整配置/PIT/cache输入身份及其他入口资源仍待。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json"
       ]
     }
   ],

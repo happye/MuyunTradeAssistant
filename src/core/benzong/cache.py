@@ -14,8 +14,10 @@ API：
 - get_cache_dir() -> Path  （便于诊断）
 """
 
+import copy
 import json
 import logging
+import math
 import os
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -94,6 +96,65 @@ def _cache_path(code: str, date: str, dim: str) -> Path:
     return get_cache_dir() / f"{safe_code}_{safe_date}_{safe_dim}.json"
 
 
+# ── T05-K：缓存 payload 资格门（读/写共用）────────────────────────────
+# 同股同日 + 当前 CACHE_VERSION 只是必要条件，不是充分条件：坏值命中会让
+# auto_score 跳过维度重算、展示层 join/splitlines 出错或把脏分数拼进总分。
+# 这里只做本地类型/范围校验（不联网、不重算评分、不改公式/prompt/缓存键）。
+# 必需字段：score/confidence；已消费可选字段：invalidate/warnings/sources/
+# reasoning/market_turnover（其中 market_turnover 缺失/None 或 >=0 有限数，
+# 显式 0 保留消费方既有 `or 1.0` 回落）。未知额外 metadata 保持兼容。
+_PAYLOAD_MISSING = object()
+
+
+def _finite_json_number(value):
+    """JSON int/float 且有限；bool 是 int 子类，必须先排除。非法返回 None。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        number = float(value)
+    except (OverflowError, ValueError):
+        return None
+    if not math.isfinite(number):
+        return None
+    return number
+
+
+def _payload_invalid_field(payload) -> Optional[str]:
+    """返回首个不合格字段的固定类别名；全部合格返回 None。
+
+    不回显字段值/原始 payload——告警只能带固定类别，避免把坏数据或异常正文
+    打进日志。未知额外字段不做完整 schema 校验（向后兼容）。
+    """
+    if not isinstance(payload, dict):
+        return "payload"
+    score = _finite_json_number(payload.get("score", _PAYLOAD_MISSING))
+    if score is None or not 0.0 <= score <= 100.0:
+        return "score"
+    confidence = _finite_json_number(payload.get("confidence", _PAYLOAD_MISSING))
+    # 0/负/非有限/>1 都代表"没有可复用结果"
+    if confidence is None or not 0.0 < confidence <= 1.0:
+        return "confidence"
+    if "invalidate" in payload:
+        value = payload["invalidate"]
+        if value is not None and not isinstance(value, bool):
+            return "invalidate"
+    for field in ("warnings", "sources"):
+        if field in payload:
+            value = payload[field]
+            if not isinstance(value, list) or any(
+                    not isinstance(item, str) for item in value):
+                return field
+    if "reasoning" in payload and not isinstance(payload["reasoning"], str):
+        return "reasoning"
+    if "market_turnover" in payload:
+        value = payload["market_turnover"]
+        if value is not None:
+            number = _finite_json_number(value)
+            if number is None or number < 0.0:
+                return "market_turnover"
+    return None
+
+
 def get(code: str, date: str, dim: str) -> Optional[dict]:
     """读缓存。命中返回 dict，未命中返回 None。
 
@@ -116,6 +177,13 @@ def get(code: str, date: str, dim: str) -> Optional[dict]:
         # 版本校验：旧版本缓存当未命中（改了维度逻辑必须 bump CACHE_VERSION）
         if data.get("_cache_version") != CACHE_VERSION:
             return None
+        # T05-K：版本相同也必须过 payload 资格门；坏值当未命中，坏文件原地保留
+        invalid_field = _payload_invalid_field(data)
+        if invalid_field is not None:
+            logger.warning(
+                f"笨总缓存读取 payload 资格校验失败（字段 {invalid_field} 非法），"
+                f"当未命中: {p.name}")
+            return None
         return data
     except Exception as e:
         # B04：坏缓存文件（掉电/磁盘满/并发写交错）只当未命中，绝不让 bz 整条命令崩
@@ -124,13 +192,39 @@ def get(code: str, date: str, dim: str) -> Optional[dict]:
 
 
 def set(code: str, date: str, dim: str, result: dict) -> bool:
-    """写缓存。返回是否成功（失败不抛异常，仅记录）"""
-    p = _cache_path(code, date, dim)
+    """写缓存。返回是否成功（失败不抛异常，仅记录）
+
+    T05-K：只接受真正的 dict；先对实际将被写入的 record 做深层独立快照（含
+    sources/warnings/未知 metadata 等嵌套可变数据），再加 metadata、对冻结副本
+    校验。非法/快照失败在计算缓存路径/初始化目录/打开临时文件/原子替换之前
+    返回 False，既有合法缓存字节不动；任何失败都不回显异常正文。
+    """
+    if not isinstance(result, dict):
+        # 严格原输入 dict：list-of-pairs/items() 等即使能 dict() 转换也不得绕过
+        logger.warning(
+            "笨总缓存写入 payload 资格校验失败（字段 payload 非 dict），拒绝写入")
+        return False
     try:
-        # 加 metadata
-        record = dict(result)
-        record["_cached_at"] = datetime.now().isoformat()
-        record["_cache_version"] = CACHE_VERSION
+        # 深层快照：写盘记录与调用方后续对嵌套 list/dict 的突变完全隔离
+        record = copy.deepcopy(result)
+    except Exception as e:
+        logger.warning(
+            f"笨总缓存写入失败（快照 {type(e).__name__}），缓存未更新")
+        return False
+    record["_cached_at"] = datetime.now().isoformat()
+    record["_cache_version"] = CACHE_VERSION
+    invalid_field = _payload_invalid_field(record)
+    if invalid_field is not None:
+        logger.warning(
+            f"笨总缓存写入 payload 资格校验失败（字段 {invalid_field} 非法），拒绝写入")
+        return False
+    try:
+        p = _cache_path(code, date, dim)
+    except (OSError, TypeError, ValueError):
+        # 路径/根目录不可用：失败持久化，绝不假装已缓存
+        logger.warning("笨总缓存写入失败（缓存路径不可用），缓存未更新")
+        return False
+    try:
         # v0.8.7.6 审计修复 B24：原子写（tmp + os.replace）——原直接 open("w") truncate，
         # 多线程同 key 并发写会交错出混合内容（实测 8线程×20次写后文件 1341 字节≠单条 570），
         # 也是 B04 坏缓存崩溃的成因。os.replace 同目录原子替换。
@@ -139,8 +233,9 @@ def set(code: str, date: str, dim: str, result: dict) -> bool:
             json.dump(record, f, ensure_ascii=False, indent=2)
         os.replace(tmp, p)
         return True
-    except (OSError, TypeError) as e:
-        logger.warning(f"缓存写入失败 {p.name}: {e}")
+    except (OSError, TypeError, ValueError) as e:
+        # 只保留异常类别，绝不回显任意异常正文（可能含调用方数据/秘密）
+        logger.warning(f"笨总缓存写入失败（{type(e).__name__}），缓存未更新")
         return False
 
 

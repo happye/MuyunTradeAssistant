@@ -1,0 +1,14 @@
+T05-K typed dimension-cache payload scope accepted only; V1-G7-BATCH-BUDGET still open.
+Baseline 4e50c64718ffd8e8252b350c68df981b2a61f70f
+Native task/session: muyun-t05k-cache-payload-20261027 / codex-9bff526c-a908-466c-9191-c5200e212293
+Initial red90/green30; targeted126; first417guard rejected by independent review.
+Repair red89/green37; targeted137; impacted300; historical428guard9.78s IO0.
+Date red4 ->green4 ->consumer13; logger red4 ->intermediate fixture failure retained ->green4 ->final twofile26guard0.94s IO0.
+No final-tree single428/full suite. Unchanged408 cases and unchanged production reuse prior matrix.
+Final28 bookend dependencies equal current;542-source manifest; initial8 omitted test pins supplemented by binding/current + repository-write guard, not invented snapshots.
+9 protected hashes unchanged; original218 untracked paths exist (not content-hash proof).
+Installed package environment not fully pinned; external guarded evidence, not formal bridge run/receipt/readiness.
+All source/test edits stopped before independent review; no real provider/productAI/account/user-cache probe.
+Progress unchanged: E47/98, A40/111, P41.99760985475271..68.6201507630079%,18/47 closed.
+Stage C:\Users\Crux\AppData\Local\Temp\muyun-t05k-cache-payload-20261027
+Raw manifest entries 134

@@ -22,9 +22,9 @@
 
 **T05-J最终验收**：初版403相关绿不足以接收，原五项门修复后478绿；用户追加J7正常发现入口后485绿；最后联合门/坏map/未知文案/提示顺序修后495相关绿。新增幂等早返回再补2红/1绿→3绿→174定向守卫（5.81s，IO=0），仅session_state及预算测试较495树改变，其余16依赖不变，独立只读复核PASS。没有最终树单次495或全量声明。539源码清单、9保护hash与原218未跟踪存在性保持，原始分轮记录均留存；见[T05-J回执](T05J_BA_BUDGET_ACCEPTANCE.json)。用户可见菜单/default提示、参数错误零业务、同deadline、真实去重、未开始/未知分离均限定通过，不推及其他入口/资源硬界/cache资格或V1。
 
-## 下一有限卡：T05-K 逐维缓存载荷资格（用户额度不足，未实施）
+## T05-K 逐维缓存载荷资格（2026-10-27已限定接收）
 
-用户要求停止，T05-K仅只读定位，未创建任务或合同。新授权后须先复核start.py来源join/reasoning.splitlines及CLI缓存market_turnover消费者，现有可选字段草案不完整，不能直接实施。初步范围只核缓存JSON载荷能否安全复用：score有限[0,100]且非bool，confidence正且≤1（0.3弱正不误拒），invalidate缺失/None或bool；坏条目当miss只重算该维，写端也拒坏载荷且保留旧有效文件。缓存键/TTL/版本/prompt/formula不改、不清真实用户缓存、不以类型门自证配置/PIT资格。有限mock覆盖坏字段/NaN/Inf/缺失/布尔、五维命中一维失败续跑、全部有效/force_refresh及CLI摘要/计划miss降级。新warning三处核对；实际数据/sector-meta额外AI路径另裁决，不混入本卡。先核新HEAD与合同，再红绿、独立复核、同步交付。
+用户已明确撤销旧停止信号。main@4e50c64，T05-K新task/session及合同入口见RESUME，旧J停止锁保留。主控已复核start.py来源join/reasoning.splitlines及CLI缓存market_turnover消费者。有限合同要求共享读写门：score有限[0,100]且非bool，confidence正且≤1（0.3弱正不误拒），invalidate缺失/None/bool；warnings/sources缺失或list[str]、reasoning缺失或str；market_turnover缺失/None/有限非负数，0保持旧默认回落、bool拒绝。坏条目当miss只重算该维；写端验证实际快照且拒坏载荷时保留旧有效文件、不初始化路径。缓存键/TTL/版本/prompt/formula不改、不清真实用户缓存、不以类型门自证配置/PIT资格。有限临时缓存红绿覆盖字段边界、五维命中一维失败续跑、全部有效/force_refresh、真实CLI摘要/展示报告/计划miss降级。DSH拥有cache.py/plain_errors及7项中列定测试，Codex负责文档/Git；新warning三处核对。实际数据/sector-meta额外AI路径保持，不承诺全缓存零AI。已完成并限定接收，进度不变。历史428守卫后仅两测试隔离修订，以日期4红/4绿及logger4红/4绿、最终26两文件守卫增量接收；独立PASS，28最终依赖一致、542源码清单和原用户资产保持。无最终树单次428、全量、完整安装环境或formalbridge回执声明；完整证据见[T05-K回执](T05K_CACHE_PAYLOAD_ACCEPTANCE.json)。下一卡先核l系列仅行情被记成功与可选批期限，配置/资源/缓存输入身份仍未通过。
 
 ## 当前量化关联（2026-10-25）
 
