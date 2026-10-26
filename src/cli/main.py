@@ -2017,11 +2017,19 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
     - 部分维度未评出记「降级」而非已完成；结束时不按 kind/key 盲目补记
     - 任务记录只描述运行可见性，不改变笨总原缓存规则，也不授予投资信号权限
 
+    T05-I（执行参数快照）：
+    - 登记 run 之前先解析并深拷贝一次生效配置，再从同一份冻结配置派生白名单
+      执行参数描述；任务记录创建时即带上它，随后评分/取数用同一份冻结配置
+    - 描述只是有限覆盖的元数据（端点/环境/输入数据/prompt 未核定），不证明完整
+      有效配置身份，也不授予缓存命中/复用/信号资格；不可安全派生时不写伪身份
+
     Args:
         items: session_state.get_last_scan() 的 items（至少含 code/name）
         force_refresh: True 时忽略缓存重算
     """
-    from src.core.benzong.batch_scorer import auto_score_batch
+    from src.core.benzong.batch_scorer import (
+        auto_score_batch, derive_exec_snapshot, freeze_batch_config,
+    )
     from src.cli import session_state as _ss_ba
 
     codes = [it.get("code") for it in items if isinstance(it, dict) and it.get("code")]
@@ -2029,10 +2037,22 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
         console.print("[yellow]扫描结果里没有股票代码[/yellow]")
         return
 
+    # T05-I：模型/取数之前一次性冻结配置；描述与执行配置同源（不可派生→未冻结）。
+    # fix2：冻结失败返回显式不可用状态，原样传给批量，避免二次 load/构造 client。
+    frozen_config = freeze_batch_config()
+    exec_snapshot = derive_exec_snapshot(frozen_config, force_refresh)
+
     # C2/T05-H：每次运行独立令牌；写入失败明确 None，下面给用户可见提示
-    run_id = _ss_ba.batch_task_start("ba", src_label, codes)
+    run_id = _ss_ba.batch_task_start("ba", src_label, codes, snapshot=exec_snapshot)
     if run_id:
-        console.print(f"  任务记录：run {run_id}（配置未冻结；本次独立 run，不继承旧成功）")
+        if exec_snapshot is not None:
+            console.print(
+                f"  任务记录：run {run_id}（ba 执行参数快照已冻结；仅白名单执行参数，"
+                "端点/环境/输入数据/提示词未核定；参数与指纹见 tasks）")
+        else:
+            console.print(
+                f"  任务记录：run {run_id}（ba 执行参数快照未冻结；"
+                "本次独立 run，不继承旧成功）")
     else:
         console.print("  [yellow]⚠ 任务记录保存失败：本次进度不会被记录（不影响评分）[/yellow]")
 
@@ -2099,6 +2119,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
 
     console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
     res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
+                           config=frozen_config,
                            progress_cb=_progress, result_cb=_on_result)
 
     ranked = res.get("ranked", [])
@@ -4352,15 +4373,53 @@ def _safe_batch_status_map(raw, label):
     return out, issues, pending
 
 
+def _ba_exec_snapshot_lines(kind, raw) -> list:
+    """ba 执行参数快照的只读展示行（T05-I，纯文本，不解析存库字符串里的 markup）。
+
+    只有 kind=ba 且存库描述通过白名单 schema/键集/类型/范围/hash 重新校验时才展示
+    参数与指纹；旧/缺/坏/被篡改描述一律显示「未冻结」，绝不渲染存库原始字符串。
+    明确有限覆盖：端点/环境/输入数据/prompt 未核定，不作完整有效配置身份、
+    缓存资格或信号授权依据；la/l all/多代码深析本批仍未冻结。
+    """
+    from src.core.benzong.batch_scorer import validate_exec_snapshot
+    if kind != "ba":
+        return ["配置: 未冻结（本批仅 ba 记录执行参数快照）",
+                "    说明: la/l all/多代码深析仍未冻结"]
+    verified = validate_exec_snapshot(raw)
+    if verified is None:
+        if raw is None:
+            why = "未记录有效执行参数快照"
+            detail = "只读展示，不作配置/数据时点依据"
+        else:
+            why = "校验未通过，已忽略"
+            detail = "schema/类型/范围/hash 不符；只读展示，不作配置/数据时点依据"
+        return [f"配置: ba 执行参数快照未冻结（{why}）",
+                f"    说明: {detail}"]
+    params = verified["params"]
+    timeout = params["request_timeout"]
+    timeout_txt = f"{timeout:.0f}" if float(timeout).is_integer() else f"{timeout:g}"
+    return [
+        f"配置: ba 执行参数快照已冻结；指纹={verified['sha256'][:12]}…",
+        f"    参数: provider={params['provider']}；model={params['model']}；"
+        f"超时={timeout_txt}秒；重试={params['max_retries']}",
+        f"    参数: 强制刷新={'是' if params['force_refresh'] else '否'}；"
+        f"缓存版本={params['cache_version']}",
+        "    范围: 仅白名单执行参数；端点/环境/输入数据/提示词未核定",
+        "    说明: 不证明完整有效配置身份，不作缓存资格/信号授权依据",
+    ]
+
+
 def batch_tasks_cmd():
-    """批量任务账本（C2，v0.8.17；T05-H 运行身份）：每次 run 的已完成/降级/失败/未记录结果。
+    """批量任务账本（C2，v0.8.17；T05-H 运行身份；T05-I ba 执行参数快照）。
 
     只读展示：旧无 run_id 记录标注为旧记录且不补造身份；嵌套坏账本（类型非法/
     坏键/坏值（非字符串或空串）/状态冲突/清单外条目）只标“记录异常/待确认”，不假成功、
-    不崩溃、不改写旧文件。
+    不崩溃、不改写旧文件。ba 的「配置」行只在描述通过白名单 schema/类型/范围/hash
+    校验后展示有限执行参数；旧/缺/坏/篡改描述仍显示未冻结。
     任务记录只描述运行可见性，不改变各命令原缓存规则，也不代表缓存消费资格。
     """
     from src.cli import session_state as _ss
+    from rich.text import Text
     tasks = _ss.get_recent_batch_tasks(3)
     console.print(f"\n[bold cyan]📋 最近批量任务[/bold cyan]")
     if not tasks:
@@ -4395,7 +4454,10 @@ def batch_tasks_cmd():
         run_id = t.get("run_id")
         if isinstance(run_id, str) and run_id:
             console.print(f"  运行: run {run_id}")
-            console.print("  配置: 未冻结（本次运行未记录有效配置身份，不作为配置/数据时点依据）")
+            # T05-I：纯文本输出，存库描述里的任意字符串不作为 markup 解析
+            for _line in _ba_exec_snapshot_lines(
+                    t.get("kind"), t.get("exec_snapshot")):
+                console.print(Text("  " + _line))
         else:
             console.print("  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）")
             console.print("  配置: 未记录（旧记录不补造）")

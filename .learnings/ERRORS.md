@@ -629,3 +629,14 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ### ERR-20261025-SESSION-ROUND3｜会话边界反例及有限迭代器修正
 
 未修核心4 failed转修后224 passed/1 skipped；心跳终止error非0曾未判不健康，补1红1绿；接收测试先缺完成屏障，改Event后精确1 passed。隔离全量3611 passed/1 failed/12 skipped/1 deselected，唯一失败是J1旧next永True无限mock；将该测试函数局部fixture改为有限一行/EOF，原断言不变，相关组148 passed/1 skipped。最终树没有单次全绿全量；独立Sol/high依据源码pins与增量范围PASS。详见[原件汇编](../plan/fusion/iteration10/T05G_SESSION_RESULTS.txt)与[接收回执](../plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)。
+## ERR-20261026-GOAL-RECOVER
+
+**Logged**: 2026-10-26
+**Status**: resolved
+**Area**: tools
+
+恢复`/goal`时再次create_goal被拒：本线程已有active goal；改为get_goal沿用原目标，不结束或重建。DSH的recover不接受`--view/--request`（只适用于status/resume/follow/send）；按CLI help去掉这两个参数后成功恢复。两次均为未派发的只读/控制入口错误，没有重投模型请求或修改旧停止锁。后续先核现有goal及命令参数能力。
+
+保护清单检查遇到Git默认quotePath：`git ls-files`中的中文路径被八进制转义，直接Test-Path造成假缺失。原始清单保留，通过Python `ast.literal_eval(...).encode('latin1').decode('utf-8')`解码被引号包裹的Git条目后重新核定：218项均存在、9保护hash未变；不是删除后恢复，也不宣称未跟踪内容hash相同。新采集宜用`git -c core.quotepath=false ls-files -z`及对应NUL解码。
+
+补充：续读exec PTY时误用已返回exit_code=0的旧session_id触发Unknown process id；未重发请求，改用保存cursor/generation开启新follow后取得原request终态。必须在进程完成时清空本地session引用。

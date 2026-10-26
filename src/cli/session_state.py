@@ -445,7 +445,25 @@ def _new_batch_run_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex
 
 
-def batch_task_start(kind: str, key: str, codes: list) -> Optional[str]:
+def _canonical_batch_snapshot(raw):
+    """执行参数描述的写入端白名单门（T05-I fix2）。
+
+    只有通过 batch_scorer 同一口径校验（schema/精确键集/类型/范围/hash，含
+    URL/凭据形状拒绝）的描述才允许落盘，并只保存**规范化副本**——绝不把调用方
+    原始 dict、额外键或秘密写进账本。不可用时返回 None（run 仍登记为未冻结）；
+    校验异常只记固定原因类型，不拼接任意异常正文。
+    """
+    try:
+        from src.core.benzong.batch_scorer import validate_exec_snapshot
+        return validate_exec_snapshot(raw)
+    except Exception as e:
+        logger.debug("batch_task_start 执行参数描述校验失败(按未冻结记录，"
+                     f"原因类型 {type(e).__name__})")
+        return None
+
+
+def batch_task_start(kind: str, key: str, codes: list,
+                     snapshot: Optional[dict] = None) -> Optional[str]:
     """批量任务启动：新建独立 run 并返回令牌；写入失败返回 None（不抛）。
 
     - 每次调用插入一条新运行记录（保留最近 5 条），不按 kind+key 合并，
@@ -453,6 +471,11 @@ def batch_task_start(kind: str, key: str, codes: list) -> Optional[str]:
     - codes 完整复制为本 run 不可变 roster；后续 mark 必须同时核令牌与 roster
     - ts_started 只标本次运行开始，不是全批分析数据的 as_of
     - 仅可见性记录：不改变调用方原有缓存/跳过语义，不承诺跨进程事务
+    - snapshot（T05-I，可选）：ba 的执行参数描述，与 run 同时登记。写入前按与
+      读侧相同的 schema/精确键集/类型/范围/hash 口径校验（含 URL/凭据形状拒绝），
+      合法才保存**规范化副本**；非法/额外键/坏 hash 一律不落盘，run 仍正常登记为
+      未冻结。它只是元数据，不授予缓存命中/复用或投资信号资格；未提供时记录保持
+      旧形状（旧调用方兼容，且不引入额外依赖）。
     """
     try:
         roster = [str(c) for c in codes]
@@ -460,7 +483,7 @@ def batch_task_start(kind: str, key: str, codes: list) -> Optional[str]:
         run_id = _new_batch_run_id()
         data = _load_batch_tasks()
         tasks = [t for t in data.get("tasks") or [] if isinstance(t, dict)]
-        tasks.insert(0, {
+        record = {
             "run_id": run_id,
             "kind": kind,
             "key": key,
@@ -470,7 +493,12 @@ def batch_task_start(kind: str, key: str, codes: list) -> Optional[str]:
             "failed": {},
             "ts_started": now,
             "ts_updated": now,
-        })
+        }
+        if snapshot is not None:
+            canonical = _canonical_batch_snapshot(snapshot)
+            if canonical is not None:
+                record["exec_snapshot"] = canonical
+        tasks.insert(0, record)
         data["tasks"] = tasks[:_BATCH_TASKS_KEEP]
         if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
             return None

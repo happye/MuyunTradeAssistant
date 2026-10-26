@@ -1,0 +1,11 @@
+T05-I limited acceptance; not a full-suite or formal bridge receipt.
+Initial red 16 failed/280 passed -> green 296 passed.
+Fix2 red 13 failed/295 passed -> final 308 passed; preliminary 308/9.46s not independently retained.
+Fix3 immutable logs: C:\Users\Crux\AppData\Local\Temp\muyun-t05i-ba-config-20261026\dsh\fix3-20261026T191945-aee11a78
+4 failed/32 passed (3.85s) -> affected 36 passed (1.76s) -> final 314 passed (8.44s; 11.176s process).
+BLOCKED_IO_ATTEMPTS network=0 subprocess=0 real_state=0
+Eight tested source/test hashes identical before/after and at independent review.
+Nine protected hashes unchanged; original 218 untracked paths present, no content-hash claim.
+Independent quality review PASS, source pins and raw log hashes in companion JSON.
+Progress unchanged E48.0% A36.0% P42.0%-68.6%, 18/47.
+Whole criterion and G7/T05/V1 remain open.

@@ -53,8 +53,10 @@ def _spy_ledger(monkeypatch, run_id="RUN-1"):
     """把 session_state 账本函数替换为记录器（不写磁盘），返回记录容器。"""
     seen = {"start": [], "mark": []}
 
-    def fake_start(kind, key, codes):
+    def fake_start(kind, key, codes, snapshot=None):
+        # T05-I：start 新增可选执行参数描述（ba 传入）；本文件只核既有 run 身份语义。
         seen["start"].append((kind, key, list(codes)))
+        seen.setdefault("snapshots", []).append(snapshot)
         return run_id
 
     def fake_mark(kind, key, code, ok, note="", run_id=None, degraded=False):
@@ -625,7 +627,8 @@ def test_ba_entry_reports_ledger_save_failure(monkeypatch, capsys):
     """start 返回 None → 用户可见保存失败提示，分析仍继续（不改业务结果）。"""
     import src.cli.main as cli_main
 
-    monkeypatch.setattr(ss, "batch_task_start", lambda kind, key, codes: None)
+    monkeypatch.setattr(ss, "batch_task_start",
+                        lambda kind, key, codes, snapshot=None: None)
     monkeypatch.setattr(ss, "batch_task_mark", lambda *a, **k: False)
 
     def fake_batch(codes, top_n=None, force_refresh=False, config=None,

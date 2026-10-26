@@ -15,8 +15,10 @@
 """
 
 import logging
+import math
 import os
 import json
+import re
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Optional
@@ -32,6 +34,44 @@ logger = logging.getLogger(__name__)
 # 额外警告"降级依赖最不可靠维度"。沿用 start.py overall_confidence<0.5 的既有约定，
 # 非笨总评分公式阈值，仅用于透明度提示。
 _PROSPERITY_LOW_CONF_THRESHOLD = 0.5
+
+# ── 白名单执行参数口径（T05-I）────────────────────────────
+# 只服务批量执行参数快照：默认值必须与 _build_ai_client 实际取用值一致；
+# 字符集/范围用于拒绝把任意配置字符串当成执行身份。不改变评分/prompt/公式/
+# cache_version/TTL/deep_analyzed 任何语义。
+_DEFAULT_AI_PROVIDER = "deepseek"
+_DEFAULT_AI_TIMEOUT = 60.0
+_DEFAULT_AI_MAX_RETRIES = 2
+_EXEC_PROVIDER_RE = re.compile(r"[A-Za-z][A-Za-z0-9_]{0,31}")
+# 公开模型标识的保守形状（T05-I fix2）：小写字母/数字 + . _ -，3~48 字符。
+# URL/凭据形状（大写、URL 分隔符、常见密钥前缀/关键词）一律不派生执行身份——
+# 这只影响"要不要写快照"元数据，不判断模型能力/版本（统一由 ai_model 负责），
+# 也不改变实际模型与评分路径。无法确认安全的标识只是不给 snapshot。
+_EXEC_MODEL_RE = re.compile(r"[a-z0-9][a-z0-9._-]{2,47}")
+_EXEC_CREDENTIAL_PREFIXES = ("sk-", "sk_", "pk-", "ak-", "rk-", "ghp_", "xox", "eyj", "akia")
+_EXEC_CREDENTIAL_MARKERS = ("secret", "token", "passwd", "password", "credential",
+                            "apikey", "api-key", "api_key", "bearer")
+_EXEC_TIMEOUT_MAX = 600.0
+_EXEC_RETRIES_MAX = 10
+
+
+def _has_credential_shape(value: str) -> bool:
+    """大小写归一的凭据形状判定（provider/model/cache_version 共用同一门）。
+
+    只服务执行参数快照的身份校验：命中即不写快照/不显示为已冻结；不改变真实
+    client 配置与评分行为，也不判断模型能力/版本。
+    """
+    folded = value.casefold()
+    if any(folded.startswith(prefix) for prefix in _EXEC_CREDENTIAL_PREFIXES):
+        return True
+    return any(marker in folded for marker in _EXEC_CREDENTIAL_MARKERS)
+
+
+def _is_public_model_id(model) -> bool:
+    """模型名是否可安全写入执行身份（保守接受公开标识，不判断模型能力/版本）。"""
+    if not isinstance(model, str) or not _EXEC_MODEL_RE.fullmatch(model):
+        return False
+    return not _has_credential_shape(model)
 
 
 @dataclass
@@ -64,7 +104,7 @@ def _build_ai_client(config: Optional[dict] = None):
             from src.config import load_config
             config = load_config()
         ai_cfg = config.get("ai", {})
-        provider = ai_cfg.get("provider", "deepseek")
+        provider = ai_cfg.get("provider", _DEFAULT_AI_PROVIDER)
         provider_cfg = ai_cfg.get(provider, {})
         api_key = provider_cfg.get("api_key") or os.environ.get(f"{provider.upper()}_API_KEY", "")
         base_url = provider_cfg.get("base_url")
@@ -78,8 +118,8 @@ def _build_ai_client(config: Optional[dict] = None):
         from openai import OpenAI
         # 显式 timeout + 重试：防 bz scan 长批量时连接挂起到 WinError 10060/10054
         # （OpenAI SDK 默认 timeout 偏长，单只卡住会拖垮整批）
-        ai_timeout = float(ai_cfg.get("request_timeout", 60))
-        ai_retries = int(ai_cfg.get("max_retries", 2))
+        ai_timeout = float(ai_cfg.get("request_timeout", _DEFAULT_AI_TIMEOUT))
+        ai_retries = int(ai_cfg.get("max_retries", _DEFAULT_AI_MAX_RETRIES))
         client_kwargs = {"api_key": api_key, "timeout": ai_timeout, "max_retries": ai_retries}
         if base_url:
             client_kwargs["base_url"] = base_url
@@ -87,8 +127,65 @@ def _build_ai_client(config: Optional[dict] = None):
         model = provider_cfg.get("model", DEFAULT_DEEPSEEK_MODEL)
         return client, model
     except Exception as e:
-        logger.warning(f"AI client 构造失败: {e}")
+        # T05-I fix3：配置值转换异常正文可能带出密钥内容（如 request_timeout/max_retries
+        # 误填秘密）。保留既有 warning 前缀/映射，详情只记异常类别，不再拼接任意 e。
+        logger.warning(f"AI client 构造失败（原因类型 {type(e).__name__}）")
         return None, None
+
+
+def normalize_ai_exec_params(provider, model, request_timeout, max_retries):
+    """校验并归一化白名单 AI 执行参数（执行侧解析与账本读侧共用同一口径）。
+
+    只做只读类型/字符集/范围校验并归一化数值（float/int）；任一不合法返回 None——
+    调用方 fail-closed，绝不把任意配置字符串/非法值写成执行身份。不构造客户端、
+    不读取 api_key/base_url，也不改变评分路径。
+    """
+    if not isinstance(provider, str) or not _EXEC_PROVIDER_RE.fullmatch(provider):
+        return None
+    if _has_credential_shape(provider):
+        return None
+    if not _is_public_model_id(model):
+        return None
+    # bool 是 int 子类：True 不能冒充超时/重试次数
+    if isinstance(request_timeout, bool) or not isinstance(request_timeout, (int, float)):
+        return None
+    if isinstance(max_retries, bool) or not isinstance(max_retries, int):
+        return None
+    try:
+        timeout = float(request_timeout)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(timeout) or not 0.0 < timeout <= _EXEC_TIMEOUT_MAX:
+        return None
+    if not 0 <= max_retries <= _EXEC_RETRIES_MAX:
+        return None
+    return {"provider": provider, "model": model,
+            "request_timeout": timeout, "max_retries": int(max_retries)}
+
+
+def resolve_ai_exec_params(config: Optional[dict]):
+    """从 settings 配置解析白名单 AI 执行参数（provider/model/timeout/retries）。
+
+    只读解析，默认值与 `_build_ai_client` 实际取用值一致；任一值不可安全校验 →
+    None（调用方 fail-closed）。api_key/base_url 等秘密/端点字段不读取、不返回。
+    """
+    if not isinstance(config, dict):
+        return None
+    ai_cfg = config.get("ai", {})
+    if not isinstance(ai_cfg, dict):
+        return None
+    provider = ai_cfg.get("provider", _DEFAULT_AI_PROVIDER)
+    if not isinstance(provider, str):
+        return None
+    provider_cfg = ai_cfg.get(provider, {})
+    if not isinstance(provider_cfg, dict):
+        return None
+    return normalize_ai_exec_params(
+        provider,
+        provider_cfg.get("model", DEFAULT_DEEPSEEK_MODEL),
+        ai_cfg.get("request_timeout", _DEFAULT_AI_TIMEOUT),
+        ai_cfg.get("max_retries", _DEFAULT_AI_MAX_RETRIES),
+    )
 
 
 def _annotate_sector_meta(ai_client, ai_model, code, name, data_summary):
@@ -178,6 +275,7 @@ def auto_score(
     data_summary: Optional[dict] = None,
     market_turnover: Optional[float] = None,
     today: Optional[str] = None,
+    allow_client_rebuild: bool = True,
 ) -> AutoScoredResult:
     """全自动笨总打分入口。
 
@@ -191,6 +289,9 @@ def auto_score(
         market_turnover: 可注入的全市场成交额（万亿）。批量场景由 auto_score_batch
             开头拉一次后注入，避免每只股票重打 sina。None 时由 get_data_summary 内部自拉。
         today: YYYY-MM-DD，缓存键和缓存过期判定用
+        allow_client_rebuild: 批量入口专用兼容开关（T05-I）。默认 True，单股行为不变；
+            批量入口传 False 表示"本批配置/客户端已一次性冻结"——client 缺失时不得
+            逐股重建，也不得逐股重读配置，AI 维度直接走既有降级路径。
 
     Returns:
         AutoScoredResult
@@ -199,7 +300,9 @@ def auto_score(
     logger.info(f"[auto_score] {code} 开始评分（force_refresh={force_refresh}）")
 
     # Step 1: 准备依赖
-    if ai_client is None:
+    # T05-I：批量场景由 auto_score_batch 一次性冻结配置/构造客户端（含失败），
+    # 显式传 allow_client_rebuild=False 时单股不得重建 client 或重读配置。
+    if ai_client is None and allow_client_rebuild:
         ai_client, ai_model = _build_ai_client(config)
     # v0.8.6.3: bz 默认不依赖 RAG（rag_service 保持 None，除非外部显式注入）
     # 维度评分器对 rag_service=None 走无 RAG 路径，不影响评分

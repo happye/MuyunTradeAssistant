@@ -1,0 +1,242 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-26",
+  "status": "ACCEPTED_BA_EXECUTION_PARAMETER_SNAPSHOT_SCOPE_ONLY",
+  "base_commit": "9e4cdf6dbe7686bc7369f5779bc1539c6ad1619b",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-ba-config",
+    "revision": 2,
+    "sha256": "92b41c5439adb7e7a146ab5e307fc490aad2185c20a20f9f7b5976564f3363ed",
+    "git_owner": "Codex",
+    "test_owner": "DSH",
+    "bridge_testPlan": [],
+    "formal_bridge_run_receipt": false
+  },
+  "native": {
+    "task": "muyun-t05i-ba-config-20261026",
+    "session": "codex-630c3ee9-2c44-4c38-a554-505fac76124d",
+    "latest_request": "eba10bf1-8710-4e83-a3fd-1c0f1b43f470",
+    "terminal_seq": 1019,
+    "state": "COMPLETED",
+    "result_sha256": "ecc25a321ac80537817a2459d6566d573ee9ce826340e2a84bad5c295a265b7e",
+    "full_result_read": true
+  },
+  "accepted_scope": [
+    "ba/bz-multi shared batch config loaded once and deep-copied; explicit failure never reloads or constructs client",
+    "One batch AI-client construction including failure; standalone auto_score default compatible",
+    "Strictly allowlisted execution parameters with schema/hash; URL/credential-shape values refused, historical numeric cache versions supported",
+    "Canonical validated snapshot write boundary and read-only legacy/invalid display; no arbitrary config/credential/endpoint persistence",
+    "Config load/copy/validation/client-construction diagnostics omit arbitrary exception bodies; T05-H run/callback/atomic-failure protections retained"
+  ],
+  "validation": {
+    "initial_red": "16 failed / 280 passed (14.26s)",
+    "initial_green": "296 passed (8.63s)",
+    "fix2_red": "13 failed / 295 passed (11.20s pytest; 14.219s process)",
+    "fix2_intermediate": "308 passed (9.46s) observed before final test edit; separate original raw not retained; not used for final acceptance",
+    "fix2_final": "308 passed (8.50s; 11.176s process); retained raw final",
+    "fix3_runs": [
+      {
+        "id": "01",
+        "purpose": "red new finite counterexamples",
+        "failed": 4,
+        "passed": 32,
+        "pytest_seconds": 3.85,
+        "process_ms": 7127
+      },
+      {
+        "id": "02",
+        "purpose": "affected green",
+        "passed": 36,
+        "pytest_seconds": 1.76,
+        "process_ms": 4095
+      },
+      {
+        "id": "03",
+        "purpose": "final 11-file guarded matrix",
+        "passed": 314,
+        "pytest_seconds": 8.44,
+        "process_ms": 11176
+      }
+    ],
+    "guard": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "tested_source_files": 8,
+    "test_source_before_after_and_current_equal": true,
+    "runtime_manifest_files": 537,
+    "full_suite_run": false,
+    "independent_review": "PASS from same read-only task_quality_guard after three bounded reviews; no duplicate test execution; final eight hashes matched; actual model execution metadata unavailable",
+    "raw_manifest": [
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\01_red_affected_rc.txt",
+        "bytes": 25,
+        "sha256": "a4be83b936d8aa2ab1ef56f300d71e467dd41aa00a38d2f3064da0d5ed3ac67f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\01_red_affected_stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\01_red_affected_stdout.txt",
+        "bytes": 9765,
+        "sha256": "b31ff7253f38d43bdfa13551cf6882502e3ff99bed6c868ef01686ae11c6a79f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\01_red_failed_tests.txt",
+        "bytes": 444,
+        "sha256": "b9798e945f0962774fe76101cebd8242128a6779a3adff07c614c6ba62cd3205"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\02_affected_green_rc.txt",
+        "bytes": 25,
+        "sha256": "0c4cfc87db9223733ff403af17a2329598f7a3ba0a09bc08733ea7aaf518a91f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\02_affected_green_stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\02_affected_green_stdout.txt",
+        "bytes": 292,
+        "sha256": "2dfdd882ac4a306457071c76b8fce37c4f55eed1eda379e9dff68b914cc493a1"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\03_green_matrix_rc.txt",
+        "bytes": 26,
+        "sha256": "e8a7598f1cdeb2dac69f0ca4741a41f5db752ad751f75d24653d0ab547005f5a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\03_green_matrix_stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\03_green_matrix_stdout.txt",
+        "bytes": 617,
+        "sha256": "891ffd93d8fef19517a20e034a37ee091ab98e334dacacda4f1de052c314e565"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\build_manifest.py",
+        "bytes": 2097,
+        "sha256": "ea5bafcd74462a7b54a328d475435ee6aee290c0396668bfbc822bdd039a4405"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\checks_untracked.py",
+        "bytes": 2554,
+        "sha256": "2703e91211cdc9128d18df80efd7320bac3e7e87948a0dec5109b5601f2caab7"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\checks_untracked_output.txt",
+        "bytes": 522,
+        "sha256": "0ad93c640fab8f068405f4fc740640303c9ccb105a6af3b705db7c692e312a0f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\evidence_manifest.json",
+        "bytes": 3279,
+        "sha256": "b94b8755f7b48e6a7ea867d3a264b9811015add1e2e2f27bb1d9f952b162c885"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\original_untracked_check.json",
+        "bytes": 173,
+        "sha256": "d4792002885468a11ca2dcb93091471a377c098a9914a26e12e4c6d407e37ebc"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\owned_diff_fix3.patch",
+        "bytes": 82920,
+        "sha256": "675405d66e70e176b8ae88119b3acbf900f06fb69502264fa365d584cd9e6d8d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\owned_diff_numstat_fix3.txt",
+        "bytes": 180,
+        "sha256": "5f37a50830b152f9b5fa6ec5edfc1cfac96271e987a994b43d787f9e33a1b503"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\protected_hashes_after.json",
+        "bytes": 1928,
+        "sha256": "06b90225f82d32deb476d35cab7ebdfcbab0d1eebfcfd02edfa417d79ae1dcd8"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\SUMMARY.md",
+        "bytes": 7832,
+        "sha256": "4d55f98ea743879cfa9274ca67081d35ef688c3d759d0356e00b49a8e369e3ab"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\test_source_after.json",
+        "bytes": 1341,
+        "sha256": "230bd373532d6190370a23a5a210b5ca3c1b97ba1cb59fbafd4697f6bb76c26a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\test_source_before.json",
+        "bytes": 1342,
+        "sha256": "1c3d41829741c8bfe215dc485f0140b8cfa6ade1f795ae0ce7d14e257bc5e558"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\test_source_before_listing.txt",
+        "bytes": 1714,
+        "sha256": "041bfd815a6e7953d87f9085ccf85e54ee2eee2b40713d61ca1e19b4ff8373a5"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026\\dsh\\fix3-20261026T191945-aee11a78\\test_source_equality.txt",
+        "bytes": 1592,
+        "sha256": "512bc6c5097047a4f4f7fb9ab645f3c9928734fb682876ef32422fb93e572593"
+      }
+    ]
+  },
+  "protection": {
+    "protected_hashes_unchanged": 9,
+    "original_untracked_still_present": 218,
+    "untracked_content_hashes_claimed": false
+  },
+  "progress": {
+    "before": {
+      "E": 47.95918367346938,
+      "A": 36.03603603603604,
+      "P_lower": 41.99760985475271,
+      "P_upper": 68.6201507630079,
+      "closed_tasks": 18,
+      "tasks": 47,
+      "weight": 111
+    },
+    "after": {
+      "E": 47.95918367346938,
+      "A": 36.03603603603604,
+      "P_lower": 41.99760985475271,
+      "P_upper": 68.6201507630079,
+      "closed_tasks": 18,
+      "tasks": 47,
+      "weight": 111
+    },
+    "scope_weight_applicability_change": false,
+    "reason": "Finite partial scope only; whole-chain budget/resources/full config/cache qualification still pending"
+  },
+  "remaining": [
+    "l multi/la/l all config identity remains unfrozen",
+    "Optional stop-starting-new-stocks deadline and resource boundaries remain next finite card",
+    "Full config including endpoint/environment/data/prompt identity and cache reuse qualification not established",
+    "Real providers/product AI/accounts and complete CLI exit not tested",
+    "G3/G4/G7/T04 and V1 remain open; real MID NO_VALID"
+  ],
+  "artifacts": {
+    "source_pins": "T05I_BA_CONFIG_SOURCE_PINS.json",
+    "results": "T05I_BA_CONFIG_RESULTS.txt",
+    "external_stage": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05i-ba-config-20261026"
+  },
+  "native_usage": {
+    "scope": "single-native-session only, not both-side billing or saving proof",
+    "sampleCount": 151,
+    "uncachedInputTokens": 197825,
+    "cacheReadTokens": 37478912,
+    "outputTokens": 209266,
+    "artifactRef": {
+      "path": "C:/Users/Crux/.codex/codex-dsh-state/output-2c2b796f-b4b4-4a03-bd33-ff749f87ee1d.json",
+      "sha256": "88ac12fdc4500b6b413acb6fee7e2633e1325fe2139a1e82e10c2aec88dedbe6"
+    }
+  }
+}
