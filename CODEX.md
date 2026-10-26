@@ -1,6 +1,6 @@
 # CODEX.md — 暮云思辨投资助手 Codex 专用配置
 
-当前交接（2026-10-26）：T05-I ba执行参数快照已限定接收，314相关通过及独立复核；BATCH-BUDGET/G7/V1仍未完成，进度不变。用户新`/goal`授权持续Codex+DSH协作至额度不足/停止信号。下一有限卡为ba/bz多代码可选停止启动新股时限；新派发先核Git基线并绑定新合同。身份/证据见[RESUME](plan/fusion/RESUME.md)，不重投旧请求。
+当前交接（2026-10-26）：T05-J ba/bz多代码可选时限与正常发现入口已限定接收，495矩阵+最终174定向增量及独立复核；T05-I已交付0187474，本批Git SHA核实际日志。BATCH-BUDGET/G7/V1未完成，进度不变。用户授权持续Codex+DSH至额度不足/停止信号；下一有限卡为缓存载荷资格。身份/证据见[RESUME](plan/fusion/RESUME.md)，新批核实际HEAD及新合同，不重投旧请求。
 
 > **单一信源是 [AGENTS.md](AGENTS.md)**——Codex CLI 会自动读取仓库根目录的 AGENTS.md，
 > 本文件不重复其内容（架构/命令/数据源/踩坑警示以 AGENTS.md 为准），只补充 Codex 特有的操作说明。

@@ -1,0 +1,10 @@
+T05-J rev2 LIMITED acceptance: optional ba/bz-multi stop-starting budget, not a hard wall or cost cap.
+Normal startup/help and no-budget supported flows expose --budget; no added confirmation.
+Raw historical attempts retained separately; initial403, fix2 478, visibility485, final-gate495 prior tree.
+Last narrow idempotence delta: 2 failed/1 passed ->3 passed ->174 targeted guarded pass(5.81s).
+Only session_state.py and budget test changed since495; other16 dependencies exact.
+No final-tree single495 or full-suite claim. BLOCKED_IO network=0 subprocess=0 real_state=0.
+18 tested dependency hashes before/after/current equal; 539 runtime source/config/test manifest.
+9 protected hashes unchanged; original218 untracked paths present, no content-hash claim.
+Independent read-only quality review PASS. Progress unchanged E48.0 A36.0 P42.0-68.6,18/47.
+Whole BATCH-BUDGET/G7/T05/V1 open; next limited cache payload qualification contract.

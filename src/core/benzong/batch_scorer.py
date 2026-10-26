@@ -28,6 +28,15 @@
   schema/键集/类型/范围/hash 重新校验后才可用于展示；坏/旧/篡改描述一律当作
   未冻结。快照只是元数据，不证明端点/环境/输入数据/prompt 身份，也不授予
   缓存命中、复用或投资信号资格。
+- **可选启动预算（T05-J）**：`deadline` 是调用方（ba 共用批）在用户确认后算好的
+  绝对 `time.monotonic()` 截止点，本批只认这一个（不重算）；standalone 调用可用
+  `budget_seconds` 在函数入口派生一次。准备阶段每个边界与每只评分开始前检查，
+  到期只阻止「开始新股票」，已开始股票允许完整跑完——不是硬墙/强制取消/费用上限，
+  准备阶段与单只评分本身仍可能超出预算。只有从未传给 `auto_score` 的代码才会进入
+  `not_started`（去重保序），并通过结构化 `result_cb` 事件显式上报；缺回调/异常/
+  超时一律仍是失败或未记录，绝不倒推成 not_started。默认 None 保持旧行为。
+  **执行名单、账本 roster 与 ba 汇总共用 `dedupe_batch_codes` 的保序去重名单**：
+  同一只重复出现也只真实评分一次（force_refresh 不重复付费），scanned 按去重后计。
 
 返回结构：
     {
@@ -40,6 +49,8 @@
       "failures": [{"code","error"}],
       "scanned": N, "scored": M, "failed": K,
       "result_cb_errors": N,   # 记账回调异常次数（>0 → 任务记录可能不完整）
+      "not_started": [...],    # 调度器确认从未开始的代码（预算到期；去重保序）
+      "stop_reason": "budget_exhausted" | None,
     }
 """
 
@@ -49,6 +60,7 @@ import json
 import logging
 import math
 import re
+import time
 from typing import Optional
 
 from src.core.benzong import auto_score
@@ -199,6 +211,95 @@ def validate_exec_snapshot(raw) -> Optional[dict]:
     return {"schema": EXEC_SNAPSHOT_SCHEMA, "params": params, "sha256": recomputed}
 
 
+# ── T05-J：可选启动预算描述（只落有限秒数，不落进程内单调截止点）────────
+BUDGET_SCHEMA = "muyun.ba.budget/v1"
+BUDGET_POLICY = "stop_starting_new_stock"
+BUDGET_STOP_REASON = "budget_exhausted"
+_BUDGET_KEYS = ("budget_seconds", "policy", "schema")
+
+
+def _finite_positive_seconds(value) -> Optional[float]:
+    """有限正数秒归一化；bool/非数值/nan/inf/<=0 一律 None（不静默当无预算）。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(seconds) or seconds <= 0:
+        return None
+    return seconds
+
+
+def validate_budget_descriptor(raw) -> Optional[dict]:
+    """校验启动预算描述：schema/精确键集/策略/有限正数秒全过才可用于展示。
+
+    返回**规范化副本**；缺/坏/额外键/布尔/nan/inf/非正数/非白名单策略一律 None
+    （调用方显示未记录，绝不渲染原始字符串）。只含秒数，没有单调钟绝对值。
+    """
+    if not isinstance(raw, dict) or set(raw) != set(_BUDGET_KEYS):
+        return None
+    if raw.get("schema") != BUDGET_SCHEMA or raw.get("policy") != BUDGET_POLICY:
+        return None
+    seconds = _finite_positive_seconds(raw.get("budget_seconds"))
+    if seconds is None:
+        return None
+    return {"schema": BUDGET_SCHEMA, "policy": BUDGET_POLICY,
+            "budget_seconds": seconds}
+
+
+def budget_descriptor(seconds) -> Optional[dict]:
+    """有限正数秒 → 账本预算描述；非法返回 None（写侧与读侧同一道门）。"""
+    return validate_budget_descriptor({
+        "schema": BUDGET_SCHEMA, "policy": BUDGET_POLICY,
+        "budget_seconds": seconds,
+    })
+
+
+def dedupe_batch_codes(codes) -> list:
+    """保序去重本批代码（T05-J fix2）：同一只不得重复评分/重复扣费/重复记账。
+
+    ba 共用批与 standalone batch 必须共用这一份名单：执行循环、账本 roster、
+    ba 汇总计数都从它出发，避免“评两次但只记一次”的假未知。空值忽略；保留
+    首次出现顺序。
+    """
+    out = []
+    seen = set()
+    for code in codes:
+        if not code:
+            continue
+        key = str(code)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(code)
+    return out
+
+
+def _resolve_deadline(deadline, budget_seconds) -> Optional[float]:
+    """归一化**一个**进程内绝对单调截止点（同一批只认一个，绝不重算）。
+
+    - deadline：调用方已算好的绝对 `time.monotonic()` 值（ba 共用批传入），优先级
+      最高——传入后不再按秒数重起算，避免每层重置预算
+    - budget_seconds：standalone 调用的可选秒数，只在本函数入口派生一次
+    - 非法内部参数 → ValueError（不静默降级成“无预算”）
+    """
+    resolved = None
+    if deadline is not None:
+        if isinstance(deadline, bool) or not isinstance(deadline, (int, float)):
+            raise ValueError("deadline 必须是 time.monotonic() 数值")
+        resolved = float(deadline)
+        if not math.isfinite(resolved):
+            raise ValueError("deadline 必须是有限数值")
+    if budget_seconds is not None:
+        seconds = _finite_positive_seconds(budget_seconds)
+        if seconds is None:
+            raise ValueError("budget_seconds 必须是有限正数秒")
+        if resolved is None:
+            resolved = time.monotonic() + seconds
+    return resolved
+
+
 def _unrated_dimensions(dimensions_meta) -> list:
     """列出置信度缺失/0/非法（或整维缺失）的维度——这类结果只能算降级，不算完整评分。"""
     meta = dimensions_meta if isinstance(dimensions_meta, dict) else {}
@@ -248,6 +349,8 @@ def auto_score_batch(
     config: Optional[dict] = None,
     progress_cb=None,
     result_cb=None,
+    budget_seconds: Optional[float] = None,
+    deadline: Optional[float] = None,
 ) -> dict:
     """批量笨总 6 维 AI 评分 + 排序。
 
@@ -259,21 +362,70 @@ def auto_score_batch(
             客户端构造与逐股 auto_score 共用同一份快照
         progress_cb: 可选回调 cb(index, total, code, status)，仅用于展示进度
         result_cb: 可选结构化逐项结果回调 cb(record)，仅接收实际已返回的结果
-            （成功含 complete/degraded 状态，失败含 error）；回调异常被隔离，
-            不影响 ranked/failures 业务结果
+            （成功含 complete/degraded 状态，失败含 error；回调异常被隔离，
+            不影响 ranked/failures 业务结果）；T05-J 起预算到期还会收到显式
+            `{"code", "ok": False, "status": "not_started", "reason"}` 事件
+        budget_seconds: T05-J 可选启动预算秒数（standalone 用），只在本函数入口派生
+            一次绝对单调截止点；None（默认）= 不启用预算
+        deadline: T05-J 调用方已算好的绝对 `time.monotonic()` 截止点（ba 共用批用），
+            传入后不再重算；默认 None
 
     Returns:
-        {ranked, top_n, failures, scanned, scored, failed, result_cb_errors}
+        {ranked, top_n, failures, scanned, scored, failed, result_cb_errors,
+         not_started, stop_reason}
     """
-    codes = [c for c in codes if c]
+    # T05-J fix2：执行名单与账本/汇总共用同一份保序去重名单（重复代码只评一次）
+    codes = dedupe_batch_codes(codes)
     total = len(codes)
-    logger.info(f"[auto_score_batch] 开始批量评分 {total} 只，top_n={top_n}")
+    # T05-J：整批只认一个绝对截止点——ba 传入的 deadline 不重算；standalone 秒数
+    # 只在这里派生一次。准备阶段/单只评分可能超出，到期只阻止“开始新股票”。
+    deadline = _resolve_deadline(deadline, budget_seconds)
+    budget_on = deadline is not None
+    logger.info(f"[auto_score_batch] 开始批量评分 {total} 只，top_n={top_n}"
+                + ("，已启用启动预算（到期不再开始新股票）" if budget_on else ""))
+
+    ranked = []
+    failures = []
+    result_cb_errors = 0
+    started = set()          # 真正传给过 auto_score 的代码（已开始允许跑完）
+    not_started: list[str] = []   # 确认从未开始的代码（去重保序）
+    stop_reason = None
+
+    def _expired() -> bool:
+        return budget_on and time.monotonic() >= deadline
+
+    def _finish_early(reason: str) -> dict:
+        """准备阶段到期：一只都不开始，显式回报确认未开始 + 终止原因。"""
+        nonlocal stop_reason, result_cb_errors
+        stop_reason = reason
+        for code in codes:
+            if code in started or code in not_started:
+                continue
+            not_started.append(code)
+            if _notify_result(result_cb, {
+                "code": code, "ok": False, "status": "not_started",
+                "reason": reason,
+            }):
+                result_cb_errors += 1
+        return {
+            "ranked": ranked, "top_n": [], "failures": failures,
+            "scanned": total, "scored": len(ranked), "failed": len(failures),
+            "result_cb_errors": result_cb_errors,
+            "not_started": not_started, "stop_reason": stop_reason,
+        }
+
+    # 准备阶段每个边界都检查：到期后不再新建客户端/网络/评分调用（已发生的准备
+    # 可能已经超出预算，本实现不撤销也不强制中断）。
+    if _expired():
+        return _finish_early(BUDGET_STOP_REASON)
 
     # T05-I：整批在模型/取数之前只解析并深拷贝一次生效配置；客户端构造与每只
     # auto_score 共用同一快照，客户端构造失败也不得逐股重建/重读配置。
     frozen_config = freeze_batch_config(config)
     # T05-I fix2：配置"已尝试解析但不可用"时不得再 load/构造 client（与未提供区分）
     config_available = frozen_config is not FROZEN_CONFIG_UNAVAILABLE
+    if _expired():
+        return _finish_early(BUDGET_STOP_REASON)
 
     # build AI client 一次（批量复用，避免每只重建）
     # v0.8.6.3: bz 不依赖 RAG，rag_service 保持 None
@@ -282,18 +434,32 @@ def auto_score_batch(
     rag_service = None
     if ai_client is None:
         logger.warning("[auto_score_batch] AI client 构建失败，全部维度将走降级")
+    if _expired():
+        return _finish_early(BUDGET_STOP_REASON)
 
     # 全市场成交额整批只拉一次，循环注入（per-batch fresh：局部变量，函数返回即销毁，不跨批缓存）
     # 否则每只 auto_score 各自新建 MarketCache → 实例缓存失效 → 20只×73页×3重试=4380 次 sina 自残
     market_turnover = get_market_turnover()
     if market_turnover is None:
         logger.warning("[auto_score_batch] 全市场成交额获取失败，本批流动性系数降级到 1.0")
-
-    ranked = []
-    failures = []
-    result_cb_errors = 0
+    if _expired():
+        return _finish_early(BUDGET_STOP_REASON)
 
     for i, code in enumerate(codes, start=1):
+        # 每只开始之前立即检查：到期只阻止“开始下一只”，已开始的股票允许完整跑完
+        if _expired():
+            stop_reason = BUDGET_STOP_REASON
+            for rest_code in codes[i - 1:]:
+                if rest_code in started or rest_code in not_started:
+                    continue
+                not_started.append(rest_code)
+                if _notify_result(result_cb, {
+                    "code": rest_code, "ok": False, "status": "not_started",
+                    "reason": BUDGET_STOP_REASON,
+                }):
+                    result_cb_errors += 1
+            break
+        started.add(code)
         try:
             result = auto_score(
                 code,
@@ -381,4 +547,6 @@ def auto_score_batch(
         "scored": len(ranked),
         "failed": len(failures),
         "result_cb_errors": result_cb_errors,
+        "not_started": not_started,
+        "stop_reason": stop_reason,
     }

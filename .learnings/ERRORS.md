@@ -640,3 +640,7 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 保护清单检查遇到Git默认quotePath：`git ls-files`中的中文路径被八进制转义，直接Test-Path造成假缺失。原始清单保留，通过Python `ast.literal_eval(...).encode('latin1').decode('utf-8')`解码被引号包裹的Git条目后重新核定：218项均存在、9保护hash未变；不是删除后恢复，也不宣称未跟踪内容hash相同。新采集宜用`git -c core.quotepath=false ls-files -z`及对应NUL解码。
 
 补充：续读exec PTY时误用已返回exit_code=0的旧session_id触发Unknown process id；未重发请求，改用保存cursor/generation开启新follow后取得原request终态。必须在进程完成时清空本地session引用。
+
+## ERR-20261026-DSH-证据路径
+
+状态：resolved。主控误按matrix命名猜定向守卫资产`source_hashes_before_matrix.txt`导致FileNotFoundError；列目录后按实际`source_hashes_before_guarded.txt`读取并验证18项前后/当前相等。未重跑测试、未重投请求；后续先查资产清单再定向读，不能把路径失败当业务失败。

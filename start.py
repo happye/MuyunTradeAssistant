@@ -122,6 +122,8 @@ def show_help():
     L.append(_cmd("bz scan --allrules", "五规则全跑合并去重（各 Top5）"))
     L.append(_cmd("bz scan ... --backtest [起 止]", "评分后批量回测验证"))
     L.append(_cmd("ba", "批量评分最近扫描结果（缓存优先）"))
+    L.append(_cmd("ba --budget 60", "可选，默认不启用；到点不开新只"))
+    L.append(_cmd("bz 600519,000001 --budget 60", "可选；到点不开新只，当前只跑完返回"))
     L.append(_cmd("bz --check", "数据源连通性体检"))
     L.append(_cmd("bz --manual", "旧交互式手动打分（兜底）"))
     L.append(_row())
@@ -252,6 +254,95 @@ def _extract_codes(tokens: list) -> tuple:
     return codes, invalid
 
 
+def _parse_budget_seconds(raw):
+    """解析启动预算秒数（T05-J）：只接受有限正数；返回 (秒数, 错误说明)。
+
+    nan/inf/0/负数/非数字一律显式拒绝——预算没有隐藏默认值。
+    """
+    text = str(raw).strip()
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        return None, f"--budget 值无效: {text[:32]!r}（需有限正数秒）"
+    if not math.isfinite(value):
+        return None, f"--budget 值无效: {text[:32]!r}（需有限正数秒，nan/inf 不接受）"
+    if value <= 0:
+        return None, f"--budget 值无效: {text[:32]!r}（需大于 0 秒）"
+    return value, None
+
+
+_BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；仅 ba/bzall 与 "
+                "bz 多代码共用批支持；到期只阻止开始下一只，已开始的会跑完，"
+                "准备阶段可能超出，非强制中断/无费用上限）")
+
+# T05-J / rev2 J7：普通无预算流程的主动可发现性提示（在确认/缓存预览之前打印）。
+# 只说“可选、默认不启用、到点不开新只/当前只跑完”，不新增确认、不改 kwargs。
+_BUDGET_HINT = ("  可选时限：末尾可加 --budget 60（默认不启用）；"
+                "到点不开始下一只，当前一只跑完再返回")
+
+
+def _split_budget_option(tokens: list):
+    """分离启动预算选项（T05-J）：返回 (budget_seconds|None, 其余 token, 错误说明|None)。
+
+    只识别 `--budget VALUE` 与 `--budget=VALUE`；缺值/重复/非数字/非有限/<=0 都返回
+    明确错误，供调用方在业务动作（确认/扫描读取/网络/AI/账本）之前拒绝。未出现
+    `--budget` 时 budget=None 且 rest 与 tokens 逐项一致——无预算路径行为不变。
+    """
+    budget = None
+    rest = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        low = str(tok).lower()
+        if low == "--budget":
+            if i + 1 >= len(tokens):
+                return None, rest, "--budget 缺少秒数值"
+            raw = tokens[i + 1]
+            i += 2
+        elif low.startswith("--budget="):
+            raw = str(tok).split("=", 1)[1]
+            i += 1
+        else:
+            rest.append(tok)
+            i += 1
+            continue
+        if budget is not None:
+            return None, rest, "--budget 只能给一次（重复无效）"
+        seconds, err = _parse_budget_seconds(raw)
+        if err:
+            return None, rest, err
+        budget = seconds
+    return budget, rest, None
+
+
+def _budget_notice_text(seconds: float, scope: str) -> str:
+    """预算语义的用户可见说明（确认前打印；计时从确认后/批次入口才开始）。"""
+    return (f"  启动预算：{seconds:g} 秒（{scope}；确认后开始计时，确认前缓存预览不计入；"
+            "到期不再开始新股票，已开始的股票会跑完，配置/取数等准备阶段可能超出预算"
+            "——非强制中断、非费用上限）")
+
+
+def _scan_budget_tokens(tokens: list):
+    """扫描预算 option token（T05-J fix2）：返回 (是否出现合法预算选项, 未知预算形状)。
+
+    只核以 `-` 开头的 option token：`--budget` / `--budget=…` 算合法形状；其余
+    `--budget*`（如 --budgetx、--budgets、--budget-any）算未知形状，必须在 parse
+    所有早返回之前显式拒绝，不能变成主题/位置参数或被静默忽略。普通文本里出现
+    budget 字样（非 option token）不受影响。
+    """
+    has_budget = False
+    unknown = []
+    for tok in tokens:
+        low = str(tok).lower()
+        if not low.startswith("-"):
+            continue
+        if low == "--budget" or low.startswith("--budget="):
+            has_budget = True
+        elif low.startswith("--budget") or low.startswith("-budget"):
+            unknown.append(tok)
+    return has_budget, unknown
+
+
 def parse_input(user_input: str):
     """解析用户输入，返回 (mode, args_dict) 或 None"""
     # 兼容处理：在 GBK/Windows 命令行下，如果输入通过管道输入且含有 UTF-8 BOM，
@@ -275,6 +366,21 @@ def parse_input(user_input: str):
     parts = text.split()
     cmd = parts[0].lower()
 
+    # ── T05-J fix2：预算 option token 统一前置门（所有早返回之前）──
+    # 未知预算形状（--budgetx/--budgets/--budget-any…）不得变成主题/位置参数或被
+    # 忽略；合法 --budget 只属于 ba/bzall 与 bz 多代码共用批，其余命令上的显式
+    # 预算同样拒绝（不是静默忽略）。只核以 - 开头的 option token，普通文本不受影响。
+    _has_budget_opt, _unknown_budget_opts = _scan_budget_tokens(parts[1:])
+    if _unknown_budget_opts:
+        print(f"  [!] 未知预算选项: {'、'.join(str(t) for t in _unknown_budget_opts[:3])}"
+              "（只支持 --budget <秒> 或 --budget=<秒>）")
+        print(f"        {_BUDGET_HELP}")
+        return None
+    if _has_budget_opt and cmd not in ("ba", "bzall", "bz", "benzong", "笨总"):
+        print("  [!] 该命令不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+        print(f"        {_BUDGET_HELP}")
+        return None
+
     # ── 基础命令 ──
     # v0.8.9.5（彻查批 P3）：原此处有一段与下方完全重复的 q/help/la/ba 解析块
     # （复制粘贴残留，第二份永不生效），已删除
@@ -285,12 +391,42 @@ def parse_input(user_input: str):
 
     # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
     if cmd in ("la", "lall"):
+        _budget, _rest, _budget_err = _split_budget_option(parts[1:])
+        if _budget_err:
+            print(f"  [!] {_budget_err}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        if _budget is not None:
+            print("  [!] la 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+            return None
         return ("live_all", {})
 
     if cmd in ("ba", "bzall"):
-        return ("benzong_all", {})
+        # T05-J：可选启动预算（到期不再开始下一只股票）；默认无预算、无隐藏默认值
+        budget, rest, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        if rest:
+            print(f"  [!] ba/bzall 不接受其他参数: {' '.join(str(t) for t in rest)[:60]}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        args = {}
+        if budget is not None:
+            args["budget"] = budget
+        return ("benzong_all", args)
 
     if cmd in ("l", "live"):
+        # T05-J：l/l all 不支持启动预算——在代码提取/扫描读取之前拒绝
+        _budget, _rest, _budget_err = _split_budget_option(parts[1:])
+        if _budget_err:
+            print(f"  [!] {_budget_err}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        if _budget is not None:
+            print("  [!] l/l all 多代码深析不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+            return None
         if len(parts) < 2:
             print("  [!] 用法: l <代码>[,代码2,...] | l #N | l all[-f]（批量深分析最近扫描）")
             print("      多代码用 英文逗号/中文逗号/空格 分隔，如: l 600519,000001 或 l 600519 000001")
@@ -312,6 +448,15 @@ def parse_input(user_input: str):
         return ("live_multi", {"codes": codes})
 
     if _is_stock_code(parts[0]):
+        # T05-J：裸代码（live 语义）不支持启动预算——先拒绝再解析代码
+        _budget, _rest, _budget_err = _split_budget_option(parts[1:])
+        if _budget_err:
+            print(f"  [!] {_budget_err}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        if _budget is not None:
+            print("  [!] 单只/裸代码深析不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+            return None
         # ISS-087：裸代码输入也支持多只（"600519 000001"），单只行为不变
         codes, invalid = _extract_codes(parts)
         if invalid:
@@ -729,6 +874,27 @@ def parse_input(user_input: str):
         # v0.8.6.2: bz <code> 自动 AI 评分；bz --manual 走旧交互式；bz --refresh 强制刷新
         # v0.8.6.3: bz --check 数据源连通性体检（ISS-043）
         # v0.8.6.3: bz scan 选股初筛→笨总批量评分→可选回测（ISS-041 方向 A）
+        # T05-J：启动预算只属于 ba/bzall 与 bz 多代码共用批；在这里先分离并校验，
+        # 坏预算/不支持入口（scan/check/manual/单只）在代码提取与扫描读取之前拒绝。
+        budget, bz_tokens, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
+            print(f"        {_BUDGET_HELP}")
+            return None
+        scan_intent = bool(bz_tokens) and bz_tokens[0].lower() in ("scan", "筛选", "选股")
+        if scan_intent and budget is not None:
+            print("  [!] bz scan 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+            return None
+        if not scan_intent:
+            _lows = [str(p).lower() for p in bz_tokens]
+            if budget is not None and any(p in ("--check", "--体检", "check") for p in _lows):
+                print("  [!] bz --check 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+                return None
+            if budget is not None and any(p in ("--manual", "-m", "manual") for p in _lows):
+                print("  [!] bz --manual 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+                return None
+            # 移除预算 token 后继续旧解析（无预算时 bz_tokens 与 parts[1:] 逐项等价）
+            parts = [parts[0]] + bz_tokens
         if len(parts) >= 2 and parts[1].lower() in ("scan", "筛选", "选股"):
             scan_args = {"theme": "", "top_n": 10, "backtest": False,
                          "start": "", "end": "", "capital": 100000.0,
@@ -791,6 +957,11 @@ def parse_input(user_input: str):
                 refresh = True
             elif pl in ("--check", "--体检", "check"):
                 check = True
+            elif pl.startswith("-"):
+                # T05-J：预算可用入口不再静默吞掉未知选项（如 --foo/-f）
+                print(f"  [!] 未知选项: {p}（bz 支持 --refresh/-r/--manual/-m/--check；"
+                      "多代码批量另支持 --budget）")
+                return None
             else:
                 non_flag_tokens.append(p)
         # ISS-087 多代码：提取代码（英文逗号/中文逗号/空格混分/#N 引用），非法 token 告警
@@ -803,7 +974,14 @@ def parse_input(user_input: str):
         if len(codes) >= 2:
             # v0.8.9.0 ISS-087: 多代码批量评分——复用 ba 同款批量管道
             # （AI client 建一次/整批共享成交额/串行防登录态竞争/单只失败不阻塞/缓存优先）
-            return ("benzong_multi", {"codes": codes, "refresh": refresh})
+            multi_args = {"codes": codes, "refresh": refresh}
+            if budget is not None:
+                multi_args["budget"] = budget
+            return ("benzong_multi", multi_args)
+        if budget is not None:
+            print("  [!] 单只 bz 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分；"
+                  "多代码请写成 bz 600519,000001 --budget 60）")
+            return None
         if len(codes) == 1:
             meta = codes[0]
         elif invalid:
@@ -1767,6 +1945,18 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
 
     if mode == "benzong_all":
         from src.cli import session_state
+        # T05-J：坏预算必须在读取扫描结果/缓存预览之前拒绝（正常 parse 已校验，
+        # 这里防绕过 parse 的程序化调用）
+        budget = args.get("budget")
+        budget_seconds = None
+        if budget is not None:
+            from src.core.benzong.batch_scorer import budget_descriptor
+            _budget_desc = budget_descriptor(budget)
+            if _budget_desc is None:
+                print("  [!] 预算参数无效（需有限正数秒）；本次未开始评分"
+                      "（不读取扫描结果、不调用 AI、不写账本）")
+                return True
+            budget_seconds = _budget_desc["budget_seconds"]
         from src.core.benzong import cache as bz_cache
         from datetime import datetime as _dt
         last = session_state.get_last_scan()
@@ -1785,12 +1975,18 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
         today = _dt.now().strftime("%Y-%m-%d")
         dims = ["industry_prosperity", "business_purity", "valuation_position",
                 "industry_leader", "market_recognition", "risk_deduction"]
+        print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
+        if budget_seconds is not None:
+            print(_budget_notice_text(budget_seconds, "ba 批量笨总评分"))
+        else:
+            # J7/final_gate E：正常无预算也主动告知可选时限，且必须在实际缓存预览
+            # （bz_cache.get）之前输出（无新确认、不改 kwargs）
+            print(_BUDGET_HINT)
         uncached = sum(
             1 for it in items
             if isinstance(it, dict) and it.get("code")
             and any(bz_cache.get(it["code"], today, d) is None for d in dims)
         )
-        print(f"\n  最近扫描：{src_label}（{when}），共 {len(items)} 只")
         if uncached:
             est_min = max(1, round(uncached * 0.5))
             try:
@@ -1804,7 +2000,10 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
         else:
             print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）\n")
         from src.cli.main import benzong_batch_analyze
-        benzong_batch_analyze(items, src_label=src_label)
+        if budget_seconds is not None:
+            benzong_batch_analyze(items, src_label=src_label, budget=budget_seconds)
+        else:
+            benzong_batch_analyze(items, src_label=src_label)
         return True
 
     if mode == "benzong_multi":
@@ -1812,6 +2011,17 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
         # （auto_score_batch：AI client 建一次、整批共享全市场成交额、串行防
         # baostock 登录态竞争、单只失败不阻塞、同日缓存优先不重算）
         from src.cli.main import benzong_batch_analyze
+        # T05-J：坏预算先拒绝（不读缓存、不确认、不调用 AI/账本）
+        budget = args.get("budget")
+        budget_seconds = None
+        if budget is not None:
+            from src.core.benzong.batch_scorer import budget_descriptor
+            _budget_desc = budget_descriptor(budget)
+            if _budget_desc is None:
+                print("  [!] 预算参数无效（需有限正数秒）；本次未开始评分"
+                      "（不读取缓存、不调用 AI、不写账本）")
+                return True
+            budget_seconds = _budget_desc["budget_seconds"]
         from src.core.benzong import cache as bz_cache
         from datetime import datetime as _dt
         codes = [c for c in args.get("codes", []) if c]
@@ -1821,12 +2031,18 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
         today = _dt.now().strftime("%Y-%m-%d")
         dims = ["industry_prosperity", "business_purity", "valuation_position",
                 "industry_leader", "market_recognition", "risk_deduction"]
+        print(f"\n  笨总批量评分 {len(codes)} 只：{'、'.join(codes)}"
+              + ("（--refresh 强制重算）" if args.get("refresh") else ""))
+        if budget_seconds is not None:
+            print(_budget_notice_text(budget_seconds, "bz 多代码批量笨总评分"))
+        else:
+            # J7/final_gate E：正常无预算也主动告知可选时限，且必须在实际缓存预览
+            # （bz_cache.get）之前输出（无新确认、不改 kwargs）
+            print(_BUDGET_HINT)
         uncached = [
             c for c in codes
             if any(bz_cache.get(c, today, d) is None for d in dims)
         ]
-        print(f"\n  笨总批量评分 {len(codes)} 只：{'、'.join(codes)}"
-              + ("（--refresh 强制重算）" if args.get("refresh") else ""))
         if args.get("refresh"):
             est_min = max(1, round(len(codes) * 0.5))
             print(f"  每只 6 维 AI（约 {est_min} 分钟/只），共约 {est_min * len(codes)} 分钟")
@@ -1844,7 +2060,11 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
         else:
             print("  全部命中今日缓存，直接出排名表（不再产生维度评分费用）")
         items = [{"code": c} for c in codes]
-        benzong_batch_analyze(items, force_refresh=args.get("refresh", False))
+        if budget_seconds is not None:
+            benzong_batch_analyze(items, force_refresh=args.get("refresh", False),
+                                  budget=budget_seconds)
+        else:
+            benzong_batch_analyze(items, force_refresh=args.get("refresh", False))
         return True
 
     if mode == "benzong_scan":
@@ -2349,9 +2569,41 @@ def _dispatch_backtest_cli(
     return False
 
 
+_SUPPORTED_BUDGET_MODES = ("benzong_all", "benzong_multi")
+
+
+def _reject_budget_request(mode: str, args) -> bool:
+    """T05-J fix2：run_cli 最前统一预算门（在确认/扫描/缓存/网络/AI/账本之前）。
+
+    - 不支持的 mode 只要显式 budget 非 None（含正数/坏值）一律拒绝，不执行业务
+    - 支持 mode 的坏预算（非有限正数秒）同样先拒绝
+    - 无 budget / budget=None：完全保持旧行为
+    返回 True 表示已拒绝（run_cli 必须直接 return）。
+    """
+    if not isinstance(args, dict):
+        return False
+    budget = args.get("budget")
+    if budget is None:
+        return False
+    if mode not in _SUPPORTED_BUDGET_MODES:
+        print("  [!] 该命令不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）；"
+              "本次未执行")
+        return True
+    from src.core.benzong.batch_scorer import budget_descriptor
+    if budget_descriptor(budget) is None:
+        print("  [!] 预算参数无效（需有限正数秒）；本次未开始评分"
+              "（不读取扫描结果/缓存、不调用 AI、不写账本）")
+        return True
+    return False
+
+
 def run_cli(mode: str, args: dict):
     """调用 CLI 主程序执行分析"""
     global _ai_debug, _no_ai
+
+    # T05-J fix2：预算统一门必须在任何业务动作/import 之前（防程序化绕过 parse）
+    if _reject_budget_request(mode, args):
+        return
 
     from src.cli.main import (
         analyze_live, run_backtest, run_batch_validation,

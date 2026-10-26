@@ -1919,9 +1919,13 @@
           {
             "path": "plan/fusion/iteration10/T05I_BA_CONFIG_ACCEPTANCE.json",
             "anchor": "T05-I partial ba execution-parameter snapshot only; whole criterion not closed"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-J optional ba stop-starting budget and discoverability partial scope; whole criterion not closed"
           }
         ],
-        "basis": "Partial T05-H and T05-I accepted; whole-chain deadline/resources/full effective config/cache qualification still pending"
+        "basis": "Partial T05-H/I/J accepted; other entrances/resources/full config/cache qualification still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1938,21 +1942,25 @@
           {
             "path": "plan/fusion/iteration10/T05I_BA_CONFIG_ACCEPTANCE.json",
             "anchor": "T05-I partial ba execution-parameter snapshot only; whole criterion not closed"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-J optional ba stop-starting budget and discoverability partial scope; whole criterion not closed"
           }
         ],
-        "basis": "Partial T05-H and T05-I accepted; whole-chain deadline/resources/full effective config/cache qualification still pending"
+        "basis": "Partial T05-H/I/J accepted; other entrances/resources/full config/cache qualification still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "T05-H运行身份及T05-I ba执行参数快照已限定接收；整批deadline/资源、完整有效配置、成功缓存资格尚待核定，不能由有限子批替代。",
+          "reason": "T05-H身份、T05-I ba执行参数快照、T05-J ba协作式可选时限已限定接收；其他入口/资源硬界、完整有效配置与缓存资格仍待，不由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "用户已重新授权持续推进；先按新HEAD落T05-J ba/bz多代码可选停止启动时限有限合同，保留在跑股完成/未知与未开始分离；完整配置/cache资格及资源硬界另核。"
+      "next_action": "先限定逐维缓存载荷资格子合同，坏条目当miss仅重算对应维度；保持prompt/formula/CACHE_VERSION/TTL及弱正置信度合法结果，另核完整配置与资源界。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2596,6 +2604,57 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05I_BA_CONFIG_ACCEPTANCE.json"
+      ]
+    },
+    {
+      "id": "T05J-20261026",
+      "date": "2026-10-26",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "T05-J可选时限与用户明确要求的正常发现入口有限交付；495相关矩阵加最终174定向增量、独立复核。E/A/P及18/47不变，范围/权重/适用性不变；rev2仅补J7可发现性，不增加V1分母。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05J_BA_BUDGET_ACCEPTANCE.json"
       ]
     }
   ],

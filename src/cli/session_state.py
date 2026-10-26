@@ -462,8 +462,26 @@ def _canonical_batch_snapshot(raw):
         return None
 
 
+def _canonical_batch_budget(raw):
+    """启动预算描述的写入端白名单门（T05-J）。
+
+    只有通过 batch_scorer 同一口径校验（schema/精确键集/策略/有限正数秒）的描述
+    才允许落盘，并只保存**规范化副本**——绝不把调用方原始 dict、额外键或任意字符串
+    写进账本。不可用时返回 None（run 仍登记，预算显示未记录）；校验异常只记固定
+    原因类型，不拼接任意异常正文。
+    """
+    try:
+        from src.core.benzong.batch_scorer import validate_budget_descriptor
+        return validate_budget_descriptor(raw)
+    except Exception as e:
+        logger.debug("batch_task_start 预算描述校验失败(按未记录处理，"
+                     f"原因类型 {type(e).__name__})")
+        return None
+
+
 def batch_task_start(kind: str, key: str, codes: list,
-                     snapshot: Optional[dict] = None) -> Optional[str]:
+                     snapshot: Optional[dict] = None,
+                     budget: Optional[dict] = None) -> Optional[str]:
     """批量任务启动：新建独立 run 并返回令牌；写入失败返回 None（不抛）。
 
     - 每次调用插入一条新运行记录（保留最近 5 条），不按 kind+key 合并，
@@ -476,6 +494,10 @@ def batch_task_start(kind: str, key: str, codes: list,
       合法才保存**规范化副本**；非法/额外键/坏 hash 一律不落盘，run 仍正常登记为
       未冻结。它只是元数据，不授予缓存命中/复用或投资信号资格；未提供时记录保持
       旧形状（旧调用方兼容，且不引入额外依赖）。
+    - budget（T05-J，可选）：ba 共用批的启动预算描述。写入前按 schema/精确键集/
+      策略/有限正数秒校验，合法才保存**规范化副本**（只落秒数，绝不落进程内单调
+      截止点）；非法/额外键/nan/inf/bool 一律不落盘（显示未记录），run 仍登记。
+      未提供时记录保持旧形状（旧账本/旧调用方兼容，无迁移、不改写旧文件）。
     """
     try:
         roster = [str(c) for c in codes]
@@ -498,6 +520,10 @@ def batch_task_start(kind: str, key: str, codes: list,
             canonical = _canonical_batch_snapshot(snapshot)
             if canonical is not None:
                 record["exec_snapshot"] = canonical
+        if budget is not None:
+            canonical_budget = _canonical_batch_budget(budget)
+            if canonical_budget is not None:
+                record["budget"] = canonical_budget
         tasks.insert(0, record)
         data["tasks"] = tasks[:_BATCH_TASKS_KEEP]
         if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
@@ -533,6 +559,13 @@ def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "",
         roster = [str(c) for c in latest.get("codes") or []]
         if code not in roster:
             return False
+        # T05-J fix2：已确认未开始的同 run 晚到结果不得洗成已开始；not_started
+        # 映射损坏（非 dict）时无法核定，一律拒绝改写（不抹未知）。
+        ns_map = latest.get("not_started")
+        if ns_map is not None and not isinstance(ns_map, dict):
+            return False
+        if isinstance(ns_map, dict) and code in ns_map:
+            return False
         for name in ("done", "degraded", "failed"):
             if not isinstance(latest.get(name), dict):
                 latest[name] = {}
@@ -556,6 +589,71 @@ def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "",
         return True
     except Exception as e:
         logger.debug(f"batch_task_mark 失败(不影响批量主流程): {e}")
+        return False
+
+
+def batch_task_not_started(kind: str, key: str, code: str,
+                           run_id: Optional[str] = None,
+                           reason: str = "") -> bool:
+    """登记调度器确认「从未开始」的代码（T05-J 预算到期）；返回是否真的记账成功。
+
+    fail-closed（任一不满足 → False 且不写文件、不改新旧记录）：
+    - 必须携带本次 run 令牌；kind+key 当前最新 run 必须正是该令牌
+    - code 必须在该 run 的 roster 内
+    - reason 必须是白名单预算终止原因（budget_exhausted）
+    - 该 run 必须已登记合法预算描述（无预算 run 不允许凭空出现未开始）
+    - 与 done/degraded/failed 互斥：已接受结果不得改判为未开始
+    只描述可见性，不授予缓存资格；不写绝对单调钟值，只落原因字符串。
+    """
+    try:
+        from src.core.benzong.batch_scorer import (
+            BUDGET_STOP_REASON, validate_budget_descriptor)
+        if not isinstance(run_id, str) or not run_id:
+            return False
+        if reason != BUDGET_STOP_REASON:
+            return False
+        code = str(code)
+        data = _load_batch_tasks()
+        tasks = [t for t in data.get("tasks") or [] if isinstance(t, dict)]
+        latest = next((t for t in tasks if t.get("kind") == kind and t.get("key") == key), None)
+        if latest is None or latest.get("run_id") != run_id:
+            return False
+        roster = [str(c) for c in latest.get("codes") or []]
+        if code not in roster:
+            return False
+        if validate_budget_descriptor(latest.get("budget")) is None:
+            return False
+        # T05-J fix2：已有 done/degraded/failed 映射必须可读（dict）才能核定
+        # “是否已有结果”；损坏/缺失映射一律 fail-closed，不写未开始、不抹未知。
+        for name in ("done", "degraded", "failed"):
+            current = latest.get(name)
+            if not isinstance(current, dict):
+                return False
+            if code in current:
+                return False
+        # final_gate B：not_started 只在字段**缺失**时新建 {}；字段已存在但非 dict
+        # （list/string/null/bool）时无法核定旧状态 → 拒绝且不改盘，不重置抹掉未知。
+        # 已有 dict 中的其它坏项原样保留；同 code 已有非白名单原因也不覆盖。
+        if "not_started" in latest:
+            not_started = latest.get("not_started")
+            if not isinstance(not_started, dict):
+                return False
+            if code in not_started:
+                # 幂等成功必须与 tasks 读门一致：run.stop_reason 也须为白名单原因；
+                # 缺失/非法时返回 False 且不改盘（不自动修补旧记录）。
+                return (not_started.get(code) == BUDGET_STOP_REASON
+                        and latest.get("stop_reason") == BUDGET_STOP_REASON)
+        else:
+            not_started = {}
+            latest["not_started"] = not_started
+        not_started[code] = BUDGET_STOP_REASON
+        latest["stop_reason"] = BUDGET_STOP_REASON
+        latest["ts_updated"] = datetime.now().isoformat(timespec="seconds")
+        if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
+            return False
+        return True
+    except Exception as e:
+        logger.debug(f"batch_task_not_started 失败(不影响批量主流程): {e}")
         return False
 
 

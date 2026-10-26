@@ -1,6 +1,16 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-26 T05-I ba执行参数快照已限定接收
+## 当前续工：2026-10-26 T05-J 可选时限与正常发现入口已限定接收
+
+用户`/goal`持续Codex+DSH授权有效，后续明确选择可选总时限且要求使用者知晓选项。T05-J已完成ba/bz多代码子范围：`--budget <秒>`/`--budget=<秒>`默认不启用；费用确认后在共用执行入口取单一monotonic截止，准备及逐股边界检查，到点不再开始下一只，当前只允许完成。正常启动/h菜单与默认命令缓存预览/确认前提示都有真实输出测试。不是硬墙、强取消或费用上限；l/la/l all本卡不支持该参数。
+
+**记录与证据**：共享保序去重清单，避免refresh重复付费；明确未开始只来自调度器，不从未知倒推。写侧双向状态隔离，旧坏状态map不当空、坏not_started不抹掉；读侧kind/run/budget/stop_reason/roster/三态联合核定，计数和确认文案同源。部分未知不承诺全批未开始或零费用。修前495相关矩阵（10.63s）后，幂等早返回漏核stop_reason补2红/1绿→3绿→174定向守卫（5.81s，IO=0）；18依赖中仅session_state与预算测试变更，其他16相同。独立只读复核PASS，539源码清单、9保护hash、原218未跟踪存在性保持。未跑最终树单次495/全量、真实外源/产品AI/账户；非正式bridge run/receipt。见[回执](iteration10/T05J_BA_BUDGET_ACCEPTANCE.json)、[源码指纹](iteration10/T05J_BA_BUDGET_SOURCE_PINS.json)、[结果](iteration10/T05J_BA_BUDGET_RESULTS.txt)。
+
+**身份**：实施基线main=`01874740505717c02f706e2f8d1cde8884492bb0`，本批交付SHA核实际Git。task=`muyun-t05j-ba-budget-20261026`，session=`codex-4e6fb2a3-af84-42c2-85ea-d29fddbfe1af`；合同`muyun-v1-g7-ba-start-budget` rev2 SHA=`43b5d6f7b0dbe5e0c9461ae55e20bc74c1ad37084f5c368d35f9bf88395dfbc2`（rev2为用户要求的J7正常发现入口修订）。最终request=`9ff52b1a-fe2c-404b-8609-640c6a09ec37`已COMPLETED seq1252，全文SHA=`28d23e46a4ebea12f032fa7b3bf730e3252d08bf5bbec34e15edef2dbeff8bd4`已读、停写。原始分轮证据`C:/Users/Crux/AppData/Local/Temp/muyun-t05j-ba-budget-20261026/dsh`，最终增量`idempotence-20261026-2035`。旧已完请求禁止重投。
+
+**进度/下一有限卡**：E48.0%/A36.0%/P42.0%–68.6%、18/47不变，BATCH-BUDGET及G7/T05/V1未关闭。下一T05-K先限定逐维缓存载荷资格：score有限[0,100]、正且不高于1的confidence（弱正0.3仍可复用）、invalidate缺失/None或严格bool；坏条目按miss只重算该维，读写同门，保持同日键/TTL/prompt/formula/CACHE_VERSION与缓存原子写。缓存全命中仍可能取数据/sector-meta额外AI，本卡不得承诺零网络/零费用或擅改标注。真实用户缓存不作探针，不做批量迁移/清理。按实际新HEAD先绑定有限合同、红绿与独立复核后交付。Codex管文档/账本/Git，DSH实施且唯一测试执行者。
+
+## 上一批：2026-10-26 T05-I ba执行参数快照已限定接收
 
 用户本次`/goal`重新授权按计划持续Codex+原生DSH协作，收到额度不足/停止信号再停止派发；下方T05-H“交付后停止”仅为历史安排。T05-I只处理`V1-G7-BATCH-BUDGET`的ba/bz多代码批评分执行参数子范围；完整配置、缓存资格、整批截止/资源及G7/T05/V1未关闭，进度E48.0%/A36.0%/P42.0%–68.6%、18/47不变。
 

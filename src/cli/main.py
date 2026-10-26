@@ -2008,7 +2008,8 @@ def _ba_dim_cell(row: dict, key: str) -> str:
     return f"{(row.get('dim_scores') or {}).get(key, 0):.0f}"
 
 
-def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_label: str = "?") -> None:
+def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_label: str = "?",
+                          budget: float | None = None) -> None:
     """ba 命令：对最近一次扫描找到的股票批量笨总评分（缓存优先，排序输出白话点评）。
 
     T05-H（运行隔离/可靠逐项记录）：
@@ -2023,27 +2024,72 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
     - 描述只是有限覆盖的元数据（端点/环境/输入数据/prompt 未核定），不证明完整
       有效配置身份，也不授予缓存命中/复用/信号资格；不可安全派生时不写伪身份
 
+    T05-J（可选启动预算）：
+    - 传入 budget（有限正数秒）时，在本函数入口——用户费用确认之后、配置冻结/
+      账本登记/客户端与取数之前——起**一次**单调钟；同一绝对截止点原样交给
+      批次，绝不每层重算。到期只阻止「开始下一只股票」，已开始股票允许跑完，
+      准备阶段与单只评分本身可能超出（非硬取消/无费用上限）；确认前缓存预览不计入
+    - 只有调度器显式回报的 not_started 才计数/记账；缺失/异常/外来/重复结果仍按
+      未记录处理，绝不从 roster 剩余或超时异常倒推“未开始”
+    - 默认 None：不启用预算，旧调用/旧 mock 行为与账本形状不变
+
     Args:
         items: session_state.get_last_scan() 的 items（至少含 code/name）
         force_refresh: True 时忽略缓存重算
+        budget: 可选启动预算秒数（有限正数）；None 表示不启用
     """
+    import time
+
     from src.core.benzong.batch_scorer import (
-        auto_score_batch, derive_exec_snapshot, freeze_batch_config,
+        BUDGET_STOP_REASON, FROZEN_CONFIG_UNAVAILABLE, auto_score_batch,
+        budget_descriptor, dedupe_batch_codes, derive_exec_snapshot,
+        freeze_batch_config,
     )
     from src.cli import session_state as _ss_ba
 
-    codes = [it.get("code") for it in items if isinstance(it, dict) and it.get("code")]
+    codes = dedupe_batch_codes(
+        [it.get("code") for it in items if isinstance(it, dict) and it.get("code")])
     if not codes:
         console.print("[yellow]扫描结果里没有股票代码[/yellow]")
         return
 
+    # T05-J：预算的唯一起点是 ba 入口（用户确认之后）；配置冻结/账本/客户端/取数
+    # 都在它之后，准备阶段到期则一只都不开始。坏预算在冻结/登记/取数之前拒绝。
+    budget_desc = None
+    deadline = None
+    budget_seconds = None
+    if budget is not None:
+        budget_desc = budget_descriptor(budget)
+        if budget_desc is None:
+            console.print("  [red][!] 预算参数无效（需有限正数秒）；本次未开始评分、"
+                          "未登记任务、未读取缓存/网络[/red]")
+            return
+        budget_seconds = budget_desc["budget_seconds"]
+        deadline = time.monotonic() + budget_seconds
+        console.print(
+            f"  启动预算：{budget_seconds:g} 秒（确认后开始计时，确认前缓存预览不计入；"
+            "到期不再开始新股票，已开始的股票会跑完，配置/取数等准备阶段可能超出预算——"
+            "非强制中断、非费用上限）")
+
     # T05-I：模型/取数之前一次性冻结配置；描述与执行配置同源（不可派生→未冻结）。
     # fix2：冻结失败返回显式不可用状态，原样传给批量，避免二次 load/构造 client。
-    frozen_config = freeze_batch_config()
-    exec_snapshot = derive_exec_snapshot(frozen_config, force_refresh)
+    # T05-J fix2：提示输出/极小合法预算（如 1e-300）可能在首次准备前就已耗尽同一
+    # deadline——先核再冻结；过期则用 T05-I 显式不可用态/无快照，不再 load 配置或
+    # 构造 client，也不重起计时，仍登记合法预算 run 由调度器回报全部未开始。
+    if deadline is not None and time.monotonic() >= deadline:
+        frozen_config = FROZEN_CONFIG_UNAVAILABLE
+        exec_snapshot = None
+    else:
+        frozen_config = freeze_batch_config()
+        exec_snapshot = derive_exec_snapshot(frozen_config, force_refresh)
 
     # C2/T05-H：每次运行独立令牌；写入失败明确 None，下面给用户可见提示
-    run_id = _ss_ba.batch_task_start("ba", src_label, codes, snapshot=exec_snapshot)
+    # T05-J：只有显式预算才附带预算描述（旧调用方/旧 mock 兼容，旧账本形状不变）
+    if budget_desc is not None:
+        run_id = _ss_ba.batch_task_start("ba", src_label, codes,
+                                         snapshot=exec_snapshot, budget=budget_desc)
+    else:
+        run_id = _ss_ba.batch_task_start("ba", src_label, codes, snapshot=exec_snapshot)
     if run_id:
         if exec_snapshot is not None:
             console.print(
@@ -2057,7 +2103,7 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
         console.print("  [yellow]⚠ 任务记录保存失败：本次进度不会被记录（不影响评分）[/yellow]")
 
     roster = {str(c) for c in codes}
-    counts = {"complete": 0, "degraded": 0, "failed": 0}
+    counts = {"complete": 0, "degraded": 0, "failed": 0, "not_started": 0}
     record_state = {"write_failed": False, "unreliable": False}
     counted = set()
 
@@ -2081,6 +2127,19 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
             return
         if code in counted:
             _mark_unreliable()   # 重复事件：不重复计数
+            return
+        # T05-J：调度器显式回报「确认从未开始」——只在预算运行里合法，原因须白名单。
+        # 缺失/异常/外来/重复事件走上面的未知分支，绝不倒推成未开始。
+        if ok is False and status == "not_started":
+            if budget_desc is None or record.get("reason") != BUDGET_STOP_REASON:
+                _mark_unreliable()
+                return
+            counts["not_started"] += 1
+            counted.add(code)
+            if not _ss_ba.batch_task_not_started(
+                    "ba", src_label, code, run_id=run_id,
+                    reason=BUDGET_STOP_REASON) and run_id:
+                record_state["write_failed"] = True
             return
         if ok is True:
             dims = record.get("degraded_dims")
@@ -2118,12 +2177,22 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
         console.print(f"  [{i}/{total}] {code} {status}")
 
     console.print(f"\n[bold cyan]🧮 笨总批量评分（{len(codes)} 只）[/bold cyan]\n")
-    res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
-                           config=frozen_config,
-                           progress_cb=_progress, result_cb=_on_result)
+    # T05-J：同一个绝对截止点传给调度器，绝不在此重算（无预算时不传该参数，
+    # 保持旧 mock/调用方签名兼容）
+    if deadline is not None:
+        res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
+                               config=frozen_config,
+                               progress_cb=_progress, result_cb=_on_result,
+                               deadline=deadline)
+    else:
+        res = auto_score_batch(codes, top_n=len(codes), force_refresh=force_refresh,
+                               config=frozen_config,
+                               progress_cb=_progress, result_cb=_on_result)
 
     ranked = res.get("ranked", [])
     failures = res.get("failures", [])
+    batch_stop_reason = res.get("stop_reason")
+    res_not_started = [c for c in (res.get("not_started") or []) if isinstance(c, str)]
     if run_id and record_state["write_failed"]:
         console.print("  [yellow]⚠ 任务记录写入失败：本次进度可能不完整（评分结果不受影响）[/yellow]")
     if record_state["unreliable"]:
@@ -2131,22 +2200,61 @@ def benzong_batch_analyze(items: list[dict], force_refresh: bool = False, src_la
                       "（以屏幕输出与实际结果为准）[/yellow]")
     if res.get("result_cb_errors"):
         console.print("  [yellow]⚠ 任务记录回调异常：本次进度可能不完整（评分结果不受影响）[/yellow]")
+    if budget_desc is not None:
+        if batch_stop_reason == BUDGET_STOP_REASON:
+            console.print("  [yellow]预算到期：不再开始后续股票（已开始的股票已完整跑完；"
+                          "准备阶段可能超出预算，非强制中断）[/yellow]")
+        elif batch_stop_reason is not None:
+            console.print("  [yellow]⚠ 预算终止原因校验未通过（按未记录处理）[/yellow]")
+        if (batch_stop_reason == BUDGET_STOP_REASON
+                and len(res_not_started) != counts["not_started"]):
+            console.print("  [yellow]⚠ 预算未开始计数与调度器回报不一致：账本记录可能不完整"
+                          "（评分结果不受影响，以屏幕计数为准）[/yellow]")
 
     # T05-H：真实计数来自结构化逐项结果；未收到合法结果只表示“未记录结果”，不能当未运行
+    # T05-J：not_started 是调度器确认「从未开始」的独立状态，与失败/未记录结果分开计
     n_done = counts["complete"]
     n_deg = counts["degraded"]
     n_fail = counts["failed"]
-    pending = max(0, len(codes) - n_done - n_deg - n_fail)
+    n_ns = counts["not_started"]
+    pending = max(0, len(codes) - n_done - n_deg - n_fail - n_ns)
     if run_id:
-        console.print(f"  任务记录：run {run_id}（已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}）")
+        if budget_desc is None:
+            console.print(f"  任务记录：run {run_id}（已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}）")
+        else:
+            console.print(f"  任务记录：run {run_id}（已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / "
+                          f"预算未开始 {n_ns} / 未记录结果 {pending}）")
     else:
-        console.print(f"  本次结果：已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}（任务记录不可用）")
+        if budget_desc is None:
+            console.print(f"  本次结果：已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / 未记录结果 {pending}（任务记录不可用）")
+        else:
+            console.print(f"  本次结果：已完成 {n_done} / 降级 {n_deg} / 失败 {n_fail} / "
+                          f"预算未开始 {n_ns} / 未记录结果 {pending}（任务记录不可用）")
+    if budget_desc is not None:
+        console.print("[dim]预算说明：到期只阻止开始下一只股票；已开始的股票与准备阶段"
+                      "（配置/客户端/取数）继续完成，实际耗时可能超出预算（非强制中断、"
+                      "无费用上限）；确认前的缓存预览不计入预算。[/dim]")
 
     if not ranked and not failures:
-        console.print("[yellow]没有产出评分结果[/yellow]")
+        # final_gate D：未产出可展示评分时只报告证据范围——不得声称“没有任何股票
+        # 开始评分/未产生评分费用”（ns 之外的 unknown 无法证明未开始）。
+        if budget_desc is not None and n_ns:
+            unknown = max(0, len(codes) - n_ns)
+            if unknown == 0:
+                console.print(f"[yellow]未产出可展示评分：本批 {n_ns} 只均有确认未开始记录；"
+                              "重跑是新的独立 run（费用以实际调用为准）[/yellow]")
+            else:
+                console.print(f"[yellow]未产出可展示评分：已确认未开始 {n_ns} 只，"
+                              f"其他 {unknown} 只结果待确认（不声称全批未开始；"
+                              "重跑是新的独立 run）[/yellow]")
+        else:
+            console.print("[yellow]没有产出评分结果[/yellow]")
         return
 
-    table = Table(title=f"笨总批量评分排名（已完成 {n_done} 只 / 降级 {n_deg} 只 / 失败 {n_fail} 只）")
+    title = f"笨总批量评分排名（已完成 {n_done} 只 / 降级 {n_deg} 只 / 失败 {n_fail} 只"
+    if budget_desc is not None:
+        title += f" / 预算未开始 {n_ns} 只"
+    table = Table(title=title + "）")
     table.add_column("#", width=3, justify="right")
     table.add_column("代码", width=8)
     table.add_column("名称", overflow="fold")
@@ -4373,6 +4481,73 @@ def _safe_batch_status_map(raw, label):
     return out, issues, pending
 
 
+def _safe_batch_not_started_map(raw):
+    """T05-J：not_started 的安全只读视图：只认白名单原因，坏键/坏值只标异常。
+
+    返回 (确认未开始映射, 异常说明, 待确认项)。非字符串/不在白名单的原因一律
+    隔离为「待确认」且不参与计数，绝不渲染存库原始字符串。
+    """
+    from src.core.benzong.batch_scorer import BUDGET_STOP_REASON
+    if raw is None:
+        return {}, [], []
+    if not isinstance(raw, dict):
+        return {}, ["not_started 字段类型非法（应为 code→原因映射）"], []
+    out, pending, bad = {}, [], 0
+    for c, reason in raw.items():
+        if not (isinstance(c, str) and c):
+            bad += 1
+        elif reason == BUDGET_STOP_REASON:
+            out[c] = reason
+        else:
+            pending.append((c, "原因不在白名单" if isinstance(reason, str)
+                            else type(reason).__name__))
+    issues = [f"not_started 含 {bad} 个非法键（已忽略）"] if bad else []
+    if pending:
+        issues.append(f"not_started 含 {len(pending)} 个无效记录值（已隔离，待确认，不计数）")
+    return out, issues, pending
+
+
+def _ba_budget_lines(kind, raw_budget, raw_stop_reason,
+                     confirmed_ns: int = 0, ns_qualified: bool = False) -> list:
+    """T05-J：ba 启动预算描述的只读展示行（纯文本；只渲染白名单校验通过的值）。
+
+    预算只记有限秒数（不记进程内单调截止点）；到期策略是“不再开始下一只股票”，
+    已开始股票与准备阶段仍可能超出——不是硬墙/强制取消/费用上限。旧/缺/坏/额外键/
+    布尔/nan/inf 描述一律显示未记录，且绝不渲染存库原始字符串（可能含秘密）。
+    final_gate A：确认性文案只消费 tasks 已算出的合格未开始数量/资格
+    （confirmed_ns/ns_qualified），不按 stop_reason 单独重判；联合门未通过时只写
+    “已记录预算到期原因，未开始状态待确认”，不输出确认未开始类承诺。
+    """
+    from src.core.benzong.batch_scorer import (
+        BUDGET_STOP_REASON, validate_budget_descriptor)
+    if kind != "ba":
+        return []
+    verified = validate_budget_descriptor(raw_budget)
+    if verified is None:
+        if raw_budget is None:
+            return ["预算: 未记录（无预算运行或旧记录）",
+                    "    说明: 可选启动预算只阻止到期后开始新股票；未记录不影响只读进度"]
+        return ["预算: 未记录（描述校验未通过，已忽略）",
+                "    说明: schema/策略/秒数不符；不渲染原始字符串"]
+    seconds = verified["budget_seconds"]
+    lines = [
+        f"预算: {seconds:g} 秒（策略：到期不再开始新股票）",
+        "    范围: 已开始的股票会跑完；准备阶段/单只评分可能超出预算（非强制中断/无费用上限）",
+    ]
+    if raw_stop_reason == BUDGET_STOP_REASON:
+        if ns_qualified and confirmed_ns > 0:
+            lines.append(f"    终止: 预算到期（已确认 {confirmed_ns} 只未开始，非失败）")
+        elif ns_qualified:
+            lines.append("    终止: 预算到期（无确认未开始项；其余状态以进度为准）")
+        else:
+            lines.append("    终止: 已记录预算到期原因，未开始状态待确认")
+    elif raw_stop_reason is None:
+        lines.append("    终止: 未记录（预算未到期或旧记录）")
+    else:
+        lines.append("    终止: 原因校验未通过（已忽略）")
+    return lines
+
+
 def _ba_exec_snapshot_lines(kind, raw) -> list:
     """ba 执行参数快照的只读展示行（T05-I，纯文本，不解析存库字符串里的 markup）。
 
@@ -4410,13 +4585,16 @@ def _ba_exec_snapshot_lines(kind, raw) -> list:
 
 
 def batch_tasks_cmd():
-    """批量任务账本（C2，v0.8.17；T05-H 运行身份；T05-I ba 执行参数快照）。
+    """批量任务账本（C2，v0.8.17；T05-H 运行身份；T05-I ba 执行参数快照；T05-J 启动预算）。
 
     只读展示：旧无 run_id 记录标注为旧记录且不补造身份；嵌套坏账本（类型非法/
     坏键/坏值（非字符串或空串）/状态冲突/清单外条目）只标“记录异常/待确认”，不假成功、
     不崩溃、不改写旧文件。ba 的「配置」行只在描述通过白名单 schema/类型/范围/hash
     校验后展示有限执行参数；旧/缺/坏/篡改描述仍显示未冻结。
-    任务记录只描述运行可见性，不改变各命令原缓存规则，也不代表缓存消费资格。
+    T05-J：ba 的「预算」行只展示白名单校验通过的有限秒数与到期策略；「未开始」
+    与完成/降级/失败互斥计数，和「未记录结果」分开显示；坏描述/坏原因/冲突条目
+    只读隔离，不渲染存库原始字符串。任务记录只描述运行可见性，不改变各命令原
+    缓存规则，也不代表缓存消费资格。
     """
     from src.cli import session_state as _ss
     from rich.text import Text
@@ -4425,17 +4603,62 @@ def batch_tasks_cmd():
     if not tasks:
         console.print("  [yellow]还没有批量任务记录[/yellow]（l all / la / ba / l 多代码 会自动记账）")
         return
+    # T05-J fix2：读门联核共用同一道预算描述校验（写侧同口径，只认严格类型）
+    from src.core.benzong.batch_scorer import (
+        BUDGET_STOP_REASON, validate_budget_descriptor)
     for t in tasks:
         roster, issues = _safe_batch_roster(t.get("codes"))
         done, i_done, p_done = _safe_batch_status_map(t.get("done"), "done")
         degraded, i_deg, p_deg = _safe_batch_status_map(t.get("degraded"), "degraded")
         failed, i_fail, p_fail = _safe_batch_status_map(t.get("failed"), "failed")
-        issues = issues + i_done + i_deg + i_fail
+        not_started, i_ns, p_ns = _safe_batch_not_started_map(t.get("not_started"))
+        # T05-J fix2：读门联核——只有 ba kind + 可核对 run 身份 + 合法 typed 预算
+        # + 合法 run stop_reason + 三态原始映射可读 + 逐项白名单原因/roster 都齐，
+        # 才允许计入“预算未开始”。任一不满足：not_started 整体隔离为待确认（不计
+        # 确认状态、不显示“确认未调用评分”、不渲染原始字符串）。
+        # final_gate C：三态映射可读但同代码旧值待确认（如 done={'A':''}）时，仅该
+        # code 的未开始隔离；其它资料完整的 code 仍独立可确认（不整批一刀切）。
+        _ns_run_id = t.get("run_id")
+        _maps_readable = all(
+            isinstance(t.get(name), dict)
+            for name in ("done", "degraded", "failed"))
+        _pending_old_codes = {c for name, pending in
+                              (("done", p_done), ("degraded", p_deg),
+                               ("failed", p_fail))
+                              for c, _ in pending}
+        _ns_gate = (
+            t.get("kind") == "ba"
+            and isinstance(_ns_run_id, str) and bool(_ns_run_id)
+            and validate_budget_descriptor(t.get("budget")) is not None
+            and t.get("stop_reason") == BUDGET_STOP_REASON
+            and _maps_readable
+        )
+        if not_started:
+            if not _ns_gate:
+                _why = ("旧状态映射不可读" if not _maps_readable
+                        else "预算/终止/身份未联核通过")
+                p_ns = list(p_ns) + [(c, _why) for c in not_started]
+                i_ns = i_ns + [
+                    f"not_started 有 {len(not_started)} 项缺少可核对的 ba 运行身份/"
+                    "预算/终止原因/旧状态映射（已隔离，待确认，不计数）"]
+                not_started = {}
+            else:
+                _isolated = [c for c in not_started if c in _pending_old_codes]
+                if _isolated:
+                    p_ns = list(p_ns) + [(c, "同代码旧状态待确认") for c in _isolated]
+                    i_ns = i_ns + [
+                        f"not_started 有 {len(_isolated)} 项与待确认旧状态同代码"
+                        "（已隔离，待确认，不计数）"]
+                    for c in _isolated:
+                        not_started.pop(c, None)
+        issues = issues + i_done + i_deg + i_fail + i_ns
         unverified = [(c, name, kind) for name, pending in
-                      (("done", p_done), ("degraded", p_deg), ("failed", p_fail))
+                      (("done", p_done), ("degraded", p_deg), ("failed", p_fail),
+                       ("not_started", p_ns))
                       for c, kind in pending]
         roster_set = set(roster)
-        maps = (("done", done), ("degraded", degraded), ("failed", failed))
+        maps = (("done", done), ("degraded", degraded), ("failed", failed),
+                ("not_started", not_started))
         for name, mp in maps:
             extra = sorted(set(mp) - roster_set)
             if extra:
@@ -4449,7 +4672,9 @@ def batch_tasks_cmd():
         ok_n = sum(1 for c in roster if c not in state_of and c in done)
         deg_n = sum(1 for c in roster if c not in state_of and c in degraded)
         fail_n = sum(1 for c in roster if c not in state_of and c in failed)
-        pending_n = max(0, len(roster) - ok_n - deg_n - fail_n - len(conflicts))
+        ns_n = sum(1 for c in roster if c not in state_of and c in not_started)
+        pending_n = max(0, len(roster) - ok_n - deg_n - fail_n - ns_n - len(conflicts))
+        has_budget_view = any(k in t for k in ("budget", "not_started", "stop_reason"))
         console.print(f"\n  [cyan]{t.get('kind')}[/cyan] {t.get('key')}（启动 {t.get('ts_started', '?')}；更新 {t.get('ts_updated', '?')}）")
         run_id = t.get("run_id")
         if isinstance(run_id, str) and run_id:
@@ -4461,17 +4686,26 @@ def batch_tasks_cmd():
         else:
             console.print("  运行: 旧记录（无 run 令牌；只读展示，不补造身份/配置版本）")
             console.print("  配置: 未记录（旧记录不补造）")
+        # T05-J：预算/到期原因只渲染白名单校验通过的值（坏描述不显示原始字符串）
+        # final_gate A：确认性文案复用上面算出的合格未开始数量/资格，不独立重判
+        for _line in _ba_budget_lines(t.get("kind"), t.get("budget"),
+                                      t.get("stop_reason"),
+                                      confirmed_ns=ns_n,
+                                      ns_qualified=_ns_gate):
+            console.print(Text("  " + _line))
         raw_codes = t.get("codes")
         if not isinstance(raw_codes, list) or (raw_codes and not roster):
             console.print("  进度: 未知（清单不可读，无法核对）")
         else:
             console.print(f"  进度: 已完成 {ok_n}/{len(roster)}，降级 {deg_n}，失败 {fail_n}，"
-                          f"未记录结果 {pending_n}"
+                          + (f"预算未开始 {ns_n}，" if has_budget_view else "")
+                          + f"未记录结果 {pending_n}"
                           + (f"，状态冲突 {len(conflicts)}" if conflicts else ""))
         if issues:
             console.print("  记录异常: " + "；".join(issues) + "（只读展示，不改旧文件）")
         for c, states in conflicts[:5]:
-            _state_cn = "、".join({"done": "已完成", "degraded": "降级", "failed": "失败"}[s]
+            _state_cn = "、".join({"done": "已完成", "degraded": "降级",
+                                   "failed": "失败", "not_started": "预算未开始"}[s]
                                   for s in states)
             console.print(f"    [yellow]⚠ {c}[/yellow]: 状态冲突（{_state_cn}），待确认，不计入任何状态")
         if len(conflicts) > 5:
@@ -4493,7 +4727,12 @@ def batch_tasks_cmd():
             console.print(f"    [red]✗ {c}[/red]: {note}")
         if len(shown_fail) > 5:
             console.print(f"    [dim]…等 {len(shown_fail)} 项失败[/dim]")
-        if pending_n or conflicts:
+        shown_ns = [c for c in not_started if c in roster_set and c not in state_of]
+        for c in shown_ns[:5]:
+            console.print(f"    [yellow]⏸ {c}[/yellow]: 预算到期未开始（确认未调用评分，非失败）")
+        if len(shown_ns) > 5:
+            console.print(f"    [dim]…等 {len(shown_ns)} 项预算未开始[/dim]")
+        if pending_n or conflicts or ns_n:
             console.print("  [dim]重跑同类命令会开新的独立 run（不继承本记录）；成功项是否复用当日缓存"
                           "由各命令原规则决定——任务记录不等于缓存资格。[/dim]")
     console.print(f"  [dim]账本: ~/.muyun/batch_tasks.json（保留最近 5 条运行记录；启动时间只标本次开始）[/dim]\n")

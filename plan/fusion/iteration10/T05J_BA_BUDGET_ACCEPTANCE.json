@@ -1,0 +1,754 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-26",
+  "status": "ACCEPTED_OPTIONAL_BA_STOP_STARTING_BUDGET_SCOPE_ONLY",
+  "base_commit": "01874740505717c02f706e2f8d1cde8884492bb0",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-ba-start-budget",
+    "revision": 2,
+    "sha256": "43b5d6f7b0dbe5e0c9461ae55e20bc74c1ad37084f5c368d35f9bf88395dfbc2",
+    "supersedes_rev1": "fd7cb9bb56943bff2332d007bc5ffe41b6190a83d68ba5f1af2b6974b6aaee7c",
+    "revision_reason": "User explicitly selected optional total time and required normal-user discoverability; J7 added; no progress denominator change",
+    "git_owner": "Codex",
+    "test_owner": "DSH",
+    "bridge_testPlan": [],
+    "formal_bridge_run_receipt": false
+  },
+  "native": {
+    "task": "muyun-t05j-ba-budget-20261026",
+    "session": "codex-4e6fb2a3-af84-42c2-85ea-d29fddbfe1af",
+    "latest_request": "9ff52b1a-fe2c-404b-8609-640c6a09ec37",
+    "terminal_seq": 1252,
+    "state": "COMPLETED",
+    "result_sha256": "28d23e46a4ebea12f032fa7b3bf730e3252d08bf5bbec34e15edef2dbeff8bd4",
+    "full_result_read": true
+  },
+  "accepted_scope": [
+    "ba/bzall and bz multi-code support optional finite positive --budget seconds; default no hidden limit",
+    "Malformed/unsupported options and invalid programmatic budget reject before business work",
+    "One monotonic deadline after cost confirmation and before config/client/data prep; started stock finishes; later stocks not started after expiry; no hard cancel/fee-cap promise",
+    "Shared order-preserving deduplicated execution/roster/statistics; explicit scheduler-confirmed not_started distinct from unknown outcomes",
+    "Validated optional budget metadata and two-way state isolation; corrupt maps preserved, latest run/roster/stop-reason qualification shared by confirmed counts and wording",
+    "Normal startup/h menu shows ba/bz multi examples; default supported workflows proactively show optional hint before actual cache preview and confirmation; absent-budget kwargs preserved"
+  ],
+  "validation": {
+    "initial": "Nine retained test attempts; final initial403(8.70s), not sufficient for acceptance",
+    "fix2": "66failed9passed89deselected ->75targeted ->164new ->478guard(10.63s)",
+    "visibility": "5failed2passed ->7targeted ->171new ->485guard; help text actual edit ->7targeted ->485finalguard(10.03s), both logs retained",
+    "final_gate": "10failed2passed169deselected -> initialgreen1failed11passed ->12targeted ->181new ->495guard(10.63s)",
+    "last_increment": {
+      "red": "2 failed/1 passed/77 deselected (0.86s)",
+      "green": "3 passed",
+      "targeted_passed": 174,
+      "pytest_seconds": 5.81,
+      "files": [
+        "tests/benzong/test_batch_start_budget.py",
+        "tests/core/test_session_state.py",
+        "tests/core/test_batch_task_run_identity.py",
+        "tests/benzong/test_batch_config_snapshot.py"
+      ],
+      "evidence_dir": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded",
+      "changed_files_since_495": [
+        "src/cli/session_state.py",
+        "tests/benzong/test_batch_start_budget.py"
+      ],
+      "unchanged_other_dependency_count": 16
+    },
+    "final_tree_single_495_claimed": false,
+    "full_suite_run": false,
+    "guard": {
+      "network": 0,
+      "subprocess": 0,
+      "real_state": 0
+    },
+    "tested_dependency_count": 18,
+    "tested_before_after_current_equal": true,
+    "runtime_manifest_files": 539,
+    "independent_review": "PASS same read-only task_quality_guard, no repeated tests; source/delta/normal discovery/unknown vs confirmed state reviewed; configured role Sol/high, actual runtime model metadata unavailable",
+    "raw_manifest": [
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\01_red_parse_20261026-193813\\cmd.txt",
+        "bytes": 102,
+        "sha256": "1b114a37ce9a01b9e4ce126a770990db81e2d3dcc049b0c8f276d043e9d6f6ab"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\01_red_parse_20261026-193813\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\01_red_parse_20261026-193813\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\01_red_parse_20261026-193813\\stdout.txt",
+        "bytes": 106184,
+        "sha256": "b6779fe83052e1f4068afa7f7442ae4970d02f83cd4dabc569b7938a1f9b28a8"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02_red_budget_20261026-193821\\cmd.txt",
+        "bytes": 105,
+        "sha256": "9552217b513ebb90c4baed561ce4c2642e68b05817fdeb30939421aff5578e2a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02_red_budget_20261026-193821\\rc.txt",
+        "bytes": 3,
+        "sha256": "df4e26a04a444901b95afef44e4a96cfae34690fff2ad2c66389c70079cdff2b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02_red_budget_20261026-193821\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02_red_budget_20261026-193821\\stdout.txt",
+        "bytes": 1410,
+        "sha256": "3fc8ae0530d282f1dfbf1d1181dd60903159bbfb384fe86acb425ee15d50e5d7"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02b_red_budget_20261026-193834\\cmd.txt",
+        "bytes": 105,
+        "sha256": "9552217b513ebb90c4baed561ce4c2642e68b05817fdeb30939421aff5578e2a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02b_red_budget_20261026-193834\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02b_red_budget_20261026-193834\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\02b_red_budget_20261026-193834\\stdout.txt",
+        "bytes": 126606,
+        "sha256": "c54120677a88642bf01090c87098208e135ea11b1346e1af626f3a89168095b0"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03_green_new_tests_20261026-194057\\cmd.txt",
+        "bytes": 143,
+        "sha256": "0eb5b341ccb4bb4e2771fb1ec8b63463884e6a04b96fa1064a2436d78cdff332"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03_green_new_tests_20261026-194057\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03_green_new_tests_20261026-194057\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03_green_new_tests_20261026-194057\\stdout.txt",
+        "bytes": 17698,
+        "sha256": "e352a1d04f2588aadc6e315e5e925b8e36ca111d8325450c4521a3fff526b376"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03b_green_new_tests_20261026-194112\\cmd.txt",
+        "bytes": 143,
+        "sha256": "0eb5b341ccb4bb4e2771fb1ec8b63463884e6a04b96fa1064a2436d78cdff332"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03b_green_new_tests_20261026-194112\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03b_green_new_tests_20261026-194112\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\03b_green_new_tests_20261026-194112\\stdout.txt",
+        "bytes": 366,
+        "sha256": "58db88c09e7052aa55ac6e7dd2565e739ae9d91e7513018c3658d0ad9b828f6a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\04_green_affected_20261026-194119\\cmd.txt",
+        "bytes": 415,
+        "sha256": "9ab43cb334f78cf5e051552af596098381e9d9b32aa638fbd14ce9648a731b31"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\04_green_affected_20261026-194119\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\04_green_affected_20261026-194119\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\04_green_affected_20261026-194119\\stdout.txt",
+        "bytes": 692,
+        "sha256": "b6c36295056dd7ce7768e5838997e0d05620d995a8b12744f10435fd5864e87d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\cmd.txt",
+        "bytes": 506,
+        "sha256": "37f67ab8c7da5c5890549c88a26e59d37a7cc63516e25f9058ea1121062b9d34"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\source_hashes_after_matrix.txt",
+        "bytes": 1521,
+        "sha256": "ea54e9e80a54891b8fd58c1219cd5670446fc46606383377ceb8fff9e0f72630"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\source_hashes_before_matrix.txt",
+        "bytes": 1521,
+        "sha256": "ea54e9e80a54891b8fd58c1219cd5670446fc46606383377ceb8fff9e0f72630"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\05_matrix_20261026-194133\\stdout.txt",
+        "bytes": 1398,
+        "sha256": "e0a8fd5fda424c5629ed855764a80fe4f24695c2fda04cc31e9dd845ffa432a1"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\cmd.txt",
+        "bytes": 574,
+        "sha256": "245e6883d2353ee1c46c4b6071bb190cb8de8f26d7cfc7c51c7613c7ec42b2cd"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\source_hashes_after_matrix.txt",
+        "bytes": 1723,
+        "sha256": "a2051798eb374008e3891063801d7a0a84ee3b6b234b4bca07921fb55c5eeccb"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\source_hashes_before_matrix.txt",
+        "bytes": 1723,
+        "sha256": "a2051798eb374008e3891063801d7a0a84ee3b6b234b4bca07921fb55c5eeccb"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\06_matrix_extended_20261026-194310\\stdout.txt",
+        "bytes": 1398,
+        "sha256": "9c4e776645ee6ef63e6bda83900e8c885891a5dbdb11f13ba9dbf9e85370b49c"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\cmd.txt",
+        "bytes": 607,
+        "sha256": "10f5c66afacab06d41d918bb811b940eab7ad33c98024e1de3df812fc2b98738"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\source_hashes_after_matrix.txt",
+        "bytes": 1823,
+        "sha256": "0fae2e45e236d511951b10ad4883e01e680c04e7f37ebf38eaeef7b058ab386f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\source_hashes_before_matrix.txt",
+        "bytes": 1823,
+        "sha256": "0fae2e45e236d511951b10ad4883e01e680c04e7f37ebf38eaeef7b058ab386f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\07_matrix_final_20261026-194358\\stdout.txt",
+        "bytes": 1398,
+        "sha256": "53e43c6618662189a82a2710864d4d2d0a9e01d8d5677c76ca46a1ace2e8f94e"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\01_red_final_gate\\cmd.txt",
+        "bytes": 171,
+        "sha256": "49ac8f13130bf6f83e3a3586047c0cf785fd0e1dacca90c5604fd256c6ce7950"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\01_red_final_gate\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\01_red_final_gate\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\01_red_final_gate\\stdout.txt",
+        "bytes": 37926,
+        "sha256": "199b20aa5d59805709a87874ac50d25d7bba91c4475c7816569341dad077fc86"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02_green_final_gate\\cmd.txt",
+        "bytes": 171,
+        "sha256": "49ac8f13130bf6f83e3a3586047c0cf785fd0e1dacca90c5604fd256c6ce7950"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02_green_final_gate\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02_green_final_gate\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02_green_final_gate\\stdout.txt",
+        "bytes": 5100,
+        "sha256": "9e59998eb0527cd705851886e488e6a82a3c8a644ab3cf0251040bccce8fb4b3"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02b_green_final_gate\\cmd.txt",
+        "bytes": 171,
+        "sha256": "49ac8f13130bf6f83e3a3586047c0cf785fd0e1dacca90c5604fd256c6ce7950"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02b_green_final_gate\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02b_green_final_gate\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\02b_green_final_gate\\stdout.txt",
+        "bytes": 236,
+        "sha256": "4dd950b26c45d6f4d789765fbedd2ad8c05f64a7572220c16da3eb9a6d322063"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\03_full_new_tests\\cmd.txt",
+        "bytes": 143,
+        "sha256": "0eb5b341ccb4bb4e2771fb1ec8b63463884e6a04b96fa1064a2436d78cdff332"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\03_full_new_tests\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\03_full_new_tests\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\03_full_new_tests\\stdout.txt",
+        "bytes": 530,
+        "sha256": "834de3d2f2553da9d3c2054db271b72a637af6c972eeb5ba6fececa6b03277b3"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\cmd.txt",
+        "bytes": 607,
+        "sha256": "10f5c66afacab06d41d918bb811b940eab7ad33c98024e1de3df812fc2b98738"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\source_hashes_after_matrix.txt",
+        "bytes": 1823,
+        "sha256": "e86255dca04aa31103cbbc9abaead528f420c0d34396766e34e67b056bee81e2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\source_hashes_before_matrix.txt",
+        "bytes": 1823,
+        "sha256": "e86255dca04aa31103cbbc9abaead528f420c0d34396766e34e67b056bee81e2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\04_matrix_guarded\\stdout.txt",
+        "bytes": 1562,
+        "sha256": "2fed82de56ccde84bd703c797bd6ab9e1e8f3e05fef5123f9aa7ac83e1b82e4f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\final_gate-20261026-2025\\05_final\\user_visible_final_gate.utf8.txt",
+        "bytes": 5129,
+        "sha256": "34680d680551584a89f41b692af6aad8618b391def29c492b8456028e9ea2504"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\01_red_fix2\\cmd.txt",
+        "bytes": 151,
+        "sha256": "001da0c515e318577be350f9cdda1d99a3a573f0929d5ec0a59b37e5282bbbda"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\01_red_fix2\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\01_red_fix2\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\01_red_fix2\\stdout.txt",
+        "bytes": 276504,
+        "sha256": "de436459ca0d9df6074792861cd48945d64677ad9ebb2300fb88df9ab58215b2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\02_green_fix2\\cmd.txt",
+        "bytes": 151,
+        "sha256": "001da0c515e318577be350f9cdda1d99a3a573f0929d5ec0a59b37e5282bbbda"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\02_green_fix2\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\02_green_fix2\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\02_green_fix2\\stdout.txt",
+        "bytes": 396,
+        "sha256": "07205464210c17add82e19e5f16bb473388d45632d52d79377f4f77631a25178"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\03_full_new_tests\\cmd.txt",
+        "bytes": 143,
+        "sha256": "0eb5b341ccb4bb4e2771fb1ec8b63463884e6a04b96fa1064a2436d78cdff332"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\03_full_new_tests\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\03_full_new_tests\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\03_full_new_tests\\stdout.txt",
+        "bytes": 530,
+        "sha256": "94dcabbd9ec9a348e7f5be0f95175ca05927214f30e75e47c335dd4250e853fe"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\cmd.txt",
+        "bytes": 607,
+        "sha256": "10f5c66afacab06d41d918bb811b940eab7ad33c98024e1de3df812fc2b98738"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\source_hashes_after_matrix.txt",
+        "bytes": 1823,
+        "sha256": "519044e865cbb83a26edaf7a86ec95b72665409ff66c5fad2dd268b3e33b449a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\source_hashes_before_matrix.txt",
+        "bytes": 1823,
+        "sha256": "519044e865cbb83a26edaf7a86ec95b72665409ff66c5fad2dd268b3e33b449a"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\fix2-20261026-1955\\04_matrix_guarded\\stdout.txt",
+        "bytes": 1562,
+        "sha256": "8c6d9d8d9480c076b157f686570cc61c9582095cdc7578f14ceac8887c51e20f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\00_baseline\\source_hashes_before.txt",
+        "bytes": 1823,
+        "sha256": "e86255dca04aa31103cbbc9abaead528f420c0d34396766e34e67b056bee81e2"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\01_red_idem\\cmd.txt",
+        "bytes": 115,
+        "sha256": "73b9ad4f2989be5b9c6c4b4ac6e52d37baad854134639903d7d029adfc8ddc54"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\01_red_idem\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\01_red_idem\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\01_red_idem\\stdout.txt",
+        "bytes": 3862,
+        "sha256": "7d87c6764fff728beedccdeb169cb84fe489a5e7f15688788e59de0960da11ac"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\02_green_idem\\cmd.txt",
+        "bytes": 115,
+        "sha256": "73b9ad4f2989be5b9c6c4b4ac6e52d37baad854134639903d7d029adfc8ddc54"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\02_green_idem\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\02_green_idem\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\02_green_idem\\stdout.txt",
+        "bytes": 232,
+        "sha256": "ee6222df58321d770afca722ff9a3c4cc4c164ce9658517407139ab8d76f6470"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\cmd.txt",
+        "bytes": 237,
+        "sha256": "1ce1eec677ee5ba234da533e8af92a0a063d493231ac06552e7cd8c1e19b212d"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\source_hashes_after_guarded.txt",
+        "bytes": 1823,
+        "sha256": "adbe93b4ce903ab2401507ab4845071f29d8b3e5132b58bdf057a073b98860c1"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\source_hashes_before_guarded.txt",
+        "bytes": 1823,
+        "sha256": "adbe93b4ce903ab2401507ab4845071f29d8b3e5132b58bdf057a073b98860c1"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\idempotence-20261026-2035\\03_targeted_guarded\\stdout.txt",
+        "bytes": 912,
+        "sha256": "e12775a6b576bd91de353131cfd49eb4b29048d2d3b2972f824df091e66e5b68"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\01_red_vis\\cmd.txt",
+        "bytes": 109,
+        "sha256": "5f9de9156ca2820e6d4cbaaaef0e83f4e3c4b01d87332f120873b17fffb1e452"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\01_red_vis\\rc.txt",
+        "bytes": 3,
+        "sha256": "f1b2f662800122bed0ff255693df89c4487fbdcf453d3524a42d4ec20c3d9c04"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\01_red_vis\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\01_red_vis\\stdout.txt",
+        "bytes": 13434,
+        "sha256": "f2d2ae5bf2152885a4aae7d89a85d400992ebc09512d87cb347201bc06bb0a7b"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\02_green_vis\\cmd.txt",
+        "bytes": 109,
+        "sha256": "5f9de9156ca2820e6d4cbaaaef0e83f4e3c4b01d87332f120873b17fffb1e452"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\02_green_vis\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\02_green_vis\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\02_green_vis\\stdout.txt",
+        "bytes": 232,
+        "sha256": "909d0287aadde1c1304553f7be31d486b347685a289cfe938316bc339d9df16f"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\03_full_new_tests\\cmd.txt",
+        "bytes": 143,
+        "sha256": "0eb5b341ccb4bb4e2771fb1ec8b63463884e6a04b96fa1064a2436d78cdff332"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\03_full_new_tests\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\03_full_new_tests\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\03_full_new_tests\\stdout.txt",
+        "bytes": 530,
+        "sha256": "e82cab0dfd6b4626dd3cd76a6e1b9e3b84aecd79d4bd549c35aad718468f7c00"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\cmd.txt",
+        "bytes": 607,
+        "sha256": "10f5c66afacab06d41d918bb811b940eab7ad33c98024e1de3df812fc2b98738"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\source_hashes_after_matrix.txt",
+        "bytes": 1823,
+        "sha256": "c632df852b84f4e3adee60b2c3f50106d244f13caa319c278f43e7b416865783"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\source_hashes_before_matrix.txt",
+        "bytes": 1823,
+        "sha256": "c632df852b84f4e3adee60b2c3f50106d244f13caa319c278f43e7b416865783"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\04_matrix_guarded\\stdout.txt",
+        "bytes": 1560,
+        "sha256": "fc81f6ccb8267d46149dd36ee20ecc7640ca13ff9d122d7212bc5a3cb93b8fd9"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\06_green_vis_help_tweak\\cmd.txt",
+        "bytes": 150,
+        "sha256": "234f210c5b9fe1c8f105c29e74e402b17f8996844f3ac69b06b767ac5d16d66c"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\06_green_vis_help_tweak\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\06_green_vis_help_tweak\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\06_green_vis_help_tweak\\stdout.txt",
+        "bytes": 234,
+        "sha256": "fc563e0e313bd0be044b31737b417c3c78a052e23844375cc8055a6e7c60e985"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\cmd.txt",
+        "bytes": 607,
+        "sha256": "10f5c66afacab06d41d918bb811b940eab7ad33c98024e1de3df812fc2b98738"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\rc.txt",
+        "bytes": 3,
+        "sha256": "13bf7b3039c63bf5a50491fa3cfd8eb4e699d1ba1436315aef9cbe5711530354"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\source_hashes_after_matrix.txt",
+        "bytes": 1823,
+        "sha256": "57f67d3851d6c287de4d4dcff1cb838474670764d547766dcadd9aea8af2ab56"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\source_hashes_before_matrix.txt",
+        "bytes": 1823,
+        "sha256": "57f67d3851d6c287de4d4dcff1cb838474670764d547766dcadd9aea8af2ab56"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\stderr.txt",
+        "bytes": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      {
+        "path": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026\\dsh\\visibility-20261026-2010\\07_matrix_guarded_final\\stdout.txt",
+        "bytes": 1562,
+        "sha256": "098bc4c28bc085c942b5de55620a04b94ef091a573ac17471bff924c4ff1dea5"
+      }
+    ]
+  },
+  "protection": {
+    "protected_hashes_unchanged": 9,
+    "original_untracked_still_present": 218,
+    "untracked_content_hashes_claimed": false
+  },
+  "progress": {
+    "before": {
+      "E": 47.95918367346938,
+      "A": 36.03603603603604,
+      "P_lower": 41.99760985475271,
+      "P_upper": 68.6201507630079,
+      "closed_tasks": 18,
+      "tasks": 47,
+      "weight": 111
+    },
+    "after": {
+      "E": 47.95918367346938,
+      "A": 36.03603603603604,
+      "P_lower": 41.99760985475271,
+      "P_upper": 68.6201507630079,
+      "closed_tasks": 18,
+      "tasks": 47,
+      "weight": 111
+    },
+    "scope_weight_applicability_change": false,
+    "reason": "Cooperative ba startup budget partial scope only; l entrances/full config/cache qualification/resource hard bounds still pending"
+  },
+  "native_usage": {
+    "scope": "single-native-session only, not both-side billing or savings proof",
+    "sampleCount": 192,
+    "uncachedInputTokens": 248380,
+    "cacheReadTokens": 59754880,
+    "outputTokens": 261587,
+    "artifactRef": {
+      "path": "C:/Users/Crux/.codex/codex-dsh-state/output-55b7b2da-0e23-42c4-8af9-65c7b4d8d06f.json",
+      "sha256": "11aecaaac2e2bf5fd307c83d43b478dd3b552bbf1c59c0001d74ca1e7ff30db8"
+    }
+  },
+  "remaining": [
+    "l multi/la/l all budget/config identity not covered",
+    "Preparation and current stock can overrun; no resource hard bound/physical cancel/fee hard cap",
+    "Cache payload/config reuse qualification and full endpoint/environment/data/prompt identity not proven",
+    "Real providers/product AI/accounts/complete CLI exit not exercised",
+    "G3/G4/G7/T04 and V1 remain open, real MID NO_VALID"
+  ],
+  "artifacts": {
+    "source_pins": "T05J_BA_BUDGET_SOURCE_PINS.json",
+    "results": "T05J_BA_BUDGET_RESULTS.txt",
+    "external_stage": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05j-ba-budget-20261026"
+  }
+}
