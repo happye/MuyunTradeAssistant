@@ -1,3 +1,7 @@
+## ERR-20261028-T05O-EVIDENCE
+
+已纠正并保留：首轮把绑定asset SHA与输入JSON原字节误称相同，实际分别8f83bc9b…/8c27003f…，只有parsed合同相等；初始2个fake success缺score属fixture缺口，不计产品红；latefallback正向fake meta缺located_count曾走KeyError吞异常后保存，已补真实meta并加负例。用户不足10%允许完成当前卡，故仅O必要修复验收后stop；STOP_PENDING即使running=false/queue0也不能说整Host已停净。
+
 ## ERR-20261028-T05N-EVIDENCE
 
 状态：已修正并保留原件。首次git ls-files非-z导致带中文/空格路径引号误判缺失，后续按实际路径核原218存在；首次fix1过滤f1_不匹配f1a_导致rc5/83 deselected，不算红。Codex一次保存watcher session_id=undefined使投影失败，原follow已终态；通过resume读回原request，无重投。临时Python -c命令引号/括号错误未执行产品动作，改用脚本或PowerShell here-string；rg在PowerShell不展开路径glob，改用目录配-g。按self-improvement归档，不能把工具失败当产品失败或再启动未知测试。

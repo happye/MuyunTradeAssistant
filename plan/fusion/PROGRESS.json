@@ -1939,9 +1939,13 @@
           {
             "path": "plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-N bzscan optional stage-start budget/limit/save facts accepted only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-O automatic market-deep stage/stock start budget only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K/L/M/N accepted; remaining entry budgets/resources, skill/data/prompt and cache input qualification remain pending"
+        "basis": "Partial T05-H through O accepted; remaining portfolio/bb/plan entry resources, full skill/data/prompt and cache input qualification still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1978,21 +1982,25 @@
           {
             "path": "plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-N bzscan optional stage-start budget/limit/save facts accepted only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-O automatic market-deep stage/stock start budget only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K/L/M/N accepted; remaining entry budgets/resources, skill/data/prompt and cache input qualification remain pending"
+        "basis": "Partial T05-H through O accepted; remaining portfolio/bb/plan entry resources, full skill/data/prompt and cache input qualification still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "T05-H至N各有限子范围已接收；scan market自动deep/portfolio scan/bb/pos plan all等入口全链期限与资源、技能/数据/提示词身份与完整缓存输入资格仍待，不能由子批替代。",
+          "reason": "H至O各有限子范围已接收；portfolio scan/bb/pos plan all等其他入口期限资源、完整配置/数据/提示词及缓存输入资格仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "T05-N已有限接收，672相关加最终受影响91增量验证；下一T05-O先在实际HEAD落scan market自动deep有限合同，按已评审调用边界/候选保存独立方案实施，保留20秒局部补算与会话门。指标不变。"
+      "next_action": "用户不足10%指令已执行：O有限接收后停止，不派P。未来获恢复指令先同步Git/实际HEAD及原生锁；P仅只读定位持仓扫描预算与账户roster不完整口径，先合同后实施。指标不变。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2942,6 +2950,58 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json"
+      ]
+    },
+    {
+      "id": "T05O-ACCEPT-STOP-20261028",
+      "date": "2026-10-28",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "O阶段/逐股启动预算与候选/未开始口径有限接收，714相关后最终114增量、独立阻断清零；用户额度不足10%完成当前卡后停止，不派P。分数/范围/权重/适用性不变。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
+        "plan/fusion/RESUME.md"
       ]
     }
   ],

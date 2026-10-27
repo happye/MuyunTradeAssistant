@@ -1,6 +1,6 @@
 # 暮云思辨投资助手 — AI Agent 开发手册
 
-当前交接（2026-10-28持续协作）：T05-M已推送d400320；T05-N已限定接收，代码f0a2425，672相关加最终91增量通过、独立复核清零。下一卡T05-O：scan market自动deep可选阶段/逐股启动预算，采用已评审调用边界方案；N无最终单次全量声明，进度不变。旧M STOP_PENDING锁保留，不杀共享Host。详见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-28停止）：用户额度不足10%，已完成当前T05-O并停止，代码56fbe21；M/N/O均限定接收，714相关加最终114增量通过，未跑最终全仓。DSH已锁STOP_PENDING，最后running=false/queue0；不杀用户共享Host。P仅只读定位未派发。恢复见[RESUME](plan/fusion/RESUME.md)。
 
 > 任何 AI 编码工具打开此项目时，请先阅读本文件。
 > 详细文档索引见末尾。
@@ -40,6 +40,7 @@ bz scan shrink_pullback 科技     # 规则+主题，规则名可模糊匹配
 bz --check / bz --manual         # 数据源体检 / 单股手动评分兜底
 expect [天数]                   # 默认未来30天事件/预期透支；events为事后事件
 fear / fear history / fear backfill  # 客观恐慌指数 / 历史图 / 断点回填
+scan market deep --budget 600   # 自动深析可选启动预算；当前阶段/股票可完成
 scan review [天数]              # 默认7天扫描收益、沪深300同窗超额/走势
 scan review import              # 导入旧扫描报告，同(时间,来源)幂等
 watch / watch add <代码|#N> / watch rm <代码>

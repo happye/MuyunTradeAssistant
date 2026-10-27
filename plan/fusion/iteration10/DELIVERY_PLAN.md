@@ -1,6 +1,8 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
-## 2026-10-28 当前有限合同：T05-O scan market 自动deep阶段/逐股启动预算
+## 2026-10-28 已限定接收并停止：T05-O scan market 自动deep阶段/逐股启动预算
+
+2026-10-28 T05-O限定接收（代码`56fbe21`）：`scan market deep --budget 600`及独立CLI自动deep支持可选阶段/逐股启动预算，从scan_market执行入口计时；当前阶段/股票可完成。候选初筛保存与deep终态独立，预算路径必要兜底失败不沿用原未过滤池；快照/历史/报告分别提示，未开始不排名/失败/零分，冲突状态归未知。独立Sol/high阻断清零，12+2业务红留证，此前714相关加最终受影响114通过（pytest1.26s、wall3.083s、真实exit0/守卫IO0）增量接收，无最终树单次714/全量声明。进度不变；用户额度不足10%要求完成本卡后收尾，已停止，不开P。 [验收回执](T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)。起算限scan_market执行入口，不包含Python/REPL/argparse公共启动；无预算旧fallback语义未在本卡核定。
 
 关联`V1-G7-BATCH-BUDGET`，前置T05-N已交付代码`f0a2425`/文档`5191680`。采用Astra/low只读架构结论：调用边界方案，不传播改quick_scan内部20秒补算/SESSION/缓存接收门。绑定按本计划提交后的实际HEAD；Codex合同/独立验收/文档/账本/Git，DSH唯一实施/测试。
 

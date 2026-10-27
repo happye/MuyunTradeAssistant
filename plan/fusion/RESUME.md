@@ -1,17 +1,22 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-28 T05-N限定接收，下一T05-O已评审待实施
+## 当前停止交接：2026-10-28 不足10%，完成T05-O后停止
 
-用户额度恢复后授权持续Codex+DSH协作，下一次额度信号再停止。T05-M产品已推送d400320；T05-N代码f0a2425已提交，文档/账本随本批同步；实际交付SHA核main/origin日志。Codex合同/验收/Git，原生DSH唯一实施与测试执行。
+用户最新指令允许完成当前卡后收尾，现已完成并停止新派发/测试，不开启P。M代码d400320、N代码f0a2425/文档5191680已推送；O代码56fbe21与本批文档交付以实际main/origin日志核对。Codex负责合同/验收/Git，DSH唯一实施与测试，用户共享Host保留。
 
-2026-10-28 T05-N限定接收（代码`f0a2425`）：`bz scan`提供可选`--budget <秒>`，默认无隐藏时限，入口与首次导入计入同一截止；到期不启新阶段/评分/回测，当前调用可完成。`limit`默认15、allrules五桶轮询最多min(limit,25)，明确只是评分名单上限；6维=5AI+1规则，实际请求受缓存/主题等影响。部分评分不覆盖有效扫描/报告或开启回测；快照/历史/报告独立提示，只有快照成功给本批快捷名单；回测成功/失败/未开始分列。独立Sol/high阻断清零，先58业务红，追修12+2业务红；此前672相关通过加最终受影响91通过（pytest1.36s，wrapper3.052s，真实exit0、守卫IO0）增量接收，无最终树单次672或全量声明。进度不变，硬期限/物理取消/费用上限/缓存输入资格及G7/T05/V1仍未完成。
+2026-10-28 T05-O限定接收（代码`56fbe21`）：`scan market deep --budget 600`及独立CLI自动deep支持可选阶段/逐股启动预算，从scan_market执行入口计时；当前阶段/股票可完成。候选初筛保存与deep终态独立，预算路径必要兜底失败不沿用原未过滤池；快照/历史/报告分别提示，未开始不排名/失败/零分，冲突状态归未知。独立Sol/high阻断清零，12+2业务红留证，此前714相关加最终受影响114通过（pytest1.26s、wall3.083s、真实exit0/守卫IO0）增量接收，无最终树单次714/全量声明。进度不变；用户额度不足10%要求完成本卡后收尾，已停止，不开P。
 
-**身份/证据**：task=muyun-t05n-bzscan-budget-20261028，session=codex-5e6a0be9-36df-45ef-b435-f439e6a59f1d，绑定SHA=4a6493838403e70569ec188204687fa696a959f6c27277660f8364dd7db5309c；最新request=c39f1ac4-e6d9-41e7-b5f1-86a631e38f75，COMPLETED seq1090，完整答复SHA57730fff1f2ec9ddc4280a079d1dd8e2b6adaacb05c4e475ebc0869c9ab3b5e1已读。[回执](iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json)、[源指纹](iteration10/T05N_BZSCAN_BUDGET_SOURCE_PINS.json)、[原始结果分段](iteration10/T05N_BZSCAN_BUDGET_RESULTS.txt)。1870项前后/审计时current一致，交付合法文档变更后只单独核runtime/产品/fixture/runner不变，不再宣称1870全current仍同；9保护hash及原218路径保持。site-packages仅发行版元数据，testPlan空非formal bridge。外部原件C:/Users/Crux/AppData/Local/Temp/muyun-t05n-bzscan-budget-20261028（16runs/32snapshots、fix1/fix2 originals保留）；rc5空选不算红、首次中文路径误判保留，pytest/wrapper时间分列。
+**O证据**：[回执](iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)、[源指纹](iteration10/T05O_SCAN_DEEP_BUDGET_SOURCE_PINS.json)、[原始红绿结果](iteration10/T05O_SCAN_DEEP_BUDGET_RESULTS.txt)。1877项前后/审计时current一致；交付合法文档修改后另核runtime/source不变，不称1877全项仍同。9保护hash与原218路径保留（存在性非内容证明）；真实外源/产品AI/账户效果未验，101发行版元数据非site-packages逐文件pin，testPlan空非formal bridge。
 
-**下一T05-O**：采用Astra/low只读方案，范围仅scan market自动deep（REPL现有deep关键字/独立CLI --scan-deep）可选阶段与逐股启动预算。普通交互scan market预算先拒；从入口准备前同monotonic，quick_scan/法C视为当前可完成调用，不传播改其内部20秒补算/SESSION/缓存接收门。候选初筛保存与deep完成独立，空/异常/未完成必需兜底不覆盖有效扫描；已完整非空候选可保留，明说deep未开始/部分完成。deep_analyze只为调度确认未启动项加not_started/固定原因；排名仅已处理项，展示成功/未取得完整结果/未开始，不能把未开始当失败/零分。无新任务账本、自动续跑或硬墙/费用保证。N交付后在实际HEAD落正式有限合同与精确文件所有权再派发；O目前只有方案，不是已实现。若必须改quick_scan内部/共享超时/账户语义，回主控修合同。
+**原生身份**：task=muyun-t05o-scan-deep-budget-20261028；session=codex-87a662f6-4e6f-404b-9e17-5c6e3b908156；绑定SHA=8f83bc9b30ae65824423eb6a0a40a6037894a0339048bcd0fa2fb902b5baa866（与输入JSON原字节SHA不同，parsed合同相等）；最新request=4b120837-372c-4822-9a18-7de360130ef3，COMPLETED seq1100，答复SHA68c885edf84f437706311811a2a3396599fcb9212ebe5b7fec915846a5d998c7已完整读取。全部3请求已完成，不能重投。
 
-**进度/保护**：E47/98≈48.0%、A40/111≈36.0%、合同42.0%–68.6%、18/47不变；BATCH-BUDGET/G7/T05/V1未闭合。用户账户/知识库/个人工具脏改不提交。旧M STOP_PENDING锁保留，不绕锁重投/不杀用户共享Host。以下各批current/停止段均按历史读取，不覆盖本段授权和指针。
+**停止状态**：已调用stop一次，stopAttempt=675dc8c4-c650-462a-a674-5df0a89c0db9；cancelRequested=true/cancelAck.accepted=true，after running=false、queue=0，但控制器仍STOP_PENDING/blocked，diagnostic=STOP_ACTIVITY_UNRESOLVED。不能据此宣称整个Host子树停净；不重复cancel、不杀/重启用户共享Host、不archive、不改账本绕锁。旧M STOP_PENDING也保留。
 
+**原件**：C:/Users/Crux/AppData/Local/Temp/muyun-t05o-scan-deep-budget-20261028，runs/snapshots/fix1/fix2 originals、合同和独立复核均保留。产品已提交，无本卡待套WIP；用户原portfolio/knowledge/.codex脏改未提交。旧其他机器M WIP与旧Codex L补丁禁止重套。
+
+**未来恢复**：必须先有新恢复指令，再fetch核其他Agent更新、当前HEAD/工作树及check_progress --check。O已完成，不持旧hash重投或绕停止锁。下一候选P仅只读定位：顶层scan/s持仓扫描可选启动预算，复用现有同请求账户快照/holding_entries不完整标记；完整roster可列剩余，不完整只能称已枚举范围，清单未形成不能说空仓或全部未开始。当前股允许完成，tuple汇总仅已处理项，不加自动续跑ledger。按实际新HEAD落有限合同再实施，P尚未绑定/派发。
+
+**进度**：E47/98≈48.0%、A40/111≈36.0%、合同42.0%–68.6%、18/47保持；BATCH-BUDGET/G7/T05/V1未闭合。以下当前/历史段仅历史依据，不能覆盖本段停止指令。
 
 ## 历史续工：2026-10-28 用户额度恢复，T05-M有限接收，进入T05-N
 

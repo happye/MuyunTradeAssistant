@@ -961,5 +961,32 @@
     "site-packages metadata not full byte pin; testPlan=[] not formal bridge receipt; no real suppliers/productAI/account effect validation",
     "1877 before/after/current is audit-time; later docs changes explicitly separated; BATCH-BUDGET/G7/T05/V1 remain open"
   ],
-  "stop_instruction": "User below10percent allows finishing current O then stop; no P dispatch"
+  "stop_instruction": "User below10percent allows finishing current O then stop; no P dispatch",
+  "product_commit": "56fbe217db5edcd0098d79a67bf39240f235a263",
+  "post_doc_runtime_check": {
+    "matched_targets": 1715,
+    "intentional_documentation_changes": [
+      "AGENTS.md",
+      "CODEX.md",
+      "plan/fusion/PROGRESS.json",
+      "plan/fusion/PROGRESS.md",
+      "plan/fusion/RESUME.md",
+      "plan/fusion/STATUS.md",
+      "plan/fusion/iteration10/DELIVERY_PLAN.md"
+    ],
+    "runtime_changed": [],
+    "all1877_post_doc_unchanged_claim": false
+  },
+  "stop": {
+    "state": "STOP_PENDING",
+    "blocked": true,
+    "attempt": "675dc8c4-c650-462a-a674-5df0a89c0db9",
+    "cancel_requested": true,
+    "cancel_ack_accepted": true,
+    "after_running": false,
+    "after_queue": 0,
+    "diagnostic": "STOP_ACTIVITY_UNRESOLVED",
+    "shared_host_preserved": true,
+    "p_dispatched": false
+  }
 }

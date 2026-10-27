@@ -1,6 +1,6 @@
 # CODEX.md — 暮云思辨投资助手 Codex 专用配置
 
-当前交接（2026-10-28持续协作）：T05-M已推送d400320；T05-N已限定接收，代码f0a2425，672相关加最终91增量通过、独立复核清零。下一卡T05-O：scan market自动deep可选阶段/逐股启动预算，采用已评审调用边界方案；N无最终单次全量声明，进度不变。旧M STOP_PENDING锁保留，不杀共享Host。详见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-28停止）：用户额度不足10%，已完成当前T05-O并停止，代码56fbe21；M/N/O均限定接收，714相关加最终114增量通过，未跑最终全仓。DSH已锁STOP_PENDING，最后running=false/queue0；不杀用户共享Host。P仅只读定位未派发。恢复见[RESUME](plan/fusion/RESUME.md)。
 
 > **单一信源是 [AGENTS.md](AGENTS.md)**——Codex CLI 会自动读取仓库根目录的 AGENTS.md，
 > 本文件不重复其内容（架构/命令/数据源/踩坑警示以 AGENTS.md 为准），只补充 Codex 特有的操作说明。

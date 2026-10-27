@@ -1,3 +1,5 @@
+T05-O（2026-10-28）已限定接收并按额度信号停止，代码`56fbe21`；自动deep预算与候选/未开始口径见ISS-133及[回执](plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)。
+
 T05-N（2026-10-28）已限定接收，代码`f0a2425`；bz scan预算/limit与保存事实见ISS-132及[回执](plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json)，不关闭其他入口/资源/缓存输入资格。
 
 T05-M（2026-10-28）限定接收：live批配置一次冻结与非秘密指纹，见[回执](plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json)；不关闭资源/缓存输入资格或G7/T05整体。
@@ -2380,3 +2382,12 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **代码**：`start.py::run_benzong_scan`（约1489行）；入口起点含首次导入、实际调用前deadline门，候选limit/五桶轮询，保存分项与回测三态。
 - **证据**：58业务红与12+2追修红保留；此前672相关+最终受影响91通过，真实exit0/守卫IO0；见T05N回执。无最终单次672/全量声明。
 - **限制**：当前调用可完成；非硬期限/强取消/费用上限。不含自动任务账本续跑、完整配置与缓存输入资格；下一scan market自动deep另卡。
+
+
+### ISS-133: scan market自动deep缺可选启动预算及未开始口径（T05-O）
+
+- **状态/日期**：2026-10-28有限修复，代码`56fbe21`，Sol/high独立复核清零。
+- **位置**：`src/cli/main.py::scan_market`（3048）、`src/scanner/scanner_engine.py::deep_analyze`（327），REPL/CLI接线及deep结果展示。
+- **验证**：首次新API失败/业务红/fixture缺口分列；12+2业务追修红→此前714相关+最终114增量，真实exit0/IO0；无最终单次714或全量声明。
+- **同类剩余**：无预算旧主题兜底失败后沿用原池的分支1处保持既有语义，本卡未核定，后续若改须另定合同；公共REPL/argparse启动不含于scan_market起算。账户G2/T01与完整缓存输入资格不由本卡通过。
+- **边界**：当前阶段/股票可完成，非硬期限/取消/费用上限；P持仓扫描仅定位、未实施。
