@@ -1,5 +1,15 @@
 # 融合项目恢复入口
 
+## 当前中断交接：2026-10-27 T05-M 已实施未验收（本机工作树WIP，未提交）
+
+用户要求收尾、将开新对话继续。**已交付并推送**：T05-L `847eb66`（代码+测试）/`7b7de87`（文档账本）；T05-M有限合同`c0a048e`（见第十轮计划顶部）。main=origin/main=本收尾提交。
+
+**T05-M WIP（只在本机`C:\Users\HanPeiyi\SVN\Muyun`工作树，未暂存/未提交）**：`start.py`、`src/cli/main.py`、`src/cli/session_state.py`、3个既有测试替身（`test_batch_task_run_identity.py`/`test_live_scan_all.py`/`test_multi_code_parse.py`加`config=None`）与新测试`tests/core/test_live_batch_config.py`（249项）。备份：`.cache/t05m-wip/tracked-wip.patch`+同目录测试副本（未跟踪，勿`git add`）。实现：`freeze_live_config`一次加载+深拷贝+noai覆盖；`analyze_live(config=)`逐股深拷贝；三入口在预算起点后/首只前冻结，失败零业务终止；`derive_live_config_descriptor`白名单非秘密sha256（剔密钥/URL键与URL/独立`sk-`token值，`risk-off`不误伤），按kind经`validate_batch_snapshot`入账`exec_snapshot`；tasks与启动行显示“live 批配置已冻结；指纹=…”。
+
+**已有证据（不足以接收）**：新测试249通过（守卫IO 0）；HEAD`c0a048e`独立worktree上194失败/55通过（约60业务断言/KeyError红、103新符号AttributeError、7个config TypeError、55保持守卫）；编写员报15变异全杀；含T05-L新测试的相关18文件1113通过；不含新文件的守卫全量4571 passed/0 failed/12 skipped（556.35s）；半真实冒烟（真实run_cli+真实settings冻结、仅替换analyze_live）启动行与tasks显示同一指纹。**未完成**：含新文件的最终守卫全量与code-quality-guard独立复核均在收尾时被主动停止，无结论；文档/账本/回执未更新。
+
+**下次恢复**：先核`git status`应仍为上述WIP；若工作树丢失，用`git apply .cache/t05m-wip/tracked-wip.patch`并复制测试副本。然后①守卫全量`./.venv/Scripts/python.exe -B -X utf8 plan/fusion/iteration9/review_test_runner.py tests`（约9分钟；普通pytest在内网真实外源处会挂起）②派code-quality-guard复核（重点：密钥/URL不得进指纹或账本、指纹稳定性、冻结时点、跨股不污染）③按复核修正→提交代码→同步STATUS/RESUME/MILESTONES/DELIVERY_PLAN/README/AGENTS/ISSUES/使用手册+回执`iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json`+PROGRESS变更记录→`check_progress.py --render/--check`→推送。之后下一卡T05-N：`bz scan`全链可选`--budget`（入口起算、传`auto_score_batch(deadline=)`、`--backtest`循环共用截止）+候选上限/“×5维”文案诚实化；再盘点scan market deep/scan/bb/pos plan all的期限与续跑身份。进度E48.0%/A36.0%/P42.0%–68.6%、18/47不变。
+
 ## 当前续工：2026-10-27 T05-L 由 Claude Code 本机重实施并限定接收
 
 **身份**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code主控（Opus）+ muyun-explorer（haiku，调用链定位）、muyun-coder（sonnet，写两份新测试）、code-quality-guard（opus，独立只读对抗复核，未改文件）、muyun-doc-writer（sonnet，文档）。用户本会话`/goal`授权拉取最新、接手开发、持续工作；用户说明本机是公司内网，产品第三方数据接口连不上属正常，重心在方案/产品设计/代码质量。卡片T05-L（关联V1-G7-BATCH-BUDGET），实施基线main=`b65d7bd`（=T05-K `3f08bf5`+收尾文档）；交付代码commit `847eb66`（主控以Git日志为准）。

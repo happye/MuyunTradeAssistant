@@ -1976,7 +1976,7 @@
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "T05-L已由Claude Code本机重实施并限定接收（Codex另机WIP已取代、禁止套用）。下一卡候选T05-M：live批一次加载配置并在tasks显示非秘密配置指纹；编排器跨股复用须先经架构评审。随后盘点bz scan/scan market deep/scan/bb等其余批量入口的总期限与资源界，验证走守卫runner。"
+      "next_action": "T05-L已交付（847eb66）。T05-M（live批配置一次冻结+非秘密配置指纹）已在本机工作树实施、新测试249通过/HEAD红灯已验，但最终守卫全量与独立复核未完成、未提交，不计进度；恢复按RESUME完成复核/全量/文档账本后交付。随后T05-N：bz scan全链可选--budget与上限/维度文案诚实化。"
     },
     {
       "id": "V1-G7-PERF-COST",
