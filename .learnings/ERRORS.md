@@ -1,3 +1,7 @@
+## ERR-20261028-T05N-EVIDENCE
+
+状态：已修正并保留原件。首次git ls-files非-z导致带中文/空格路径引号误判缺失，后续按实际路径核原218存在；首次fix1过滤f1_不匹配f1a_导致rc5/83 deselected，不算红。Codex一次保存watcher session_id=undefined使投影失败，原follow已终态；通过resume读回原request，无重投。临时Python -c命令引号/括号错误未执行产品动作，改用脚本或PowerShell here-string；rg在PowerShell不展开路径glob，改用目录配-g。按self-improvement归档，不能把工具失败当产品失败或再启动未知测试。
+
 ## ERR-20261027-RECOVER-FLAGS
 
 状态：已修正调用。recover不接受status/resume/follow专用的--view/--request投影参数，误传返回USAGE且未派发；去掉这些参数后核回原任务全部6请求COMPLETED与STOP_PENDING锁。个人muyun-dev-discipline技能路径缺失，改读项目.agents/skills同名副本；不把路径不存在当技能不存在。

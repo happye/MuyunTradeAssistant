@@ -1,3 +1,7 @@
+## LRN-20261028-T05N：入口预算包含验证导入，保存三项事实独立消费
+
+状态：有限修复并接收，代码`f0a2425`及T05N回执。入口起点应早于首次验证import；模块导入/构造/慢标题均可耗预算，下一真实业务调用前仍须核同一deadline。不要因scorer内部有门就宣称调用方阶段门合格。ScanSaveResult的snapshot/history与报告路径独立，不抛异常也可写失败，只有快照确存才引导#N/l all；不能抹掉已核定部分成功。回测尝试与成功分列。先58红、修复12+2业务红，672相关后只改2门，以最终91增量接收，不重复未变全套/不把wrapper耗时当pytest。
+
 ## LRN-20261027-T05M-FINAL：已有证据按字节接续，真实退出码与通过计数分别核定
 
 状态：M有限范围已接收，见[回执](../plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json)。恢复先核最终全量identity、stdout/hash、前后及当前字节，不因换轮次重复未失效全量。PowerShell venv redirector的null ExitCode不能当0；标准库Popen.wait经0/7探针后获取真实int。配置冻结必须贯穿真实shadow消费者；只传主分析参数不足。指纹明确有限白名单，不能宣称通用秘密扫描或缓存资格。

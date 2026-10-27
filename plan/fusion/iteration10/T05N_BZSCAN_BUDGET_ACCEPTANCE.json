@@ -1114,5 +1114,20 @@
     "no hard return deadline, physical cancellation, fee cap, automatic ledger/resume protocol or cache input qualification",
     "real suppliers/product AI/account effects unverified; G7/T05/V1 and BATCH-BUDGET remain open",
     "1870 before/after/current match is audit-time; delivery docs may change, runtime/source pins checked separately"
-  ]
+  ],
+  "product_commit": "f0a2425c2fb7f4cd6212a85ebb21eab14a2b7dba",
+  "post_doc_runtime_check": {
+    "matched_runtime_targets": 1711,
+    "audit_targets_documentation_changes": [
+      "AGENTS.md",
+      "CODEX.md",
+      "plan/fusion/PROGRESS.json",
+      "plan/fusion/PROGRESS.md",
+      "plan/fusion/RESUME.md",
+      "plan/fusion/STATUS.md",
+      "plan/fusion/iteration10/DELIVERY_PLAN.md"
+    ],
+    "runtime_changed": [],
+    "all1870_post_doc_unchanged_claim": false
+  }
 }

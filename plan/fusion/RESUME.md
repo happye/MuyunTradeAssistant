@@ -1,6 +1,19 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-28 用户额度恢复，T05-M有限接收，进入T05-N
+## 当前续工：2026-10-28 T05-N限定接收，下一T05-O已评审待实施
+
+用户额度恢复后授权持续Codex+DSH协作，下一次额度信号再停止。T05-M产品已推送d400320；T05-N代码f0a2425已提交，文档/账本随本批同步；实际交付SHA核main/origin日志。Codex合同/验收/Git，原生DSH唯一实施与测试执行。
+
+2026-10-28 T05-N限定接收（代码`f0a2425`）：`bz scan`提供可选`--budget <秒>`，默认无隐藏时限，入口与首次导入计入同一截止；到期不启新阶段/评分/回测，当前调用可完成。`limit`默认15、allrules五桶轮询最多min(limit,25)，明确只是评分名单上限；6维=5AI+1规则，实际请求受缓存/主题等影响。部分评分不覆盖有效扫描/报告或开启回测；快照/历史/报告独立提示，只有快照成功给本批快捷名单；回测成功/失败/未开始分列。独立Sol/high阻断清零，先58业务红，追修12+2业务红；此前672相关通过加最终受影响91通过（pytest1.36s，wrapper3.052s，真实exit0、守卫IO0）增量接收，无最终树单次672或全量声明。进度不变，硬期限/物理取消/费用上限/缓存输入资格及G7/T05/V1仍未完成。
+
+**身份/证据**：task=muyun-t05n-bzscan-budget-20261028，session=codex-5e6a0be9-36df-45ef-b435-f439e6a59f1d，绑定SHA=4a6493838403e70569ec188204687fa696a959f6c27277660f8364dd7db5309c；最新request=c39f1ac4-e6d9-41e7-b5f1-86a631e38f75，COMPLETED seq1090，完整答复SHA57730fff1f2ec9ddc4280a079d1dd8e2b6adaacb05c4e475ebc0869c9ab3b5e1已读。[回执](iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json)、[源指纹](iteration10/T05N_BZSCAN_BUDGET_SOURCE_PINS.json)、[原始结果分段](iteration10/T05N_BZSCAN_BUDGET_RESULTS.txt)。1870项前后/审计时current一致，交付合法文档变更后只单独核runtime/产品/fixture/runner不变，不再宣称1870全current仍同；9保护hash及原218路径保持。site-packages仅发行版元数据，testPlan空非formal bridge。外部原件C:/Users/Crux/AppData/Local/Temp/muyun-t05n-bzscan-budget-20261028（16runs/32snapshots、fix1/fix2 originals保留）；rc5空选不算红、首次中文路径误判保留，pytest/wrapper时间分列。
+
+**下一T05-O**：采用Astra/low只读方案，范围仅scan market自动deep（REPL现有deep关键字/独立CLI --scan-deep）可选阶段与逐股启动预算。普通交互scan market预算先拒；从入口准备前同monotonic，quick_scan/法C视为当前可完成调用，不传播改其内部20秒补算/SESSION/缓存接收门。候选初筛保存与deep完成独立，空/异常/未完成必需兜底不覆盖有效扫描；已完整非空候选可保留，明说deep未开始/部分完成。deep_analyze只为调度确认未启动项加not_started/固定原因；排名仅已处理项，展示成功/未取得完整结果/未开始，不能把未开始当失败/零分。无新任务账本、自动续跑或硬墙/费用保证。N交付后在实际HEAD落正式有限合同与精确文件所有权再派发；O目前只有方案，不是已实现。若必须改quick_scan内部/共享超时/账户语义，回主控修合同。
+
+**进度/保护**：E47/98≈48.0%、A40/111≈36.0%、合同42.0%–68.6%、18/47不变；BATCH-BUDGET/G7/T05/V1未闭合。用户账户/知识库/个人工具脏改不提交。旧M STOP_PENDING锁保留，不绕锁重投/不杀用户共享Host。以下各批current/停止段均按历史读取，不覆盖本段授权和指针。
+
+
+## 历史续工：2026-10-28 用户额度恢复，T05-M有限接收，进入T05-N
 
 用户明确恢复Codex+DSH持续协作，先前停止指令转历史；收到下一次额度不足信号再停止新派发。远端已核无新增提交，基线main@f5841ac，保留原7文件WIP按原受测字节验收，未重跑既有全量。
 

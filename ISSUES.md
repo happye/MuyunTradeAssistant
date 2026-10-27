@@ -1,3 +1,5 @@
+T05-N（2026-10-28）已限定接收，代码`f0a2425`；bz scan预算/limit与保存事实见ISS-132及[回执](plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json)，不关闭其他入口/资源/缓存输入资格。
+
 T05-M（2026-10-28）限定接收：live批配置一次冻结与非秘密指纹，见[回执](plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json)；不关闭资源/缓存输入资格或G7/T05整体。
 
 T05-L（2026-10-27，Claude Code本机重实施）已修live批量把仅行情/未知返回记成功并写当日已析、并补`l 多代码`/`la`/`l all`可选`--budget`，见ISS-130与[回执](plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json)；另登记ISS-131（证据source硬编码，P3待修）。LEG-066-NETWORK/PERF-COST：六维cache全命中仍可能有取数和sector-meta AI；deep_analyzed缺配置/账户资格、技能YAML内容身份、全链总预算仍待，不因本卡关闭。
@@ -2370,3 +2372,11 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **影响**：`analysis_evidence.jsonl` 与证据卡的触发来源字段不能区分单只/多代码/la/l all；不影响分析结果、评分或账本。
 - **限制**：未修；修前先核 `diff` 等读取 `source` 的消费者，勿顺手扩。
 
+
+
+### ISS-132: bz scan缺可选启动预算、allrules忽略limit，保存与回测完成提示失真（T05-N）
+
+- **状态/日期**：2026-10-28有限修复，代码`f0a2425`，独立Sol/high通过。
+- **代码**：`start.py::run_benzong_scan`（约1489行）；入口起点含首次导入、实际调用前deadline门，候选limit/五桶轮询，保存分项与回测三态。
+- **证据**：58业务红与12+2追修红保留；此前672相关+最终受影响91通过，真实exit0/守卫IO0；见T05N回执。无最终单次672/全量声明。
+- **限制**：当前调用可完成；非硬期限/强取消/费用上限。不含自动任务账本续跑、完整配置与缓存输入资格；下一scan market自动deep另卡。
