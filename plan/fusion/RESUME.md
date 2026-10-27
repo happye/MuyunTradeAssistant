@@ -1,6 +1,24 @@
 # 融合项目恢复入口
 
-## 当前停止交接：2026-10-27 新额度不足8%，T05-L未验收保留WIP
+## 当前续工：2026-10-27 T05-L 由 Claude Code 本机重实施并限定接收
+
+**身份**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code主控（Opus）+ muyun-explorer（haiku，调用链定位）、muyun-coder（sonnet，写两份新测试）、code-quality-guard（opus，独立只读对抗复核，未改文件）、muyun-doc-writer（sonnet，文档）。用户本会话`/goal`授权拉取最新、接手开发、持续工作；用户说明本机是公司内网，产品第三方数据接口连不上属正常，重心在方案/产品设计/代码质量。卡片T05-L（关联V1-G7-BATCH-BUDGET），实施基线main=`b65d7bd`（=T05-K `3f08bf5`+收尾文档）；交付代码commit `847eb66`（主控以Git日志为准）。
+
+**为何不用Codex WIP**：下方“历史停止交接”里的WIP补丁与快照在另一台机器`C:/Users/Crux/...`，本机不可得、未使用；本批按DELIVERY_PLAN顶部T05-L合同（Codex rev2范围+7项复审阻断）从零重实施。那份WIP**不得再直接套用到main**（与本次实现冲突），需要比对时只作参考；其中“未验收、禁止当作完成”的结论对Codex WIP仍成立，不转移到本批。
+
+**交付范围**：`analyze_live`返回`LiveOutcome.COMPLETE/QUOTE_ONLY`，`l 多代码`/`la`/`l all`只把COMPLETE记成功；仅行情记降级可重试，未知返回记“结果未知”，均不计成功；当日已析只在`l 多代码`/`l all`的COMPLETE时写，新记录带`outcome=complete`，`l all`只跳过带标记的今天记录，旧版无标记记录重析并在y/N前预告费用；写入按原始根合并、坏根拒写。三入口可选`--budget <秒>`（la/l 多代码入口起算，l all在y/N后起算；每只开始前与调用前各核截止，非强制中断、非费用上限），单只/坏值业务前拒绝；账本live专用预算schema`muyun.live.budget/v1`、tasks展示live预算与“确认未调用分析”；mark/not_started写门拒绝坏映射/显式null且不洗白。7项复审阻断逐项覆盖见[DELIVERY_PLAN](iteration10/DELIVERY_PLAN.md)T05-L验收段。
+
+**证据**：先红——两份新测试561项在基线b65d7bd独立worktree 490失败/71通过（约310项业务断言红，176项新符号AttributeError，71项行为保持守卫）；后绿561通过，复核P2修复后补10项共571通过（12.09s，守卫IO network/subprocess/real_state=0，保护哈希不变）；相关16文件542通过（28.09s，real_state 0）；全量守卫4571 passed/0 failed/12 skipped/1 deselected（530.66s）。code-quality-guard结论可合入、无P0，P1=文档同步（本批已修），3个P2（RecursionError逃逸、`l #1 foo --budget`垃圾片段计码、逗号粘连预算被静默丢弃）经探针证实并已修。编写员另做33个手工突变全部被杀（按其报告，主控未逐一复现）。真实REPL临时HOME冒烟（不碰真实`~/.muyun`、不触网）：帮助三行与拒绝文案、`l 600519,000001 --budget 0.000001`→2只预算未开始入账、`la --budget 0.000001`→快照前到期不登记、`tasks`显示live预算行。回执见[T05L_LIVE_BUDGET_ACCEPTANCE.json](iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json)（主控创建）。
+
+**验证环境说明（内网/守卫runner）**：本机公司内网，普通`pytest`在真实外源处挂起（HEAD基线同样挂起：`test_o0_exceptional_account::test_y2_repl_la_*`、`chat/test_p1_shared_portfolio_view`），因此全部验证走`plan/fusion/iteration9/review_test_runner.py`守卫runner。结论层级：离线守卫通过+REPL冒烟，不等于真实外源/产品AI/真实账户效果通过。
+
+**进度**：E48.0%/A36.0%/P42.0%–68.6%、18/47不变（有限子范围，V1-G7-BATCH-BUDGET整条未关闭）；范围/权重/适用性不变。
+
+**下一卡候选T05-M（live批配置冻结）**：现状live批每股仍`load_config()`+重建编排器，配置/技能YAML身份未冻结（`tasks`仍显示la/l all/多代码深析未冻结）。T05-M目标：live批一次加载配置，并记录非秘密配置指纹，在`tasks`可见。复用`ba`/`bz`批编排器须先经architect评审，不在未评审时直接复用。仍待：资源硬界、物理取消、费用上限、缓存输入身份、真实外源/产品AI/真实账户；G7/T05/V1整体未完成，真实MID仍NO_VALID。另登记低优先级ISS-131（证据source硬编码`live_multi`），未在本卡修。
+
+**恢复步骤**：1. 读`AGENTS.md`→`MILESTONES.md`→`STATUS.md`→本页；2. 核Git日志（确认T05-L交付commit）与工作树，运行项目解释器的`check_progress.py --check`；3. 新卡先按实际HEAD绑定合同，验证一律走守卫runner；4. 不套用另一台机器的Codex WIP。
+
+## 历史停止交接：2026-10-27 新额度不足8%，T05-L未验收保留WIP（Codex侧，已被上方Claude Code重实施取代）
 
 用户新通知额度不足8%并要求收尾，覆盖本页下方此前恢复持续协作授权。已禁止新send/run/审批和产品测试。T05-K已推送main/origin/main=`3f08bf59a9b17d8176dc2f230061ec975e113e7c`；收尾文档提交SHA核实际Git日志。**T05-L未接收、未提交产品代码**，不能把DSH首轮“完成”自评当通过。
 

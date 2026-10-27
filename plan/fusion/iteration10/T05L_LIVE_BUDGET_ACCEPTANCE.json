@@ -1,0 +1,113 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-27",
+  "status": "ACCEPTED_LIVE_OUTCOME_AND_OPTIONAL_START_BUDGET_SCOPE_ONLY",
+  "base_commit": "b65d7bdd29e3be66eee8373c5a5f791f633d2a86",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-live-budget",
+    "source": "plan/fusion/iteration10/DELIVERY_PLAN.md T05-L section (Codex rev2 scope) + 7 review blockers listed in plan/fusion/RESUME.md",
+    "implementer": "Claude Code main agent on machine C:\\Users\\HanPeiyi\\SVN\\Muyun (re-implemented from contract)",
+    "codex_wip_used": false,
+    "codex_wip_note": "Codex rev2 WIP/snapshot lived on another machine (C:/Users/Crux/...), unavailable here; superseded, must not be applied to main",
+    "git_owner": "Claude Code",
+    "roles": {
+      "locate": "muyun-explorer (haiku)",
+      "tests": "muyun-coder (sonnet) wrote tests/core/test_live_batch_outcomes.py and test_live_batch_budget.py",
+      "production_code": "main agent",
+      "independent_review": "code-quality-guard (opus), read-only + guarded probes",
+      "docs": "muyun-doc-writer (sonnet)"
+    },
+    "model_metadata_verified": false
+  },
+  "accepted_scope": [
+    "analyze_live returns plain Enum LiveOutcome.COMPLETE/QUOTE_ONLY; single-stock output unchanged; no-data SystemExit unchanged",
+    "l multi/la/l all count only COMPLETE as success; quote-only -> ledger degraded (retryable), never same-day marker; unknown returns not success/failure/not-started and not written; marker write failure reported, never claimed saved; marker write exceptions never abort the batch",
+    "Optional finite positive --budget for l multi/la/l all/aliases/bare multi-codes; single stock (incl. single #N, #N+junk) rejected before resolve_index; malformed values rejected before business; budget token never becomes a code; comma-glued budget rejected (bz too); default no hidden limit, no new confirmation; help rows and default hints",
+    "One monotonic deadline: la/l multi from entry (before prefetch/account snapshot), l all after y/N confirmation; check before each stock and again after header right before the call; only never-called stocks recorded not_started; current stock finishes; la roster from one snapshot, unknown roster never claimed all-not-started",
+    "Execution list = ledger roster = counts (order-preserving dedupe)",
+    "Live-specific budget schema muyun.live.budget/v1 validated by kind on write/read; ba muyun.ba.budget/v1 unchanged for legal states; cross-kind rejected; batch_task_mark refuses missing/non-dict maps and explicit not_started null; batch_task_not_started never launders bad/missing stop_reason",
+    "deep_analyzed.json records carry outcome=complete; l all skips only marked records; old unmarked today-records re-analysed with pre-confirmation AI-cost notice; raw-root merge keeps other dates/entries; unreadable/non-dict root or today node refused",
+    "tasks: live kinds use the same kind gate, wording 分析; ba keeps 评分"
+  ],
+  "validation": {
+    "red_on_base": "new 561 tests on b65d7bd worktree: 490 failed/71 passed (~310 assertion business reds, 176 new-symbol AttributeError, 71 behaviour-preservation guards)",
+    "green": "561 passed (15.09s) -> after review P2 fixes +10 regressions: 571 passed (12.09s)",
+    "mutation_by_test_writer": "33 manual mutants all killed (reported by muyun-coder, not individually re-run by main agent)",
+    "related_16_files_guarded": "542 passed (28.09s), blocked network 264, real_state 0",
+    "full_guarded": "4571 passed/0 failed/12 skipped/1 deselected（530.66s）",
+    "full_blocked_io": "network 952/subprocess 12/real_state 0（均被守卫拦截）",
+    "runner": "plan/fusion/iteration9/review_test_runner.py (plain pytest hangs on this corporate intranet at real data-source calls; HEAD baseline hangs identically)",
+    "repl_smoke": "real start.py with temp HOME: help rows, rejection texts, l multi tiny budget -> 2 not_started recorded, la tiny budget -> stopped before snapshot without ledger, tasks shows live budget lines",
+    "independent_review": "code-quality-guard: mergeable, no P0; P1 doc sync fixed in this batch; 3 P2 (RecursionError escape, #N+junk scan read, comma-glued budget drop) confirmed by probes and fixed with regressions",
+    "test_counts_per_file": {
+      "tests/core/test_live_batch_outcomes.py": 342,
+      "tests/core/test_live_batch_budget.py": 229
+    }
+  },
+  "existing_test_contract_updates": [
+    "tests/core/test_live_scan_all.py: mocks return COMPLETE; already-analysed fixtures carry outcome marker",
+    "tests/core/test_batch_task_run_identity.py: three live entry mocks return COMPLETE",
+    "tests/core/test_multi_code_parse.py: wiring mock returns COMPLETE",
+    "tests/core/test_batch_budget_parse.py: l multi/la/l all/bare multi moved out of unsupported tables; added l #3 single rejection; run_cli gate uses invalid live values"
+  ],
+  "same_class_scan": "loops counting 'no exception' as success: only the three live loops; pos plan all checks bool, ba structured results, scan handles no-indicator separately -> 0 remaining",
+  "protection": {
+    "guard_protected_files": 6,
+    "protected_hashes_unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "real_home_touched": false
+  },
+  "progress": {
+    "before": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "after": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "scope_weight_applicability_change": false,
+    "reason": "Live batch outcome + optional start budget partial scope only; live config identity, resource bounds, cache input identity still pending"
+  },
+  "remaining": [
+    "Whole V1-G7-BATCH-BUDGET/G7/T05/V1 open",
+    "Live batches still load_config() and rebuild the orchestrator per stock; config/skill identity not frozen (next card candidate T05-M)",
+    "No resource hard bound/physical cancel/fee cap; preparation and current stock can overrun",
+    "Real providers/product AI/real accounts not exercised; cache input identity unproven",
+    "ISS-131: evidence source hardcoded live_multi for every entry (P3, not fixed)"
+  ],
+  "delivery_commit": "847eb6683c2ab6da4419b1860fe4e632cc136583"
+}

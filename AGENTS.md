@@ -1,6 +1,6 @@
 # 暮云思辨投资助手 — AI Agent 开发手册
 
-当前交接（2026-10-27收尾）：用户发出新额度不足8%信号，已停止派发并中止T05-L追修。T05-K已交付3f08bf5；L未验收、产品补丁仍在工作树并已快照，禁止当作完成/提交。DSH已锁且观测空闲，工具仍STOP_PENDING；新授权前不继续，恢复详见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-27）：T05-L（live批量真实结果与可选启动预算）已由Claude Code在本机按合同重实施并限定接收；另一台机器上Codex中止时的WIP已被取代，禁止再套用到main。进度不变（有限子范围，G7/T05/V1整体未完成）；下一卡候选T05-M（live批量配置冻结）。恢复详见[RESUME](plan/fusion/RESUME.md)。
 
 > 任何 AI 编码工具打开此项目时，请先阅读本文件。
 > 详细文档索引见末尾。
@@ -45,12 +45,15 @@ scan review import              # 导入旧扫描报告，同(时间,来源)幂�
 watch / watch add <代码|#N> / watch rm <代码>
 la / ba / l all [-f]             # 所有持仓深分析 / 上次扫描评分 / 上次扫描深分析
 ba --budget 60                  # 可选时限；到点不开始下一股，当前股完成后返回
+l 600519,000001 --budget 600    # 多代码深分析可选时限（秒）；单只l/bz不支持
+la --budget 600                 # 持仓深分析可选时限；入口起算
+l all [-f] --budget 600         # 上次扫描深分析可选时限；y/N确认后起算
 doctor / 诊断                  # 只读环境体检，零AI零网络
 diff <代码> / 对比             # 同股最近两次证据变化
 tasks / 任务                   # 批量进度、失败与续跑
 ```
 
-- **费用/数据纪律**：bz每维1次AI；fear、scan review零AI。l all默认跳过当天已析股，`-f`才强制重析，失败股不记成功账、下次重试；同类批量重跑复用当日成功缓存。fear缺失标MISSING并剔除权重，分位样本不足降固定阈值且标注，不补假数据；backfill有供应商约20–30交易日历史限制。
+- **费用/数据纪律**：bz每维1次AI；fear、scan review零AI。l all默认只跳过当天“完整分析”（记录带完成资格标记）的股，`-f`才强制重析；仅行情/结果未知/失败不计成功、不记已析，下次重试；同类批量重跑复用当日成功缓存。fear缺失标MISSING并剔除权重，分位样本不足降固定阈值且标注，不补假数据；backfill有供应商约20–30交易日历史限制。
 - **扫描与观察池**：save_last_scan统一记录scan market/bz scan/chat，`~/.muyun/scan_history.jsonl`全量追加不prune，展示窗口由查询控制；当天扫描不进统计，窗口无可评估而有更早历史时扩大并明说。行情预算为一轮批量（60只/请求）、逐票日线各1次全窗口、沪深300日线1次，当日kline_cache复用。无持仓且l/la/l all/chat判WATCH自动入池；手工add缺省实时价、已有不重复，rm是唯一出池通道，再次WATCH入池另立锚点；`~/.muyun/watchlist.jsonl`按add/remove重放，入池失败不得承诺成功。
 - **证据/任务存储**：l/la/l all/chat追加 `~/.muyun/analysis_evidence.jsonl` 不prune，证据卡在 `分析报告/analysis/` 同分钟防覆盖；旧缺字段为“当时未记录”，笨总评分版本用CACHE_VERSION、决策评分按聚合协议比较。批量账本 `~/.muyun/batch_tasks.json` 原子写、保留最近5个任务。扫描/观察报告在 `分析报告/scan/`，fear图在 `~/.muyun/fear_index/charts/`；详细展示见使用手册。
 - **诊断隐私**：doctor只查解释器/依赖/配置存在性/状态缓存/RAG/报告目录，缺失如实标注；settings.local.yaml只报存在性，API key与内容绝不回显。

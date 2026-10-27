@@ -1927,9 +1927,13 @@
           {
             "path": "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json",
             "anchor": "T05-K typed dimension-cache payload partial acceptance; full config/input cache identity and other entries/resources remain open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-L live outcome enum + optional l multi/la/l all start budget partial scope; live config identity/resources/cache input identity remain open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K accepted; other entrances/resources/full configuration and cache input identity still pending"
+        "basis": "Partial T05-H/I/J/K/L accepted; live config identity, resource bounds, other entrances and cache input identity still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1954,21 +1958,25 @@
           {
             "path": "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json",
             "anchor": "T05-K typed dimension-cache payload partial acceptance; full config/input cache identity and other entries/resources remain open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-L live outcome enum + optional l multi/la/l all start budget partial scope; live config identity/resources/cache input identity remain open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K accepted; other entrances/resources/full configuration and cache input identity still pending"
+        "basis": "Partial T05-H/I/J/K/L accepted; live config identity, resource bounds, other entrances and cache input identity still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "T05-H/I/J身份、参数快照和ba可选时限，T05-K逐维缓存载荷资格已限定接收；其他入口/资源边界、完整有效配置与缓存输入身份仍待，不能由子批替代。",
+          "reason": "T05-H/I/J身份、参数快照和ba可选时限，T05-K逐维缓存载荷资格，T05-L live批真实结果与可选启动预算已限定接收；live批配置身份（每股重读配置/重建编排器）、其他入口资源边界、完整有效配置与缓存输入身份仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "用户2026-10-27新额度不足8%信号，已停止；K已推送3f08bf5，L未验收且rev2中止，9tracked+2新测试WIP与7项阻断见RESUME。新授权前不派发/测试，不把667(network552)当离线通过；恢复按rev2合同保留WIP后补红绿/IO0与独立复核。"
+      "next_action": "T05-L已由Claude Code本机重实施并限定接收（Codex另机WIP已取代、禁止套用）。下一卡候选T05-M：live批一次加载配置并在tasks显示非秘密配置指纹；编排器跨股复用须先经架构评审。随后盘点bz scan/scan market deep/scan/bb等其余批量入口的总期限与资源界，验证走守卫runner。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2714,6 +2722,57 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05K_CACHE_PAYLOAD_ACCEPTANCE.json"
+      ]
+    },
+    {
+      "id": "T05L-20261027",
+      "date": "2026-10-27",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "T05-L由Claude Code本机按合同重实施：analyze_live显式结果、三个live批只认完整分析、可选启动预算与按kind账本门、当日已析完成资格标记；红490/71→绿571、相关542、守卫全量4571 passed/0 failed/12 skipped/1 deselected（530.66s）、独立复核无P0且P2已修。E/A/P及18/47不变，范围/权重/适用性不变。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json"
       ]
     }
   ],

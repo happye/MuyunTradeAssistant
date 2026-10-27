@@ -1,8 +1,8 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
-**2026-10-27停止覆盖**：用户新额度不足8%信号，禁止新派发/测试；L rev1未接收，rev2追修ABORTED，产品WIP未提交/验收，仅保存交接。以下合同是将来恢复的范围，当前不授权继续。准确身份/原件/阻断见RESUME。
+**2026-10-27更新**：T05-L已由Claude Code在本机按下方合同重实施并限定接收（Codex中止时的WIP已被取代、不得套用）；此前“新额度不足8%停止覆盖”转为历史，见RESUME历史段。
 
-## 2026-10-27 当前有限合同：T05-L 深分析真实结果与可选启动预算
+## 2026-10-27 有限合同（已限定接收）：T05-L 深分析真实结果与可选启动预算
 
 关联`V1-G7-BATCH-BUDGET`，基线main@3f08bf5，当前身份见RESUME；K交付已完成，L已绑定/派发，未验收。用户恢复持续协作且此前明确可选时限与正常发现入口。
 
@@ -12,6 +12,8 @@
 - 实际执行/账本/计数共用保序去重roster；未开始仅指调度器确认尚未调用项。live-specific预算schema在既有session_state按kind读写验证、tasks联合门同源；ba合同不变、旧坏map不洗白、未记录不倒推未开始。
 - DSH拥有start/main/session_state及列定8测试（其中2新），Codex文档/账本/Git。先有限mock红绿再一次相关guard；独立审查复用未失效证据，无全局状态/fixture变更时不预设全仓。9保护文件及218原未跟踪保留，真实数据/产品AI/账户不碰。
 - 完整配置快照、每股编排器重建、资源硬界、缓存输入身份不在本卡，不关闭整条BATCH-BUDGET/G7/T05/V1；有限验收完成即交付并沿计划核下一缺口，不追加无收益探针。
+
+**T05-L验收（Claude Code本机重实施）**：基线main=b65d7bd，按本合同从零重实施（Codex机器上的WIP本机不可得、未使用）。行为：`analyze_live`返回`LiveOutcome.COMPLETE/QUOTE_ONLY`；`l 多代码`/`la`/`l all`只有COMPLETE记成功，仅`l 多代码`/`l all`的COMPLETE写当日已析；仅行情记降级可重试，未知返回记“结果未知”，不写账本；三入口可选`--budget <秒>`（la/l 多代码入口起算，l all在y/N后起算），默认不启用、无新确认门。RESUME所列7项复审阻断覆盖：1. 结果枚举与未知——None/bool/字符串走“结果未知”，不计成功/失败，不写账本；2. 标题输出后、真正调用前再核一次截止，每只开始前一次（到期后无调用，未开始项仅来自调度器确认）；3. 共享`batch_task_mark`拒绝done/degraded/failed缺失或非dict、not_started存在但非dict（含显式null）；4. `batch_task_not_started`遇非白名单旧stop_reason或“有未开始项缺stop_reason”拒写，不洗白；5. L9——`deep_analyzed.json`新记录带`outcome=complete`完成标记，`l all`只跳过带标记的今天记录，旧无标记记录重析并在原y/N前预告费用，写入按原始根合并（保留其它日期与同日坏/旧条目），文件无法解析/根非dict/当日节点非dict拒写、原文件不动；6. 单只（含`l #3 --budget 60`）与语法坏值在`resolve_index`/读扫描状态之前拒绝；7. tasks/运行文案live用“分析”、ba保持“评分”（live预算schema`muyun.live.budget/v1`按kind同门，ba仍只认`muyun.ba.budget/v1`）；业务红落在基线原函数上而非仅新符号。证据：两份新测试561项在基线b65d7bd独立worktree 490失败/71通过（约310项业务断言红、176项新符号AttributeError、71项行为保持守卫）；后绿561通过，复核P2修复后补10项共571通过（12.09s，守卫IO=0）；相关16文件542通过（28.09s）；全量守卫4571 passed/0 failed/12 skipped/1 deselected（530.66s）；独立复核（code-quality-guard）可合入、无P0，3个P2已修；编写员33个手工突变全被杀（按其报告）；真实REPL临时HOME冒烟。内网环境，验证走`plan/fusion/iteration9/review_test_runner.py`守卫，非真实外源/产品AI/账户。进度不变。仍待：live批每股`load_config()`+重建编排器、配置/技能YAML身份未冻结（下一卡候选T05-M，复用编排器须先经architect评审）、资源硬界、物理取消、费用上限、缓存输入身份、真实外源/产品AI/真实账户；ISS-131（证据source硬编码`live_multi`）低优先级未修；G7/T05/V1整体未完成。回执见[T05-L回执](T05L_LIVE_BUDGET_ACCEPTANCE.json)（主控创建）。
 
 ## 2026-10-26 T05-I 有限合同：ba执行参数快照（已限定接收）
 

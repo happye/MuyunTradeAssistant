@@ -1,4 +1,4 @@
-T05-H（2026-10-26）已修批量运行身份串账及逐项误记，限定接收见[回执](plan/fusion/iteration10/T05H_BATCH_IDENTITY_ACCEPTANCE.json)。LEG-066-NETWORK/PERF-COST：六维cache全命中仍可能有取数和sector-meta AI；deep_analyzed缺配置/账户资格、全链总预算仍待，不因记账修复关闭。按用户要求本批推送后停止。
+T05-L（2026-10-27，Claude Code本机重实施）已修live批量把仅行情/未知返回记成功并写当日已析、并补`l 多代码`/`la`/`l all`可选`--budget`，见ISS-130与[回执](plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json)；另登记ISS-131（证据source硬编码，P3待修）。LEG-066-NETWORK/PERF-COST：六维cache全命中仍可能有取数和sector-meta AI；deep_analyzed缺配置/账户资格、live批配置冻结（候选T05-M）、全链总预算仍待，不因本卡关闭。
 
 # 暮云思辨投资助手 - 问题追踪与待办
 
@@ -2349,4 +2349,22 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **修复**：plan_update_prep.prepare_generate_or_update_plan（无打印/无 input/不写盘）+ `accept_plan_update；CLI 薄封装保留 Y/n 与文案；内部复用 prepare_trade_plan_draft。
 - **验证**：定测 	ests/core/test_t04d_plan_update_prep.py；回归 	est_real_plan_update_keeps_old_policies_until_acceptance。
 - **限制**：chat 无 --update；批量 pos plan all 循环仍在 CLI；不绑 G7/v43。
+
+### ISS-130: live 批量把仅行情/未知返回记成功并写当日已析；l 多代码/la/l all 缺可选启动预算（T05-L）
+
+- **状态/日期**：2026-10-27，T05-L 由 Claude Code 在本机重实施，commit `847eb66`；全量守卫 `4571 passed/0 failed/12 skipped/1 deselected（530.66s）`。
+- **优先级/方向**：P1，G7/T05（V1-G7-BATCH-BUDGET 有限子范围）。
+- **实证**：基线 b65d7bd 上，`analyze_live` 仅取得实时行情、技术分析未完成时正常返回 `None`，`l 多代码`/`la`/`l all` 三个批量循环把“不抛异常”当成功，`l 多代码`/`l all` 还写 `~/.muyun/deep_analyzed.json` 当日已析，下次 `l all` 因此跳过该股；返回 `None`/bool/字符串等未知值同样被当成功。三者无 `--budget`。两份新测试 561 项在基线独立 worktree 490 失败/71 通过（约 310 项业务断言红，如“仅行情不得写当日已析”“未知结果不得写账本任何状态”“合法 live 预算被拒”；176 项新符号 AttributeError；71 项行为保持守卫）。
+- **修复**：`src/cli/main.py` `analyze_live` 返回 `LiveOutcome.COMPLETE/QUOTE_ONLY`；三循环仅 COMPLETE 记成功，仅行情记降级可重试，未知记“结果未知”，均不写已析；`deep_analyzed.json` 新记录带 `outcome=complete`，`l all` 只跳过带标记的今天记录，旧版无标记记录重析并在 y/N 前预告费用，按原始根合并写入、坏根拒写；三入口可选 `--budget`（la/l 多代码入口起算，l all y/N 后起算，每只开始前与调用前各核一次截止），单只/坏值在业务前拒绝；`src/cli/session_state.py` 新增 `muyun.live.budget/v1` 按 kind 同门，`batch_task_mark`/`batch_task_not_started` 拒坏映射/显式 null/非白名单旧原因、不洗白；tasks 展示 live 预算与“确认未调用分析”。
+- **验证**：先红后绿：561 项 561 通过，复核 P2 修复后补 10 项共 571 通过（12.09s，守卫 IO network/subprocess/real_state=0）；相关 16 文件 542 通过（28.09s）；code-quality-guard 独立复核无 P0，3 个 P2（RecursionError 逃逸循环、`l #1 foo --budget 60` 垃圾片段计码、逗号粘连预算被静默丢弃）已修；真实 REPL 临时 HOME 冒烟。本机内网，验证走 `plan/fusion/iteration9/review_test_runner.py` 守卫。
+- **同类剩余**：0。“把不抛异常当成功”的批量循环仅此三处；`pos plan all` 已检查布尔返回、`ba` 只认结构化结果、`scan`（`analyze_portfolio`）单独处理无指标。
+- **限制**：离线守卫+mock/临时 HOME 冒烟，不等于真实外源/产品 AI/真实账户效果；预算为协作式（到点不开始下一只，已开始的跑完，准备阶段可超出），非强制中断、非费用上限；live 批每股仍 `load_config()`+重建编排器、配置/技能 YAML 身份未冻结（候选 T05-M）；资源硬界、物理取消、缓存输入身份未做；G7/T05/V1 整体未完成，进度不变。
+
+### ISS-131: 分析证据 source 对所有入口硬编码 live_multi（低优先级溯源瑕疵）
+
+- **状态/日期**：2026-10-27 登记，待修（T05-L 未修）。
+- **优先级/方向**：P3，溯源/证据卡。
+- **实证**：`src/cli/main.py:1033` `analyze_live` 内 `_evidence.record_evidence(..., source="live_multi", ...)` 对所有入口一律写 `live_multi`，单只 `l <代码>` 也被标成 `live_multi`；而 `src/cli/evidence.py:35` 文档列出按入口区分的来源（`"l 600519"` / `"la"` / `"live_multi"` / `"chat"`）。
+- **影响**：`analysis_evidence.jsonl` 与证据卡的触发来源字段不能区分单只/多代码/la/l all；不影响分析结果、评分或账本。
+- **限制**：未修；修前先核 `diff` 等读取 `source` 的消费者，勿顺手扩。
 

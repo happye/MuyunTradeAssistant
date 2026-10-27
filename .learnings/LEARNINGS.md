@@ -2733,3 +2733,10 @@ Status: applied。用户要求解除开发黑盒，V1按既有G/T拆成47条111�
 ### LRN-20261025-SESSION-LIFECYCLE｜worker生命周期与有限终止证据
 
 Status: applied / V1-G7-SESSION限定接收。共享租约必须由真实daemon worker的finally释放；调用方超时不能释放仍运行worker持有的租约，也不能另行logout。嵌套调用继承祖先abandoned及更早deadline；检查接收结果、逐次操作及最终分页error。测试用有限迭代器和完成Event证明已走到终止点；无限mock或短暂未见副作用不是成功证据。真实round3曾4 failed，修后224 passed/1 skipped；心跳error与完成屏障各有精确反例。全量3611/1失败后仅修旧无限mock夹具并跑相关148/1；没有最终树单次全绿全量。完整限制与证据见[会话接收回执](../plan/fusion/iteration10/T05G_SESSION_ACCEPTANCE.json)。
+
+
+### LRN-20261027-LIVE-OUTCOME｜“没抛异常”不等于完成：批量记账只消费显式结果
+
+Status: applied / T05-L（Claude Code 本机重实施，V1-G7-BATCH-BUDGET 有限范围）。`analyze_live` 完整分析与“仅实时数据可用”降级都隐式返回 None，`l 多代码/la/l all` 三个循环把“不抛异常”记为成功并写当日已析，下一次 `l all` 静默跳过从未做过技术分析的股票。修法：被调方返回普通 Enum（COMPLETE/QUOTE_ONLY，非 str 混入），调用方用 `is` 只认 COMPLETE；None/bool/字符串/MagicMock 一律“结果未知”，不计成功/失败/未开始。旧当日记录没有完成资格标记，不当作已核完成，并在原 y/N 确认前预告会重新分析（含 AI 费用）。持久化写入要合并**原始根**、坏根/坏当日节点拒写，不能把读侧过滤后的视图整份写回——那会抹掉历史日期与读侧跳过的坏行。
+
+同类扫描（铁律 1③）：`pos plan all` 已检查布尔返回、ba 只认结构化结果、scan（analyze_portfolio）单独处理无指标——“隐式 None 当成功”剩余 0 处。验证教训：公司内网下普通 `pytest` 会在真实外源调用处**挂起**而非失败（HEAD 基线同样挂起），应走 `plan/fusion/iteration9/review_test_runner.py` 守卫，网络/子进程/真实状态被拦截后快速失败并计数。
