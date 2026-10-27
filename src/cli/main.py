@@ -3051,6 +3051,7 @@ def scan_market(
     ai_debug: bool = False,
     deep: bool = False,
     ai_enabled: bool = True,
+    budget_seconds: float | None = None,
 ):
     """全市场扫描 — 初筛候选股 + 可选深度分析
 
@@ -3058,17 +3059,84 @@ def scan_market(
     1. quick_scan() → 展示候选池
     2. 用户选择后 → deep_analyze() 逐只深度分析
 
+    T05-O（自动 deep 阶段预算，仅 `scan market deep` / `--scan --scan-deep`）：
+    - budget_seconds 只接受有限正数（bool/非数/nan/inf/<=0 在业务前拒绝），且必须
+      deep=True；None 表示不启用预算、不取 clock、旧 kwargs/调用形状不变。
+    - 有预算时在入口（预算验证 import 之前）取一次 monotonic 入口时点，换算成同一
+      绝对截止；模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛/必要主题兜底
+      都计入，绝不重起钟。到期只阻止开始下一阶段/下一只股票，已开始的阶段/当前
+      股票允许完成（非强制中断、非费用上限，准备阶段可能超出）。
+    - 候选阶段只表示本次必需初筛/兜底调用均已返回，不证明供应商完整覆盖。最后必需
+      调用正常返回（即使跨截止）时完整非空候选沿原语义保存；仍需兜底却到期时不启动
+      兜底、不落盘部分名单。空/异常/结构未知不覆盖上次有效扫描。
+    - 快照/历史/报告三项独立消费真实返回值；只有快照成功才给本批 #N/l all/ba 指引。
+    - 候选保存与 deep 终态分别显示；deep 未开始不称失败/零分，不承诺自动续跑/零费用。
+
     Args:
         rule_name: 扫描规则名称
         market_query: 统一主题词，自动匹配相关行业/概念
         ai_debug: 是否开启AI调试模式
         deep: 是否自动执行深度分析（跳过用户选择）
         ai_enabled: 深度分析时是否启用AI
+        budget_seconds: 可选启动预算秒数（有限正数；仅 deep=True）
     """
+    import time
+
+    # T05-O：入口 monotonic 时点必须早于预算验证 import（import 耗时计入同一预算），
+    # 验证成功后只用该入口时点换算截止一次，绝不从验证/配置/扫描之后重起钟。
+    _entry_at = time.monotonic() if budget_seconds is not None else None
+    _budget_seconds = None
+    if budget_seconds is not None:
+        from src.core.benzong.batch_scorer import budget_descriptor
+        _budget_desc = budget_descriptor(budget_seconds)
+        if _budget_desc is None:
+            # 与 REPL/CLI 同门：坏预算在配置/账户/引擎/扫描前显式拒绝，零业务。
+            console.print("  [red][!] 预算参数无效（需有限正数秒）；本次未开始扫描"
+                          "（不加载配置/账户、不扫描、不落盘）[/red]")
+            return
+        _budget_seconds = _budget_desc["budget_seconds"]
+        if deep is not True:
+            console.print("  [!] 该命令不支持 --budget（预算仅用于 scan market deep "
+                          "自动深度分析）；本次未执行")
+            return
+    deadline = (None if _budget_seconds is None
+                else _entry_at + _budget_seconds)
+
+    def _expired() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
+
+    def _stop(stage: str) -> None:
+        console.print(f"  ⏱ 启动预算已到期：{stage}；本次不再开始后续阶段")
+        console.print("  未开始的阶段不会启动（已完成的调用保留；非强制中断、非费用上限）")
+
+    if deadline is not None:
+        console.print(
+            f"  启动预算：{_budget_seconds:g} 秒（scan market deep；从本次扫描入口计时，"
+            "模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；"
+            "到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按只启动）；"
+            "准备阶段可能超出预算——非强制中断、非费用上限）")
+    elif deep:
+        console.print(
+            "  可选时限：命令末尾可加 --budget 600（默认不启用；"
+            "仅 scan market deep 自动深度分析支持；到期不再开始新股票，当前股票会跑完；"
+            "准备阶段可能超出——非强制中断、非费用上限）")
+
+    if _expired():
+        _stop("入口校验后（尚未导入业务模块/读取配置）")
+        return
+
     from src.scanner.scanner_engine import ScannerEngine
     from src.data.portfolio import PortfolioManager
 
+    if _expired():
+        _stop("业务模块导入后（尚未读取配置）")
+        return
+
     config = load_config()
+    if _expired():
+        _stop("配置加载后（尚未读取账户/构造扫描引擎）")
+        return
+
     scanner_cfg = config.get("scanner", {})
     ai_config = config.get("ai", None)
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
@@ -3084,6 +3152,9 @@ def scan_market(
     if scanner_cfg.get("auto_exclude_holdings", True):
         try:
             pm = PortfolioManager()
+            if _expired():
+                _stop("账户管理器构造后（尚未读取持仓请求）")
+                return
             # O0/Y2 同类接线：排除集经同一请求快照形成（账本确定有仓 ∪ 投影代码）
             # ——账本独有持仓同样不进扫描推荐
             _entries, _ = pm.request_account_facts().holding_entries()
@@ -3091,6 +3162,10 @@ def scan_market(
         except Exception as e:
             # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
             logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
+
+    if _expired():
+        _stop("账户准备后（尚未构造扫描引擎）")
+        return
 
     # 创建Scanner引擎
     entry_exit_config = config.get("entry_exit", None)
@@ -3104,6 +3179,9 @@ def scan_market(
         cache_ttl=scanner_cfg.get("cache_ttl", 300),
         entry_exit_config=entry_exit_config,
     )
+    if _expired():
+        _stop("扫描引擎构造后（尚未解析规则）")
+        return
 
     theme_query = market_query
     effective_rule = rule_name or "healthy_pullback"
@@ -3114,10 +3192,16 @@ def scan_market(
         else:
             theme_query = effective_rule
             effective_rule = "healthy_pullback"
+        if _expired():
+            _stop("主题/规则解析后（尚未校验规则/查询大盘）")
+            return
 
     # ===== Step 1: 快速初筛 =====
     # 规则名模糊匹配
     resolved_name = engine.resolve_rule_name(effective_rule)
+    if _expired():
+        _stop("规则校验后（尚未展示规则/查询大盘）")
+        return
     if not resolved_name:
         console.print(f"[red]未找到规则 '{effective_rule}'[/red]")
         console.print("\n可用规则:")
@@ -3134,25 +3218,41 @@ def scan_market(
 
     rule_display = rule_info["display_name"] if rule_info else resolved_name
     console.print(f"\n[bold cyan]全市场扫描[/bold cyan] — {rule_display}")
+    if _expired():
+        _stop("规则展示后（尚未查询大盘/初筛）")
+        return
 
     # v0.8.4: 大盘环境前置检查
+    AKShareClient = None
     try:
         from src.data.akshare_client import AKShareClient
-        idx = AKShareClient._get_index_trend()
-        if idx:
-            trend = idx.get("trend", "NEUTRAL")
-            trend_cn = {"BULLISH": "多头(🟢 适合积极选股)", "BEARISH": "空头(🔴 控制仓位)", "NEUTRAL": "中性(🟡 谨慎操作)"}.get(trend, trend)
-            trend_color = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(trend, "white")
-            idx_info = f"沪深300: MA20={idx.get('ma20', 0):.0f} MA60={idx.get('ma60', 0):.0f} 趋势={trend_cn}"
-            if idx.get("change_pct") is not None:
-                idx_info += f" 涨跌={idx['change_pct']:+.2f}%"
-            console.print(f"  [{trend_color}]大盘: {idx_info}[/{trend_color}]")
-            if trend == "BEARISH":
-                console.print(f"  [red]⚠ 大盘空头环境，选股需严格风控，建议轻仓或空仓[/red]")
-            elif trend == "NEUTRAL":
-                console.print(f"  [yellow]⚠ 大盘方向不明，建议只选最强趋势的股票[/yellow]")
     except Exception as e:
-        logger.debug(f"大盘环境检查失败: {e}")
+        logger.debug(f"大盘环境模块导入失败: {e}")
+
+    if AKShareClient is not None:
+        if _expired():
+            _stop("大盘模块导入后（尚未查询大盘）")
+            return
+        try:
+            idx = AKShareClient._get_index_trend()
+            if idx:
+                trend = idx.get("trend", "NEUTRAL")
+                trend_cn = {"BULLISH": "多头(🟢 适合积极选股)", "BEARISH": "空头(🔴 控制仓位)", "NEUTRAL": "中性(🟡 谨慎操作)"}.get(trend, trend)
+                trend_color = {"BULLISH": "green", "BEARISH": "red", "NEUTRAL": "yellow"}.get(trend, "white")
+                idx_info = f"沪深300: MA20={idx.get('ma20', 0):.0f} MA60={idx.get('ma60', 0):.0f} 趋势={trend_cn}"
+                if idx.get("change_pct") is not None:
+                    idx_info += f" 涨跌={idx['change_pct']:+.2f}%"
+                console.print(f"  [{trend_color}]大盘: {idx_info}[/{trend_color}]")
+                if trend == "BEARISH":
+                    console.print(f"  [red]⚠ 大盘空头环境，选股需严格风控，建议轻仓或空仓[/red]")
+                elif trend == "NEUTRAL":
+                    console.print(f"  [yellow]⚠ 大盘方向不明，建议只选最强趋势的股票[/yellow]")
+        except Exception as e:
+            logger.debug(f"大盘环境检查失败: {e}")
+
+    if _expired():
+        _stop("大盘环境查询后（尚未开始初筛）")
+        return
 
     # 显示缓存状态
     cache_status = engine.market_cache.get_cache_status()
@@ -3167,12 +3267,34 @@ def scan_market(
     if theme_query:
         console.print(f"  主题词: {theme_query}")
 
-    with console.status("扫描中..."):
-        candidates, scan_info = engine.quick_scan(
-            rule_name=effective_rule,
-            market_query=theme_query,
-            exclude_codes=exclude_codes,
-        )
+    if _expired():
+        _stop("准备提示输出后（尚未开始初筛）")
+        return
+
+    try:
+        with console.status("扫描中..."):
+            if _expired():
+                _stop("扫描状态启动后（尚未开始初筛）")
+                return
+            _quick_result = engine.quick_scan(
+                rule_name=effective_rule,
+                market_query=theme_query,
+                exclude_codes=exclude_codes,
+            )
+    except Exception as e:
+        if deadline is None:
+            raise
+        console.print(f"[red]扫描失败: {e}[/red]")
+        console.print("  本次未确认候选完整：不覆盖上次有效扫描、不落盘、不进入深度分析")
+        return
+
+    if deadline is not None and not (
+            isinstance(_quick_result, tuple) and len(_quick_result) == 2
+            and isinstance(_quick_result[0], list)
+            and isinstance(_quick_result[1], dict)):
+        console.print("[red]扫描返回结构未知：本次不覆盖上次有效扫描、不落盘、不进入深度分析[/red]")
+        return
+    candidates, scan_info = _quick_result
 
     if "error" in scan_info:
         console.print(f"[red]扫描失败: {scan_info['error']}[/red]")
@@ -3190,24 +3312,69 @@ def scan_market(
     need_fallback = bool(theme_query) and (
         scan_info.get("fallback_unfiltered") or not candidates
     )
+    if need_fallback and _expired():
+        console.print("  ⏱ 启动预算已到期：初筛已返回，但必要的主题兜底尚未开始——当前候选不完整")
+        console.print("  本批不开始兜底、不落盘（不写 last_scan/正式扫描报告）、不进入深度分析"
+                      "（已完成的初筛调用保留）")
+        return
     if need_fallback:
         console.print(f"  [dim]主题词未匹配行业/概念，尝试 AI 报股兜底（法C）...[/dim]")
+        if _expired():
+            console.print("  ⏱ 启动预算已到期：主题兜底提示输出后，必要兜底尚未开始——当前候选不完整")
+            console.print("  本批不开始兜底、不落盘（不写 last_scan/正式扫描报告）、不进入深度分析"
+                          "（已完成的初筛调用保留）")
+            return
+        fb_candidates = []
+        _fallback_error = None
         try:
-            fb_candidates, theme_fallback_meta = _scan_market_theme_fallback(
+            _fb_result = _scan_market_theme_fallback(
                 engine, theme_query, resolved_name, exclude_codes, config
             )
-            if fb_candidates:
-                candidates = fb_candidates
-                # 法C 兜底成功：不再显示"回退全市场规则扫描"，total_stocks 改为法C 报股数
-                scan_info["fallback_unfiltered"] = False
-                scan_info["_theme_fallback"] = True
-                scan_info["total_stocks"] = theme_fallback_meta["located_count"]
         except Exception as e:
             logger.warning(f"scan_market 法C兜底异常: {e}")
-            theme_fallback_meta = {"error": f"法C兜底异常: {e}", "located_count": 0,
+            _fallback_error = f"法C兜底异常: {e}"
+            theme_fallback_meta = {"error": _fallback_error, "located_count": 0,
                                    "invalid_count": 0, "has_quote": 0,
                                    "filtered_count": 0, "fallback_all": False, "stocks": []}
+        else:
+            if (isinstance(_fb_result, tuple) and len(_fb_result) == 2
+                    and isinstance(_fb_result[0], list)
+                    and isinstance(_fb_result[1], dict)):
+                fb_candidates, theme_fallback_meta = _fb_result
+                _meta_error = theme_fallback_meta.get("error")
+                if _meta_error:
+                    _fallback_error = str(_meta_error)
+                elif not fb_candidates:
+                    _fallback_error = "主题兜底未返回有效候选"
+            else:
+                _fallback_error = "主题兜底返回结构未知"
+                theme_fallback_meta = {"error": _fallback_error, "located_count": 0,
+                                       "invalid_count": 0, "has_quote": 0,
+                                       "filtered_count": 0, "fallback_all": False, "stocks": []}
 
+        if deadline is not None and not _fallback_error and fb_candidates:
+            candidates = fb_candidates
+            # 法C 兜底成功：不再显示"回退全市场规则扫描"，total_stocks 改为法C 报股数
+            scan_info["fallback_unfiltered"] = False
+            scan_info["_theme_fallback"] = True
+            scan_info["total_stocks"] = theme_fallback_meta.get(
+                "located_count", len(fb_candidates))
+        elif deadline is not None and _fallback_error:
+            # F2：有预算的必需兜底未确认——不得拿未过滤原池冒充本主题完整候选。
+            console.print(f"  [yellow]本批主题候选未确认：{_fallback_error}[/yellow]")
+            console.print("  本次不保存候选快照/历史/报告、不进入深度分析；上次有效扫描保留"
+                          "（仅本卡有预算路径收紧，无预算旧语义不变）")
+            return
+        elif fb_candidates:
+            # 无预算旧 fallback 语义保持：成功返回非空名单时沿旧路径替换原池。
+            candidates = fb_candidates
+            scan_info["fallback_unfiltered"] = False
+            scan_info["_theme_fallback"] = True
+            scan_info["total_stocks"] = theme_fallback_meta.get(
+                "located_count", len(fb_candidates))
+
+    # 候选阶段完成只表示本次必需的初筛/兜底调用均已返回（不证明供应商完整覆盖）；
+    # 最后必需调用即使跨过截止，完整非空候选仍可沿原语义保存，deep 则不再开始。
     if not candidates:
         # 给出详细信息帮助用户理解为什么没有结果
         total = scan_info.get("total_stocks", "?")
@@ -3299,6 +3466,9 @@ def scan_market(
     console.print(table)
 
     # v0.8.7 体验重构 Step1：候选池落盘 + 存状态供 #N 快捷接住
+    # T05-O：真实消费 ScanSaveResult(snapshot, history, timestamp) 与报告空串，
+    # 三项独立报告；只有快照成功才给本批 #N/l all/ba 指引，部分成功不抹成失败。
+    _snapshot_ok = False
     try:
         from src.cli.session_state import save_last_scan, persist_scan_report
         _items = []
@@ -3314,18 +3484,51 @@ def scan_market(
                  ("volume_ratio", "量比"), ("amplitude", "振幅%"), ("amount_yi", "额(亿)")]
         _src = f"scan market {rule_display}"
         _saved = save_last_scan(_items, _src)
-        _rp = persist_scan_report(_items, _src, columns=_cols, timestamp=_saved.timestamp)
+        _snapshot_ok = getattr(_saved, "snapshot", False) is True
+        _history_ok = getattr(_saved, "history", False) is True
+        _saved_ts = getattr(_saved, "timestamp", "") or ""
+        if _snapshot_ok:
+            console.print("  [dim]📝 候选快照已保存：本批 #N / l all / ba 指向本次候选初筛名单[/dim]")
+        else:
+            console.print("  [yellow]候选快照未保存：不要按 #N 或旧名单推断本批；上次有效扫描未被覆盖[/yellow]")
+        if _history_ok:
+            console.print("  [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]")
+        else:
+            console.print("  [yellow]候选历史未记录：scan review 不含本批（上次历史保留）[/yellow]")
+        try:
+            _rp = persist_scan_report(_items, _src, columns=_cols, timestamp=_saved_ts)
+        except Exception as _re:
+            logger.debug(f"scan market 候选报告生成失败（不影响快照/历史事实）: {_re}")
+            _rp = ""
+        _rp = _rp if isinstance(_rp, str) else ""
         if _rp:
-            console.print(f"  [dim]📝 扫描结果已存：{_rp}[/dim]")
-            console.print(f"  [dim]💡 后续：l all 批量深分析全部(简明卡) / ba 批量评分排名[/dim]")
-            console.print(f"  [dim]   或单只：l #1 深分析 / bz #1 评分 / pos add #1 加仓[/dim]")
+            console.print(f"  [dim]📄 候选报告已生成：{_rp}[/dim]")
+        else:
+            console.print("  [yellow]候选报告未生成（不影响以上快照/历史事实）[/yellow]")
     except Exception as _e:
         logger.debug(f"scan market 落盘失败（不影响主流程）: {_e}")
+        console.print("  [yellow]候选保存异常：快照/历史未确认，不覆盖上次有效扫描；"
+                      "不要按旧名单 #N 指引本批[/yellow]")
 
     # ===== Step 2: 深度分析 =====
     # 已分析的代码集合，支持多轮选择
     analyzed_results = []
     remaining_candidates = list(candidates)  # 可分析的候选股
+
+    # T05-O：候选初筛保存与 deep 终态独立。候选已合法保存后即使截止已到也不撤销；
+    # 到期只阻止“开始深度分析/下一只股票”，不把未开始称失败或零分。
+    if deep and _expired():
+        _n = len(candidates)
+        console.print(f"\n  ⏱ 启动预算已到期：候选初筛阶段已返回（{_n} 只），"
+                      f"深度分析未开始（0/{_n} 只）")
+        if _snapshot_ok:
+            console.print("  候选初筛快照已保存（本批 #N / l all / ba 指向初筛名单）；"
+                          "深度分析未完成")
+        else:
+            console.print("  候选快照未保存，不要按旧名单推断本批；深度分析未完成")
+        console.print("  未开始深度分析不等于分析失败或零分；可手工重新发起请求"
+                      "（不会自动续跑、不是零费用）")
+        return
 
     while remaining_candidates:
         if deep:
@@ -3333,6 +3536,11 @@ def scan_market(
             selected_codes = [c.stock_code for c in remaining_candidates]
             console.print(f"\n[bold]自动深度分析 {len(selected_codes)} 只候选股...[/bold]")
             remaining_candidates = []
+            if _expired():
+                console.print("  ⏱ 启动预算已到期：深度分析标题输出后，本次未开始逐只分析")
+                console.print("  候选初筛保存结果不受影响；未开始不等于分析失败或零分；"
+                              "可手工重新发起请求（不会自动续跑、不是零费用）")
+                return
         else:
             # 两步走：让用户选择
             remaining_display = ", ".join(c.stock_code for c in remaining_candidates[:10])
@@ -3367,14 +3575,17 @@ def scan_market(
 
         # 执行深度分析
         ranking_config = config.get("ranking", {})
-        batch_results = engine.deep_analyze(
-            stock_codes=selected_codes,
-            candidates=candidates,
-            ai_enabled=ai_enabled,
-            ai_debug=ai_debug,
-            progress_callback=_scan_progress_callback,
-            ranking_config=ranking_config,
-        )
+        _deep_kwargs = {
+            "stock_codes": selected_codes,
+            "candidates": candidates,
+            "ai_enabled": ai_enabled,
+            "ai_debug": ai_debug,
+            "progress_callback": _scan_progress_callback,
+            "ranking_config": ranking_config,
+        }
+        if deadline is not None:
+            _deep_kwargs["deadline"] = deadline
+        batch_results = engine.deep_analyze(**_deep_kwargs)
         analyzed_results.extend(batch_results)
 
         # 非自动模式且还有候选，展示本轮结果后继续循环
@@ -5040,31 +5251,71 @@ def _scan_progress_callback(step: str, current: int, total: int, message: str):
 
 
 def _display_scan_deep_results(results: list[dict]):
-    """展示深度分析结果排名表（v0.8.0 Phase 4 按综合评分排序）"""
+    """展示深度分析结果排名表（v0.8.0 Phase 4 按综合评分排序）
+
+    T05-O：把“分析返回成功 / 未取得完整分析结果 / 预算未开始”分开展示。
+    - 只有调度器 typed `not_started=True` 且固定 `stop_reason=budget_exhausted`
+      才计入“预算未开始”；缺失/未知/坏返回既不算成功也不算未开始。
+    - 未开始项不是失败/零分；全部未开始不称“全部失败”，部分未开始不影响已处理
+      项的成功/排名展示（排名层此前已只收已处理结果）。
+    """
     if not results:
         return
 
-    success_results = [r for r in results if r.get("success")]
+    valid_rows = []
+    unknown_count = 0
+    for r in results:
+        # F5：只校验可选状态字段的类型/互斥，不做完整 result schema。
+        # success=True 与任何非 False 的 not_started，或与任何非 None 的
+        # stop_reason 同时出现属冲突行（预算未开始原因只属于 typed 未开始后缀），
+        # 不能计成功或预算未开始，显式归入未知/坏返回。
+        conflict = (isinstance(r, dict) and r.get("success") is True
+                    and (("not_started" in r
+                          and r.get("not_started") is not False)
+                         or r.get("stop_reason") is not None))
+        if (isinstance(r, dict) and isinstance(r.get("stock_code"), str)
+                and r.get("stock_code") and not conflict):
+            valid_rows.append(r)
+        else:
+            unknown_count += 1
 
-    if not success_results:
-        console.print("[red]所有股票深度分析均失败[/red]")
-        for r in results:
+    not_started_ids = {
+        id(r) for r in valid_rows
+        if r.get("not_started") is True
+        and r.get("stop_reason") == "budget_exhausted"
+    }
+    not_started = [r for r in valid_rows if id(r) in not_started_ids]
+    processed = [r for r in valid_rows if id(r) not in not_started_ids]
+    success_ids = {id(r) for r in processed if r.get("success") is True}
+    success_results = [r for r in processed if id(r) in success_ids]
+    incomplete = [r for r in processed if id(r) not in success_ids]
+
+    if success_results:
+        has_ranking = any(r.get("ranking") for r in success_results)
+        if has_ranking:
+            _display_ranked_results(success_results)
+        else:
+            _display_unranked_results(success_results)
+
+    console.print(
+        f"  深度分析状态：分析返回成功 {len(success_results)} 只 / "
+        f"未取得完整分析结果 {len(incomplete)} 只 / "
+        f"预算未开始 {len(not_started)} 只")
+
+    if incomplete:
+        codes = "、".join(str(r.get("stock_code")) for r in incomplete)
+        console.print(f"  未取得完整分析结果 {len(incomplete)} 只：{codes}"
+                      "（不细分行情降级/异常）")
+        for r in incomplete:
             if r.get("error"):
-                console.print(f"  {r['stock_code']}: {r['error']}")
-        return
-
-    # 检查是否有排名数据
-    has_ranking = any(r.get("ranking") for r in success_results)
-
-    if has_ranking:
-        _display_ranked_results(success_results)
-    else:
-        _display_unranked_results(success_results)
-
-    # 失败提示
-    failed = [r for r in results if not r.get("success")]
-    if failed:
-        console.print(f"\n  [dim]{len(failed)}只分析失败[/dim]")
+                console.print(f"    {r.get('stock_code')}: {r['error']}")
+    if not_started:
+        codes = "、".join(str(r.get("stock_code")) for r in not_started)
+        console.print(f"  预算未开始 {len(not_started)} 只：{codes}")
+        console.print("  未开始不是分析失败或零分；候选初筛保存结果见前文；"
+                      "可手工重新发起请求（不会自动续跑、非零费用）")
+    if unknown_count:
+        console.print(f"  未知/坏返回 {unknown_count} 条（不计成功或预算未开始）")
 
 
 def _display_ranked_results(success_results: list[dict]):
@@ -5633,6 +5884,64 @@ def scan_events(ai_debug: bool = False):
                 console.print(f"  [bold red]状态干预: {ai_result.force_state}[/bold red]")
 
 
+def _validate_scan_budget_cli(parser, args):
+    """独立 CLI 的 `--budget` 接线门（T05-O）。
+
+    合法入口只有 `--scan [规则/主题] --scan-deep --budget 秒`；缺值/重复/非有限/
+    非正数/粘连未知形状由 argparse/本门在业务前拒绝；与其它动作/参数混用同样拒绝，
+    不能静默忽略。返回已校验的有限正数秒（无 --budget 返回 None）。
+    """
+    raw_list = getattr(args, "budget", None)
+    if raw_list is None:
+        return None
+    import math
+
+    if not isinstance(raw_list, list) or len(raw_list) != 1:
+        parser.error("--budget 只能给一次（重复无效）")
+    text = str(raw_list[0]).strip()
+    try:
+        value = float(text)
+    except (TypeError, ValueError):
+        parser.error("--budget 值无效（需有限正数秒）")
+    if not math.isfinite(value) or value <= 0:
+        parser.error("--budget 值无效（需有限正数秒）")
+    if getattr(args, "scan", None) is None or not getattr(args, "scan_deep", False):
+        parser.error("--budget 仅用于 --scan [规则/主题] --scan-deep 自动深度分析")
+
+    other = []
+    for name in ("file", "live", "backtest", "batch_backtest_codes", "pos_add",
+                 "pos_remove", "name", "price", "scan_list_rules",
+                 "scan_list_industries", "scan_list_concepts", "events", "chat"):
+        if getattr(args, name, None):
+            other.append(name)
+    for name in ("pos_list", "portfolio"):
+        if getattr(args, name, False):
+            other.append(name)
+    if getattr(args, "ratio", 0.20) != 0.20:
+        other.append("ratio")
+    if getattr(args, "start", None):
+        other.append("start")
+    if getattr(args, "end", None):
+        other.append("end")
+    if getattr(args, "capital", 100000.0) != 100000.0:
+        other.append("capital")
+    if getattr(args, "backtest_mode", "framework_strict") != "framework_strict":
+        other.append("backtest_mode")
+    if getattr(args, "layer_mode",
+               "decision_strategy_execution") != "decision_strategy_execution":
+        other.append("layer_mode")
+    for name in ("export_analysis_json", "export_analysis_txt",
+                 "export_layer_comparison_json", "export_layer_comparison_txt",
+                 "export_validation_json", "export_validation_txt",
+                 "export_batch_validation_json", "export_batch_validation_txt"):
+        if getattr(args, name, None):
+            other.append(name)
+    if other:
+        parser.error("--budget 不与其它动作/参数混用（" + "、".join(other)
+                     + "）；本次未开始扫描")
+    return value
+
+
 def main():
     """主入口"""
     import argparse
@@ -5668,6 +5977,7 @@ def main():
     python -m src.cli.main --scan 缩量                                   # 按规则扫描（规则模糊匹配）
     python -m src.cli.main --scan AI                                     # 单个主题词扫描
     python -m src.cli.main --scan AI,半导体,机器人                        # 多个主题词扫描（英文逗号分隔）
+    python -m src.cli.main --scan AI --scan-deep --budget 600           # 自动深度分析可选启动预算
 
 AI配置:
   在 configs/settings.yaml 的 ai 节填写 API Key
@@ -5852,6 +6162,14 @@ AI配置:
         help="扫描时自动执行深度分析（跳过用户选择）"
     )
     scan_group.add_argument(
+        "--budget",
+        action="append",
+        metavar="SECONDS",
+        default=None,
+        help="可选启动预算秒数（有限正数；仅与 --scan ... --scan-deep 自动深度分析同用；"
+             "到期不再开始新股票，当前股票会跑完；非强制中断、非费用上限）"
+    )
+    scan_group.add_argument(
         "--scan-list-rules",
         action="store_true",
         help="列出所有可用的扫描规则"
@@ -5884,6 +6202,9 @@ AI配置:
     )
 
     args = parser.parse_args()
+
+    # T05-O：--budget 只属于 --scan --scan-deep 自动深度分析；坏值/混用在业务前拒绝
+    _cli_scan_budget = _validate_scan_budget_cli(parser, args)
 
     # 根据参数调整日志级别
     if args.debug:
@@ -5959,13 +6280,16 @@ AI配置:
             if len(concepts) > 50:
                 console.print(f"  [dim]... 共{len(concepts)}个概念，仅显示前50个[/dim]")
     elif hasattr(args, 'scan') and args.scan:
-        # 全市场扫描
-        scan_market(
-            rule_name=args.scan or "healthy_pullback",
-            market_query=None,
-            deep=getattr(args, 'scan_deep', False),
-            ai_enabled=not _ai_override.get('disable_ai', False),
-        )
+        # 全市场扫描（无预算保持旧调用形状；显式预算只附加 budget_seconds）
+        _scan_market_kwargs = {
+            "rule_name": args.scan or "healthy_pullback",
+            "market_query": None,
+            "deep": getattr(args, 'scan_deep', False),
+            "ai_enabled": not _ai_override.get('disable_ai', False),
+        }
+        if _cli_scan_budget is not None:
+            _scan_market_kwargs["budget_seconds"] = _cli_scan_budget
+        scan_market(**_scan_market_kwargs)
     elif hasattr(args, 'events') and args.events:
         # 事件驱动扫描
         scan_events(ai_debug=getattr(args, 'debug', False))

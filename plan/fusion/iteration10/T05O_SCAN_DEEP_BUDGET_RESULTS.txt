@@ -1,0 +1,2611 @@
+
+=== red1 stdout_bytes=137158 sha256=fe494f5151ef4430b07a95f45a3ec6c37b8dcdb2887e7a3e2eba07f8275cb10d ===
+FF.FFFFFFFF........F.FFFFFF.FFFFFFF.FFFFFFFFFFFFFFFFFFFFFFFFFF.FFFFFFFFF [ 74%]
+F...F.....FFFFFFFFFFFFFFF                                                [100%]
+================================== FAILURES ===================================
+_______________ test_parse_market_deep_budget_space_and_equals ________________
+
+    def test_parse_market_deep_budget_space_and_equals():
+>       mode, args = start.parse_input("scan market deep --budget 600")
+        ^^^^^^^^^^
+E       TypeError: cannot unpack non-iterable NoneType object
+
+tests\core\test_scan_market_budget.py:380: TypeError
+---------------------------- Captured stdout call -----------------------------
+  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+_______________ test_parse_market_deep_budget_aliases_and_query _______________
+
+    def test_parse_market_deep_budget_aliases_and_query():
+        for text in ("s market deep --budget 600", "scan m deep --budget=600",
+                     "s m deep --budget 600"):
+            parsed = start.parse_input(text)
+>           assert parsed is not None, f"别名入口应支持预算: {text}"
+E           AssertionError: 别名入口应支持预算: s market deep --budget 600
+E           assert None is not None
+
+tests\core\test_scan_market_budget.py:394: AssertionError
+---------------------------- Captured stdout call -----------------------------
+  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+____ test_parse_market_deep_bad_budget_rejected[scan market deep --budget] ____
+
+text = 'scan market deep --budget'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914D70750>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914D71350>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+___ test_parse_market_deep_bad_budget_rejected[scan market deep --budget=] ____
+
+text = 'scan market deep --budget='
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914461E90>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199144ACA10>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+__ test_parse_market_deep_bad_budget_rejected[scan market deep --budget abc] __
+
+text = 'scan market deep --budget abc'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912725CD0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019912727690>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+___ test_parse_market_deep_bad_budget_rejected[scan market deep --budget 0] ___
+
+text = 'scan market deep --budget 0'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914787E90>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914787F10>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+__ test_parse_market_deep_bad_budget_rejected[scan market deep --budget -5] ___
+
+text = 'scan market deep --budget -5'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914C4DD10>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914C4D090>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+__ test_parse_market_deep_bad_budget_rejected[scan market deep --budget nan] __
+
+text = 'scan market deep --budget nan'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912632210>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019912633AD0>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+__ test_parse_market_deep_bad_budget_rejected[scan market deep --budget inf] __
+
+text = 'scan market deep --budget inf'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126D0B90>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126D1D10>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+_ test_parse_market_deep_bad_budget_rejected[scan market deep --budget 60 --budget 90] _
+
+text = 'scan market deep --budget 60 --budget 90'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126DEF90>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126DF310>
+
+    @pytest.mark.parametrize("text", [
+        "scan market deep --budget",
+        "scan market deep --budget=",
+        "scan market deep --budget abc",
+        "scan market deep --budget 0",
+        "scan market deep --budget -5",
+        "scan market deep --budget nan",
+        "scan market deep --budget inf",
+        "scan market deep --budget 60 --budget 90",
+    ])
+    def test_parse_market_deep_bad_budget_rejected(text, monkeypatch, capsys):
+        monkeypatch.setattr(session_state, "get_last_scan", _boom)
+        monkeypatch.setattr(session_state, "resolve_index", _boom)
+        assert start.parse_input(text) is None
+        out = capsys.readouterr().out
+        assert "--budget" in out, out
+>       assert ("无效" in out or "缺少" in out or "只能给一次" in out), out
+E       AssertionError:   [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+E                 预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+E         
+E       assert ('无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '缺少' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n' or '只能给一次' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）\n        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）\n')
+
+tests\core\test_scan_market_budget.py:432: AssertionError
+_________________ test_parse_then_run_cli_market_budget_chain _________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126A8A10>
+
+    def test_parse_then_run_cli_market_budget_chain(monkeypatch):
+        seen = []
+    
+        def fake_scan_market(**kwargs):
+            seen.append(dict(kwargs))
+    
+        monkeypatch.setattr(cli_main, "scan_market", fake_scan_market)
+        parsed = start.parse_input("scan market deep 缩量 --budget=600")
+>       assert parsed is not None
+E       assert None is not None
+
+tests\core\test_scan_market_budget.py:472: AssertionError
+---------------------------- Captured stdout call -----------------------------
+  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）
+        预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[zero] _______
+
+bad = 0
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126B3750>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126B10D0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[neg] ________
+
+bad = -1
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914812CD0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914812ED0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[nan] ________
+
+bad = nan
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199127181D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199127182D0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[inf] ________
+
+bad = inf
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199148033D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914803750>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[str] ________
+
+bad = '60'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199144E8650>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199144E9F10>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+_______ test_run_cli_market_bad_programmatic_budget_zero_business[bool] _______
+
+bad = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912724C90>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019912725CD0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_market_bad_programmatic_budget_zero_business(
+            bad, monkeypatch, capsys):
+        monkeypatch.setattr(cli_main, "scan_market", _boom)
+        start.run_cli("scan_market", {"rule_name": "healthy_pullback",
+                                      "market_query": None, "deep": True,
+                                      "budget": bad})
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_scan_market_budget.py:504: AssertionError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[zero] ___
+
+bad = 0
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914836350>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[neg] ____
+
+bad = -1
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126C85D0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[nan] ____
+
+bad = nan
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001991270B590>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[inf] ____
+
+bad = inf
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914773AD0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[str] ____
+
+bad = '60'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126DF610>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+___ test_scan_market_programmatic_bad_budget_rejected_before_business[bool] ___
+
+bad = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912647E10>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_scan_market_programmatic_bad_budget_rejected_before_business(
+            bad, monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="budget_seconds"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=True,
+                                 budget_seconds=bad)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:527: TypeError
+____________ test_scan_market_budget_requires_deep_before_business ____________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126E6D50>
+
+    def test_scan_market_budget_requires_deep_before_business(monkeypatch):
+        _forbid_market_business(monkeypatch)
+        with pytest.raises(ValueError, match="deep"):
+>           cli_main.scan_market(rule_name="healthy_pullback", deep=False,
+                                 budget_seconds=600.0)
+E           TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:534: TypeError
+________ test_budget_entry_clock_before_validation_import_and_no_reset ________
+
+env = <test_scan_market_budget.Env object at 0x0000019914D3C810>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914D3C3D0>
+
+    def test_budget_entry_clock_before_validation_import_and_no_reset(env, monkeypatch):
+        """入口时点必须在 budget_descriptor 验证 import 之前；import 耗尽后不重起钟。"""
+        import src.core.benzong.batch_scorer as batch_scorer_mod
+        assert callable(batch_scorer_mod.budget_descriptor)
+        clock = AutoClock(step=100.0)
+        monkeypatch.setattr(time, "monotonic", clock)
+        real_import = builtins.__import__
+    
+        def slow_import(name, globals=None, locals=None, fromlist=(), level=0):
+            mod = real_import(name, globals, locals, fromlist, level)
+            if name == "src.core.benzong.batch_scorer" and fromlist and \
+                    "budget_descriptor" in fromlist:
+                clock.advance(600.0)
+            return mod
+    
+        monkeypatch.setattr(builtins, "__import__", slow_import)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:568: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914D3C810>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_________________ test_budget_notice_and_deadline_passthrough _________________
+
+env = <test_scan_market_budget.Env object at 0x0000019914C5E150>
+
+    def test_budget_notice_and_deadline_passthrough(env):
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000, "after_exclude": 4000,
+                                    "elapsed_seconds": 0.1})
+        FakeEngine.deep_result = [_row_success("600001"), _row_success("600002")]
+        FakeConfig.hook = lambda: env.clock.advance(200.0)   # 准备耗时但不重起钟
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:582: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C5E150>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_________ test_no_budget_deep_hint_before_config_and_old_deep_kwargs __________
+
+env = <test_scan_market_budget.Env object at 0x0000019914D56910>
+
+    def test_no_budget_deep_hint_before_config_and_old_deep_kwargs(env):
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        FakeEngine.deep_result = [_row_success("600001")]
+        snapshots = []
+        FakeConfig.hook = lambda: snapshots.append(env.console.text())
+>       out = env.run_market(rule_name="healthy_pullback", deep=True)
+              ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+tests\core\test_scan_market_budget.py:597: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+tests\core\test_scan_market_budget.py:301: in run_market
+    cli_main.scan_market(**kwargs)
+src\cli\main.py:3387: in scan_market
+    _display_scan_deep_results(analyzed_results)
+src\cli\main.py:5062: in _display_scan_deep_results
+    _display_unranked_results(success_results)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+success_results = [{'stock_code': '600001', 'stock_name': '600001名', 'success': True, 'decision_result': namespace(decision=namespace(value='HOLD'), stock=None), ...}]
+
+    def _display_unranked_results(success_results: list[dict]):
+        """展示无排名的深度分析结果（兜底，排名层未启用时使用）"""
+        table = Table(title="深度分析结果", show_lines=False)
+        table.add_column("代码", style="cyan", width=8)
+        table.add_column("名称", style="white", width=10)
+        table.add_column("决策", style="bold", width=6)
+        table.add_column("评分", justify="right", width=6)
+        table.add_column("仓位", width=8)
+        table.add_column("语义", width=6)
+        table.add_column("状态", width=10)
+        table.add_column("阶段", width=6)
+        table.add_column("买卖点", width=18)
+        table.add_column("AI情绪", width=10)
+    
+        buy_count = 0
+        sell_count = 0
+        watch_count = 0
+        hold_count = 0
+    
+        for r in success_results:
+            dr = r.get("decision_result")
+            sd = r.get("strategy_decision")
+            ai_r = r.get("ai_result")
+    
+            decision = dr.decision.value if dr else "?"
+>           score = dr.score if dr else 0
+                    ^^^^^^^^
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'score'
+
+src\cli\main.py:5371: AttributeError
+_________________ test_entry_validation_expiry_blocks_config __________________
+
+env = <test_scan_market_budget.Env object at 0x00000199127065D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199144817D0>
+
+    def test_entry_validation_expiry_blocks_config(env, monkeypatch):
+        clock = AutoClock(step=600.0)
+        monkeypatch.setattr(time, "monotonic", clock)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:610: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x00000199127065D0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+________________ test_config_expiry_blocks_account_and_engine _________________
+
+env = <test_scan_market_budget.Env object at 0x00000199126FF310>
+
+    def test_config_expiry_blocks_account_and_engine(env):
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        FakeConfig.hook = lambda: env.clock.advance(1000.0)
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:621: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x00000199126FF310>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+___________________ test_account_prep_expiry_blocks_engine ____________________
+
+env = <test_scan_market_budget.Env object at 0x00000199126AB510>
+
+    def test_account_prep_expiry_blocks_engine(env):
+        FakeConfig.value = dict(copy.deepcopy(CONFIG),
+                                scanner={"auto_exclude_holdings": True,
+                                         "rules_path": "rules.yaml", "cache_ttl": 300})
+        FakePortfolio.hook = lambda: env.clock.advance(1000.0)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:634: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x00000199126AB510>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+______________ test_engine_construct_expiry_blocks_rule_resolve _______________
+
+env = <test_scan_market_budget.Env object at 0x0000019914D78E90>
+
+    def test_engine_construct_expiry_blocks_rule_resolve(env):
+        FakeEngine.on_init = lambda engine: env.clock.advance(1000.0)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:644: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914D78E90>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+____________ test_rule_resolve_expiry_blocks_next_resolve_and_scan ____________
+
+env = <test_scan_market_budget.Env object at 0x0000019912647BD0>
+
+    def test_rule_resolve_expiry_blocks_next_resolve_and_scan(env):
+        FakeEngine.on_resolve = lambda name: env.clock.advance(1000.0)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:654: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019912647BD0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+__________________ test_index_query_expiry_blocks_quick_scan __________________
+
+env = <test_scan_market_budget.Env object at 0x0000019914C54710>
+
+    def test_index_query_expiry_blocks_quick_scan(env):
+        FakeAK.hook = lambda: env.clock.advance(1000.0)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:665: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C54710>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_______________ test_slow_prep_output_expiry_blocks_quick_scan ________________
+
+env = <test_scan_market_budget.Env object at 0x00000199126866D0>
+
+    def test_slow_prep_output_expiry_blocks_quick_scan(env):
+        def slow_cache_line(text):
+            if "行情缓存" in text:
+                env.clock.advance(1000.0)
+    
+        env.console.on_print = slow_cache_line
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:678: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x00000199126866D0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+______ test_quick_scan_requires_fallback_but_expired_no_fallback_no_save ______
+
+env = <test_scan_market_budget.Env object at 0x0000019914C4D510>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914C4DB90>
+
+    def test_quick_scan_requires_fallback_but_expired_no_fallback_no_save(
+            env, monkeypatch):
+        fallback_calls = []
+    
+        def fake_fallback(*a, **k):
+            fallback_calls.append(1)
+            return [Candidate("600009")], {"error": None}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([], {"total_stocks": 5000,
+                                        "fallback_unfiltered": True})
+        FakeEngine.on_quick = lambda: env.clock.advance(1000.0)
+>       out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:698: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C4D510>
+kwargs = {'rule_name': 'healthy_pullback', 'market_query': 'AI漫剧', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+____ test_quick_scan_last_call_crosses_deadline_saves_but_deep_not_started ____
+
+env = <test_scan_market_budget.Env object at 0x0000019914D7E6D0>
+
+    def test_quick_scan_last_call_crosses_deadline_saves_but_deep_not_started(env):
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000, "after_exclude": 4000,
+                                    "elapsed_seconds": 0.1})
+        FakeEngine.on_quick = lambda: env.clock.advance(1000.0)
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:710: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914D7E6D0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_____ test_fallback_last_call_crosses_deadline_saves_complete_candidates ______
+
+env = <test_scan_market_budget.Env object at 0x0000019914C89D10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914C8A690>
+
+    def test_fallback_last_call_crosses_deadline_saves_complete_candidates(
+            env, monkeypatch):
+        def fake_fallback(*a, **k):
+            env.clock.advance(1000.0)
+            return [Candidate("600009"), Candidate("600010")], {"error": None}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([], {"total_stocks": 5000,
+                                        "fallback_unfiltered": True})
+>       out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:729: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C89D10>
+kwargs = {'rule_name': 'healthy_pullback', 'market_query': 'AI漫剧', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_______ test_fallback_expiry_before_second_stage_does_not_save_partial ________
+
+env = <test_scan_market_budget.Env object at 0x0000019914D5DD90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914D5FB50>
+
+    def test_fallback_expiry_before_second_stage_does_not_save_partial(env, monkeypatch):
+        calls = []
+    
+        def fake_fallback(*a, **k):
+            calls.append(1)
+            return [], {"error": "no stocks"}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([], {"total_stocks": 5000,
+                                        "fallback_unfiltered": True})
+        FakeEngine.on_quick = lambda: env.clock.advance(1000.0)
+>       out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:748: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914D5DD90>
+kwargs = {'rule_name': 'healthy_pullback', 'market_query': 'AI漫剧', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+__________________ test_empty_candidates_do_not_save_or_deep __________________
+
+env = <test_scan_market_budget.Env object at 0x0000019914895C90>
+
+    def test_empty_candidates_do_not_save_or_deep(env):
+        FakeEngine.quick_result = ([], {"total_stocks": 5000, "after_exclude": 4000,
+                                        "elapsed_seconds": 0.1})
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:758: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914895C90>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+___________ test_quick_scan_exception_does_not_overwrite_last_scan ____________
+
+env = <test_scan_market_budget.Env object at 0x0000019914C7CD50>
+
+    def test_quick_scan_exception_does_not_overwrite_last_scan(env):
+        FakeEngine.quick_exc = RuntimeError("supplier boom")
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:766: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C7CD50>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_______ test_quick_scan_unknown_structure_does_not_overwrite_last_scan ________
+
+env = <test_scan_market_budget.Env object at 0x0000019914C39A50>
+
+    def test_quick_scan_unknown_structure_does_not_overwrite_last_scan(env):
+        FakeEngine.quick_result = {"unexpected": "shape"}
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:774: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914C39A50>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+__________ test_snapshot_failure_reports_facts_and_no_new_list_links __________
+
+env = <test_scan_market_budget.Env object at 0x0000019914844510>
+
+    def test_snapshot_failure_reports_facts_and_no_new_list_links(env):
+        _one_candidate(env)
+        FakeSaves.snapshot_ok = False
+        FakeSaves.history_ok = True
+        FakeSaves.report_value = "reports/fake.md"
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:792: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914844510>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_____________ test_all_three_save_failures_reported_independently _____________
+
+env = <test_scan_market_budget.Env object at 0x0000019914D3FBD0>
+
+    def test_all_three_save_failures_reported_independently(env):
+        _one_candidate(env)
+        FakeSaves.snapshot_ok = False
+        FakeSaves.history_ok = False
+        FakeSaves.report_value = ""
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:806: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914D3FBD0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+___________ test_snapshot_ok_history_fail_report_empty_keeps_links ____________
+
+env = <test_scan_market_budget.Env object at 0x0000019914798F50>
+
+    def test_snapshot_ok_history_fail_report_empty_keeps_links(env):
+        _one_candidate(env)
+        FakeSaves.snapshot_ok = True
+        FakeSaves.history_ok = False
+        FakeSaves.report_value = ""
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:819: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914798F50>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_________ test_save_exception_reports_unconfirmed_and_deep_still_runs _________
+
+env = <test_scan_market_budget.Env object at 0x0000019914BD87D0>
+
+    def test_save_exception_reports_unconfirmed_and_deep_still_runs(env):
+        _one_candidate(env)
+        FakeSaves.save_exc = RuntimeError("save boom")
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:828: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914BD87D0>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_____________ test_report_exception_keeps_snapshot_history_facts ______________
+
+env = <test_scan_market_budget.Env object at 0x000001991484B010>
+
+    def test_report_exception_keeps_snapshot_history_facts(env):
+        _one_candidate(env)
+        FakeSaves.report_exc = RuntimeError("report boom")
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:838: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x000001991484B010>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+___________ test_deep_results_partial_display_keeps_candidate_save ____________
+
+env = <test_scan_market_budget.Env object at 0x00000199126D4C50>
+
+    def test_deep_results_partial_display_keeps_candidate_save(env):
+        _one_candidate(env)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000})
+        FakeEngine.deep_result = [_row_success("600001"),
+                                  _row_not_started("600002")]
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:854: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x00000199126D4C50>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+________________ test_deep_results_all_not_started_not_failure ________________
+
+env = <test_scan_market_budget.Env object at 0x0000019914899C10>
+
+    def test_deep_results_all_not_started_not_failure(env):
+        _one_candidate(env)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000})
+        FakeEngine.deep_result = [_row_not_started("600001"),
+                                  _row_not_started("600002")]
+>       out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=600.0)
+
+tests\core\test_scan_market_budget.py:869: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = <test_scan_market_budget.Env object at 0x0000019914899C10>
+kwargs = {'rule_name': 'healthy_pullback', 'deep': True, 'budget_seconds': 600.0}
+
+    def run_market(self, **kwargs):
+>       cli_main.scan_market(**kwargs)
+E       TypeError: scan_market() got an unexpected keyword argument 'budget_seconds'
+
+tests\core\test_scan_market_budget.py:301: TypeError
+_______________ test_display_bad_not_started_shapes_not_counted _______________
+
+env = <test_scan_market_budget.Env object at 0x000001991265E990>
+
+    def test_display_bad_not_started_shapes_not_counted(env):
+        rows = [
+            {"stock_code": "600001", "success": False, "not_started": True,
+             "stop_reason": "other"},
+            {"stock_code": "600002", "success": False, "not_started": "yes",
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600003", "success": True, "not_started": False},
+            {"success": True},                       # 未知/坏返回
+            "garbage",                               # 未知/坏返回
+        ]
+>       cli_main._display_scan_deep_results(rows)
+
+tests\core\test_scan_market_budget.py:887: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\cli\main.py:5047: in _display_scan_deep_results
+    success_results = [r for r in results if r.get("success")]
+                      ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+.0 = <list_iterator object at 0x0000019912698C10>
+
+>   success_results = [r for r in results if r.get("success")]
+                                             ^^^^^
+E   AttributeError: 'str' object has no attribute 'get'
+
+src\cli\main.py:5047: AttributeError
+______________ test_display_mixed_success_incomplete_not_started ______________
+
+env = <test_scan_market_budget.Env object at 0x000001991447FBD0>
+
+    def test_display_mixed_success_incomplete_not_started(env):
+        rows = [_row_success("600001"), _row_incomplete("600002"),
+                _row_not_started("600003")]
+>       cli_main._display_scan_deep_results(rows)
+
+tests\core\test_scan_market_budget.py:899: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\cli\main.py:5062: in _display_scan_deep_results
+    _display_unranked_results(success_results)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+success_results = [{'stock_code': '600001', 'stock_name': '600001名', 'success': True, 'decision_result': namespace(decision=namespace(value='HOLD'), stock=None), ...}]
+
+    def _display_unranked_results(success_results: list[dict]):
+        """展示无排名的深度分析结果（兜底，排名层未启用时使用）"""
+        table = Table(title="深度分析结果", show_lines=False)
+        table.add_column("代码", style="cyan", width=8)
+        table.add_column("名称", style="white", width=10)
+        table.add_column("决策", style="bold", width=6)
+        table.add_column("评分", justify="right", width=6)
+        table.add_column("仓位", width=8)
+        table.add_column("语义", width=6)
+        table.add_column("状态", width=10)
+        table.add_column("阶段", width=6)
+        table.add_column("买卖点", width=18)
+        table.add_column("AI情绪", width=10)
+    
+        buy_count = 0
+        sell_count = 0
+        watch_count = 0
+        hold_count = 0
+    
+        for r in success_results:
+            dr = r.get("decision_result")
+            sd = r.get("strategy_decision")
+            ai_r = r.get("ai_result")
+    
+            decision = dr.decision.value if dr else "?"
+>           score = dr.score if dr else 0
+                    ^^^^^^^^
+E           AttributeError: 'types.SimpleNamespace' object has no attribute 'score'
+
+src\cli\main.py:5371: AttributeError
+__________ test_deep_invalid_deadline_rejected_before_business[bool] __________
+
+bad = True
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914772C90>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914773D10>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(True, id="bool"), pytest.param("1600", id="str"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param(-float("inf"), id="neg_inf"),
+    ])
+    def test_deep_invalid_deadline_rejected_before_business(bad, deep_env,
+                                                            monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+        monkeypatch.setattr(portfolio_mod, "PortfolioManager", _boom)
+        monkeypatch.setattr(scanner_engine, "AKShareClient", _boom)
+        with pytest.raises(ValueError, match="deadline"):
+>           engine.deep_analyze(["600001"], deadline=bad)
+E           TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1041: TypeError
+__________ test_deep_invalid_deadline_rejected_before_business[str] ___________
+
+bad = '1600'
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914798F50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914798D10>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(True, id="bool"), pytest.param("1600", id="str"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param(-float("inf"), id="neg_inf"),
+    ])
+    def test_deep_invalid_deadline_rejected_before_business(bad, deep_env,
+                                                            monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+        monkeypatch.setattr(portfolio_mod, "PortfolioManager", _boom)
+        monkeypatch.setattr(scanner_engine, "AKShareClient", _boom)
+        with pytest.raises(ValueError, match="deadline"):
+>           engine.deep_analyze(["600001"], deadline=bad)
+E           TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1041: TypeError
+__________ test_deep_invalid_deadline_rejected_before_business[nan] ___________
+
+bad = nan
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019913A6DD10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912680A90>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(True, id="bool"), pytest.param("1600", id="str"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param(-float("inf"), id="neg_inf"),
+    ])
+    def test_deep_invalid_deadline_rejected_before_business(bad, deep_env,
+                                                            monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+        monkeypatch.setattr(portfolio_mod, "PortfolioManager", _boom)
+        monkeypatch.setattr(scanner_engine, "AKShareClient", _boom)
+        with pytest.raises(ValueError, match="deadline"):
+>           engine.deep_analyze(["600001"], deadline=bad)
+E           TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1041: TypeError
+__________ test_deep_invalid_deadline_rejected_before_business[inf] ___________
+
+bad = inf
+deep_env = <test_scan_market_budget.DeepEnv object at 0x000001991448DAD0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001991448D610>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(True, id="bool"), pytest.param("1600", id="str"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param(-float("inf"), id="neg_inf"),
+    ])
+    def test_deep_invalid_deadline_rejected_before_business(bad, deep_env,
+                                                            monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+        monkeypatch.setattr(portfolio_mod, "PortfolioManager", _boom)
+        monkeypatch.setattr(scanner_engine, "AKShareClient", _boom)
+        with pytest.raises(ValueError, match="deadline"):
+>           engine.deep_analyze(["600001"], deadline=bad)
+E           TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1041: TypeError
+________ test_deep_invalid_deadline_rejected_before_business[neg_inf] _________
+
+bad = -inf
+deep_env = <test_scan_market_budget.DeepEnv object at 0x000001991441B0D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914D5F350>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(True, id="bool"), pytest.param("1600", id="str"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param(-float("inf"), id="neg_inf"),
+    ])
+    def test_deep_invalid_deadline_rejected_before_business(bad, deep_env,
+                                                            monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+        monkeypatch.setattr(portfolio_mod, "PortfolioManager", _boom)
+        monkeypatch.setattr(scanner_engine, "AKShareClient", _boom)
+        with pytest.raises(ValueError, match="deadline"):
+>           engine.deep_analyze(["600001"], deadline=bad)
+E           TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1041: TypeError
+_______________ test_deep_past_deadline_returns_all_not_started _______________
+
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914E53B50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914E50210>
+
+    def test_deep_past_deadline_returns_all_not_started(deep_env, monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+        monkeypatch.setattr(scanner_engine.ScannerEngine, "_get_orchestrator", _boom)
+>       rows = engine.deep_analyze(["600001", "600002"],
+                                   deadline=deep_env.clock.now - 1)
+E       TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1049: TypeError
+_____________ test_deep_orchestrator_prep_expiry_all_not_started ______________
+
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914C8BB10>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914C8BCD0>
+
+    def test_deep_orchestrator_prep_expiry_all_not_started(deep_env, monkeypatch):
+        engine = deep_env.engine
+        engine._orchestrator = None
+    
+        def slow_orchestrator():
+            deep_env.clock.advance(1000.0)
+            return FakeOrch()
+    
+        monkeypatch.setattr(engine, "_get_orchestrator", slow_orchestrator)
+>       rows = engine.deep_analyze(["600001", "600002"],
+                                   deadline=deep_env.clock.now + 60.0)
+E       TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1067: TypeError
+________________ test_deep_account_prep_expiry_all_not_started ________________
+
+deep_env = <test_scan_market_budget.DeepEnv object at 0x00000199126B3450>
+
+    def test_deep_account_prep_expiry_all_not_started(deep_env):
+        FakeDeepPortfolio.hook = lambda: deep_env.clock.advance(1000.0)
+>       rows = deep_env.engine.deep_analyze(["600001"],
+                                            deadline=deep_env.clock.now + 60.0)
+E       TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1076: TypeError
+_______________ test_deep_progress_callback_expiry_skips_fetch ________________
+
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914C9A150>
+
+    def test_deep_progress_callback_expiry_skips_fetch(deep_env):
+        def slow_progress(step, current, total, message):
+            deep_env.clock.advance(60.0)
+    
+>       rows = deep_env.engine.deep_analyze(
+            ["600001", "600002"], progress_callback=slow_progress,
+            deadline=deep_env.clock.now + 60.0)
+E       TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1086: TypeError
+____ test_deep_current_stock_completes_next_not_started_and_rank_excludes _____
+
+deep_env = <test_scan_market_budget.DeepEnv object at 0x0000019914C5F5D0>
+
+    def test_deep_current_stock_completes_next_not_started_and_rank_excludes(deep_env):
+        def slow_first(code):
+            if code == "600001":
+                deep_env.clock.advance(1000.0)
+    
+        FakeDeepAK.on_calc = slow_first
+>       rows = deep_env.engine.deep_analyze(
+            ["600001", "600002"], deadline=deep_env.clock.now + 60.0)
+E       TypeError: ScannerEngine.deep_analyze() got an unexpected keyword argument 'deadline'
+
+tests\core\test_scan_market_budget.py:1099: TypeError
+___________________ test_cli_valid_budget_wires_scan_market ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914D69290>
+
+    def test_cli_valid_budget_wires_scan_market(monkeypatch):
+        _patch_cli_prelude(monkeypatch)
+        seen = []
+        monkeypatch.setattr(cli_main, "scan_market",
+                            lambda **kw: seen.append(dict(kw)))
+        monkeypatch.setattr(sys, "argv",
+                            ["prog", "--scan", "AI", "--scan-deep",
+                             "--budget", "600"])
+>       cli_main.main()
+
+tests\core\test_scan_market_budget.py:1156: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+src\cli\main.py:5886: in main
+    args = parser.parse_args()
+           ^^^^^^^^^^^^^^^^^^^
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\argparse.py:1877: in parse_args
+    self.error(msg % ' '.join(argv))
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\argparse.py:2640: in error
+    self.exit(2, _('%(prog)s: error: %(message)s\n') % args)
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+self = ArgumentParser(prog='prog', usage=None, description='暮云思辨投资助手 - AI驱动的A股交易行为约束系统', formatter_class=<class 'argparse.RawDescriptionHelpFormatter'>, conflict_handler='error', add_help=True)
+status = 2, message = 'prog: error: unrecognized arguments: --budget\n'
+
+    def exit(self, status=0, message=None):
+        if message:
+            self._print_message(message, _sys.stderr)
+>       _sys.exit(status)
+E       SystemExit: 2
+
+C:\Users\Crux\AppData\Roaming\uv\python\cpython-3.11.13-windows-x86_64-none\Lib\argparse.py:2627: SystemExit
+---------------------------- Captured stderr call -----------------------------
+usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+            [--capital CAPITAL]
+            [--backtest-mode {framework_strict,legacy_compatible}]
+            [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+            [--export-analysis-json PATH] [--export-analysis-txt PATH]
+            [--export-layer-comparison-json PATH]
+            [--export-layer-comparison-txt PATH]
+            [--export-validation-json PATH] [--export-validation-txt PATH]
+            [--export-batch-validation-json PATH]
+            [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+            [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+            [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+            [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+            [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+            [--scan-list-concepts] [--events] [--chat]
+            [file]
+prog: error: unrecognized arguments: --budget
+_____________ test_cli_bad_budget_rejected_before_business[argv0] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', '0']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001991484D910>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914BF68D0>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_bad_budget_rejected_before_business[argv1] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', '-5']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001991489A5D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x000001991489BF90>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_bad_budget_rejected_before_business[argv2] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', 'nan']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126BBC10>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126AB210>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_bad_budget_rejected_before_business[argv3] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', 'inf']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126FC310>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126FE610>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_bad_budget_rejected_before_business[argv4] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', 'abc']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914785E10>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914787C90>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_bad_budget_rejected_before_business[argv5] _____________
+
+argv = ['--scan', '--scan-deep', '--budget', '60', '--budget', '90']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914896CD0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914895FD0>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "0"],
+        ["--scan", "--scan-deep", "--budget", "-5"],
+        ["--scan", "--scan-deep", "--budget", "nan"],
+        ["--scan", "--scan-deep", "--budget", "inf"],
+        ["--scan", "--scan-deep", "--budget", "abc"],
+        ["--scan", "--scan-deep", "--budget", "60", "--budget", "90"],
+    ])
+    def test_cli_bad_budget_rejected_before_business(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and ("无效" in err or "只能给一次" in err), err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget --budget 90
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...an-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget --budget 90\n' and ('无效' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...an-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget --budget 90\n' or '只能给一次' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...an-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget --budget 90\n'))
+
+tests\core\test_scan_market_budget.py:1206: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv0] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--portfolio']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126F80D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914846950>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv1] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--pos-list']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914895D90>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019912657D90>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv2] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--events']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914773210>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914773990>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv3] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--live', '600519']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914C54650>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914C55110>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv4] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--backtest', '600519']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000199126FB9D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000199126F8FD0>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv5] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--scan-list-rules']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019914844E90>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914844BD0>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+_____________ test_cli_mixed_actions_with_budget_rejected[argv6] ______________
+
+argv = ['--scan', '--scan-deep', '--budget', '600', '--capital', '200000']
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912647910>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019914896690>
+
+    @pytest.mark.parametrize("argv", [
+        ["--scan", "--scan-deep", "--budget", "600", "--portfolio"],
+        ["--scan", "--scan-deep", "--budget", "600", "--pos-list"],
+        ["--scan", "--scan-deep", "--budget", "600", "--events"],
+        ["--scan", "--scan-deep", "--budget", "600", "--live", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--backtest", "600519"],
+        ["--scan", "--scan-deep", "--budget", "600", "--scan-list-rules"],
+        ["--scan", "--scan-deep", "--budget", "600", "--capital", "200000"],
+    ])
+    def test_cli_mixed_actions_with_budget_rejected(argv, monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        _patch_cli_business(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", *argv])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 2
+        err = capsys.readouterr().err
+>       assert "--budget" in err and "混用" in err, err
+E       AssertionError: usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]
+E                     [--batch-backtest-codes CODES] [-s DATE] [-e DATE]
+E                     [--capital CAPITAL]
+E                     [--backtest-mode {framework_strict,legacy_compatible}]
+E                     [--layer-mode {decision_only,decision_strategy,decision_strategy_execution}]
+E                     [--export-analysis-json PATH] [--export-analysis-txt PATH]
+E                     [--export-layer-comparison-json PATH]
+E                     [--export-layer-comparison-txt PATH]
+E                     [--export-validation-json PATH] [--export-validation-txt PATH]
+E                     [--export-batch-validation-json PATH]
+E                     [--export-batch-validation-txt PATH] [-v] [--verbose] [--debug]
+E                     [--no-ai] [--ai-provider PROVIDER] [--pos-add STOCK_CODE]
+E                     [--pos-list] [--pos-remove STOCK_CODE] [--name STOCK_NAME]
+E                     [--price PRICE] [--ratio RATIO] [-p] [--scan [RULE_OR_QUERY]]
+E                     [--scan-deep] [--scan-list-rules] [--scan-list-industries]
+E                     [--scan-list-concepts] [--events] [--chat]
+E                     [file]
+E         prog: error: unrecognized arguments: --budget
+E         
+E       assert ('--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n' and '混用' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...       [--scan-list-concepts] [--events] [--chat]\n            [file]\nprog: error: unrecognized arguments: --budget\n')
+
+tests\core\test_scan_market_budget.py:1226: AssertionError
+___________________ test_cli_help_mentions_scan_deep_budget ___________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000019912655790>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000019912656350>
+
+    def test_cli_help_mentions_scan_deep_budget(monkeypatch, capsys):
+        _patch_cli_prelude(monkeypatch)
+        monkeypatch.setattr(sys, "argv", ["prog", "--help"])
+        with pytest.raises(SystemExit) as excinfo:
+            cli_main.main()
+        assert excinfo.value.code == 0
+        out = capsys.readouterr().out
+>       assert "--budget" in out
+E       AssertionError: assert '--budget' in 'usage: prog [-h] [-l STOCK_CODE] [-b STOCK_CODE]\n            [--batch-backtest-codes CODES] [-s DATE] [-e DATE]\n   ...PI Key\n  DeepSeek: ai.deepseek.api_key 或环境变量 DEEPSEEK_API_KEY\n  Kimi: ai.kimi.api_key 或环境变量 KIMI_API_KEY\n        \n'
+
+tests\core\test_scan_market_budget.py:1236: AssertionError
+________________ test_help_lists_scan_market_deep_budget_line _________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x000001991448C190>
+
+    def test_help_lists_scan_market_deep_budget_line(capsys):
+        start.show_help()
+        out = capsys.readouterr().out
+        lines = [ln for ln in out.splitlines()
+                 if "scan market deep --budget 600" in ln]
+>       assert lines, "帮助菜单必须列出 scan market deep --budget 600"
+E       AssertionError: 帮助菜单必须列出 scan market deep --budget 600
+E       assert []
+
+tests\core\test_scan_market_budget.py:1247: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_budget_space_and_equals
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_budget_aliases_and_query
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget=]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget abc]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget 0]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget -5]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget nan]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget inf]
+FAILED tests/core/test_scan_market_budget.py::test_parse_market_deep_bad_budget_rejected[scan market deep --budget 60 --budget 90]
+FAILED tests/core/test_scan_market_budget.py::test_parse_then_run_cli_market_budget_chain
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[zero]
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[neg]
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[nan]
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[inf]
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[str]
+FAILED tests/core/test_scan_market_budget.py::test_run_cli_market_bad_programmatic_budget_zero_business[bool]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[zero]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[neg]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[nan]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[inf]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[str]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_programmatic_bad_budget_rejected_before_business[bool]
+FAILED tests/core/test_scan_market_budget.py::test_scan_market_budget_requires_deep_before_business
+FAILED tests/core/test_scan_market_budget.py::test_budget_entry_clock_before_validation_import_and_no_reset
+FAILED tests/core/test_scan_market_budget.py::test_budget_notice_and_deadline_passthrough
+FAILED tests/core/test_scan_market_budget.py::test_no_budget_deep_hint_before_config_and_old_deep_kwargs
+FAILED tests/core/test_scan_market_budget.py::test_entry_validation_expiry_blocks_config
+FAILED tests/core/test_scan_market_budget.py::test_config_expiry_blocks_account_and_engine
+FAILED tests/core/test_scan_market_budget.py::test_account_prep_expiry_blocks_engine
+FAILED tests/core/test_scan_market_budget.py::test_engine_construct_expiry_blocks_rule_resolve
+FAILED tests/core/test_scan_market_budget.py::test_rule_resolve_expiry_blocks_next_resolve_and_scan
+FAILED tests/core/test_scan_market_budget.py::test_index_query_expiry_blocks_quick_scan
+FAILED tests/core/test_scan_market_budget.py::test_slow_prep_output_expiry_blocks_quick_scan
+FAILED tests/core/test_scan_market_budget.py::test_quick_scan_requires_fallback_but_expired_no_fallback_no_save
+FAILED tests/core/test_scan_market_budget.py::test_quick_scan_last_call_crosses_deadline_saves_but_deep_not_started
+FAILED tests/core/test_scan_market_budget.py::test_fallback_last_call_crosses_deadline_saves_complete_candidates
+FAILED tests/core/test_scan_market_budget.py::test_fallback_expiry_before_second_stage_does_not_save_partial
+FAILED tests/core/test_scan_market_budget.py::test_empty_candidates_do_not_save_or_deep
+FAILED tests/core/test_scan_market_budget.py::test_quick_scan_exception_does_not_overwrite_last_scan
+FAILED tests/core/test_scan_market_budget.py::test_quick_scan_unknown_structure_does_not_overwrite_last_scan
+FAILED tests/core/test_scan_market_budget.py::test_snapshot_failure_reports_facts_and_no_new_list_links
+FAILED tests/core/test_scan_market_budget.py::test_all_three_save_failures_reported_independently
+FAILED tests/core/test_scan_market_budget.py::test_snapshot_ok_history_fail_report_empty_keeps_links
+FAILED tests/core/test_scan_market_budget.py::test_save_exception_reports_unconfirmed_and_deep_still_runs
+FAILED tests/core/test_scan_market_budget.py::test_report_exception_keeps_snapshot_history_facts
+FAILED tests/core/test_scan_market_budget.py::test_deep_results_partial_display_keeps_candidate_save
+FAILED tests/core/test_scan_market_budget.py::test_deep_results_all_not_started_not_failure
+FAILED tests/core/test_scan_market_budget.py::test_display_bad_not_started_shapes_not_counted
+FAILED tests/core/test_scan_market_budget.py::test_display_mixed_success_incomplete_not_started
+FAILED tests/core/test_scan_market_budget.py::test_deep_invalid_deadline_rejected_before_business[bool]
+FAILED tests/core/test_scan_market_budget.py::test_deep_invalid_deadline_rejected_before_business[str]
+FAILED tests/core/test_scan_market_budget.py::test_deep_invalid_deadline_rejected_before_business[nan]
+FAILED tests/core/test_scan_market_budget.py::test_deep_invalid_deadline_rejected_before_business[inf]
+FAILED tests/core/test_scan_market_budget.py::test_deep_invalid_deadline_rejected_before_business[neg_inf]
+FAILED tests/core/test_scan_market_budget.py::test_deep_past_deadline_returns_all_not_started
+FAILED tests/core/test_scan_market_budget.py::test_deep_orchestrator_prep_expiry_all_not_started
+FAILED tests/core/test_scan_market_budget.py::test_deep_account_prep_expiry_all_not_started
+FAILED tests/core/test_scan_market_budget.py::test_deep_progress_callback_expiry_skips_fetch
+FAILED tests/core/test_scan_market_budget.py::test_deep_current_stock_completes_next_not_started_and_rank_excludes
+FAILED tests/core/test_scan_market_budget.py::test_cli_valid_budget_wires_scan_market
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv0]
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv1]
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv2]
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv3]
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv4]
+FAILED tests/core/test_scan_market_budget.py::test_cli_bad_budget_rejected_before_business[argv5]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv0]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv1]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv2]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv3]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv4]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv5]
+FAILED tests/core/test_scan_market_budget.py::test_cli_mixed_actions_with_budget_rejected[argv6]
+FAILED tests/core/test_scan_market_budget.py::test_cli_help_mentions_scan_deep_budget
+FAILED tests/core/test_scan_market_budget.py::test_help_lists_scan_market_deep_budget_line
+76 failed, 21 passed in 5.28s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== red1 stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix1red stdout_bytes=22874 sha256=0020385d8c174df81499ca723adff74d6a7ef705b550086ef7f2270e8e62b27f ===
+...................................FF.............FFFF...FFFF........... [ 64%]
+.F.F....................................                                 [100%]
+================================== FAILURES ===================================
+___________ test_budgeted_scan_market_requires_strict_deep_true[1] ____________
+
+deep_value = 1, env = <test_scan_market_budget.Env object at 0x000002D81156B250>
+
+    @pytest.mark.parametrize("deep_value", [1, "false"])
+    def test_budgeted_scan_market_requires_strict_deep_true(deep_value, env):
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        out = env.run_market(rule_name="healthy_pullback", deep=deep_value,
+                             budget_seconds=60.0)
+>       assert "不支持 --budget" in out and "本次未执行" in out
+E       AssertionError: assert ('不支持 --budget' in '  启动预算：60 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按只... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 1 只候选股...[/bold]')
+
+tests\core\test_scan_market_budget.py:564: AssertionError
+_________ test_budgeted_scan_market_requires_strict_deep_true[false] __________
+
+deep_value = 'false'
+env = <test_scan_market_budget.Env object at 0x000002D81156BB10>
+
+    @pytest.mark.parametrize("deep_value", [1, "false"])
+    def test_budgeted_scan_market_requires_strict_deep_true(deep_value, env):
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        out = env.run_market(rule_name="healthy_pullback", deep=deep_value,
+                             budget_seconds=60.0)
+>       assert "不支持 --budget" in out and "本次未执行" in out
+E       AssertionError: assert ('不支持 --budget' in '  启动预算：60 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按只... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 1 只候选股...[/bold]')
+
+tests\core\test_scan_market_budget.py:564: AssertionError
+____ test_gate_portfolio_constructor_exact_deadline_blocks_account_request ____
+
+env = <test_scan_market_budget.Env object at 0x000002D810409910>
+
+    def test_gate_portfolio_constructor_exact_deadline_blocks_account_request(env):
+        FakeConfig.value = dict(copy.deepcopy(CONFIG),
+                                scanner={"auto_exclude_holdings": True,
+                                         "rules_path": "rules.yaml", "cache_ttl": 300})
+        FakePortfolio.on_init = lambda: env.clock.advance(60.0)  # 构造后恰等 deadline
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=60.0)
+        assert FakePortfolio.calls == ["init"], "构造已完成"
+>       assert FakePortfolio.requests == [], "构造后到期不得再 request_account_facts"
+E       AssertionError: 构造后到期不得再 request_account_facts
+E       assert ['request'] == []
+E         
+E         Left contains one more item: 'request'
+E         Use -v to get more diff
+
+tests\core\test_scan_market_budget.py:761: AssertionError
+__________ test_gate_index_module_import_exact_deadline_blocks_query __________
+
+env = <test_scan_market_budget.Env object at 0x000002D8103F8350>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D8103D0650>
+
+    def test_gate_index_module_import_exact_deadline_blocks_query(env, monkeypatch):
+        query_calls = []
+    
+        class GateAK:
+            @staticmethod
+            def _get_index_trend():
+                query_calls.append("query")
+                return None
+    
+        monkeypatch.setattr(akshare_mod, "AKShareClient", GateAK)
+        real_import = builtins.__import__
+        state = {"advanced": False}
+    
+        def slow_import(name, globals=None, locals=None, fromlist=(), level=0):
+            mod = real_import(name, globals, locals, fromlist, level)
+            if (name == "src.data.akshare_client" and fromlist
+                    and "AKShareClient" in fromlist and not state["advanced"]):
+                state["advanced"] = True
+                env.clock.advance(60.0)   # 模块 import 返回后恰等 deadline
+            return mod
+    
+        monkeypatch.setattr(builtins, "__import__", slow_import)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=60.0)
+        assert state["advanced"], "必须发生过 index 模块 import"
+>       assert query_calls == [], "import 后到期不得再查询大盘"
+E       AssertionError: import 后到期不得再查询大盘
+E       assert ['query'] == []
+E         
+E         Left contains one more item: 'query'
+E         Use -v to get more diff
+
+tests\core\test_scan_market_budget.py:793: AssertionError
+_______ test_gate_console_status_enter_exact_deadline_blocks_quick_scan _______
+
+env = <test_scan_market_budget.Env object at 0x000002D8103DF9D0>
+
+    def test_gate_console_status_enter_exact_deadline_blocks_quick_scan(env):
+        env.console.on_status_enter = lambda: env.clock.advance(60.0)
+        FakeEngine.quick_result = ([Candidate("600001")], {"total_stocks": 5000})
+        out = env.run_market(rule_name="healthy_pullback", deep=True,
+                             budget_seconds=60.0)
+>       assert FakeEngine.quick_calls == [], "status.__enter__ 后到期不得再 quick_scan"
+E       AssertionError: status.__enter__ 后到期不得再 quick_scan
+E       assert [{'rule': 'he...lude': set()}] == []
+E         
+E         Left contains one more item: {'rule': 'healthy_pullback', 'query': None, 'exclude': set()}
+E         Use -v to get more diff
+
+tests\core\test_scan_market_budget.py:804: AssertionError
+_________ test_gate_fallback_title_print_exact_deadline_blocks_helper _________
+
+env = <test_scan_market_budget.Env object at 0x000002D8116E2690>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D8116E1090>
+
+    def test_gate_fallback_title_print_exact_deadline_blocks_helper(env, monkeypatch):
+        calls = []
+        state = {"advanced": False}
+    
+        def fake_fallback(*a, **k):
+            calls.append(1)
+            return [Candidate("600009")], {
+                "error": None, "located_count": 1, "invalid_count": 0,
+                "has_quote": 1, "filtered_count": 1, "fallback_all": False,
+                "stocks": []}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([Candidate("600001")],
+                                   {"total_stocks": 5000,
+                                    "fallback_unfiltered": True})
+    
+        def slow_fallback_title(text):
+            if "AI 报股兜底" in text and not state["advanced"]:
+                state["advanced"] = True
+                env.clock.advance(60.0)   # 兜底提示 print 后恰等 deadline
+    
+        env.console.on_print = slow_fallback_title
+        out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=60.0)
+        assert state["advanced"], "必须打印过主题兜底标题"
+>       assert calls == [], "兜底提示输出后到期不得调用 helper"
+E       AssertionError: 兜底提示输出后到期不得调用 helper
+E       assert [1] == []
+E         
+E         Left contains one more item: 1
+E         Use -v to get more diff
+
+tests\core\test_scan_market_budget.py:834: AssertionError
+_ test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[raise] __
+
+outcome = 'raise'
+env = <test_scan_market_budget.Env object at 0x000002D8103BA9D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D8103A7110>
+
+    @pytest.mark.parametrize("outcome", ["raise", "empty", "error", "unknown"])
+    def test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep(
+            outcome, env, monkeypatch):
+        """F2：有预算且需要主题兜底时，异常/空/error/未知结构都不得拿未过滤原池冒充。"""
+        def fake_fallback(*a, **k):
+            if outcome == "raise":
+                raise RuntimeError("helper boom")
+            if outcome == "empty":
+                return [], {"error": None, "located_count": 0, "invalid_count": 0,
+                            "has_quote": 0, "filtered_count": 0,
+                            "fallback_all": False, "stocks": []}
+            if outcome == "error":
+                return [], {"error": "AI unavailable", "located_count": 0,
+                            "invalid_count": 0, "has_quote": 0,
+                            "filtered_count": 0, "fallback_all": False, "stocks": []}
+            return {"unexpected": "shape"}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000,
+                                    "fallback_unfiltered": True})
+        out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+>       assert "本批主题候选未确认" in out
+E       AssertionError: assert '本批主题候选未确认' in '  启动预算：600 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 2 只候选股...[/bold]'
+
+tests\core\test_scan_market_budget.py:924: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-10-28 01:26:08,585 - src.cli.main - WARNING - scan_market 法C兜底异常: helper boom
+------------------------------ Captured log call ------------------------------
+WARNING  src.cli.main:main.py:3318 scan_market 法C兜底异常: helper boom
+_ test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[empty] __
+
+outcome = 'empty'
+env = <test_scan_market_budget.Env object at 0x000002D810423390>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D810421E50>
+
+    @pytest.mark.parametrize("outcome", ["raise", "empty", "error", "unknown"])
+    def test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep(
+            outcome, env, monkeypatch):
+        """F2：有预算且需要主题兜底时，异常/空/error/未知结构都不得拿未过滤原池冒充。"""
+        def fake_fallback(*a, **k):
+            if outcome == "raise":
+                raise RuntimeError("helper boom")
+            if outcome == "empty":
+                return [], {"error": None, "located_count": 0, "invalid_count": 0,
+                            "has_quote": 0, "filtered_count": 0,
+                            "fallback_all": False, "stocks": []}
+            if outcome == "error":
+                return [], {"error": "AI unavailable", "located_count": 0,
+                            "invalid_count": 0, "has_quote": 0,
+                            "filtered_count": 0, "fallback_all": False, "stocks": []}
+            return {"unexpected": "shape"}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000,
+                                    "fallback_unfiltered": True})
+        out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+>       assert "本批主题候选未确认" in out
+E       AssertionError: assert '本批主题候选未确认' in '  启动预算：600 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 2 只候选股...[/bold]'
+
+tests\core\test_scan_market_budget.py:924: AssertionError
+_ test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[error] __
+
+outcome = 'error'
+env = <test_scan_market_budget.Env object at 0x000002D8119C4550>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D810421A90>
+
+    @pytest.mark.parametrize("outcome", ["raise", "empty", "error", "unknown"])
+    def test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep(
+            outcome, env, monkeypatch):
+        """F2：有预算且需要主题兜底时，异常/空/error/未知结构都不得拿未过滤原池冒充。"""
+        def fake_fallback(*a, **k):
+            if outcome == "raise":
+                raise RuntimeError("helper boom")
+            if outcome == "empty":
+                return [], {"error": None, "located_count": 0, "invalid_count": 0,
+                            "has_quote": 0, "filtered_count": 0,
+                            "fallback_all": False, "stocks": []}
+            if outcome == "error":
+                return [], {"error": "AI unavailable", "located_count": 0,
+                            "invalid_count": 0, "has_quote": 0,
+                            "filtered_count": 0, "fallback_all": False, "stocks": []}
+            return {"unexpected": "shape"}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000,
+                                    "fallback_unfiltered": True})
+        out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+>       assert "本批主题候选未确认" in out
+E       AssertionError: assert '本批主题候选未确认' in '  启动预算：600 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 2 只候选股...[/bold]'
+
+tests\core\test_scan_market_budget.py:924: AssertionError
+_ test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[unknown] _
+
+outcome = 'unknown'
+env = <test_scan_market_budget.Env object at 0x000002D81038F210>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000002D8103A4050>
+
+    @pytest.mark.parametrize("outcome", ["raise", "empty", "error", "unknown"])
+    def test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep(
+            outcome, env, monkeypatch):
+        """F2：有预算且需要主题兜底时，异常/空/error/未知结构都不得拿未过滤原池冒充。"""
+        def fake_fallback(*a, **k):
+            if outcome == "raise":
+                raise RuntimeError("helper boom")
+            if outcome == "empty":
+                return [], {"error": None, "located_count": 0, "invalid_count": 0,
+                            "has_quote": 0, "filtered_count": 0,
+                            "fallback_all": False, "stocks": []}
+            if outcome == "error":
+                return [], {"error": "AI unavailable", "located_count": 0,
+                            "invalid_count": 0, "has_quote": 0,
+                            "filtered_count": 0, "fallback_all": False, "stocks": []}
+            return {"unexpected": "shape"}
+    
+        monkeypatch.setattr(cli_main, "_scan_market_theme_fallback", fake_fallback)
+        FakeEngine.quick_result = ([Candidate("600001"), Candidate("600002")],
+                                   {"total_stocks": 5000,
+                                    "fallback_unfiltered": True})
+        out = env.run_market(rule_name="healthy_pullback", market_query="AI漫剧",
+                             deep=True, budget_seconds=600.0)
+>       assert "本批主题候选未确认" in out
+E       AssertionError: assert '本批主题候选未确认' in '  启动预算：600 秒（scan market deep；从本次扫描入口计时，模块导入/配置/账户/引擎/规则/大盘查询/缓存预览/初筛及必要的主题兜底都计入；到期不再开始新阶段或新股票，已开始的阶段/当前股票会跑完（逐只深度分析按... [dim]🧾 候选历史已记录（scan review 可复盘本批）[/dim]\n  [dim]📄 候选报告已生成：reports/fake-scan.md[/dim]\n\n[bold]自动深度分析 2 只候选股...[/bold]'
+
+tests\core\test_scan_market_budget.py:924: AssertionError
+---------------------------- Captured stderr call -----------------------------
+2026-10-28 01:26:08,667 - src.cli.main - WARNING - scan_market 法C兜底异常: not enough values to unpack (expected 2, got 1)
+------------------------------ Captured log call ------------------------------
+WARNING  src.cli.main:main.py:3318 scan_market 法C兜底异常: not enough values to unpack (expected 2, got 1)
+______ test_display_no_success_incomplete_plus_not_started_no_all_failed ______
+
+env = <test_scan_market_budget.Env object at 0x000002D811AC5AD0>
+
+    def test_display_no_success_incomplete_plus_not_started_no_all_failed(env):
+        """F3：无成功时 [旧 successFalse/未取得完整] + [typed 未开始] 不得称全失败。"""
+        rows = [_row_incomplete("600001", error="无法获取技术指标（K线数据缺失）"),
+                _row_not_started("600002")]
+        cli_main._display_scan_deep_results(rows)
+        out = env.console.text()
+>       assert "所有股票深度分析均失败" not in out
+E       AssertionError: assert '所有股票深度分析均失败' not in '[red]所有股票深度...不会自动续跑、非零费用）'
+E         
+E         '所有股票深度分析均失败' is contained here:
+E           [red]所有股票深度分析均失败[/red]
+E             深度分析状态：分析返回成功 0 只 / 未取得完整分析结果 1 只 / 预算未开始 1 只
+E             未取得完整分析结果 1 只：600001（不细分行情降级/异常）
+E               600001: 无法获取技术指标（K线数据缺失）
+E             预算未开始 1 只：600002
+E             未开始不是分析失败或零分；候选初筛保存结果见前文；可手工重新发起请求（不会自动续跑、非零费用）
+
+tests\core\test_scan_market_budget.py:1095: AssertionError
+_______ test_display_conflicting_success_and_not_started_fields_unknown _______
+
+env = <test_scan_market_budget.Env object at 0x000002D811AC7310>
+
+    def test_display_conflicting_success_and_not_started_fields_unknown(env):
+        """F5：successTrue 与 typed/非法 not_started 冲突行必须显式未知，不能计成功/未开始。"""
+        rows = [
+            {"stock_code": "600001", "success": True, "not_started": True,
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600002", "success": True, "not_started": "yes"},
+        ]
+        cli_main._display_scan_deep_results(rows)
+        out = env.console.text()
+>       assert "分析返回成功 0 只" in out
+E       AssertionError: assert '分析返回成功 0 只' in '<rich.table.Table object at 0x000002D811AC58D0>\n\n  操作建议: [cyan]HOLD×1[/cyan]\n  深度分析状态：分析返回成功 1 只 / 未取得完整分析结果 0 只 / 预算未开始 1 只\n  预算未开始 1 只：600001\n  未开始不是分析失败或零分；候选初筛保存结果见前文；可手工重新发起请求（不会自动续跑、非零费用）'
+
+tests\core\test_scan_market_budget.py:1130: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_scan_market_requires_strict_deep_true[1]
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_scan_market_requires_strict_deep_true[false]
+FAILED tests/core/test_scan_market_budget.py::test_gate_portfolio_constructor_exact_deadline_blocks_account_request
+FAILED tests/core/test_scan_market_budget.py::test_gate_index_module_import_exact_deadline_blocks_query
+FAILED tests/core/test_scan_market_budget.py::test_gate_console_status_enter_exact_deadline_blocks_quick_scan
+FAILED tests/core/test_scan_market_budget.py::test_gate_fallback_title_print_exact_deadline_blocks_helper
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[raise]
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[empty]
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[error]
+FAILED tests/core/test_scan_market_budget.py::test_budgeted_required_fallback_not_confirmed_does_not_save_or_deep[unknown]
+FAILED tests/core/test_scan_market_budget.py::test_display_no_success_incomplete_plus_not_started_no_all_failed
+FAILED tests/core/test_scan_market_budget.py::test_display_conflicting_success_and_not_started_fields_unknown
+12 failed, 100 passed in 3.28s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix1red stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix1final stdout_bytes=1022 sha256=4cc9d4b7de555b103397eaea62333ad99af63f0ebe1a90db7aab4fa0d41c89e9 ===
+........................................................................ [ 10%]
+........................................................................ [ 20%]
+........................................................................ [ 30%]
+........................................................................ [ 40%]
+........................................................................ [ 50%]
+........................................................................ [ 60%]
+........................................................................ [ 70%]
+........................................................................ [ 80%]
+........................................................................ [ 90%]
+..................................................................       [100%]
+714 passed in 8.32s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix1final stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix2red stdout_bytes=4072 sha256=aeb5c44d5a91ef5cdb4004eb109440fd6985edabc16a8df0993d2a362acd5470 ===
+........................................................................ [ 63%]
+....FF....................................                               [100%]
+================================== FAILURES ===================================
+_ test_display_success_with_budget_stop_reason_only_unknown[reason_without_not_started] _
+
+rows = [{'stock_code': '600011', 'success': True, 'stop_reason': 'budget_exhausted'}, {'stock_code': '600012', 'success': True, 'not_started': False, 'stop_reason': 'budget_exhausted'}]
+env = <test_scan_market_budget.Env object at 0x000001ED1908FC90>
+
+    @pytest.mark.parametrize("rows", [
+        [
+            {"stock_code": "600011", "success": True,
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600012", "success": True, "not_started": False,
+             "stop_reason": BUDGET_STOP_REASON},
+        ],
+        [
+            {"stock_code": "600012", "success": True, "not_started": False,
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600011", "success": True,
+             "stop_reason": BUDGET_STOP_REASON},
+        ],
+    ], ids=["reason_without_not_started", "reason_with_not_started_false"])
+    def test_display_success_with_budget_stop_reason_only_unknown(rows, env):
+        """F5 残留：successTrue 携带 stop_reason（not_started 缺失/False）同属状态互斥冲突。"""
+        cli_main._display_scan_deep_results(rows)
+        out = env.console.text()
+>       assert "分析返回成功 0 只" in out
+E       AssertionError: assert '分析返回成功 0 只' in '<rich.table.Table object at 0x000001ED1908E290>\n\n  操作建议: [cyan]HOLD×2[/cyan]\n  深度分析状态：分析返回成功 2 只 / 未取得完整分析结果 0 只 / 预算未开始 0 只'
+
+tests\core\test_scan_market_budget.py:1156: AssertionError
+_ test_display_success_with_budget_stop_reason_only_unknown[reason_with_not_started_false] _
+
+rows = [{'stock_code': '600012', 'success': True, 'not_started': False, 'stop_reason': 'budget_exhausted'}, {'stock_code': '600011', 'success': True, 'stop_reason': 'budget_exhausted'}]
+env = <test_scan_market_budget.Env object at 0x000001ED17EA5510>
+
+    @pytest.mark.parametrize("rows", [
+        [
+            {"stock_code": "600011", "success": True,
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600012", "success": True, "not_started": False,
+             "stop_reason": BUDGET_STOP_REASON},
+        ],
+        [
+            {"stock_code": "600012", "success": True, "not_started": False,
+             "stop_reason": BUDGET_STOP_REASON},
+            {"stock_code": "600011", "success": True,
+             "stop_reason": BUDGET_STOP_REASON},
+        ],
+    ], ids=["reason_without_not_started", "reason_with_not_started_false"])
+    def test_display_success_with_budget_stop_reason_only_unknown(rows, env):
+        """F5 残留：successTrue 携带 stop_reason（not_started 缺失/False）同属状态互斥冲突。"""
+        cli_main._display_scan_deep_results(rows)
+        out = env.console.text()
+>       assert "分析返回成功 0 只" in out
+E       AssertionError: assert '分析返回成功 0 只' in '<rich.table.Table object at 0x000001ED1908D3D0>\n\n  操作建议: [cyan]HOLD×2[/cyan]\n  深度分析状态：分析返回成功 2 只 / 未取得完整分析结果 0 只 / 预算未开始 0 只'
+
+tests\core\test_scan_market_budget.py:1156: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_scan_market_budget.py::test_display_success_with_budget_stop_reason_only_unknown[reason_without_not_started]
+FAILED tests/core/test_scan_market_budget.py::test_display_success_with_budget_stop_reason_only_unknown[reason_with_not_started_false]
+2 failed, 112 passed in 2.42s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix2red stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix2final stdout_bytes=374 sha256=980c67c5f2a63a48634f79c231e076bbc896036db86a60b9d63e71edbf562560 ===
+........................................................................ [ 63%]
+..........................................                               [100%]
+114 passed in 1.26s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix2final stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===

@@ -332,6 +332,8 @@ class ScannerEngine:
         ai_debug: bool = False,
         progress_callback: Optional[Callable] = None,
         ranking_config: Optional[dict] = None,
+        *,
+        deadline: float | None = None,
     ) -> list[dict]:
         """对选定的候选股逐只执行深度分析（走Orchestrator七层）
 
@@ -342,6 +344,12 @@ class ScannerEngine:
             ai_debug: 是否开启AI调试模式
             progress_callback: 进度回调 callback(step, current, total, message)
             ranking_config: 排名层配置（None时使用默认配置）
+            deadline: 可选绝对截止点（调用方已算好的 `time.monotonic()` 值）。
+                None 表示不启用预算、不取 clock；非法值（bool/非数/非有限）在
+                任何业务动作前抛 ValueError；过去的有限时点视为已到期。
+                到期只阻止“开始下一只股票”，已开始取数的股票允许整股跑完；
+                未开始的剩余股票由本调度器标 `not_started=True` /
+                `stop_reason="budget_exhausted"`，绝不从缺失/未知结果倒推。
 
         Returns:
             分析结果列表，每项为 dict:
@@ -356,8 +364,25 @@ class ScannerEngine:
                 "candidate": Optional[ScanCandidate],
                 "ranking": Optional[RankingResult],  # 排名结果
                 "error": Optional[str],
+                "not_started": bool,               # 仅预算未开始时出现
+                "stop_reason": str,               # "budget_exhausted"
             }
         """
+        import math
+
+        # T05-O：deadline 校验必须在任何业务 import/账户/编排器/取数之前；
+        # 不重起钟、不把非法值静默降级成“无预算”。
+        _deadline = None
+        if deadline is not None:
+            if isinstance(deadline, bool) or not isinstance(deadline, (int, float)):
+                raise ValueError("deadline 必须是 time.monotonic() 数值")
+            try:
+                _deadline = float(deadline)
+            except (TypeError, ValueError, OverflowError):
+                raise ValueError("deadline 必须是 time.monotonic() 数值")
+            if not math.isfinite(_deadline):
+                raise ValueError("deadline 必须是有限数值")
+
         from src.data.portfolio import PortfolioManager
 
         # 构建 candidates 索引 {stock_code: ScanCandidate}
@@ -367,8 +392,37 @@ class ScannerEngine:
 
         results = []
         total = len(stock_codes)
+
+        def _expired() -> bool:
+            return _deadline is not None and time.monotonic() >= _deadline
+
+        def _mark_not_started(start_index: int) -> None:
+            """只由本调度器确证「从未开始」的后缀生成 typed 预算未开始项。"""
+            for rest_code in stock_codes[start_index:]:
+                results.append({
+                    "stock_code": rest_code,
+                    "success": False,
+                    "candidate": candidate_map.get(rest_code),
+                    "not_started": True,
+                    "stop_reason": "budget_exhausted",
+                })
+
+        if _expired():
+            _mark_not_started(0)
+            logger.info("ScannerEngine: 深度分析入口已到期，全部未开始")
+            return results
+
         orchestrator = self._get_orchestrator()
+        if _expired():
+            _mark_not_started(0)
+            logger.info("ScannerEngine: 编排器准备后已到期，全部未开始")
+            return results
+
         pm = PortfolioManager()
+        if _expired():
+            _mark_not_started(0)
+            logger.info("ScannerEngine: 账户准备后已到期，全部未开始")
+            return results
 
         # v0.8.9.5（彻查批 P3）：持仓一次性读出建索引（原在循环内逐只
         # list_positions()，30 只候选 × N 次全量解析 portfolio.yaml）
@@ -379,9 +433,24 @@ class ScannerEngine:
         except Exception as e:
             logger.warning(f"持仓读取失败，本次深度分析按空仓处理: {e}")
 
+        if _expired():
+            _mark_not_started(0)
+            logger.info("ScannerEngine: 持仓准备后已到期，全部未开始")
+            return results
+
         for i, code in enumerate(stock_codes):
+            # T05-O：每次真实业务调用前、progress 输出后都核同一绝对截止；
+            # 一旦开始本只取数，旧路径允许整股完成，不再插入截止判断。
+            if _expired():
+                _mark_not_started(i)
+                logger.info(f"ScannerEngine: 预算已到期，剩余 {total - i} 只未开始")
+                break
             if progress_callback:
                 progress_callback("deep_analyze", i + 1, total, f"分析 {code}")
+            if _expired():
+                _mark_not_started(i)
+                logger.info(f"ScannerEngine: progress 输出后已到期，剩余 {total - i} 只未开始")
+                break
 
             result = {"stock_code": code, "success": False}
 
@@ -468,18 +537,25 @@ class ScannerEngine:
             results.append(result)
 
         success_count = sum(1 for r in results if r["success"])
+        processed_results = [r for r in results if r.get("not_started") is not True]
+        not_started_results = [r for r in results if r.get("not_started") is True]
         logger.info(
             f"ScannerEngine: 深度分析完成 "
             f"{success_count}/{total}只成功"
+            + (f"，预算未开始 {len(not_started_results)} 只"
+               if not_started_results else "")
         )
 
-        # 排名层：对深度分析结果按四维评分排序
+        # 排名层：只对已处理结果按四维评分排序；预算未开始项排除后再原样附回，
+        # 不改排名算法/分数，也不把未开始项当失败或零分参与排名。
         if ranking_config is None or ranking_config.get("enabled", True):
-            from src.core.ranking_layer import RankingLayer
-            ranking_layer = RankingLayer(ranking_config)
-            results = ranking_layer.rank(results, ai_enabled=ai_enabled)
+            if processed_results:
+                from src.core.ranking_layer import RankingLayer
+                ranking_layer = RankingLayer(ranking_config)
+                processed_results = ranking_layer.rank(
+                    processed_results, ai_enabled=ai_enabled)
 
-        return results
+        return processed_results + not_started_results
 
     def get_available_rules(self) -> list[dict]:
         """获取可用的规则集列表
