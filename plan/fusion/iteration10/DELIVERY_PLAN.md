@@ -1,5 +1,19 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 2026-10-28 当前有限合同：T05-O scan market 自动deep阶段/逐股启动预算
+
+关联`V1-G7-BATCH-BUDGET`，前置T05-N已交付代码`f0a2425`/文档`5191680`。采用Astra/low只读架构结论：调用边界方案，不传播改quick_scan内部20秒补算/SESSION/缓存接收门。绑定按本计划提交后的实际HEAD；Codex合同/独立验收/文档/账本/Git，DSH唯一实施/测试。
+
+- 入口仅现有REPL `scan market deep [规则/主题] --budget 600`（含既有s/m别名、`--budget=600`）及独立CLI `--scan ... --scan-deep --budget 600`。普通交互scan market、portfolio scan及其他CLI实际入口带预算在业务前拒绝；CLI多主动作混用预算同样拒绝，不能静默忽略。预算有限正数，bool/缺值/重复/粘连/非法形状按既有门拒绝，解析与程序化`scan_market(..., budget_seconds=None)`同门；不新增--deep别名、确认门或任务账本。
+- 有预算时入口先捕获monotonic时点，再校验/导入/提示/配置/账户/引擎/规则/大盘查询/缓存预览/quick_scan/必要法C兜底，共用一个绝对截止；不重起钟。每个准备调用后、慢输出后及下次真实业务调用前核截止，首次模块导入也计入。无预算保持旧kwargs/调用形状，不新起钟。当前quick_scan或法C各视为允许完成的一个阶段，不保证内部每次请求受到父截止；保留原局部超时门，不承诺到秒返回/强取消/费用上限。
+- “候选阶段完成”只表示本次必需quick_scan/兜底均已返回，不证明供应商完整覆盖或数据资格。若quick_scan到期但仍需法C，不启动兜底，不把部分候选保存；最后必需调用正常返回跨截止时，完整非空候选可沿原语义保存，明确仅为候选初筛、deep未开始。空/异常/结构未知不得覆盖上次有效扫描；快照/历史/报告独立读实际返回值，只有快照确存才引导本批#N/l all/ba。deep部分完成不撤销合法候选保存，也不称深分析已完成。
+- `ScannerEngine.deep_analyze(..., *, deadline=None)`增可选绝对截止，不重起算；非法deadline（bool/非数/非有限）在业务前固定原因拒绝，过去有限时点视为已到期。构造编排器/账户准备前后及每股循环前、progress callback后/取数前核；一旦该股取数已启动，允许整股旧路径完成。不传播到该股内部供应商/AI，不改变账户事实/建议、持仓语义或信号权限。
+- 仅调度器确证未开始的剩余stock_codes沿既有dict增加`not_started=True`、`stop_reason=budget_exhausted`，不从缺失/未知结果倒推；只有类型与固定原因一致才展示预算未开始。排名只收已处理结果，排除未开始项后再附回（RankingLayer.rank已核纯本地，可过期后汇总）；不改排名算法/分数。展示“分析返回成功/未取得完整分析结果/预算未开始”，旧success=False不强细分行情降级/异常；未知或坏返回不计成功或未开始。全未开始不称全失败，部分未开始不计失败/零分；给代码与计数，可提示手工新请求但不称自动续跑/零费用。
+- 用户可发现：正常banner/help列`scan market deep --budget 600`，默认无预算自动deep在首次准备前主动提示。文案明确预算覆盖阶段与逐股启动、当前阶段/股票允许完成，候选保存与deep终态分别显示；不把内部helper名/文件名堆进用户指引。现有非自动交互不新增预算计时/选择语义。
+- DSH所有权：`start.py`、`src/cli/main.py`（仅scan_market、deep展示、CLI参数接线）、`src/scanner/scanner_engine.py`（仅deep_analyze）、新`tests/core/test_scan_market_budget.py`，以及`tests/core/test_batch_budget_parse.py`/`tests/core/test_live_batch_budget.py`（仅必要范围/帮助断言接线，保留普通scan不支持负例）。不改quick_scan、法C内部、ranking算法、session_state、共享超时helper、真实配置/账户/知识库、评分/CACHE_VERSION/缓存键/TTL。不删旧断言或改全局fixture/runner。若需额外文件/新warning映射先报主控修合同，不越界。
+- 先新文件在未修现函数出业务红，缺符号/收集错误分列；假钟覆盖REPL/CLI/程序化坏值零业务/无预算兼容，验证导入/构造/标题/callback恰等截止，quick_scan需/不需兜底与最后调用跨截止，空异常不覆盖、保存三项独立失败，deep准备耗尽/首股跨截止下一股0调用/全未开始与部分混合显示/排名排除未开始项。所有产品测试走未修改review_test_runner完整guard，DSH唯一执行，定向新用例IO三项0；先有界红绿和最小相关矩阵后停写供独立Sol/high复核，不预设重复全量。真实Popen.wait整数退出码、不可覆盖stdout/stderr、真实前后输入及helper/解释器指纹、发行版元数据/未完整pin限制齐备，不把空选或wrapper时间冒作业务红/pytest时间。
+- 保护9文件hash及原218路径/所有他人改动；工程47/98、验收40/111、合同42.0%–68.6%、18/47预计不变，不关闭BATCH-BUDGET/G7/T05/V1。用户额度不足/停止立即禁新派发并stop，不杀共享Host。若必须修改quick_scan内部、账户事实、共享超时/缓存接收或续跑协议，停止相关实施回主控改合同。
+
 ## 2026-10-28 已限定接收：T05-N bz scan 可选启动预算与候选上限
 
 2026-10-28 T05-N限定接收（代码`f0a2425`）：`bz scan`提供可选`--budget <秒>`，默认无隐藏时限，入口与首次导入计入同一截止；到期不启新阶段/评分/回测，当前调用可完成。`limit`默认15、allrules五桶轮询最多min(limit,25)，明确只是评分名单上限；6维=5AI+1规则，实际请求受缓存/主题等影响。部分评分不覆盖有效扫描/报告或开启回测；快照/历史/报告独立提示，只有快照成功给本批快捷名单；回测成功/失败/未开始分列。独立Sol/high阻断清零，先58业务红，追修12+2业务红；此前672相关通过加最终受影响91通过（pytest1.36s，wrapper3.052s，真实exit0、守卫IO0）增量接收，无最终树单次672或全量声明。进度不变，硬期限/物理取消/费用上限/缓存输入资格及G7/T05/V1仍未完成。 [验收回执](T05N_BZSCAN_BUDGET_ACCEPTANCE.json)。
