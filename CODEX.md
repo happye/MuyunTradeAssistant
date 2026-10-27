@@ -1,6 +1,6 @@
 # CODEX.md — 暮云思辨投资助手 Codex 专用配置
 
-当前交接（2026-10-27新停止）：用户额度不足7%继而不足3%，已停新派发/测试。T05-M独立代码复核与全量日志通过，第二次full真实exit=0；产品7文件仍为未提交WIP，最终证据/回执/Git交付未收口。已快照，9保护及原218路径保持；DSH已锁但STOP_PENDING，不杀共享Host。恢复见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-28恢复）：T05-M配置冻结与非秘密指纹已限定接收，最终守卫全量4762通过/12跳过/1排除、真实exit=0；7文件产品交付随本批提交。下一卡T05-N：bz scan可选阶段启动预算与候选上限。旧M任务STOP_PENDING锁保留，不杀用户共享Host。详见[RESUME](plan/fusion/RESUME.md)。
 
 > **单一信源是 [AGENTS.md](AGENTS.md)**——Codex CLI 会自动读取仓库根目录的 AGENTS.md，
 > 本文件不重复其内容（架构/命令/数据源/踩坑警示以 AGENTS.md 为准），只补充 Codex 特有的操作说明。

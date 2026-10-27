@@ -4,6 +4,7 @@ import sys
 import os
 import re
 import json
+import copy
 import logging
 from enum import Enum
 from pathlib import Path
@@ -833,16 +834,43 @@ class LiveOutcome(Enum):
     QUOTE_ONLY = "quote_only"
 
 
+def _live_stock_config_copy(config) -> dict:
+    """live 批冻结配置的逐股独立副本（T05-M）。
+
+    fail-closed：非 dict / 复制失败时抛固定文案异常（不带配置内容与异常正文），由批
+    入口记为单只失败；绝不复用批快照本体——否则本只的 debug/AI 覆盖会泄漏到后续股票。
+    """
+    if not isinstance(config, dict):
+        raise RuntimeError("live 批配置不是字典")
+    try:
+        return copy.deepcopy(config)
+    except Exception as e:
+        # 只记异常类型：配置解析/复制异常可能带出配置正文（含密钥）
+        logger.debug(f"live 批配置逐股副本创建失败（原因类型 {type(e).__name__}）")
+        raise RuntimeError("live 批配置副本创建失败") from None
+
+
 def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False,
-                 compact: bool = False, account_facts=None):
+                 compact: bool = False, account_facts=None, config: dict = None):
     """实时行情分析模式（通过AKShare）
 
     compact=True 时只输出顶部"人话摘要"面板，跳过详细报告与笨总摘要
     （la 批量模式用；单只分析默认 False 保持完整输出）。
 
     T05-L：返回 LiveOutcome（COMPLETE / QUOTE_ONLY）；单只入口忽略返回值、输出不变。
+
+    T05-M：可选 config——live 批入口把本批冻结的有效配置传进来（每只先 deepcopy，
+    再 apply_ai_overrides/debug）。给定时不读盘、不跨股污染批快照或其它股票；
+    默认 None 时保持既有行为（单只 l / -l / chat 照旧每次 load_config）。
+
+    T05-M fix2：`_has_batch_config` 记录"本次分析是否带批冻结配置"，影子捕获据此把
+    本股副本显式传给 capture_shadow —— 否则 _load_capture_switch 会逐股重新读盘，
+    用磁盘 fusion.mode/shadow_capture 决定是否捕获（requested/effective 审计失真），
+    却仍显示冻结 fusion 指纹。单只 config=None 仍保留旧的二次读盘路径。
     """
     
+    _has_batch_config = config is not None
+
     stock_code = normalize_stock_code(stock_code)  # 统一缓存键口径（补前导零，不改其余格式）
 
     from src.data.akshare_client import get_stock_data, AKShareClient
@@ -986,7 +1014,7 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
         else:
             console.print(f"\n[dim]📂 无持仓记录（将从FLAT状态开始分析）[/dim]")
 
-        config = load_config()
+        config = load_config() if config is None else _live_stock_config_copy(config)
         config = apply_ai_overrides(config, ai_overrides or {})
         enabled_skills = config.get("skills", {}).get("enabled", None)
         skills_dir = config.get("skills", {}).get("dir", "./src/skills")
@@ -1043,6 +1071,9 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             from src.core.shadow_diff import capture_shadow
             capture_shadow(result, strategy_decision, execution_eval,
                            pos, packet=_packet, source="l",
+                           # T05-M fix2：批冻结配置时传本股副本（开关与指纹同源，不逐股读盘）；
+                           # 单只 config=None 时保持旧的 capture_shadow 二次读盘路径
+                           config=(config if _has_batch_config else None),
                            quote_as_of=str(getattr(stock_data, "quote_as_of", "") or ""),
                            quote_fetched_at=str(getattr(stock_data, "quote_fetched_at", "") or ""),
                            account_context=acct_ctx)
@@ -4571,19 +4602,40 @@ def _ba_budget_lines(kind, raw_budget, raw_stop_reason,
     return lines
 
 
-def _ba_exec_snapshot_lines(kind, raw) -> list:
-    """ba 执行参数快照的只读展示行（T05-I，纯文本，不解析存库字符串里的 markup）。
+def _batch_config_lines(kind, raw) -> list:
+    """批量 run 的「配置」身份只读展示行（T05-I ba 执行参数快照；T05-M live 指纹）。
 
-    只有 kind=ba 且存库描述通过白名单 schema/键集/类型/范围/hash 重新校验时才展示
-    参数与指纹；旧/缺/坏/被篡改描述一律显示「未冻结」，绝不渲染存库原始字符串。
-    明确有限覆盖：端点/环境/输入数据/prompt 未核定，不作完整有效配置身份、
-    缓存资格或信号授权依据；la/l all/多代码深析本批仍未冻结。
+    按 kind 选同一道读写门（session_state.validate_batch_snapshot）：live 三类只认
+    ``muyun.live.config_fingerprint/v1``，ba 仍只认 batch_scorer 原执行参数快照合同
+    （同门内部的实现未改）；跨 kind/旧/缺/坏/被篡改描述一律显示「未冻结」，绝不渲染
+    存库原始字符串。live 的有限覆盖写在展示里：不证明技能 YAML 内容/数据/提示词/端点
+    身份，也不作缓存资格或信号授权依据。
     """
-    from src.core.benzong.batch_scorer import validate_exec_snapshot
+    from src.cli.session_state import LIVE_BATCH_KINDS, validate_batch_snapshot
+    if kind in LIVE_BATCH_KINDS:
+        verified = validate_batch_snapshot(kind, raw)
+        if verified is None:
+            if raw is None:
+                why = "未记录有效配置指纹"
+                detail = "只读展示，不作配置/数据时点依据"
+            else:
+                why = "校验未通过，已忽略"
+                detail = ("schema/固定范围/64位小写摘要不符；只读展示，"
+                          "不作配置/数据时点依据")
+            return [f"配置: live 批配置未冻结（{why}）", f"    说明: {detail}"]
+        return [
+            f"配置: live 批配置已冻结；指纹={verified['sha256']}",
+            "    范围: 仅白名单非秘密分析参数（decision/skills/event/entry_exit/"
+            "fusion 与 ai 执行项）",
+            "    说明: 技能YAML内容/数据/提示词未核定；不证明完整有效配置身份，"
+            "不作缓存资格/信号授权依据",
+        ]
     if kind != "ba":
-        return ["配置: 未冻结（本批仅 ba 记录执行参数快照）",
-                "    说明: la/l all/多代码深析仍未冻结"]
-    verified = validate_exec_snapshot(raw)
+        return ["配置: 未冻结（只有 ba 与 live 批量记录配置身份）",
+                "    说明: 其它批量命令未记录配置身份"]
+    # ba：与写侧共用 session_state 的同一道 kind 门（其内部仍是 batch_scorer 原合同，
+    # 展示字段/顺序/措辞完全不变）
+    verified = validate_batch_snapshot(kind, raw)
     if verified is None:
         if raw is None:
             why = "未记录有效执行参数快照"
@@ -4613,7 +4665,9 @@ def batch_tasks_cmd():
     只读展示：旧无 run_id 记录标注为旧记录且不补造身份；嵌套坏账本（类型非法/
     坏键/坏值（非字符串或空串）/状态冲突/清单外条目）只标“记录异常/待确认”，不假成功、
     不崩溃、不改写旧文件。ba 的「配置」行只在描述通过白名单 schema/类型/范围/hash
-    校验后展示有限执行参数；旧/缺/坏/篡改描述仍显示未冻结。
+    校验后展示有限执行参数；live 三类（T05-M）只展示通过 live schema/固定 scope/
+    64 位小写摘要校验的配置指纹，并注明技能 YAML 内容/数据/提示词未核定；
+    旧/缺/坏/跨 kind 描述仍显示未冻结。
     T05-J：ba 的「预算」行只展示白名单校验通过的有限秒数与到期策略；「未开始」
     与完成/降级/失败互斥计数，和「未记录结果」分开显示；坏描述/坏原因/冲突条目
     只读隔离，不渲染存库原始字符串。任务记录只描述运行可见性，不改变各命令原
@@ -4704,8 +4758,8 @@ def batch_tasks_cmd():
         run_id = t.get("run_id")
         if isinstance(run_id, str) and run_id:
             console.print(f"  运行: run {run_id}")
-            # T05-I：纯文本输出，存库描述里的任意字符串不作为 markup 解析
-            for _line in _ba_exec_snapshot_lines(
+            # T05-I/T05-M：纯文本输出，存库描述里的任意字符串不作为 markup 解析
+            for _line in _batch_config_lines(
                     t.get("kind"), t.get("exec_snapshot")):
                 console.print(Text("  " + _line))
         else:

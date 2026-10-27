@@ -1,7 +1,7 @@
 {
   "schema_version": 1,
   "scope_revision": "V1-progress-1",
-  "as_of": "2026-10-27",
+  "as_of": "2026-10-28",
   "product_base_commit": "f07b74333c47af1ebe00a1c1b62fe9ba3e64c49b",
   "basis": "existing_contracts_and_acceptance_records_not_full_code_audit",
   "scope_fingerprint": "acac4bccdafe6b60e96c8c7e7ec05ba0a1093e33ea7c750f89317705a40d5dd1",
@@ -1931,9 +1931,13 @@
           {
             "path": "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-L live outcome enum + optional l multi/la/l all start budget partial scope; live config identity/resources/cache input identity remain open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json",
+            "anchor": "T05-M live config freeze and finite non-secret identity accepted only; whole criterion open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K/L accepted; live config identity, resource bounds, other entrances and cache input identity still pending"
+        "basis": "Partial T05-H/I/J/K/L/M accepted; other entry budgets/resources, skill contents/data/prompts and cache input qualification remain pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1962,21 +1966,25 @@
           {
             "path": "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-L live outcome enum + optional l multi/la/l all start budget partial scope; live config identity/resources/cache input identity remain open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json",
+            "anchor": "T05-M live config freeze and finite non-secret identity accepted only; whole criterion open"
           }
         ],
-        "basis": "Partial T05-H/I/J/K/L accepted; live config identity, resource bounds, other entrances and cache input identity still pending"
+        "basis": "Partial T05-H/I/J/K/L/M accepted; other entry budgets/resources, skill contents/data/prompts and cache input qualification remain pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "T05-H/I/J身份、参数快照和ba可选时限，T05-K逐维缓存载荷资格，T05-L live批真实结果与可选启动预算已限定接收；live批配置身份（每股重读配置/重建编排器）、其他入口资源边界、完整有效配置与缓存输入身份仍待，不能由子批替代。",
+          "reason": "T05-H/I/J/K/L/M各有限范围已接收；bz scan等其他入口全链期限与资源、技能内容/数据/提示词身份、完整缓存输入资格仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "用户新额度不足7%继而不足3%已停止。T05-M独立代码复核通过，第二次全量4762/12skip/1deselected且真实child_returncode=0；7文件未提交WIP已快照，先核最终manifest/原生终态、独立证据审核及回执/Git收口，未经新恢复指令不继续。N仅设计未实施；指标不变。"
+      "next_action": "用户额度恢复；T05-M按受测原字节与最终独立证据有限接收。下一T05-N：bz scan可选阶段启动预算、limit一致性与诚实费用说明；先实际HEAD合同再红绿/复核。旧M停止锁保留；指标不变。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2824,6 +2832,57 @@
       },
       "evidence": [
         "plan/fusion/RESUME.md"
+      ]
+    },
+    {
+      "id": "T05M-ACCEPT-20261028",
+      "date": "2026-10-28",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "用户恢复后核既有第二次全量与558指纹/9保护/218路径，独立证据审计PASS；M有限配置冻结范围接收，无新测试、范围/权重/适用性与分数不变。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json"
       ]
     }
   ],

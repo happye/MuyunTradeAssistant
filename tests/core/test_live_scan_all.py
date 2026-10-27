@@ -85,7 +85,9 @@ def test_run_cli_l_all_runs_and_skips_failure(monkeypatch, capsys):
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     calls = []
 
-    def _fake_analyze_live(code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None):
+    def _fake_analyze_live(code, ai_overrides=None, ai_debug=False, compact=False,
+                           account_facts=None, config=None):
+        # T05-M：live 批入口会传本批冻结配置（本用例不核配置内容）
         calls.append((code, compact))
         if code == "600519":
             raise SystemExit  # 模拟数据获取失败（la 同款路径）

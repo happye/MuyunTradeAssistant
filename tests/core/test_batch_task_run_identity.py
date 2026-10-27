@@ -419,7 +419,9 @@ def test_live_multi_entry_binds_run_token(monkeypatch, capsys):
     monkeypatch.setattr(portfolio_mod, "PortfolioManager", pm)
     monkeypatch.setattr(ss, "mark_deep_analyzed", lambda *a, **k: True)
 
-    def fake_analyze(code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None):
+    def fake_analyze(code, ai_overrides=None, ai_debug=False, compact=False,
+                     account_facts=None, config=None):
+        # T05-M：live 批入口会传本批冻结配置；本文件只核 run 身份语义。
         if code == "000001":
             raise SystemExit
         return cli_main.LiveOutcome.COMPLETE   # T05-L：完整分析才记完成

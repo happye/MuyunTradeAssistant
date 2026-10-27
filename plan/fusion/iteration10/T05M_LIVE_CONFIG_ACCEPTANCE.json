@@ -1,0 +1,148 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-28",
+  "status": "ACCEPTED_LIVE_BATCH_CONFIG_FREEZE_AND_NON_SECRET_FINGERPRINT_SCOPE_ONLY",
+  "base_commit": "02f610038567c3c6a2f62197e05c9aebc3f89cd8",
+  "delivery_base_commit": "f5841ac",
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-live-config",
+    "revision": 1,
+    "source": "DELIVERY_PLAN.md T05-M + external bound contract",
+    "task": "muyun-t05m-live-config-20261027",
+    "session": "codex-12114f3b-09bd-4b40-bdac-4e68e28bb49c",
+    "implementer_and_test_owner": "native DSH",
+    "git_owner": "Codex",
+    "formal_bridge_receipt": false,
+    "bound_contract_sha256": "591df16a6551d4dbf3acdbb75eaf03b1ea0102fb668e02f69dbaba7a933a2b1a",
+    "input_json_sha256": "38da21381db99b1c0355d544dc91f18cb337a239879c3636ef9b5ae3a75d160b"
+  },
+  "accepted_scope": [
+    "l multi/la/l all load and deepcopy config once after the existing budget origin and before first analysis; per-stock independent copies include noai/debug overrides",
+    "config load/copy failure aborts before preparation/analysis/task registration; expired-before-freeze does not load config",
+    "analyze_live(config=...) and real shadow capture use the supplied per-stock copy; config=None preserves single-stock disk loading",
+    "white-listed non-secret descriptor has exact schema/scope/sha256 fields, shared kind validator on ledger write and tasks read, startup/tasks display the same full hash and limited scope",
+    "descriptor-only derivation failure preserves frozen execution config with explicit identity-unfrozen display; ba contract unchanged"
+  ],
+  "validation": {
+    "final_punctuation_red_green": "12 failed/179 passed -> 191 passed (6.58s)",
+    "final_related_guarded": "307 passed (9.15s), network/subprocess/real_state all 0",
+    "real_shadow_red_green": "2 failed/170 passed -> 172 passed; related 972 passed with network 278 blocked",
+    "full": {
+      "passed": 4762,
+      "failed": 0,
+      "skipped": 12,
+      "deselected": 1,
+      "pytest_seconds": 494.26,
+      "blocked_io": {
+        "network": 1256,
+        "subprocess": 12,
+        "real_state": 0
+      },
+      "identity": {
+        "label": "final-full-exit-20261027T2032",
+        "phase": "finished",
+        "launcher_pid": 46712,
+        "child_pid": 44532,
+        "started_at": "2026-10-27T20:29:10.399468+08:00",
+        "child_started_at": "2026-10-27T20:29:10.404756+08:00",
+        "ended_at": "2026-10-27T20:37:45.297794+08:00",
+        "cwd": "G:\\Tools\\暮云思辨投资助手",
+        "command": "G:\\Tools\\暮云思辨投资助手\\.venv\\Scripts\\python.exe -B -X utf8 G:\\Tools\\暮云思辨投资助手\\plan\\fusion\\iteration9\\review_test_runner.py tests -vv",
+        "stdout_log": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05m-live-config-20261027\\stage\\full-exitcode-fix\\final-full-exit-20261027T2032.stdout.log",
+        "stderr_log": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05m-live-config-20261027\\stage\\full-exitcode-fix\\final-full-exit-20261027T2032.stderr.log",
+        "stdout_bytes": 557581,
+        "stdout_sha256": "97a4ca60a5e95b08bc5e4ea264a9ccdadfb4adab557ba305415d2687ea8bd1e8",
+        "stderr_bytes": 0,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "child_returncode": 0,
+        "child_returncode_type": "int",
+        "child_returncode_is_int": true
+      },
+      "stdout_sha256": "97a4ca60a5e95b08bc5e4ea264a9ccdadfb4adab557ba305415d2687ea8bd1e8",
+      "stderr_bytes": 0,
+      "command": ".venv/Scripts/python.exe -B -X utf8 plan/fusion/iteration9/review_test_runner.py tests -vv"
+    },
+    "first_full": "4762 passed/12 skipped/1 deselected in 525.73s; child exit was null due to PowerShell redirector collection. Not accepted as exit 0. Original retained; second full followed stdlib Popen.wait probes 0/7.",
+    "bookends": "558 actual before/after entries equal; current and protected file verification independently reviewed separately",
+    "user_visible_proof": "actual full PASSED nodeids assert startup/tasks same fingerprint and scope note; mock-backed display proof, not a live external smoke",
+    "independent_code_review": "prior Sol/high incremental review cleared F1-F6 before full; configured model known, provider execution metadata unavailable",
+    "final_evidence_review": "PASS — 2026-10-28 final incremental evidence review, task_quality_guard configured gpt-6.1-sol/high; provider execution model metadata unavailable.\nRead-only; no new tests or duplicated code review. OS child returncode int0 and raw stdout 4762 PASSED/12 SKIPPED/1 deselected/0 FAILED/0 ERROR verified. stdout SHA97a4ca60a5e95b08bc5e4ea264a9ccdadfb4adab557ba305415d2687ea8bd1e8.\nAll 558 before/after and current entries equal (542 repo, 1 ignored local hash only, 15 external); rollup afacd5f8b48f8022d20fb6ffd65f2c09409c2b27e7903a09ced94539be66fdd1. Seven WIP match tested manifest and stop snapshot. Protected9 equal original baseline; original218 exist (existence only). fix3 green/guard549 inherit after documented alias. All49-index artifacts and final reply hash verified.\nSupplemental contract check PASS: raw bound dsh-contract/v1 asset SHA591df16a6551d4dbf3acdbb75eaf03b1ea0102fb668e02f69dbaba7a933a2b1a; task/session/nativeCwd correct, parsed contract exactly equals input JSON (input raw SHA38da21381db99b1c0355d544dc91f18cb337a239879c3636ef9b5ae3a75d160b). Different hashes correctly represent distinct assets.\nLimits retained: network1256/subprocess12 blocked/real_state0, not zero attempted IO; site-packages not byte-pinned, no complete dynamic fixture proof, testPlan=[] not formal bridge receipt. First full child exit null not accepted as0; native shared Host entire subtree not proven stopped. No measured fee or real external product result claim. G7/T05/V1 remain open.\n"
+  },
+  "evidence": {
+    "source_pins": "T05M_LIVE_CONFIG_SOURCE_PINS.json",
+    "raw_full_stdout": "T05M_LIVE_CONFIG_RESULTS.txt",
+    "external_stage": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05m-live-config-20261027\\stage\\full-exitcode-fix",
+    "external_snapshot": "C:\\Users\\Crux\\AppData\\Local\\Temp\\muyun-t05m-live-config-20261027\\wip-stop-20261027",
+    "final_request": "4f9616e1-f217-41a1-8807-2b273d1a4407",
+    "result_sha256": "490bf534179c83bbdad7aa94935114b2310afda541b66f45256133e98e11f045"
+  },
+  "protection": {
+    "protected9_unchanged": true,
+    "original_flat218_present": true,
+    "flat218_content_hash_proof": false,
+    "unrelated_user_dirty_files_preserved": true
+  },
+  "known_limits": [
+    "finite whitelist config identity only, not skill YAML contents, market data, prompts, cache/PIT qualification",
+    "secret filtering is heuristic; Chinese secret key names not universal; monkey/sk-learn can be over-excluded",
+    "not resource hard limit, physical cancellation or fee cap; no orchestrator reuse across stocks",
+    "site-packages not byte-pinned, static fixture search incomplete; testPlan=[] is not formal bridge run/receipt",
+    "first socket-only diagnostic violated full guard and is retained as noncompliant history, not retroactively accepted",
+    "fix2 red bookends were reconstructed later and initial empty SHA mistake retained; fix3/final bookends actual",
+    "real suppliers/product AI/account effects unverified; blocked IO not zero attempted IO",
+    "G7/T05/V1 and V1-G7-BATCH-BUDGET remain open; T05-N not implemented"
+  ],
+  "stop_history": {
+    "state": "STOP_PENDING",
+    "blocked": true,
+    "cancel_skipped_reason": "foreign-or-unknown-native-activity",
+    "last_request": "COMPLETED seq2139",
+    "shared_host_preserved": true
+  },
+  "progress": {
+    "before": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "after": {
+      "engineering": {
+        "denominator": 98,
+        "met": 47,
+        "unknown": 46,
+        "lower": 47.95918367346939,
+        "upper": 94.89795918367346
+      },
+      "acceptance": {
+        "denominator": 111,
+        "met": 40,
+        "unknown": 7,
+        "lower": 36.03603603603604,
+        "upper": 42.34234234234234
+      },
+      "lower": 41.99760985475271,
+      "upper": 68.6201507630079,
+      "closed": false
+    },
+    "closed_tasks": 18,
+    "total_tasks": 47,
+    "scope_weight_applicability_changed": false
+  }
+}

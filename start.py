@@ -6,6 +6,7 @@
 
 import sys
 import os
+import copy
 import math
 import subprocess
 import time
@@ -2129,18 +2130,26 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
 
 
 
-def _batch_ledger_begin(ss, kind: str, key: str, codes: list, budget=None):
+def _batch_ledger_begin(ss, kind: str, key: str, codes: list, budget=None, snapshot=None):
     """C2/T05-H：登记一次独立批量运行并显示 run 身份；返回令牌（None=记录不可用）。
 
     每次调用都会新建 run_id/roster——不继承旧 run 的完成/失败，也不冒充缓存命中。
     T05-L：budget 为已校验的 live 预算描述；无预算时不传该参数（旧调用方/旧 mock 兼容）。
+    T05-M：snapshot 为该 kind 合法的配置身份描述（live 配置指纹/ba 执行参数快照），
+    只传实际有的参数，保持旧签名在无预算无描述时逐项不变。
     """
-    if budget is None:
+    if budget is None and snapshot is None:
         run_id = ss.batch_task_start(kind, key, codes)
-    else:
+    elif budget is None:
+        run_id = ss.batch_task_start(kind, key, codes, snapshot=snapshot)
+    elif snapshot is None:
         run_id = ss.batch_task_start(kind, key, codes, budget=budget)
+    else:
+        run_id = ss.batch_task_start(kind, key, codes, snapshot=snapshot, budget=budget)
     if run_id:
-        print(f"  任务记录：run {run_id}（配置未冻结；本次独立 run，不继承旧记录）")
+        state = (f"配置已冻结；指纹={snapshot['sha256']}" if snapshot
+                 else "配置未冻结")
+        print(f"  任务记录：run {run_id}（{state}；本次独立 run，不继承旧记录）")
     else:
         print("  [!] 任务记录保存失败：本次进度不会被记录（不影响分析）")
     return run_id
@@ -2241,9 +2250,83 @@ def _dedupe_live_codes(codes) -> list:
     return out
 
 
+# ── T05-M：live 批配置一次冻结与非秘密配置指纹 ─────────────────────
+
+_LIVE_CONFIG_FAILED = ("  配置加载失败：本次未开始分析"
+                       "（未登记任务、未调用分析/AI；请检查配置后重试）")
+_LIVE_CONFIG_NO_FP = ("  配置范围说明：本次配置无法安全派生非秘密指纹，"
+                      "配置身份按未冻结记录（分析仍按本批冻结副本继续）")
+
+
+def _freeze_live_config(load_config, ai_overrides):
+    """在预算起点之后、首只股票之前只加载一次配置并深拷贝冻结（T05-M）。
+
+    返回 (冻结配置, True) 或 (None, False)。失败（读取/解析/非 dict/复制/覆盖）时
+    调用方必须在首只之前终止本次批：不登记 run、不调用分析与 AI。日志只记录异常
+    类型，绝不拼接异常正文——配置解析异常可能带出密钥内容。
+    """
+    try:
+        loaded = load_config()
+    except Exception as e:
+        logger.debug("live 批配置加载失败（本次未开始分析，原因类型 %s）",
+                     type(e).__name__)
+        print(_LIVE_CONFIG_FAILED)
+        return None, False
+    if not isinstance(loaded, dict):
+        logger.debug("live 批配置根不是字典（本次未开始分析，类型 %s）",
+                     type(loaded).__name__)
+        print(_LIVE_CONFIG_FAILED)
+        return None, False
+    try:
+        frozen = copy.deepcopy(loaded)
+    except Exception as e:
+        logger.debug("live 批配置深拷贝失败（本次未开始分析，原因类型 %s）",
+                     type(e).__name__)
+        print(_LIVE_CONFIG_FAILED)
+        return None, False
+    if ai_overrides:
+        # noai 等 REPL 覆盖必须进冻结副本：批内所有股票共用同一份有效配置
+        try:
+            from src.cli.main import apply_ai_overrides
+            frozen = apply_ai_overrides(frozen, ai_overrides)
+        except Exception as e:
+            logger.debug("live 批配置覆盖失败（本次未开始分析，原因类型 %s）",
+                         type(e).__name__)
+            print(_LIVE_CONFIG_FAILED)
+            return None, False
+    return frozen, True
+
+
+def _live_config_descriptor(frozen):
+    """从冻结配置派生 live 配置指纹描述；不可安全派生时返回 None（不冒称已冻结）。"""
+    from src.cli.session_state import derive_live_config_descriptor
+    try:
+        return derive_live_config_descriptor(frozen)
+    except Exception as e:
+        logger.debug("live 批配置指纹派生异常（按未冻结记录，原因类型 %s）",
+                     type(e).__name__)
+        return None
+
+
+def _report_live_config(frozen):
+    """启动行：配置已冻结 + 规范指纹 + 范围说明；返回账本用的指纹描述或 None。
+
+    指纹与 tasks 展示同源（session_state 同一 schema/scope/64 位小写 hex 门）。
+    """
+    desc = _live_config_descriptor(frozen)
+    if desc is None:
+        print(_LIVE_CONFIG_NO_FP)
+        return None
+    print(f"  配置: live 批配置已冻结；指纹={desc['sha256']}"
+          "（本批只加载一次，不逐股重读）")
+    print("  配置范围: 仅白名单非秘密分析参数；技能YAML内容/数据/提示词未核定"
+          "（不授予缓存/信号资格）")
+    return desc
+
+
 def _run_live_batch_loop(ss, analyze_live, ai_overrides, *, kind: str, key: str,
                          entries: list, account_facts, run_id, deadline,
-                         deep_source=None, rec_ok: bool = True) -> dict:
+                         deep_source=None, rec_ok: bool = True, config=None) -> dict:
     """T05-L：live 批逐股循环（l 多代码 / la / l all 共用）。
 
     entries: [(code, 标题)]，已保序去重，与账本 roster 同源。每只：核截止 → 打印
@@ -2253,6 +2336,8 @@ def _run_live_batch_loop(ss, analyze_live, ai_overrides, *, kind: str, key: str,
     - 其它返回值（None/bool/字符串/…）：结果未知——不计成功/失败/未开始、不写账本
     - SystemExit/异常：记失败（单只失败不拖垮批次）
     预算到期只阻止开始后续股票，已开始的分析允许跑完；未开始项只来自本调度器确认。
+    T05-M：config 为本批冻结的有效配置，逐只传给 analyze_live（由它再做逐股深拷贝）；
+    None 表示本批没有冻结配置（冻结前预算已到期，一只也不会开始）。
     """
     from src.cli.main import LiveOutcome
     res = {"complete": [], "quote_only": [], "unknown": [], "failed": [],
@@ -2285,7 +2370,8 @@ def _run_live_batch_loop(ss, analyze_live, ai_overrides, *, kind: str, key: str,
         started.add(code)
         try:
             outcome = analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
-                                   compact=True, account_facts=account_facts)
+                                   compact=True, account_facts=account_facts,
+                                   config=config)
         except SystemExit:
             print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
             res["rec_ok"] = _batch_task_mark(ss, run_id, kind, key, code, False,
@@ -2357,7 +2443,8 @@ def _print_live_batch_summary(res: dict, *, kind: str, total: int, run_id,
                                             else None))
 
 
-def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) -> bool:
+def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict,
+                       load_config=None) -> bool:
     """T04-G：live_* 连贯分发助手（从 run_cli 抽出行为等价一块）。
 
     命中并执行后返回 True；非 live_* mode 返回 False，由 run_cli 继续 elif。
@@ -2365,14 +2452,24 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
     行为锁定：test_t04e_dispatch_golden（含 T04-G0 扩展）。
     T05-L：三个批量入口只把 LiveOutcome.COMPLETE 记成功；可选 --budget 共用同一
     单调截止点（到期不开始下一只，已开始的分析跑完）。
+    T05-M：三个批量入口在预算起点之后、首只股票之前只加载一次配置并深拷贝冻结，
+    并用同一冻结配置派生 live 配置指纹（启动行 + 账本 + tasks 同源）。load_config
+    缺省时按 main.load_config 处理（保持直接调用者的旧签名可用）。
     """
     global _ai_debug
+
+    _load = load_config
+    if _load is None:
+        from src.cli.main import load_config as _load_config
+
+        _load = _load_config
 
     if mode == "live":
         # T05-L：单只深析不支持预算——绕过 run_cli 统一门的直接调用也显式拒绝，不静默忽略
         if isinstance(args, dict) and args.get("budget") is not None:
             print(f"  [!] 单只深析不支持 --budget（{_BUDGET_SCOPE}）")
             return True
+        # T05-M：单只保持既有行为（不传 config，analyze_live 照旧读盘）
         analyze_live(args["stock_code"], ai_overrides=ai_overrides, ai_debug=_ai_debug)
         return True
 
@@ -2397,6 +2494,14 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
                                       after_confirm=False))
         else:
             print(_LIVE_BUDGET_HINT)
+        # T05-M：预算起点之后、首只之前只加载一次配置并深拷贝冻结（含 noai 覆盖）。
+        # 冻结前预算已到期 → 不加载配置，按 T05-L 由调度器登记未开始。
+        _frozen, _config_desc = None, None
+        if not _live_deadline_expired(deadline):
+            _frozen, _frozen_ok = _freeze_live_config(_load, ai_overrides)
+            if not _frozen_ok:
+                return True
+            _config_desc = _report_live_config(_frozen)
         # ISS-088：批量预取行情（新浪批量/东财全市场 1 次请求），逐只分析时
         # get_realtime_quote 直接命中预取映射——N 只行情从 N 次请求压成 1 次
         if not _live_deadline_expired(deadline):
@@ -2409,7 +2514,8 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         # C2/T05-H：批量任务账本（tasks 命令可查进度与失败项）——键含代码集摘要，
         # 防不同代码集同数量碰撞；每次启动新建独立 run，令牌绑定全部逐项 mark
         _tk = "手动多代码 " + ",".join(codes[:4]) + ("…" if len(codes) > 4 else "")
-        run_id = _batch_ledger_begin(_ss, "l", _tk, codes, budget=budget_desc)
+        run_id = _batch_ledger_begin(_ss, "l", _tk, codes, budget=budget_desc,
+                                     snapshot=_config_desc)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
         _acct_facts = None
         if not _live_deadline_expired(deadline):
@@ -2419,7 +2525,7 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
             _ss, analyze_live, ai_overrides, kind="l", key=_tk,
             entries=[(c, c) for c in codes], account_facts=_acct_facts,
             run_id=run_id, deadline=deadline, deep_source="手动多代码",
-            rec_ok=bool(run_id))
+            rec_ok=bool(run_id), config=_frozen)
         _print_live_batch_summary(res, kind="l", total=len(codes), run_id=run_id,
                                   budget_desc=budget_desc)
         return True
@@ -2439,6 +2545,12 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
                 print("  预算到期：尚未读取持仓清单，本次未开始分析"
                       "（持仓名单未知，未登记任务；需要时重跑）")
                 return True
+        # T05-M：预算起点之后、读取持仓/首只之前只加载一次配置并深拷贝冻结。
+        # 冻结失败 → 首只之前终止：不读清单、不登记 run、不调用分析/AI。
+        _frozen, _frozen_ok = _freeze_live_config(_load, ai_overrides)
+        if not _frozen_ok:
+            return True
+        _config_desc = _report_live_config(_frozen)
         from src.data.portfolio import PortfolioManager
         pm = PortfolioManager()
         # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
@@ -2466,7 +2578,8 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
             print(_LIVE_BUDGET_HINT)
         _la_codes = [str(e.stock_code) for e in _uniq]
         _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
-        run_id = _batch_ledger_begin(_ss_la, "la", _tk_la, _la_codes, budget=budget_desc)
+        run_id = _batch_ledger_begin(_ss_la, "la", _tk_la, _la_codes, budget=budget_desc,
+                                     snapshot=_config_desc)
         _la_entries = []
         for e in _uniq:
             _src_tag = "  [账本持仓·投影缺失——成本/比例未知]" if e.from_ledger else ""
@@ -2475,7 +2588,8 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         res = _run_live_batch_loop(
             _ss_la, analyze_live, ai_overrides, kind="la", key=_tk_la,
             entries=_la_entries, account_facts=_acct_facts, run_id=run_id,
-            deadline=deadline, deep_source=None, rec_ok=bool(run_id))
+            deadline=deadline, deep_source=None, rec_ok=bool(run_id),
+            config=_frozen)
         _print_live_batch_summary(res, kind="la", total=len(_la_entries), run_id=run_id,
                                   budget_desc=budget_desc)
         return True
@@ -2547,11 +2661,19 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         # T05-L：l all 在用户确认之后、执行准备（账本/账户快照）之前起算
         deadline = (_monotonic() + budget_desc["budget_seconds"]
                     if budget_desc is not None else None)
+        # T05-M：确认/起算之后、首只之前只加载一次配置并深拷贝冻结。冻结前预算已
+        # 到期 → 不加载配置，按 T05-L 由调度器登记未开始（roster 已知）。
+        _frozen, _config_desc = None, None
+        if not _live_deadline_expired(deadline):
+            _frozen, _frozen_ok = _freeze_live_config(_load, ai_overrides)
+            if not _frozen_ok:
+                return True
+            _config_desc = _report_live_config(_frozen)
         src_label = last.get("source", "?")
         _codes = [str(it["code"]) for it in new_items]
         # C2/T05-H：批量任务账本——每次运行独立 run，令牌绑定全部逐项 mark
         run_id = _batch_ledger_begin(session_state, "l all", src_label, _codes,
-                                     budget=budget_desc)
+                                     budget=budget_desc, snapshot=_config_desc)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
         _acct_facts = None
         if not _live_deadline_expired(deadline):
@@ -2562,7 +2684,8 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         res = _run_live_batch_loop(
             session_state, analyze_live, ai_overrides, kind="l all", key=src_label,
             entries=_scan_entries, account_facts=_acct_facts, run_id=run_id,
-            deadline=deadline, deep_source=src_label, rec_ok=bool(run_id))
+            deadline=deadline, deep_source=src_label, rec_ok=bool(run_id),
+            config=_frozen)
         _print_live_batch_summary(res, kind="l all", total=len(_scan_entries),
                                   run_id=run_id, budget_desc=budget_desc)
         return True
@@ -2887,7 +3010,8 @@ def run_cli(mode: str, args: dict):
     if _no_ai:
         ai_overrides["disable_ai"] = True
 
-    if _dispatch_live_cli(mode, args, analyze_live, ai_overrides):
+    if _dispatch_live_cli(mode, args, analyze_live, ai_overrides,
+                          load_config=load_config):
         pass
 
     elif mode == "scan":

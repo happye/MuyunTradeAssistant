@@ -17,6 +17,7 @@
 - JSONL 历史逐行隔离（M2，v0.8.13）：单行坏编码/截断跳过并计数告警，原文件不动
 """
 
+import hashlib
 import json
 import logging
 import math
@@ -481,19 +482,18 @@ def _new_batch_run_id() -> str:
     return datetime.now().strftime("%Y%m%d-%H%M%S-") + uuid.uuid4().hex
 
 
-def _canonical_batch_snapshot(raw):
-    """执行参数描述的写入端白名单门（T05-I fix2）。
+def _canonical_batch_snapshot(kind, raw):
+    """配置身份描述的写入端按 kind 白名单门（T05-I；T05-M 按 kind 选门）。
 
-    只有通过 batch_scorer 同一口径校验（schema/精确键集/类型/范围/hash，含
-    URL/凭据形状拒绝）的描述才允许落盘，并只保存**规范化副本**——绝不把调用方
-    原始 dict、额外键或秘密写进账本。不可用时返回 None（run 仍登记为未冻结）；
-    校验异常只记固定原因类型，不拼接任意异常正文。
+    只有通过该 kind 同一口径校验（ba = ``muyun.ba.exec_param_snapshot/v1``；
+    live 三类 = ``muyun.live.config_fingerprint/v1``）的描述才允许落盘，并只保存
+    **规范化副本**——绝不把调用方原始 dict、额外键或秘密写进账本。不可用/跨 kind
+    时返回 None（run 仍登记为未冻结）；校验异常只记固定原因类型，不拼接任意异常正文。
     """
     try:
-        from src.core.benzong.batch_scorer import validate_exec_snapshot
-        return validate_exec_snapshot(raw)
+        return validate_batch_snapshot(kind, raw)
     except Exception as e:
-        logger.debug("batch_task_start 执行参数描述校验失败(按未冻结记录，"
+        logger.debug("batch_task_start 配置身份描述校验失败(按未冻结记录，"
                      f"原因类型 {type(e).__name__})")
         return None
 
@@ -569,6 +569,205 @@ def batch_budget_stop_reason(kind) -> Optional[str]:
     return None
 
 
+# ── T05-M：live 批冻结配置的非秘密身份指纹 ───────────────────────────
+# 只覆盖有限白名单分析参数：decision/skills/event/entry_exit/fusion 整节，ai 只取
+# enabled/provider/当前 provider 的 model/direction_aware_adjustment/request_timeout/
+# max_retries/modifier。密钥/凭据/URL 类键与 URL/sk- 形状字符串递归剔除；只落
+# {"schema","scope","sha256"}。不保存配置内容/URL/密钥，也没有密钥摘要；不证明技能
+# YAML 内容/数据/提示词/端点身份，不授予缓存命中或投资信号资格。
+LIVE_CONFIG_SCHEMA = "muyun.live.config_fingerprint/v1"
+LIVE_CONFIG_SCOPE = "live_batch_effective_config"
+_LIVE_CONFIG_KEYS = ("schema", "scope", "sha256")
+_LIVE_CONFIG_SECTIONS = ("decision", "skills", "event", "entry_exit", "fusion")
+_LIVE_AI_KEYS = ("enabled", "provider", "direction_aware_adjustment",
+                 "request_timeout", "max_retries", "modifier")
+# ai.provider 合法省略时的有效默认值：与真实消费者一致（AIModifier / EventLayer /
+# chat agent / claim_llm_extractor 均为 config.get("provider", "deepseek")）。
+# 只用它定位「当前 provider 的 model」，不把默认值写进指纹（不扩默认参数语义）。
+_DEFAULT_AI_PROVIDER = "deepseek"
+# 键名里出现这些词（大小写/下划线/连字符/驼峰变体）即当作秘密或端点剔除；
+# 逐词判定，避免 keyword_scan 这类普通键被误伤。已知保守过度剔除：以 key/secret/
+# token/url 等词尾结尾的普通键（如 monkey）也会被剔除——只影响指纹覆盖度，方向安全。
+_SECRET_KEY_WORDS = frozenset({
+    "key", "keys", "apikey", "secret", "secrets", "token", "tokens",
+    "password", "passwd", "pwd", "url", "urls", "uri", "endpoint", "endpoints",
+    "credential", "credentials", "auth",
+})
+_SECRET_KEY_SUFFIXES = ("key", "secret", "token", "password", "passwd", "pwd",
+                        "url", "uri", "endpoint")
+_URL_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])[A-Za-z][A-Za-z0-9+.\-]*://")
+_SK_TOKEN_RE = re.compile(r"(?<![A-Za-z0-9])sk[-_]", re.IGNORECASE)
+_LIVE_SHA256_RE = re.compile(r"[0-9a-f]{64}")
+# 递归上限：既限制异常深嵌套，也让循环引用以 fail-closed 结束（而非 RecursionError）
+_LIVE_CONFIG_MAX_DEPTH = 32
+_DROPPED = object()   # 「该项被当作秘密剔除」的内部标记（不是合法值）
+
+
+def _secret_key_name(name: str) -> bool:
+    """键名是否密钥/凭据/端点类（大小写、下划线/连字符/驼峰变体都算）。"""
+    words = []
+    for chunk in re.split(r"[^A-Za-z0-9]+", str(name)):
+        if not chunk:
+            continue
+        words.append(chunk.lower())
+        for token in re.findall(r"[A-Z]+(?![a-z])|[A-Z][a-z]*|[a-z]+|[0-9]+", chunk):
+            words.append(token.lower())
+    for word in words:
+        if word in _SECRET_KEY_WORDS:
+            return True
+        if len(word) > 4 and any(word.endswith(suffix) for suffix in _SECRET_KEY_SUFFIXES):
+            return True
+    return False
+
+
+def _secret_string(value: str) -> bool:
+    """值是否含**独立** URL 或 sk- 凭据 token（前后空白/标点/引号/中文相邻/文本中均可）。
+
+    按 token 边界 search（ASCII 字母数字之外的左边界），所以 ``(sk-…)``、``"sk-…"``、
+    ``凭据=(sk-…)``、``详见https://…。`` 都命中；单词内部的普通 sk 字样（task-run /
+    disk-usage / sklearn）不误识为 token。只剔这两类，不做通用秘密识别——risk-off、
+    普通文本、相对路径的变化仍然可见。命中即剔除**整字符串**，绝不把 URL 端点哈希进
+    配置身份。已知保守过度剔除保留：``sk-learn`` 这类 sk- 前缀词仍被当作凭据剔除。
+    """
+    text = str(value)
+    return bool(_URL_TOKEN_RE.search(text) or _SK_TOKEN_RE.search(text))
+
+
+def _sanitize_live_config(value, depth: int = 0):
+    """白名单配置的非秘密规范化副本。
+
+    返回 ``(副本, True)``；被当作秘密剔除返回 ``(_DROPPED, True)``；
+    无法安全规范化（非字符串键/NaN/inf/bytes/datetime/超深或循环结构）返回
+    ``(None, False)``——绝不静默用 repr 冒充可哈希身份。
+    """
+    if depth > _LIVE_CONFIG_MAX_DEPTH:
+        return None, False
+    if value is None or isinstance(value, bool):
+        return value, True
+    if isinstance(value, int):
+        return value, True
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            return None, False
+        return value, True
+    if isinstance(value, str):
+        if _secret_string(value):
+            return _DROPPED, True
+        return value, True
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            if not isinstance(key, str):
+                return None, False
+            if _secret_key_name(key):
+                continue
+            sub, ok = _sanitize_live_config(item, depth + 1)
+            if not ok:
+                return None, False
+            if sub is _DROPPED:
+                continue
+            cleaned[key] = sub
+        return cleaned, True
+    if isinstance(value, (list, tuple)):
+        items = []
+        for entry in value:
+            sub, ok = _sanitize_live_config(entry, depth + 1)
+            if not ok:
+                return None, False
+            if sub is _DROPPED:
+                continue
+            items.append(sub)
+        return items, True
+    return None, False
+
+
+def _live_config_view(config: dict):
+    """按实际配置结构取白名单有效值；结构不可安全解释时返回 None（fail-closed）。"""
+    view = {}
+    for section in _LIVE_CONFIG_SECTIONS:
+        if section not in config:
+            continue
+        body = config[section]
+        if not isinstance(body, dict):
+            return None
+        view[section] = body
+    if "ai" in config:
+        ai = config["ai"]
+        if not isinstance(ai, dict):
+            return None
+        effective = {name: ai[name] for name in _LIVE_AI_KEYS if name in ai}
+        if "provider" in ai:
+            provider = ai["provider"]
+            if not isinstance(provider, str):
+                return None
+        else:
+            # 合法省略 provider：按真实消费者默认值定位当前 provider 的 model
+            provider = _DEFAULT_AI_PROVIDER
+        provider_cfg = ai.get(provider)
+        if isinstance(provider_cfg, dict) and "model" in provider_cfg:
+            effective["model"] = provider_cfg["model"]
+        view["ai"] = effective
+    return view
+
+
+def derive_live_config_descriptor(config) -> Optional[dict]:
+    """从批冻结后的有效配置派生 live 配置指纹描述；不可安全派生返回 None。
+
+    只输出 ``{"schema","scope","sha256"}``：不落配置内容、URL、密钥或密钥摘要。
+    fail-closed：非 dict / 白名单节结构非法 / 非字符串键 / NaN/inf / 非 JSON 类型 /
+    循环结构一律 None（调用方显示未冻结，绝不冒称已冻结身份）。
+    """
+    if not isinstance(config, dict):
+        return None
+    view = _live_config_view(config)
+    if view is None:
+        return None
+    cleaned, ok = _sanitize_live_config(view)
+    if not ok or not isinstance(cleaned, dict):
+        return None
+    try:
+        payload = json.dumps({"schema": LIVE_CONFIG_SCHEMA, "scope": LIVE_CONFIG_SCOPE,
+                              "config": cleaned},
+                             sort_keys=True, separators=(",", ":"),
+                             ensure_ascii=True, allow_nan=False)
+    except (TypeError, ValueError):
+        return None
+    digest = hashlib.sha256(payload.encode("utf-8")).hexdigest()
+    return {"schema": LIVE_CONFIG_SCHEMA, "scope": LIVE_CONFIG_SCOPE, "sha256": digest}
+
+
+def validate_live_config_descriptor(raw) -> Optional[dict]:
+    """校验账本/内存里的 live 配置指纹：schema/固定 scope/精确键集/64 位小写 hex。
+
+    返回**规范化副本**（不信任调用方原始 dict/额外键）；旧/缺/坏/被篡改描述返回
+    None，由调用方显示未冻结，绝不当作已验证身份。
+    """
+    if not isinstance(raw, dict) or set(raw) != set(_LIVE_CONFIG_KEYS):
+        return None
+    if raw.get("schema") != LIVE_CONFIG_SCHEMA:
+        return None
+    if raw.get("scope") != LIVE_CONFIG_SCOPE:
+        return None
+    digest = raw.get("sha256")
+    if not isinstance(digest, str) or not _LIVE_SHA256_RE.fullmatch(digest):
+        return None
+    return {"schema": LIVE_CONFIG_SCHEMA, "scope": LIVE_CONFIG_SCOPE, "sha256": digest}
+
+
+def validate_batch_snapshot(kind, raw) -> Optional[dict]:
+    """按 kind 选配置身份门（T05-M）：ba 原执行参数快照合同，live 三类配置指纹。
+
+    跨 kind 描述（live run 带 ba 快照或反之）与不支持的 kind 一律 None，避免互相
+    洗白；写侧（batch_task_start）与读侧（tasks 展示）共用这一道门。
+    """
+    if kind == "ba":
+        from src.core.benzong.batch_scorer import validate_exec_snapshot
+        return validate_exec_snapshot(raw)
+    if kind in LIVE_BATCH_KINDS:
+        return validate_live_config_descriptor(raw)
+    return None
+
+
 def _canonical_batch_budget(kind, raw):
     """启动预算描述的写入端白名单门（T05-J；T05-L 按 kind 选门）。
 
@@ -600,6 +799,9 @@ def batch_task_start(kind: str, key: str, codes: list,
       合法才保存**规范化副本**；非法/额外键/坏 hash 一律不落盘，run 仍正常登记为
       未冻结。它只是元数据，不授予缓存命中/复用或投资信号资格；未提供时记录保持
       旧形状（旧调用方兼容，且不引入额外依赖）。
+      T05-M：按 kind 选门——ba 只认 ba 执行参数快照，l/la/l all 只认 live 配置指纹
+      （muyun.live.config_fingerprint/v1）；跨 kind 描述不落盘。run 与该描述在
+      同一次原子写里落盘，不产生「有 run 无描述」的中间状态。
     - budget（T05-J，可选）：ba 共用批的启动预算描述。写入前按 schema/精确键集/
       策略/有限正数秒校验，合法才保存**规范化副本**（只落秒数，绝不落进程内单调
       截止点）；非法/额外键/nan/inf/bool 一律不落盘（显示未记录），run 仍登记。
@@ -625,7 +827,7 @@ def batch_task_start(kind: str, key: str, codes: list,
             "ts_updated": now,
         }
         if snapshot is not None:
-            canonical = _canonical_batch_snapshot(snapshot)
+            canonical = _canonical_batch_snapshot(kind, snapshot)
             if canonical is not None:
                 record["exec_snapshot"] = canonical
         if budget is not None:

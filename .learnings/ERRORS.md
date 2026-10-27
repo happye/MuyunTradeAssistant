@@ -1,3 +1,7 @@
+## ERR-20261027-RECOVER-FLAGS
+
+状态：已修正调用。recover不接受status/resume/follow专用的--view/--request投影参数，误传返回USAGE且未派发；去掉这些参数后核回原任务全部6请求COMPLETED与STOP_PENDING锁。个人muyun-dev-discipline技能路径缺失，改读项目.agents/skills同名副本；不把路径不存在当技能不存在。
+
 ## ERR-20261026-DSH恢复入口
 
 已关闭本轮误用源码入口启动的PID49968；该入口产生MISSING_CREDENTIAL，未执行修复。用户通过既有dsh-web.cmd启动并手动重试原生turn3后完成修复。bridge历史FAILED不等于当前原生轮失败；恢复核turn/真实diff，不盲重投，不打印含token的Host日志。本批停止后不自动重启服务。
