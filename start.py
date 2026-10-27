@@ -125,6 +125,7 @@ def show_help():
     L.append(_cmd("bz scan [主题] [--top N]", "主题选股初筛 + 批量评分排名"))
     L.append(_cmd("bz scan <规则> [主题]", "规则初筛 + 评分（规则名可模糊匹配）"))
     L.append(_cmd("bz scan --allrules", "五规则全跑合并去重（各 Top5）"))
+    L.append(_cmd("bz scan --budget 600 --limit 15", "可选；默认不启用，到期不开新阶段"))
     L.append(_cmd("bz scan ... --backtest [起 止]", "评分后批量回测验证"))
     L.append(_cmd("ba", "批量评分最近扫描结果（缓存优先）"))
     L.append(_cmd("ba --budget 60", "可选，默认不启用；到点不开新只"))
@@ -300,16 +301,86 @@ def _parse_budget_seconds(raw):
 
 
 _BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、"
-                "bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一只，已开始的会跑完，"
-                "准备阶段可能超出，非强制中断/无费用上限）")
+                "bz scan、bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一步，"
+                "已开始的调用会跑完，准备阶段可能超出，非强制中断/无费用上限）")
 
-# T05-L：不支持入口的统一说明（单只 l/bz、scan 等）
-_BUDGET_SCOPE = "预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析"
+# T05-L：不支持入口的统一说明（单只 l/bz、scan 等）；T05-N 起 bz scan 已支持
+_BUDGET_SCOPE = "预算仅用于 ba/bzall、bz scan、bz 多代码，以及 l 多代码/la/l all 批量深析"
 
 # T05-J / rev2 J7：普通无预算流程的主动可发现性提示（在确认/缓存预览之前打印）。
 # 只说“可选、默认不启用、到点不开新只/当前只跑完”，不新增确认、不改 kwargs。
 _BUDGET_HINT = ("  可选时限：末尾可加 --budget 60（默认不启用）；"
                 "到点不开始下一只，当前一只跑完再返回")
+
+
+# ── T05-N：bz scan 可选启动预算与候选上限（limit/top 正整数，默认 15/10）──
+_SCAN_BUDGET_HINT = ("  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；"
+                     "从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；"
+                     "非强制中断、非费用上限）")
+
+_SCAN_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始扫描"
+                        "（不加载配置/账户、不定位/扫描、不评分/回测、不落盘）")
+
+
+def _scan_budget_notice(seconds: float) -> str:
+    """bz scan 预算语义：从入口计时（准备也计入），到期只阻止开始下一阶段。"""
+    return (f"  启动预算：{seconds:g} 秒（bz scan；从本次扫描入口计时，"
+            "配置/账户/主题定位/扫描准备都计入；到期不再开始新阶段/评分/回测，"
+            "已开始的调用会跑完；准备阶段可能超出预算——非强制中断、非费用上限）")
+
+
+def _scan_positive_int(raw, *, from_text: bool):
+    """limit/top 正整数校验：解析层从文本转 int，程序化入口只接受 int（排除 bool）。"""
+    if from_text:
+        try:
+            value = int(str(raw).strip())
+        except (TypeError, ValueError):
+            return None, f"{raw!r} 不是整数"
+    else:
+        if isinstance(raw, bool) or not isinstance(raw, int):
+            return None, f"{raw!r} 不是整数（程序化入口只接受 int）"
+        value = raw
+    if value <= 0:
+        return None, f"{value} 需大于 0"
+    return value, None
+
+
+def _scan_limit_codes(codes, limit: int) -> list:
+    """候选去重后按原顺序取前 limit 个（limit 是送评分名单上限，不是发现调用上限）。"""
+    return _dedupe_live_codes(list(codes))[:limit]
+
+
+def _scan_round_robin(buckets, cap: int) -> list:
+    """在规则贡献桶上轮询选取最多 cap 只，避免先跑的规则占满截断。"""
+    out = []
+    depth = max((len(b) for b in buckets), default=0)
+    for depth_i in range(depth):
+        for bucket in buckets:
+            if len(out) >= cap:
+                return out
+            if depth_i < len(bucket):
+                out.append(bucket[depth_i])
+    return out
+
+
+def _scan_prep_stop(stage: str) -> None:
+    """准备阶段到期：不开始后续业务，不落盘（已完成的调用保留）。"""
+    print(f"  ⏱ 启动预算已到期：{stage}，本次不再开始后续阶段")
+    print("  未开始候选定位/扫描/评分，不写 last_scan/正式扫描报告、不开启回测"
+          "（已完成的准备调用保留；非强制中断）")
+
+
+def _scan_candidates_incomplete(reason: str) -> None:
+    """候选阶段到期且名单未完整形成：显式不完整，本批不评分、不落盘。"""
+    print(f"  ⏱ 启动预算已到期：{reason}，当前候选不完整")
+    print("  本批不开始评分；部分名单不落盘（不写 last_scan/正式扫描报告）、不开启回测")
+
+
+def _scan_candidates_complete_no_scoring(n: int) -> None:
+    """候选已完整但截止已到：不开始评分阶段，不把未评分名单当完整结果落盘。"""
+    print(f"  ⏱ 启动预算已到期：候选已完整形成（{n} 只），但本批不开始评分")
+    print("  本次不写 last_scan/正式扫描报告、不开启回测（不把未评分名单当完整结果）")
+
 
 
 def _split_budget_option(tokens: list):
@@ -936,9 +1007,6 @@ def parse_input(user_input: str):
             print(f"        {_BUDGET_HELP}")
             return None
         scan_intent = bool(bz_tokens) and bz_tokens[0].lower() in ("scan", "筛选", "选股")
-        if scan_intent and budget is not None:
-            print(f"  [!] bz scan 不支持 --budget（{_BUDGET_SCOPE}）")
-            return None
         if not scan_intent:
             _lows = [str(p).lower() for p in bz_tokens]
             if budget is not None and any(p in ("--check", "--体检", "check") for p in _lows):
@@ -947,22 +1015,34 @@ def parse_input(user_input: str):
             if budget is not None and any(p in ("--manual", "-m", "manual") for p in _lows):
                 print(f"  [!] bz --manual 不支持 --budget（{_BUDGET_SCOPE}）")
                 return None
-            # 移除预算 token 后继续旧解析（无预算时 bz_tokens 与 parts[1:] 逐项等价）
-            parts = [parts[0]] + bz_tokens
+        # T05-N：bz scan 起支持预算；移除预算 token 后继续旧解析（无预算时 bz_tokens
+        # 与 parts[1:] 逐项等价，旧返回形状不变）。预算值不会混入主题词。
+        parts = [parts[0]] + bz_tokens
         if len(parts) >= 2 and parts[1].lower() in ("scan", "筛选", "选股"):
             scan_args = {"theme": "", "top_n": 10, "backtest": False,
                          "start": "", "end": "", "capital": 100000.0,
                          "rule": "healthy_pullback", "limit": 15, "refresh": False}
+            if budget is not None:
+                scan_args["budget"] = budget
             rest = parts[2:]
             i = 0
             theme_parts = []
             while i < len(rest):
                 p = rest[i]
                 low = p.lower()
-                if low in ("--top",) and i + 1 < len(rest):
-                    try: scan_args["top_n"] = int(rest[i + 1])
-                    except ValueError: pass
+                if low == "--top":
+                    if i + 1 >= len(rest):
+                        print("  [!] --top 缺少数值（需正整数，默认10）")
+                        return None
+                    _val, _err = _scan_positive_int(rest[i + 1], from_text=True)
+                    if _err:
+                        print(f"  [!] --top 值无效: {_err}（需正整数，默认10）")
+                        return None
+                    scan_args["top_n"] = _val
                     i += 2; continue
+                if low.startswith("--top="):
+                    print(f"  [!] 不支持等号写法: {p}（请用 --top 10）")
+                    return None
                 if low in ("--backtest", "--bt"):
                     scan_args["backtest"] = True; i += 1; continue
                 if low in ("--refresh", "-r"):
@@ -981,10 +1061,19 @@ def parse_input(user_input: str):
                     i += 2; continue
                 if low in ("--allrules", "--all-rules"):
                     scan_args["allrules"] = True; i += 1; continue
-                if low in ("--limit",) and i + 1 < len(rest):
-                    try: scan_args["limit"] = int(rest[i + 1])
-                    except ValueError: pass
+                if low == "--limit":
+                    if i + 1 >= len(rest):
+                        print("  [!] --limit 缺少数值（需正整数，默认15）")
+                        return None
+                    _val, _err = _scan_positive_int(rest[i + 1], from_text=True)
+                    if _err:
+                        print(f"  [!] --limit 值无效: {_err}（需正整数，默认15）")
+                        return None
+                    scan_args["limit"] = _val
                     i += 2; continue
+                if low.startswith("--limit="):
+                    print(f"  [!] 不支持等号写法: {p}（请用 --limit 15）")
+                    return None
                 theme_parts.append(p); i += 1
             theme_str = " ".join(theme_parts).strip()
             # v0.8.7.4: 对齐 scan market 语义 -- 未用 --rule 时，第一个裸参数先当规则候选
@@ -1400,22 +1489,79 @@ def _persist_benzong_report(code: str, result, bs) -> str:
 def run_benzong_scan(args: dict):
     """v0.8.6.3 笨总选股初筛（ISS-041 方向 A）。
 
-    scan 技术面初筛 → 笨总 6 维 AI 批量评分 → TopN 排名 → 可选批量回测。
+    scan 技术面初筛 → 笨总 6 维评分（5 AI + 1 规则） → TopN 排名 → 可选批量回测。
 
     用法：
             bz scan                  默认 healthy_pullback 规则初筛 → 笨总评分 Top10
             bz scan AI,半导体        指定主题词缩小候选范围
             bz scan --top 5          Top5
-            bz scan --limit 15       限制初筛候选数（控制 AI 耗时，默认15）
+            bz scan --limit 15       限制送入评分的去重候选数（默认15）
+            bz scan --budget 600     可选启动预算（秒；同一monotonic截止贯穿准备/评分/回测）
       bz scan --backtest --start 2024-01-01 --end 2024-12-31  对 TopN 批量回测
+
+    T05-N：坏预算/坏 limit/top 先于任何业务拒绝（解析层与程序化入口都校验）；预算从
+    执行入口起算，到期只阻止开始下一阶段（配置/账户/规则/定位/扫描/评分/回测），
+    已开始的调用会跑完；候选不完整或评分部分不覆盖上次有效扫描、不开启 TopN 回测。
     """
+    # ── T05-N：程序化入口校验（坏值零业务；先于配置/账户/定位/扫描/评分/回测）──
+    if not isinstance(args, dict):
+        print("  [!] bz scan 参数无效（需字典）；本次未开始扫描")
+        return
+    _budget_raw = args.get("budget")
+    _budget_seconds = None
+    _entry_at = None
+    if _budget_raw is not None:
+        # T05-N fix2：入口起算必须早于验证 import（import 耗时也计入同一预算），
+        # 验证成功后用该入口时点算截止，不再从验证之后重起钟。
+        _entry_at = _monotonic()
+        from src.core.benzong.batch_scorer import budget_descriptor
+        _budget_desc = budget_descriptor(_budget_raw)
+        if _budget_desc is None:
+            print(_SCAN_BUDGET_INVALID)
+            return
+        _budget_seconds = _budget_desc["budget_seconds"]
+    _limit, _err = _scan_positive_int(args.get("limit", 15), from_text=False)
+    if _err:
+        print(f"  [!] 候选上限 limit 无效: {_err}（需正整数，默认15）；本次未开始扫描"
+              "（不加载配置/账户、不定位/扫描、不评分/回测、不落盘）")
+        return
+    _top_n, _err = _scan_positive_int(args.get("top_n", 10), from_text=False)
+    if _err:
+        print(f"  [!] TopN 无效: {_err}（需正整数，默认10）；本次未开始扫描"
+              "（不加载配置/账户、不定位/扫描、不评分/回测、不落盘）")
+        return
+
+    # T05-N：同一 monotonic 绝对截止从执行入口起算（配置/账户/主题/扫描准备都计入）。
+    # 无预算路径不取 clock、不加签名/逻辑分支。
+    deadline = (None if _budget_seconds is None
+                else _entry_at + _budget_seconds)
+
+    if deadline is None:
+        print(_SCAN_BUDGET_HINT)
+    else:
+        print(_scan_budget_notice(_budget_seconds))
+    print()
+
+    def _expired() -> bool:
+        return _live_deadline_expired(deadline)
+
+    if _expired():
+        _scan_prep_stop("入口校验后（尚未解析规则）")
+        return
+
     from src.scanner.scanner_engine import ScannerEngine
     from src.core.benzong.batch_scorer import auto_score_batch
 
+    # T05-N fix2：模块 import 也可能耗尽预算——首次构造扫描引擎前再核同一截止
+    # （该构造会准备 MarketCache/规则 YAML；此处只做截止门，不宣称已证费用）。
+    if _expired():
+        _scan_prep_stop("模块导入后（尚未构造扫描引擎）")
+        return
+
     theme = args.get("theme", "")
-    top_n = args.get("top_n", 10)
+    top_n = _top_n
     do_backtest = args.get("backtest", False)
-    limit = args.get("limit", 15)
+    limit = _limit
     rule_name = args.get("rule", "healthy_pullback")
     rule_explicit = bool(args.get("rule_explicit"))
     rule_from_positional = bool(args.get("rule_from_positional"))
@@ -1428,6 +1574,10 @@ def run_benzong_scan(args: dict):
     rule_effective = False
     try:
         _r_eng = ScannerEngine()  # 默认 rules_path（scanner_cfg 此时未定义）
+        # T05-N fix1：构造本身可能耗尽预算——真正调用 resolve_rule_name 前再核同一截止
+        if _expired():
+            _scan_prep_stop("规则引擎构造后（尚未解析规则）")
+            return
         _resolved = _r_eng.resolve_rule_name(rule_name)
     except Exception:
         _resolved = None
@@ -1441,6 +1591,10 @@ def run_benzong_scan(args: dict):
         print(f"  [!] 未识别规则 '{rule_name}'，按宽口径继续（可用规则跑 rules 查看）")
         rule_name = "healthy_pullback"
 
+    if _expired():
+        _scan_prep_stop("规则解析后（尚未加载配置/账户）")
+        return
+
     # v0.8.7.4补：allrules 权威化 -- 五规则全跑按全市场跑，主题词/规则参数忽略并明示
     # （否则 bz scan --allrules 科技 会显示'五规则全跑'实际走主题双通道，显示与行为打架）
     # v0.8.7.5 审计修复 A29：条件补 rule_from_positional——
@@ -1453,7 +1607,7 @@ def run_benzong_scan(args: dict):
 
     print()
     print("=" * 64)
-    print("  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN")
+    print("  🔍 笨总选股初筛 — scan → 6维评分(5AI+1规则) → TopN")
     print("=" * 64)
     if allrules:
         rule_display = "五规则全跑(各Top5合并)"
@@ -1463,12 +1617,18 @@ def run_benzong_scan(args: dict):
         rule_display = rule_name
     print(f"  规则: {rule_display} | 主题词: {theme or '(全市场)'} | 候选上限: {limit}")
     print(f"  TopN: {top_n} | 回测: {'是' if do_backtest else '否'}")
+    if allrules:
+        print(f"  候选上限说明：用户请求 {limit} | allrules 结构上限 25"
+              "（5 规则 × 每规则最多 5 个新代码）")
     print()
 
     # ── Step 1: 候选股获取 ──
     # 有主题词 → 法C 精准定位（AI直接报股+Baostock验证，绕过板块匹配天花板）
     # 无主题词 → quick_scan 技术面初筛
     from src.cli.main import load_config
+    if _expired():
+        _scan_prep_stop("加载配置前")
+        return
     config = load_config()
     scanner_cfg = config.get("scanner", {})
     skills_dir = config.get("skills", {}).get("dir", "./src/skills")
@@ -1476,6 +1636,10 @@ def run_benzong_scan(args: dict):
     signal_weights = config.get("decision", {}).get("signal_weights", {})
     skill_types = config.get("skills", {}).get("types", {})
     entry_exit_config = config.get("entry_exit", None)
+
+    if _expired():
+        _scan_prep_stop("配置加载后（尚未准备账户/定位/扫描）")
+        return
 
     # 排除已持仓
     exclude_codes = set()
@@ -1491,6 +1655,10 @@ def run_benzong_scan(args: dict):
             # ISS-078：排除持仓失败必须留痕（此前静默 fail-open，已持仓股混入候选无感知）
             logger.warning(f"持仓读取失败，本次扫描无法排除已持仓股: {e}")
 
+    if _expired():
+        _scan_prep_stop("账户准备后（尚未定位/扫描）")
+        return
+
     located_stocks = None  # 法C结果（有主题词时填充）
     if theme:
         # ── 双通道选股（去龙头偏向）──
@@ -1500,7 +1668,14 @@ def run_benzong_scan(args: dict):
         # 两通道合并去重 → 笨总评分排序
         from src.core.benzong.theme_locator import locate_theme_stocks
         terms = [t.strip() for t in theme.split(",") if t.strip()]
+        if _expired():
+            _scan_prep_stop("主题定位开始前")
+            return
         print(f"  [Step 1/3] 双通道选股：法C精准定位 + 全市场行业筛选...")
+        # T05-N fix1：标题输出也可能耗尽预算——真正调用 locate_theme_stocks 前再核截止
+        if _expired():
+            _scan_prep_stop("双通道选股标题输出后（法C定位未开始）")
+            return
 
         # 通道A：法C（v0.8.7.9 起同主题词当日走文件缓存，--refresh 强刷）
         located = locate_theme_stocks(terms, config=config, use_cache=not force_refresh)
@@ -1511,6 +1686,11 @@ def run_benzong_scan(args: dict):
         if located.get("invalid"):
             print(f"  丢弃 {len(located['invalid'])} 只（AI可能给错代码）："
                   + ", ".join(f"{i['code']}({i['name']})" for i in located["invalid"][:5]))
+
+        # T05-N：通道A 完成即核同一截止；通道B 未跑时候选不完整，本批不评分、不落盘
+        if _expired():
+            _scan_candidates_incomplete("主题通道A（法C）已完成，但通道B全市场筛选未开始")
+            return
 
         # 通道B：全市场客观筛选（按主题词匹配 THS 行业/概念成分股）
         b_stocks = []
@@ -1523,6 +1703,9 @@ def run_benzong_scan(args: dict):
                 cache_ttl=scanner_cfg.get("cache_ttl", 300),
                 entry_exit_config=entry_exit_config,
             )
+            if _expired():
+                _scan_candidates_incomplete("主题通道B引擎已构造，但全市场筛选未开始")
+                return
             b_rule = rule_name if rule_effective else "theme_members"
             # 宽口径规则主要靠主题词过滤而非技术形态（ISS-047 防漏股默认）；
             # 用户显式指定规则时改用该规则做技术面过滤（规则+主题组合，v0.8.7.4）
@@ -1551,13 +1734,25 @@ def run_benzong_scan(args: dict):
             print(f"  ⚠ 主题「{theme}」两通道均未定位到A股公司")
             print(f"  可能：AI不熟悉该细分领域 + 主题词未匹配到行业板块。可尝试换更通用的主题词")
             return
-        codes = [s["code"] for s in located_stocks[:limit]]
-        print(f"  ✓ 法C {len(a_stocks)} 只 + 全市场 {len(b_stocks)} 只 → 合并 {len(merged)} 只，取前 {len(codes)} 只评分")
-        for s in located_stocks[:limit]:
+        # T05-N：limit 是送入评分的去重候选上限（去重后按原顺序取前 limit 只）
+        codes = _scan_limit_codes([s["code"] for s in located_stocks], limit)
+        if _expired():
+            _scan_candidates_complete_no_scoring(len(codes))
+            return
+        _by_code = {}
+        for s in located_stocks:
+            _by_code.setdefault(s["code"], s)
+        print(f"  ✓ 法C {len(a_stocks)} 只 + 全市场 {len(b_stocks)} 只 → "
+              f"合并 {len(merged)} 只，取前 {len(codes)} 只评分")
+        for _c in codes:
+            s = _by_code[_c]
             print(f"    {s['code']} {s['name'][:10]} [{s['term']}] {s['why'][:40]}")
         print()
     else:
         # ── 技术面初筛 ──
+        if _expired():
+            _scan_prep_stop("技术面初筛开始前")
+            return
         engine = ScannerEngine(
             rules_path=scanner_cfg.get("rules_path", "./src/scanner/scan_rules.yaml"),
             skills_dir=skills_dir,
@@ -1568,47 +1763,86 @@ def run_benzong_scan(args: dict):
             cache_ttl=scanner_cfg.get("cache_ttl", 300),
             entry_exit_config=entry_exit_config,
         )
+        if _expired():
+            _scan_prep_stop("技术面初筛引擎构造后（尚未调用扫描）")
+            return
 
         if allrules:
             # 方案C: 五条市场规则全跑，各取Top5合并去重
             # 注：theme_members 是主题专用规则（无主题词时=全市场流动性Top80），不参加 --allrules 全跑
             print("  [Step 1/3] 五规则全跑初筛（各Top5合并）...")
             ALL_RULES = ["healthy_pullback", "steady_advance", "shrink_pullback", "value_pick", "oversold_watch"]
-            merged_codes = []
+            rule_buckets = []   # [(规则, [该规则贡献的新代码...])]：结构上限 5×5=25
+            rule_hits = {}      # 每只股被哪些规则选中（多规则共振=强标的）
             seen = set(exclude_codes)
-            rule_hits = {}  # 记录每只股被几条规则选中（多规则共振=强标的）
-            for r in ALL_RULES:
+            for _ri, r in enumerate(ALL_RULES):
+                if _expired():
+                    _scan_candidates_incomplete(
+                        f"五规则初筛第 {_ri + 1}/5 条规则（{r}）开始前")
+                    return
                 try:
                     cands, info = engine.quick_scan(rule_name=r, market_query=None, exclude_codes=exclude_codes)
                 except Exception as e:
                     print(f"  {r} 规则失败: {type(e).__name__}: {str(e)[:50]}")
+                    if _expired() and _ri < len(ALL_RULES) - 1:
+                        _scan_candidates_incomplete(
+                            f"第 {_ri + 1}/5 条规则（{r}）失败后（后续规则未扫描）")
+                        return
                     continue
+                if _expired() and _ri < len(ALL_RULES) - 1:
+                    _scan_candidates_incomplete(
+                        f"第 {_ri + 1}/5 条规则（{r}）扫描结束后（后续规则未扫描）")
+                    return
                 if not cands:
                     print(f"  {r}: 无候选")
                     continue
+                bucket = []
                 added = 0
                 for c in cands:
                     if c.stock_code not in seen and added < 5:
                         seen.add(c.stock_code)
-                        merged_codes.append(c.stock_code)
+                        bucket.append(c.stock_code)
                         rule_hits[c.stock_code] = [r]
                         added += 1
                     elif c.stock_code in rule_hits:
                         rule_hits[c.stock_code].append(r)  # 已被其他规则选，记共振
+                rule_buckets.append((r, bucket))
                 print(f"  ✓ {r}: 取 {added} 只")
-            # 五规则平等，全部合并去重后送笨总评分统一排序，不按规则顺序截断
-            # （否则排在后的 value_pick 会被机械砍掉，没机会评分）
-            codes = merged_codes
-            if not codes:
+            # T05-N：仍五规则、每规则最多贡献 5 个新代码（结构最多 25）；在原规则贡献桶上
+            # 轮询选取最多 min(limit,25)，避免先跑的规则占满截断；不额外扩大扫描/补桶。
+            pool = [code for _r, bucket in rule_buckets for code in bucket]
+            if not pool:
                 print(f"  ✗ 五规则均无候选(全市场行情源可能失效)")
                 print(f"  → 改用主题词模式: bz scan <主题词>(如 bz scan AI,半导体)")
                 print(f"  → 或单股分析: l <代码> / bz <代码>(走Baostock)")
                 return
-            resonate = {c: rs for c, rs in rule_hits.items() if len(rs) > 1}
-            print(f"  ✓ 五规则合并去重 {len(codes)} 只（全部送笨总评分，含 {len(resonate)} 只多规则共振）")
+            cap = min(limit, 25)
+            codes = _scan_round_robin([bucket for _r, bucket in rule_buckets], cap)
+            if _expired():
+                _scan_candidates_complete_no_scoring(len(codes))
+                return
+            _selected_hits = {c: rule_hits.get(c, []) for c in codes}
+            _resonate_n = sum(1 for hs in _selected_hits.values() if len(hs) > 1)
+            print(f"  用户请求候选上限 limit={limit} | 五规则结构上限 25"
+                  "（5 规则 × 每规则最多 5 个新代码）"
+                  f" | 实际选取 {len(codes)} 只送评分")
+            if limit > 25:
+                print(f"  请求 {limit} 超过结构上限：按 25 截断（不是静默忽略；"
+                      "不额外扩大扫描/补桶）")
+            print(f"  ✓ 五规则合并去重 {len(pool)} 只（结构上限 25）→ 轮询选取 "
+                  f"{len(codes)} 只送评分（含 {_resonate_n} 只多规则共振）")
+            print("  已选证券完整规则命中（来自候选池已有信息）:")
+            for _c in codes:
+                _hits = _selected_hits[_c]
+                print(f"    {_c}  {'、'.join(_hits)}"
+                      + ("（共振）" if len(_hits) > 1 else ""))
             print()
         else:
             print("  [Step 1/3] 技术面初筛中...")
+            # T05-N fix1：标题输出也可能耗尽预算——真正调用 quick_scan 前再核截止
+            if _expired():
+                _scan_prep_stop("技术面初筛标题输出后（初筛未开始）")
+                return
             try:
                 candidates, scan_info = engine.quick_scan(
                     rule_name=rule_name,
@@ -1636,23 +1870,54 @@ def run_benzong_scan(args: dict):
                 print(f"  ⚠ 初筛无候选股（可能非交易时段或条件过严）")
                 return
 
-            codes = [c.stock_code for c in candidates[:limit]]
+            # T05-N：limit 是送入评分的去重候选上限（不是发现接口/调用次数上限）
+            codes = _scan_limit_codes([c.stock_code for c in candidates], limit)
+            if _expired():
+                _scan_candidates_complete_no_scoring(len(codes))
+                return
             print(f"  ✓ 初筛 {len(candidates)} 只 → 取前 {len(codes)} 只评分")
             print()
 
-    # ── Step 2: 笨总批量 AI 评分 ──
-    print(f"  [Step 2/3] 笨总 6 维 AI 评分中（{len(codes)}只 × 5维 ≈ {len(codes)*5}次AI，请耐心）...")
+    # ── Step 2: 笨总批量评分（6 维 = 5 AI + 1 规则）──
+    if _expired():
+        _scan_candidates_complete_no_scoring(len(codes))
+        return
+    print(f"  [Step 2/3] 笨总 6 维评分中（5 维 AI + 1 维规则；{len(codes)} 只候选；"
+          "缓存命中/降级/主题定位/sector-meta/重试都会改变实际请求数，"
+          "它不是实耗次数或费用上限）...")
+    # T05-N fix1：评分标题输出也可能耗尽预算——真正调用评分器前再核同一截止
+    if _expired():
+        _scan_prep_stop("评分标题输出后（评分未开始）")
+        return
     def _progress(i, total, code, status):
         print(f"    ({i}/{total}) {code} → {status}")
 
-    batch = auto_score_batch(codes, top_n=top_n, force_refresh=force_refresh,
-                             config=config, progress_cb=_progress)
+    # T05-N：同一绝对截止点（monotonic 秒）原样交给既有 auto_score_batch(deadline=...)；
+    # 无预算路径保持旧调用（不新增 kwargs，旧 mock/调用方兼容）。
+    if deadline is None:
+        batch = auto_score_batch(codes, top_n=top_n, force_refresh=force_refresh,
+                                 config=config, progress_cb=_progress)
+    else:
+        batch = auto_score_batch(codes, top_n=top_n, force_refresh=force_refresh,
+                                 config=config, progress_cb=_progress, deadline=deadline)
     print()
+
+    _not_started = list(batch.get("not_started") or [])
+    _partial = bool(_not_started) or bool(batch.get("stop_reason"))
 
     # ── Step 3: 展示笨总 TopN 排名 ──
     print("─" * 64)
-    print(f"  📊 笨总 Top{len(batch['top_n'])} 排名（评分 {batch['scored']}只 / 失败 {batch['failed']}只）")
+    if _partial:
+        print(f"  📊 笨总 Top{len(batch['top_n'])} 排名（部分结果：评分 {batch['scored']}只 / "
+              f"预算未开始 {len(_not_started)}只 / 失败 {batch['failed']}只）")
+        print("  ⏱ 启动预算到期：本批评分未完整——以下为部分结果，不覆盖上次有效 "
+              "last_scan/正式扫描报告，不开启 TopN 回测")
+    else:
+        print(f"  📊 笨总 Top{len(batch['top_n'])} 排名（评分 {batch['scored']}只 / "
+              f"失败 {batch['failed']}只）")
     print("─" * 64)
+    if _partial and not batch["top_n"]:
+        print("  （本批无已完成的评分结果；未开始项不计失败、不显示收益0）")
     try:
         from rich.table import Table
         from rich.console import Console
@@ -1706,9 +1971,19 @@ def run_benzong_scan(args: dict):
         print(f"  失败: {', '.join(f['code'] for f in batch['failures'])}")
         print()
 
-    # v0.8.7 体验重构 Step1：scan 结果落盘 + 存状态供 #N 快捷接住
-    try:
-        from src.cli.session_state import save_last_scan, persist_scan_report
+    # T05-N：只有“确认完整评分 + 有效 TopN”才沿原路径保存；部分/空名单不覆盖上次扫描。
+    _has_top = bool(batch["top_n"])
+    if _partial:
+        print("  ⏱ 部分结果仅本次展示：不覆盖上次有效 last_scan/正式扫描报告，"
+              "不开启 TopN 回测")
+    elif not _has_top:
+        print("  ⚠ 本批无有效 TopN：不覆盖上次有效扫描、不写正式扫描报告、不开启回测")
+
+    _scan_snapshot_ok = False
+    if not _partial and _has_top:
+        # v0.8.7 体验重构 Step1：scan 结果落盘 + 存状态供 #N 快捷接住
+        # T05-N fix1：快照/历史/报告是三个独立事实，必须分别读取并展示实际结果；
+        # helper 失败返回 ScanSaveResult(False,...)/"" 而不是抛异常——不能当保存已证。
         _items = []
         for _it in batch["top_n"]:
             _items.append({
@@ -1720,15 +1995,52 @@ def run_benzong_scan(args: dict):
                 "invalidate": _it.get("invalidate", False),
             })
         _src = f"bz scan {theme}".strip()
-        _saved = save_last_scan(_items, _src)
-        _rp = persist_scan_report(_items, _src, timestamp=_saved.timestamp)
-        if _rp:
-            print(f"  📝 扫描结果已存：{_rp}")
-        print(f"  💡 后续：l all 批量深分析这{len(batch['top_n'])}只(简明卡)")
-        print(f"     或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓")
+        _saved = None
+        _save_error = None
+        try:
+            from src.cli.session_state import save_last_scan, persist_scan_report
+            _saved = save_last_scan(_items, _src)
+        except Exception as _e:
+            _save_error = _e
+        _snapshot_ok = bool(getattr(_saved, "snapshot", False))
+        _history_ok = bool(getattr(_saved, "history", False))
+        _saved_ts = getattr(_saved, "timestamp", "") or ""
+        if _save_error is None:
+            try:
+                _rp = persist_scan_report(_items, _src, timestamp=(_saved_ts or None))
+            except Exception:
+                _rp = ""
+            _report_ok = bool(_rp)
+        else:
+            _rp = ""
+            _report_ok = False
+        if _save_error is not None:
+            print("  scan 落盘异常（保存结果不可用）；快照/历史/报告均未确认："
+                  f"{type(_save_error).__name__}: {_save_error}")
+            print("  ⚠ 本批新名单未确认写入 last_scan：请不要按 l all/#N/pos add #N "
+                  "操作本批（避免误用上一次旧名单）")
+        else:
+            print(f"  📝 扫描保存：快照{'成功' if _snapshot_ok else '失败'}"
+                  f" | 历史{'成功' if _history_ok else '失败'}"
+                  f" | {'报告已生成：' + _rp if _report_ok else '报告未生成'}")
+            _scan_snapshot_ok = _snapshot_ok
+            if _snapshot_ok:
+                print(f"  💡 后续：l all 批量深分析这{len(batch['top_n'])}只(简明卡)")
+                print(f"     或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓")
+            else:
+                print("  ⚠ 本批新名单未写入 last_scan：请不要按 l all/#N/pos add #N "
+                      "操作本批（避免误用上一次旧名单）")
+            if not _history_ok:
+                print("  ⚠ 复盘历史未追加：scan review 看不到本批（不影响本次排名/回测）")
         print()
-    except Exception as _e:
-        print(f"  scan 落盘失败（不影响主流程）: {_e}")
+
+    if _partial or not _has_top:
+        if do_backtest:
+            print("  💡 本批 TopN 回测未开始；需要完整结果请重跑新的独立扫描")
+        else:
+            print("  💡 提示：需要完整结果请重跑新的独立扫描（本次结果未保存）")
+        print()
+        return
 
     # ── Step 4 (可选): 批量回测 TopN ──
     if not do_backtest:
@@ -1744,14 +2056,52 @@ def run_benzong_scan(args: dict):
     print("=" * 64)
     print(f"  📈 批量回测 Top{len(batch['top_n'])} — {start} ~ {end} 资金¥{capital:,.0f}")
     print("=" * 64)
+    # T05-N：完成评分后、回测开始前到期 —— 保留完整评分扫描；不启动构造/run，
+    # 下面的逐项登记会显式标“未开始”（不计失败/收益0），最后再给计数。
+    # T05-N fix1：是否“已保存”只能按实际快照结果说，不能无条件声称。
+    if _expired():
+        print(f"  ⏱ 启动预算已到期：回测未开始（0/{len(batch['top_n'])} 只）")
+        if _scan_snapshot_ok:
+            print("  已完整评分且新名单快照已保存；未开始项不计失败、不显示收益0")
+        else:
+            print("  评分已在内存完成，但本批新名单未成功保存"
+                  "（不要按 #N/l all 操作旧名单）；未开始项不计失败、不显示收益0")
+        print()
 
     from src.core.backtest_engine import BacktestEngine
     from src.cli.main import normalize_stock_code
 
     bt_rows = []
+    bt_total = len(batch["top_n"])
+    bt_not_started = 0
     for idx, item in enumerate(batch["top_n"], 1):
         code = normalize_stock_code(item["code"])
-        print(f"  ({idx}/{len(batch['top_n'])}) 回测 {code} {item['name'][:8]}...")
+        # T05-N：构造引擎前核同一截止；到期不再开始后续回测调用
+        if _expired():
+            for _idx in range(idx, bt_total + 1):
+                _item = batch["top_n"][_idx - 1]
+                _code = normalize_stock_code(_item["code"])
+                print(f"  ({_idx}/{bt_total}) {_code} {_item['name'][:8]}："
+                      "未开始回测（启动预算到期）")
+                bt_rows.append({"code": _code, "name": _item["name"][:8],
+                                "bz_score": _item["total_score"],
+                                "bz_grade": _item["grade"],
+                                "return": None, "bench": None, "trades": 0,
+                                "status": "not_started"})
+                bt_not_started += 1
+            break
+        print(f"  ({idx}/{bt_total}) 回测 {code} {item['name'][:8]}...")
+        # 慢标题输出后、构造前再核一次：到期不启动构造
+        if _expired():
+            print("    ⏱ 标题输出后启动预算到期：本只未开始回测"
+                  "（不计失败、不显示收益0）")
+            bt_rows.append({"code": code, "name": item["name"][:8],
+                            "bz_score": item["total_score"],
+                            "bz_grade": item["grade"],
+                            "return": None, "bench": None, "trades": 0,
+                            "status": "not_started"})
+            bt_not_started += 1
+            continue
         try:
             eng = BacktestEngine(
                 stock_code=code, start_date=start, end_date=end,
@@ -1760,18 +2110,39 @@ def run_benzong_scan(args: dict):
                 skills_dir=skills_dir, signal_weights=signal_weights,
                 skill_types=skill_types, entry_exit_config=entry_exit_config,
             )
+        except Exception as e:
+            print(f"    ✗ 回测失败: {type(e).__name__}: {e}")
+            bt_rows.append({"code": code, "name": item["name"][:8],
+                            "bz_score": item["total_score"], "bz_grade": item["grade"],
+                            "return": None, "bench": None, "trades": 0,
+                            "status": "failed"})
+            continue
+        # 构造可能较慢：run() 前再核同一截止，到期不启动
+        if _expired():
+            print("    ⏱ 引擎已构造但启动预算到期：未调用 run()"
+                  "（不计失败、不显示收益0）")
+            bt_rows.append({"code": code, "name": item["name"][:8],
+                            "bz_score": item["total_score"],
+                            "bz_grade": item["grade"],
+                            "return": None, "bench": None, "trades": 0,
+                            "status": "not_started"})
+            bt_not_started += 1
+            continue
+        try:
             res = eng.run()
             bt_rows.append({
                 "code": code, "name": item["name"][:8],
                 "bz_score": item["total_score"], "bz_grade": item["grade"],
                 "return": res.total_return_pct, "bench": res.benchmark_return_pct,
                 "trades": getattr(res, "total_trades", 0) or 0,
+                "status": "ok",
             })
         except Exception as e:
             print(f"    ✗ 回测失败: {type(e).__name__}: {e}")
             bt_rows.append({"code": code, "name": item["name"][:8],
                             "bz_score": item["total_score"], "bz_grade": item["grade"],
-                            "return": None, "bench": None, "trades": 0})
+                            "return": None, "bench": None, "trades": 0,
+                            "status": "failed"})
 
     # 回测对比表
     print()
@@ -1793,6 +2164,10 @@ def run_benzong_scan(args: dict):
         tbl.add_column("超额%", justify="right")
         tbl.add_column("交易次", justify="right")
         for idx, r in enumerate(bt_rows, 1):
+            if r.get("status") == "not_started":
+                tbl.add_row(str(idx), r["code"], r["name"], f"{r['bz_score']:.1f}",
+                            r["bz_grade"], "[yellow]未开始[/yellow]", "-", "-", "-")
+                continue
             if r["return"] is None:
                 tbl.add_row(str(idx), r["code"], r["name"], f"{r['bz_score']:.1f}",
                             r["bz_grade"], "[red]失败[/red]", "-", "-", "-")
@@ -1807,8 +2182,17 @@ def run_benzong_scan(args: dict):
         rc.print(tbl)
     except Exception:
         for idx, r in enumerate(bt_rows, 1):
+            if r.get("status") == "not_started":
+                print(f"  {idx}. {r['code']} {r['name']} | 笨总{r['bz_score']:.1f}"
+                      f"{r['bz_grade']} | 未开始（预算到期；不计失败/收益0）")
+                continue
             ret = f"{r['return']:+.2f}%" if r["return"] is not None else "失败"
             print(f"  {idx}. {r['code']} {r['name']} | 笨总{r['bz_score']:.1f}{r['bz_grade']} | 收益{ret}")
+    # T05-N fix1：成功/失败/未开始分别计数——构造或 run 异常不得计入“完成/成功”。
+    bt_ok = sum(1 for r in bt_rows if r.get("status") == "ok")
+    bt_failed = sum(1 for r in bt_rows if r.get("status") == "failed")
+    print(f"  回测结果：成功 {bt_ok}/{bt_total} 只；失败 {bt_failed} 只；"
+          f"未开始 {bt_not_started} 只（未开始=启动预算到期，不计失败、不显示收益0）")
     print()
     print(f"  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示")
     print()
@@ -2951,7 +3335,7 @@ def _dispatch_backtest_cli(
     return False
 
 
-_SUPPORTED_BUDGET_MODES = ("benzong_all", "benzong_multi")
+_SUPPORTED_BUDGET_MODES = ("benzong_all", "benzong_multi", "benzong_scan")
 # T05-L：live 深分析批（l 多代码 / la / l all）的预算走 live 合同（单只 live 仍不支持）
 _LIVE_BUDGET_MODES = ("live_multi", "live_all", "live_scan_all")
 
@@ -2983,8 +3367,11 @@ def _reject_budget_request(mode: str, args) -> bool:
         return True
     from src.core.benzong.batch_scorer import budget_descriptor
     if budget_descriptor(budget) is None:
-        print("  [!] 预算参数无效（需有限正数秒）；本次未开始评分"
-              "（不读取扫描结果/缓存、不调用 AI、不写账本）")
+        if mode == "benzong_scan":
+            print(_SCAN_BUDGET_INVALID)
+        else:
+            print("  [!] 预算参数无效（需有限正数秒）；本次未开始评分"
+                  "（不读取扫描结果/缓存、不调用 AI、不写账本）")
         return True
     return False
 

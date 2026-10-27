@@ -1,0 +1,1488 @@
+
+=== baseline-red-final stdout_bytes=73456 sha256=0d6fa1ffe0354a4d9ce2950994149973eb7b7230ba6ddbaf59650ff1cc8d6b88 ===
+FFF.........FFFFFFFF.FFFFFFFFFFFFFFFFFFFFF.FFFFFFFFFFFFF.FFFFFFFFFFFFF.  [100%]
+================================== FAILURES ===================================
+___________________ test_parse_scan_budget_space_and_equals ___________________
+
+    def test_parse_scan_budget_space_and_equals():
+        parsed = start.parse_input("bz scan --budget 600 --limit 15")
+>       assert parsed is not None, "bz scan 应支持 --budget（基线红=业务断言）"
+E       AssertionError: bz scan 应支持 --budget（基线红=业务断言）
+E       assert None is not None
+
+tests\core\test_bzscan_budget.py:392: AssertionError
+---------------------------- Captured stdout call -----------------------------
+  [!] bz scan 不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）
+________________ test_parse_scan_budget_aliases_and_positions _________________
+
+    def test_parse_scan_budget_aliases_and_positions():
+        for text in ("bz 筛选 科技 --budget 60", "bz 选股 --budget=60",
+                     "bz --budget 60 scan 科技"):
+            parsed = start.parse_input(text)
+>           assert parsed is not None, f"scan 别名应支持 --budget: {text}"
+E           AssertionError: scan 别名应支持 --budget: bz 筛选 科技 --budget 60
+E           assert None is not None
+
+tests\core\test_bzscan_budget.py:405: AssertionError
+---------------------------- Captured stdout call -----------------------------
+  [!] bz scan 不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）
+_______________ test_parse_scan_budget_does_not_leak_into_theme _______________
+
+    def test_parse_scan_budget_does_not_leak_into_theme():
+        parsed = start.parse_input("bz scan --budget 60 AI")
+>       assert parsed is not None, "bz scan --budget 60 AI 应可解析"
+E       AssertionError: bz scan --budget 60 AI 应可解析
+E       assert None is not None
+
+tests\core\test_bzscan_budget.py:413: AssertionError
+---------------------------- Captured stdout call -----------------------------
+  [!] bz scan 不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit 0---limit] _
+
+text = 'bz scan 科技 --limit 0', label = '--limit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018915346AD0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018915347310>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --limit 0')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit -2---limit] _
+
+text = 'bz scan 科技 --limit -2', label = '--limit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018914222690>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018914223290>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --limit -2')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit abc---limit] _
+
+text = 'bz scan 科技 --limit abc', label = '--limit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189140B67D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000189140B6790>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --limit abc')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit 2.5---limit] _
+
+text = 'bz scan 科技 --limit 2.5', label = '--limit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189157D3250>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000189157D3910>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --limit 2.5')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit---limit] _
+
+text = 'bz scan 科技 --limit', label = '--limit'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189154CD110>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018915618CD0>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '--limit', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '--limit', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --limit')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top 0---top] _
+
+text = 'bz scan 科技 --top 0', label = '--top'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891560FED0>
+capsys = <_pytest.capture.CaptureFixture object at 0x000001891560D850>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 0, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 0, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --top 0')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top x---top] _
+
+text = 'bz scan 科技 --top x', label = '--top'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189153D4290>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000189153D6C90>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --top x')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+_ test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top---top] _
+
+text = 'bz scan 科技 --top', label = '--top'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189141C5010>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000189141C4390>
+
+    @pytest.mark.parametrize("text,label", [
+        ("bz scan 科技 --limit 0", "--limit"),
+        ("bz scan 科技 --limit -2", "--limit"),
+        ("bz scan 科技 --limit abc", "--limit"),
+        ("bz scan 科技 --limit 2.5", "--limit"),
+        ("bz scan 科技 --limit", "--limit"),
+        ("bz scan 科技 --top 0", "--top"),
+        ("bz scan 科技 --top x", "--top"),
+        ("bz scan 科技 --top", "--top"),
+    ])
+    def test_parse_scan_bad_limit_or_top_rejected(text, label, monkeypatch, capsys):
+        from src.cli import session_state
+    
+        def boom(*a, **k):
+            raise AssertionError("坏 limit/top 不得读取扫描状态")
+    
+        monkeypatch.setattr(session_state, "get_last_scan", boom)
+        monkeypatch.setattr(session_state, "resolve_index", boom)
+>       assert start.parse_input(text) is None
+E       AssertionError: assert ('benzong_scan', {'theme': '--top', 'top_n': 10, 'backtest': False, 'start': '', ...}) is None
+E        +  where ('benzong_scan', {'theme': '--top', 'top_n': 10, 'backtest': False, 'start': '', ...}) = <function parse_input at 0x00000189157F68E0>('bz scan 科技 --top')
+E        +    where <function parse_input at 0x00000189157F68E0> = start.parse_input
+
+tests\core\test_bzscan_budget.py:467: AssertionError
+______________ test_run_cli_scan_bad_budget_zero_business[zero] _______________
+
+bad = 0
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891595C390>
+capsys = <_pytest.capture.CaptureFixture object at 0x000001891595D350>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+_______________ test_run_cli_scan_bad_budget_zero_business[neg] _______________
+
+bad = -1
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891546DC10>
+capsys = <_pytest.capture.CaptureFixture object at 0x00000189164C81D0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+_______________ test_run_cli_scan_bad_budget_zero_business[nan] _______________
+
+bad = nan
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189166644D0>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018916664450>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+_______________ test_run_cli_scan_bad_budget_zero_business[inf] _______________
+
+bad = inf
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891650C350>
+capsys = <_pytest.capture.CaptureFixture object at 0x000001891650C750>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+_______________ test_run_cli_scan_bad_budget_zero_business[str] _______________
+
+bad = '60'
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018915869010>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018915869B10>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+______________ test_run_cli_scan_bad_budget_zero_business[bool] _______________
+
+bad = True
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018916667F10>
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018916667F50>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param(float("inf"), id="inf"),
+        pytest.param("60", id="str"), pytest.param(True, id="bool"),
+    ])
+    def test_run_cli_scan_bad_budget_zero_business(bad, monkeypatch, capsys):
+        _no_business(monkeypatch)
+        start.run_cli("benzong_scan", dict(BASE_ARGS, budget=bad))
+        out = capsys.readouterr().out
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '  [!] 该命令不支持 --budget（预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析）；本次未执行\n')
+
+tests\core\test_bzscan_budget.py:492: AssertionError
+______ test_run_benzong_scan_programmatic_bad_budget_zero_business[zero] ______
+
+bad = 0, env = <test_bzscan_budget.Env object at 0x000001891649FC50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891649F010>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param("60", id="str"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_budget_zero_business(bad, env, monkeypatch):
+        args = dict(BASE_ARGS, budget=bad)
+        out = env.run(args)
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:502: AssertionError
+______ test_run_benzong_scan_programmatic_bad_budget_zero_business[neg] _______
+
+bad = -1, env = <test_bzscan_budget.Env object at 0x0000018914210F50>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018914210790>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param("60", id="str"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_budget_zero_business(bad, env, monkeypatch):
+        args = dict(BASE_ARGS, budget=bad)
+        out = env.run(args)
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:502: AssertionError
+______ test_run_benzong_scan_programmatic_bad_budget_zero_business[nan] _______
+
+bad = nan, env = <test_bzscan_budget.Env object at 0x00000189156008D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x00000189164CAAD0>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param("60", id="str"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_budget_zero_business(bad, env, monkeypatch):
+        args = dict(BASE_ARGS, budget=bad)
+        out = env.run(args)
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:502: AssertionError
+______ test_run_benzong_scan_programmatic_bad_budget_zero_business[str] _______
+
+bad = '60', env = <test_bzscan_budget.Env object at 0x00000189166678D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891595DB50>
+
+    @pytest.mark.parametrize("bad", [
+        pytest.param(0, id="zero"), pytest.param(-1, id="neg"),
+        pytest.param(float("nan"), id="nan"), pytest.param("60", id="str"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_budget_zero_business(bad, env, monkeypatch):
+        args = dict(BASE_ARGS, budget=bad)
+        out = env.run(args)
+>       assert "预算参数无效" in out and "未开始扫描" in out
+E       AssertionError: assert ('预算参数无效' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:502: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch0-limit] _
+
+args_patch = {'limit': 0}, label = 'limit'
+env = <test_bzscan_budget.Env object at 0x00000189140B42D0>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('limit' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============... 规则: healthy_pullback | 主题词: (全市场) | 候选上限: 0\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch1-limit] _
+
+args_patch = {'limit': -1}, label = 'limit'
+env = <test_bzscan_budget.Env object at 0x00000189153D6690>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('limit' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: -1\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch2-limit] _
+
+args_patch = {'limit': '15'}, label = 'limit'
+env = <test_bzscan_budget.Env object at 0x0000018916684D90>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('limit' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch3-limit] _
+
+args_patch = {'limit': True}, label = 'limit'
+env = <test_bzscan_budget.Env object at 0x0000018916656A90>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('limit' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...: healthy_pullback | 主题词: (全市场) | 候选上限: True\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch4-limit] _
+
+args_patch = {'limit': None}, label = 'limit'
+env = <test_bzscan_budget.Env object at 0x000001891668AA90>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('limit' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...: healthy_pullback | 主题词: (全市场) | 候选上限: None\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch5-TopN] _
+
+args_patch = {'top_n': 0}, label = 'TopN'
+env = <test_bzscan_budget.Env object at 0x000001891666A090>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============... 规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 0 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n' and '正整数' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============... 规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 0 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch6-TopN] _
+
+args_patch = {'top_n': -2}, label = 'TopN'
+env = <test_bzscan_budget.Env object at 0x000001891650E6D0>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: -2 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n' and '正整数' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: -2 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch7-TopN] _
+
+args_patch = {'top_n': 2.5}, label = 'TopN'
+env = <test_bzscan_budget.Env object at 0x0000018915528F10>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 2.5 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n' and '正整数' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 2.5 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch8-TopN] _
+
+args_patch = {'top_n': True}, label = 'TopN'
+env = <test_bzscan_budget.Env object at 0x000001891666C350>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: True | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n' and '正整数' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: True | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+_ test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch9-TopN] _
+
+args_patch = {'top_n': '10'}, label = 'TopN'
+env = <test_bzscan_budget.Env object at 0x000001891649F490>
+
+    @pytest.mark.parametrize("args_patch,label", [
+        ({"limit": 0}, "limit"), ({"limit": -1}, "limit"),
+        ({"limit": "15"}, "limit"), ({"limit": True}, "limit"),
+        ({"limit": None}, "limit"),
+        ({"top_n": 0}, "TopN"), ({"top_n": -2}, "TopN"),
+        ({"top_n": 2.5}, "TopN"), ({"top_n": True}, "TopN"),
+        ({"top_n": "10"}, "TopN"),
+    ])
+    def test_run_benzong_scan_programmatic_bad_limit_top_zero_business(
+            args_patch, label, env):
+        out = env.run(dict(BASE_ARGS, **args_patch))
+>       assert label in out and "正整数" in out
+E       AssertionError: assert ('TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n' and '正整数' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:519: AssertionError
+____________ test_budget_deadline_passes_through_run_cli_to_scorer ____________
+
+env = <test_bzscan_budget.Env object at 0x000001891649F350>
+
+    def test_budget_deadline_passes_through_run_cli_to_scorer(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        args = dict(BASE_ARGS, budget=600.0)
+        out = env.run_cli(args)
+>       assert len(FakeScorer.calls) == 1
+E       assert 0 == 1
+E        +  where 0 = len([])
+E        +    where [] = FakeScorer.calls
+
+tests\core\test_bzscan_budget.py:530: AssertionError
+__________________ test_entry_expired_before_rule_resolution __________________
+
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000018916639210>
+capsys = <_pytest.capture.CaptureFixture object at 0x000001891663A990>
+
+    def test_entry_expired_before_rule_resolution(monkeypatch, capsys):
+        _forbid_business_deps(monkeypatch)
+        # 假钟每次取时都前进：截止点刚算出，入口校验时即到期——必须先于任何业务拒绝。
+        clock = AutoClock(step=600.0)
+        monkeypatch.setattr(start, "_monotonic", clock)
+>       start.run_benzong_scan(dict(BASE_ARGS, budget=600.0))
+
+tests\core\test_bzscan_budget.py:556: 
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+start.py:1472: in run_benzong_scan
+    config = load_config()
+             ^^^^^^^^^^^^^
+_ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _
+
+a = (), k = {}
+
+    def _boom(*a, **k):
+>       raise AssertionError("坏值/到期路径不得触发业务动作")
+E       AssertionError: 坏值/到期路径不得触发业务动作
+
+tests\core\test_bzscan_budget.py:360: AssertionError
+---------------------------- Captured stdout call -----------------------------
+
+================================================================
+  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN
+================================================================
+  规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15
+  TopN: 10 | 回测: 否
+
+______________ test_rule_resolution_expired_stops_before_config _______________
+
+env = <test_bzscan_budget.Env object at 0x000001891663E650>
+
+    def test_rule_resolution_expired_stops_before_config(env):
+        def slow_resolve(name):
+            env.clock.advance(1000.0)
+    
+        FakeEngine.on_resolve = slow_resolve
+        out = env.run(dict(BASE_ARGS, budget=10.0))
+>       assert "启动预算已到期" in out and "规则解析" in out
+E       AssertionError: assert ('启动预算已到期' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:568: AssertionError
+___________ test_config_load_expired_stops_before_account_and_scan ____________
+
+env = <test_bzscan_budget.Env object at 0x0000018915603A10>
+
+    def test_config_load_expired_stops_before_account_and_scan(env):
+        FakeConfig.value = dict(copy.deepcopy(CONFIG),
+                                scanner={"auto_exclude_holdings": True,
+                                         "rules_path": "rules.yaml", "cache_ttl": 300})
+        FakeConfig.hook = lambda: env.clock.advance(1000.0)
+        out = env.run(dict(BASE_ARGS, budget=10.0))
+>       assert "启动预算已到期" in out and "配置加载" in out
+E       AssertionError: assert ('启动预算已到期' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:578: AssertionError
+______________ test_account_prep_expired_stops_before_candidate _______________
+
+env = <test_bzscan_budget.Env object at 0x0000018916652450>
+
+    def test_account_prep_expired_stops_before_candidate(env):
+        FakeConfig.value = dict(copy.deepcopy(CONFIG),
+                                scanner={"auto_exclude_holdings": True,
+                                         "rules_path": "rules.yaml", "cache_ttl": 300})
+        FakePortfolio.hook = lambda: env.clock.advance(1000.0)
+        out = env.run(dict(BASE_ARGS, budget=10.0))
+>       assert "启动预算已到期" in out and "账户准备" in out
+E       AssertionError: assert ('启动预算已到期' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:589: AssertionError
+__________ test_theme_channel_a_expired_marks_candidates_incomplete ___________
+
+env = <test_bzscan_budget.Env object at 0x000001891667C4D0>
+
+    def test_theme_channel_a_expired_marks_candidates_incomplete(env):
+        FakeLocator.stocks = ["600001", "600002"]
+        FakeLocator.hook = lambda n: env.clock.advance(1000.0)
+        out = env.run(scan_args("bz scan 科技") | {"budget": 10.0})
+>       assert "候选不完整" in out and "不开始评分" in out and "不落盘" in out
+E       AssertionError: assert ('候选不完整' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top2 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:600: AssertionError
+_________ test_theme_channel_b_expired_after_complete_list_no_scoring _________
+
+env = <test_bzscan_budget.Env object at 0x0000018916642310>
+
+    def test_theme_channel_b_expired_after_complete_list_no_scoring(env):
+        FakeLocator.stocks = ["600001", "600002"]
+        FakeEngine.scan_results = {"theme_members": ["600003"]}
+        FakeEngine.on_scan = (
+            lambda rule: env.clock.advance(1000.0) if rule == "theme_members" else None)
+        out = env.run(scan_args("bz scan 科技") | {"budget": 10.0})
+>       assert "候选已完整形成" in out and "不开始评分" in out
+E       AssertionError: assert ('候选已完整形成' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top3 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:611: AssertionError
+________ test_single_rule_scan_expired_after_complete_list_no_scoring _________
+
+env = <test_bzscan_budget.Env object at 0x0000018916656990>
+
+    def test_single_rule_scan_expired_after_complete_list_no_scoring(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        FakeEngine.on_scan = lambda rule: env.clock.advance(1000.0)
+        out = env.run(dict(BASE_ARGS, budget=10.0))
+>       assert "候选已完整形成" in out and "不开始评分" in out
+E       AssertionError: assert ('候选已完整形成' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top2 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:619: AssertionError
+____________ test_single_rule_engine_construct_expired_before_scan ____________
+
+env = <test_bzscan_budget.Env object at 0x0000018916669290>
+
+    def test_single_rule_engine_construct_expired_before_scan(env):
+        def slow_second_init(engine):
+            if len(FakeEngine.instances) == 2:
+                env.clock.advance(1000.0)
+    
+        FakeEngine.on_init = slow_second_init
+        out = env.run(dict(BASE_ARGS, budget=10.0))
+>       assert "启动预算已到期" in out and "引擎构造" in out
+E       AssertionError: assert ('启动预算已到期' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n  [Step 1/3] 技术面初筛中...\n  ⚠ 初筛无候选股（可能非交易时段或条件过严）\n')
+
+tests\core\test_bzscan_budget.py:630: AssertionError
+_______ test_allrules_expired_between_rules_marks_candidates_incomplete _______
+
+env = <test_bzscan_budget.Env object at 0x0000018916639D10>
+
+    def test_allrules_expired_between_rules_marks_candidates_incomplete(env):
+        FakeEngine.scan_results = {r: [f"{r[:2]}{i}" for i in range(3)] for r in ALL_RULES}
+        FakeEngine.on_scan = (
+            lambda rule: env.clock.advance(1000.0) if rule == "steady_advance" else None)
+        out = env.run(scan_args("bz scan --allrules") | {"budget": 60.0})
+>       assert "候选不完整" in out and "不开始评分" in out
+E       AssertionError: assert ('候选不完整' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...  或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top10 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:640: AssertionError
+_______ test_allrules_expired_after_final_rule_complete_list_no_scoring _______
+
+env = <test_bzscan_budget.Env object at 0x000001891663AF10>
+
+    def test_allrules_expired_after_final_rule_complete_list_no_scoring(env):
+        FakeEngine.scan_results = {r: [f"{r[:2]}{i}" for i in range(3)] for r in ALL_RULES}
+        FakeEngine.on_scan = (
+            lambda rule: env.clock.advance(1000.0) if rule == "oversold_watch" else None)
+        out = env.run(scan_args("bz scan --allrules") | {"budget": 60.0})
+>       assert "候选已完整形成" in out and "不开始评分" in out
+E       AssertionError: assert ('候选已完整形成' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...  或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top10 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:650: AssertionError
+________ test_partial_scoring_marked_partial_blocks_save_and_backtest _________
+
+env = <test_bzscan_budget.Env object at 0x000001891663AB90>
+
+    def test_partial_scoring_marked_partial_blocks_save_and_backtest(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002", "600003"]}
+        FakeScorer.result_factory = (
+            lambda codes, top_n, kw: partial_result(codes, top_n, started=1))
+        out = env.run(dict(BASE_ARGS, budget=600.0, backtest=True))
+>       assert "部分结果" in out and "不覆盖" in out and "不开启 TopN 回测" in out
+E       AssertionError: assert ('部分结果' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...───────┴────────────┴────────┴──────┴───────┴───────┴───────┴───────┘\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n')
+
+tests\core\test_bzscan_budget.py:662: AssertionError
+_________ test_complete_scoring_saved_then_backtest_expiry_keeps_scan _________
+
+env = <test_bzscan_budget.Env object at 0x0000018916653710>
+
+    def test_complete_scoring_saved_then_backtest_expiry_keeps_scan(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        FakeScorer.hook = lambda: env.clock.advance(1000.0)  # 评分耗时跨过截止
+        out = env.run(dict(BASE_ARGS, budget=10.0, backtest=True))
+        assert len(FakeSaves.saves) == 1 and len(FakeSaves.reports) == 1
+        assert FakeSaves.saves[0][0][0]["code"] == "600001"
+>       assert "回测未开始（0/2 只）" in out and "不计失败" in out
+E       AssertionError: assert ('回测未开始（0/2 只）' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...───────┴────────────┴────────┴──────┴───────┴───────┴───────┴───────┘\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n')
+
+tests\core\test_bzscan_budget.py:674: AssertionError
+________________ test_empty_topn_does_not_overwrite_last_scan _________________
+
+env = <test_bzscan_budget.Env object at 0x00000189166383D0>
+
+    def test_empty_topn_does_not_overwrite_last_scan(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001"]}
+        FakeScorer.result_factory = lambda codes, top_n, kw: empty_result(codes, top_n)
+        out = env.run(dict(BASE_ARGS, backtest=True))
+>       assert "无有效 TopN" in out and "不覆盖" in out
+E       AssertionError: assert ('无有效 TopN' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...───────┴────────────┴────────┴──────┴───────┴───────┴───────┴───────┘\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n')
+
+tests\core\test_bzscan_budget.py:682: AssertionError
+__________ test_backtest_construction_expiry_skips_run_and_next_item __________
+
+env = <test_bzscan_budget.Env object at 0x000001891667FE50>
+
+    def test_backtest_construction_expiry_skips_run_and_next_item(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+    
+        def slow_first_init(kwargs):
+            if len(FakeBacktest.inits) == 1:
+                env.clock.advance(1000.0)
+    
+        FakeBacktest.hook_init = slow_first_init
+        out = env.run(dict(BASE_ARGS, budget=60.0, backtest=True))
+        assert FakeScorer.calls and FakeSaves.saves
+>       assert len(FakeBacktest.inits) == 1 and FakeBacktest.runs == []
+E       AssertionError: assert (2 == 1)
+E        +  where 2 = len([{'stock_code': '600001', 'start_date': '2025-10-28', 'end_date': '2026-10-28', 'initial_capital': 100000.0, ...}, {'stock_code': '600002', 'start_date': '2025-10-28', 'end_date': '2026-10-28', 'initial_capital': 100000.0, ...}])
+E        +    where [{'stock_code': '600001', 'start_date': '2025-10-28', 'end_date': '2026-10-28', 'initial_capital': 100000.0, ...}, {'stock_code': '600002', 'start_date': '2025-10-28', 'end_date': '2026-10-28', 'initial_capital': 100000.0, ...}] = FakeBacktest.inits
+
+tests\core\test_bzscan_budget.py:706: AssertionError
+__________ test_backtest_slow_title_after_check_does_not_start_next ___________
+
+env = <test_bzscan_budget.Env object at 0x000001891667D390>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x000001891667FF90>
+
+    def test_backtest_slow_title_after_check_does_not_start_next(env, monkeypatch):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        real_print = print
+        state = {"hit": False}
+    
+        def slow_title(*parts, **kwargs):
+            text = " ".join(str(p) for p in parts)
+            if not state["hit"] and "回测 600002" in text:
+                state["hit"] = True
+                env.clock.advance(1000.0)
+            return real_print(*parts, **kwargs)
+    
+        monkeypatch.setattr("builtins.print", slow_title)
+        out = env.run(dict(BASE_ARGS, budget=60.0, backtest=True))
+>       assert FakeBacktest.runs == ["600001"] and len(FakeBacktest.inits) == 1
+E       AssertionError: assert (['600001', '600002'] == ['600001']
+E         
+E         Left contains one more item: '600002'
+E         Use -v to get more diff)
+
+tests\core\test_bzscan_budget.py:725: AssertionError
+_____________ test_backtest_run_completes_current_then_stops_next _____________
+
+env = <test_bzscan_budget.Env object at 0x000001891667D7D0>
+
+    def test_backtest_run_completes_current_then_stops_next(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+    
+        def slow_first_run(kwargs):
+            if kwargs.get("stock_code") == "600001":
+                env.clock.advance(1000.0)
+    
+        FakeBacktest.hook_run = slow_first_run
+        out = env.run(dict(BASE_ARGS, budget=60.0, backtest=True))
+>       assert FakeBacktest.runs == ["600001"] and len(FakeBacktest.inits) == 1
+E       AssertionError: assert (['600001', '600002'] == ['600001']
+E         
+E         Left contains one more item: '600002'
+E         Use -v to get more diff)
+
+tests\core\test_bzscan_budget.py:738: AssertionError
+_________________ test_topic_limit_dedupes_merged_candidates __________________
+
+env = <test_bzscan_budget.Env object at 0x0000018916689210>
+
+    def test_topic_limit_dedupes_merged_candidates(env):
+        FakeLocator.stocks = ["600001", "600001", "600002", "600003"]
+        FakeEngine.scan_results = {"theme_members": ["600001", "600004"]}
+        args = scan_args("bz scan 科技") | {"limit": 2}
+        env.run(args)
+>       assert FakeScorer.calls[0]["codes"] == ["600001", "600002"]
+E       AssertionError: assert ['600001', '600001'] == ['600001', '600002']
+E         
+E         At index 1 diff: '600001' != '600002'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:750: AssertionError
+___________________ test_single_rule_limit_dedupes_and_caps ___________________
+
+env = <test_bzscan_budget.Env object at 0x0000018916649F10>
+
+    def test_single_rule_limit_dedupes_and_caps(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600001", "600002", "600003"]}
+        env.run(dict(BASE_ARGS, limit=2))
+>       assert FakeScorer.calls[0]["codes"] == ["600001", "600002"]
+E       AssertionError: assert ['600001', '600001'] == ['600001', '600002']
+E         
+E         At index 1 diff: '600001' != '600002'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:757: AssertionError
+_________________ test_allrules_default_limit_round_robin_15 __________________
+
+env = <test_bzscan_budget.Env object at 0x00000189166C9A50>
+
+    def test_allrules_default_limit_round_robin_15(env):
+        FakeEngine.scan_results = {
+            r: [f"{i}{r}" for i in range(8)] for r in ALL_RULES}
+        out = env.run(scan_args("bz scan --allrules"))
+        codes = FakeScorer.calls[0]["codes"]
+        expected = []
+        buckets = [[f"{i}{r}" for i in range(5)] for r in ALL_RULES]
+        for depth in range(3):
+            expected.extend(bucket[depth] for bucket in buckets)
+>       assert codes == expected and len(codes) == 15
+E       AssertionError: assert (['0healthy_pu...advance', ...] == ['0healthy_pu...ullback', ...]
+E         
+E         At index 1 diff: '1healthy_pullback' != '0steady_advance'
+E         Left contains 10 more items, first extra item: '0value_pick'
+E         Use -v to get more diff)
+
+tests\core\test_bzscan_budget.py:772: AssertionError
+____________________ test_allrules_small_limit_round_robin ____________________
+
+env = <test_bzscan_budget.Env object at 0x000001891667E610>
+
+    def test_allrules_small_limit_round_robin(env):
+        FakeEngine.scan_results = {r: [f"{i}{r}" for i in range(8)] for r in ALL_RULES}
+        env.run(scan_args("bz scan --allrules") | {"limit": 3})
+>       assert FakeScorer.calls[0]["codes"] == [f"0{r}" for r in ALL_RULES[:3]]
+E       AssertionError: assert ['0healthy_pu...advance', ...] == ['0healthy_pu...ink_pullback']
+E         
+E         At index 1 diff: '1healthy_pullback' != '0steady_advance'
+E         Left contains 22 more items, first extra item: '3healthy_pullback'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:782: AssertionError
+______ test_allrules_large_limit_capped_by_structure_and_reports_request ______
+
+env = <test_bzscan_budget.Env object at 0x000001891677AF50>
+
+    def test_allrules_large_limit_capped_by_structure_and_reports_request(env):
+        FakeEngine.scan_results = {r: [f"{i}{r}" for i in range(8)] for r in ALL_RULES}
+        out = env.run(scan_args("bz scan --allrules") | {"limit": 40})
+        assert len(FakeScorer.calls[0]["codes"]) == 25
+>       assert "limit=40" in out and "结构上限 25" in out and "按 25 截断" in out
+E       AssertionError: assert ('limit=40' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...  或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top10 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:789: AssertionError
+_________ test_allrules_overlap_buckets_keep_full_hits_and_resonance __________
+
+env = <test_bzscan_budget.Env object at 0x0000018916672190>
+
+    def test_allrules_overlap_buckets_keep_full_hits_and_resonance(env):
+        FakeEngine.scan_results = {
+            "healthy_pullback": ["A", "B", "C", "D", "E"],
+            "steady_advance": ["A", "B", "F", "G", "H"],
+            "shrink_pullback": ["A", "F", "I", "J", "K"],
+            "value_pick": [],
+            "oversold_watch": [],
+        }
+        out = env.run(scan_args("bz scan --allrules"))
+        codes = FakeScorer.calls[0]["codes"]
+>       assert codes == ["A", "F", "I", "B", "G", "J", "C", "H", "K", "D", "E"]
+E       AssertionError: assert ['A', 'B', 'C...'E', 'F', ...] == ['A', 'F', 'I...'G', 'J', ...]
+E         
+E         At index 1 diff: 'B' != 'F'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:803: AssertionError
+____________ test_allrules_small_limit_still_scans_all_five_rules _____________
+
+env = <test_bzscan_budget.Env object at 0x000001891650EBD0>
+
+    def test_allrules_small_limit_still_scans_all_five_rules(env):
+        FakeEngine.scan_results = {r: [f"{i}{r}" for i in range(8)] for r in ALL_RULES}
+        env.run(scan_args("bz scan --allrules") | {"limit": 1})
+>       assert len(FakeScorer.calls[0]["codes"]) == 1
+E       AssertionError: assert 25 == 1
+E        +  where 25 = len(['0healthy_pullback', '1healthy_pullback', '2healthy_pullback', '3healthy_pullback', '4healthy_pullback', '0steady_advance', ...])
+
+tests\core\test_bzscan_budget.py:813: AssertionError
+________________ test_help_and_banner_list_scan_budget_example ________________
+
+capsys = <_pytest.capture.CaptureFixture object at 0x0000018916747B50>
+
+    def test_help_and_banner_list_scan_budget_example(capsys):
+        start.show_help()
+        help_out = capsys.readouterr().out
+>       assert "bz scan --budget 600 --limit 15" in help_out
+E       AssertionError: assert 'bz scan --budget 600 --limit 15' in '┌────────────────────────────────────────────────────────────────────────┐\n│ 暮云思辨投资助手 · 命令菜单                        ...忙或超时：立即降级，不另起会话                      │\n└────────────────────────────────────────────────────────────────────────┘\n\n'
+
+tests\core\test_bzscan_budget.py:822: AssertionError
+________________ test_default_scan_hint_before_first_business _________________
+
+env = <test_bzscan_budget.Env object at 0x0000018914211650>
+
+    def test_default_scan_hint_before_first_business(env):
+        captured = []
+        FakeConfig.hook = lambda: captured.append(env.capsys.readouterr().out)
+        FakeEngine.scan_results = {"healthy_pullback": ["600001"]}
+        env.run(dict(BASE_ARGS))
+        assert captured, "load_config 必须已被调用"
+>       assert "--budget 600" in captured[0] and "默认不启用" in captured[0]
+E       AssertionError: assert ('--budget 600' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...==============================================\n  规则: healthy_pullback | 主题词: (全市场) | 候选上限: 15\n  TopN: 10 | 回测: 否\n\n')
+
+tests\core\test_bzscan_budget.py:837: AssertionError
+____________________ test_scoring_title_is_6dim_5ai_1rule _____________________
+
+env = <test_bzscan_budget.Env object at 0x00000189166B7C10>
+
+    def test_scoring_title_is_6dim_5ai_1rule(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        out = env.run(dict(BASE_ARGS))
+>       assert "6 维" in out and "5 维 AI" in out and "1 维规则" in out
+E       AssertionError: assert ('6 维' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top2 批量回测\n\n' and '5 维 AI' in '\n================================================================\n  🔍 笨总选股初筛 — scan → 6维AI评分 → TopN\n==============...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top2 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:844: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_budget_space_and_equals
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_budget_aliases_and_positions
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_budget_does_not_leak_into_theme
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit 0---limit]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit -2---limit]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit abc---limit]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit 2.5---limit]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --limit---limit]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top 0---top]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top x---top]
+FAILED tests/core/test_bzscan_budget.py::test_parse_scan_bad_limit_or_top_rejected[bz scan \u79d1\u6280 --top---top]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[zero]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[neg]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[nan]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[inf]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[str]
+FAILED tests/core/test_bzscan_budget.py::test_run_cli_scan_bad_budget_zero_business[bool]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_budget_zero_business[zero]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_budget_zero_business[neg]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_budget_zero_business[nan]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_budget_zero_business[str]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch0-limit]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch1-limit]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch2-limit]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch3-limit]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch4-limit]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch5-TopN]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch6-TopN]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch7-TopN]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch8-TopN]
+FAILED tests/core/test_bzscan_budget.py::test_run_benzong_scan_programmatic_bad_limit_top_zero_business[args_patch9-TopN]
+FAILED tests/core/test_bzscan_budget.py::test_budget_deadline_passes_through_run_cli_to_scorer
+FAILED tests/core/test_bzscan_budget.py::test_entry_expired_before_rule_resolution
+FAILED tests/core/test_bzscan_budget.py::test_rule_resolution_expired_stops_before_config
+FAILED tests/core/test_bzscan_budget.py::test_config_load_expired_stops_before_account_and_scan
+FAILED tests/core/test_bzscan_budget.py::test_account_prep_expired_stops_before_candidate
+FAILED tests/core/test_bzscan_budget.py::test_theme_channel_a_expired_marks_candidates_incomplete
+FAILED tests/core/test_bzscan_budget.py::test_theme_channel_b_expired_after_complete_list_no_scoring
+FAILED tests/core/test_bzscan_budget.py::test_single_rule_scan_expired_after_complete_list_no_scoring
+FAILED tests/core/test_bzscan_budget.py::test_single_rule_engine_construct_expired_before_scan
+FAILED tests/core/test_bzscan_budget.py::test_allrules_expired_between_rules_marks_candidates_incomplete
+FAILED tests/core/test_bzscan_budget.py::test_allrules_expired_after_final_rule_complete_list_no_scoring
+FAILED tests/core/test_bzscan_budget.py::test_partial_scoring_marked_partial_blocks_save_and_backtest
+FAILED tests/core/test_bzscan_budget.py::test_complete_scoring_saved_then_backtest_expiry_keeps_scan
+FAILED tests/core/test_bzscan_budget.py::test_empty_topn_does_not_overwrite_last_scan
+FAILED tests/core/test_bzscan_budget.py::test_backtest_construction_expiry_skips_run_and_next_item
+FAILED tests/core/test_bzscan_budget.py::test_backtest_slow_title_after_check_does_not_start_next
+FAILED tests/core/test_bzscan_budget.py::test_backtest_run_completes_current_then_stops_next
+FAILED tests/core/test_bzscan_budget.py::test_topic_limit_dedupes_merged_candidates
+FAILED tests/core/test_bzscan_budget.py::test_single_rule_limit_dedupes_and_caps
+FAILED tests/core/test_bzscan_budget.py::test_allrules_default_limit_round_robin_15
+FAILED tests/core/test_bzscan_budget.py::test_allrules_small_limit_round_robin
+FAILED tests/core/test_bzscan_budget.py::test_allrules_large_limit_capped_by_structure_and_reports_request
+FAILED tests/core/test_bzscan_budget.py::test_allrules_overlap_buckets_keep_full_hits_and_resonance
+FAILED tests/core/test_bzscan_budget.py::test_allrules_small_limit_still_scans_all_five_rules
+FAILED tests/core/test_bzscan_budget.py::test_help_and_banner_list_scan_budget_example
+FAILED tests/core/test_bzscan_budget.py::test_default_scan_hint_before_first_business
+FAILED tests/core/test_bzscan_budget.py::test_scoring_title_is_6dim_5ai_1rule
+58 failed, 13 passed in 3.45s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== baseline-red-final stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix1-red-newtests stdout_bytes=217 sha256=e5a316a7e1795add34da42aa4724cd40e9d424806c306c63b355132e712bd80f ===
+
+83 deselected in 0.32s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix1-red-newtests stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix1-red-newtests-r2 stdout_bytes=15761 sha256=6b797fcf9ae9a2101fa2ec7cd9a8f58face61d7b74de524b5993c22a81bdc8c6 ===
+FFFFFFFFFFFF                                                             [100%]
+================================== FAILURES ===================================
+_____________ test_f1_rule_engine_construct_expiry_blocks_resolve _____________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC8EAE50>
+
+    def test_f1_rule_engine_construct_expiry_blocks_resolve(env):
+        def slow_first_init(engine):
+            if len(FakeEngine.instances) == 1:
+                env.clock.advance(60.0)      # 构造耗尽到恰等于 deadline
+    
+        FakeEngine.on_init = slow_first_init
+        out = env.run(dict(BASE_ARGS, budget=60.0))
+>       assert FakeEngine.resolve_calls == [], "构造后到期不得再调用 resolve_rule_name"
+E       AssertionError: 构造后到期不得再调用 resolve_rule_name
+E       assert ['healthy_pullback'] == []
+E         
+E         Left contains one more item: 'healthy_pullback'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:894: AssertionError
+_______________ test_f1_theme_step1_title_expiry_blocks_locate ________________
+
+env = <test_bzscan_budget.Env object at 0x0000010B91984050>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000010AFCA9C450>
+
+    def test_f1_theme_step1_title_expiry_blocks_locate(env, monkeypatch):
+        FakeLocator.stocks = ["600001"]
+        real_print = print
+    
+        def slow_title(*parts, **kwargs):
+            text = " ".join(str(p) for p in parts)
+            if "双通道选股" in text:
+                env.clock.advance(60.0)      # 标题输出耗尽到恰等于 deadline
+            return real_print(*parts, **kwargs)
+    
+        monkeypatch.setattr("builtins.print", slow_title)
+        out = env.run(scan_args("bz scan 科技") | {"budget": 60.0})
+>       assert FakeLocator.calls == [], "标题后到期不得再调用 locate_theme_stocks"
+E       AssertionError: 标题后到期不得再调用 locate_theme_stocks
+E       assert [(['科技'], True)] == []
+E         
+E         Left contains one more item: (['科技'], True)
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:913: AssertionError
+_____________ test_f1_single_rule_step1_title_expiry_blocks_scan ______________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC9A6750>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000010AFC959990>
+
+    def test_f1_single_rule_step1_title_expiry_blocks_scan(env, monkeypatch):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001"]}
+        real_print = print
+    
+        def slow_title(*parts, **kwargs):
+            text = " ".join(str(p) for p in parts)
+            if "技术面初筛中" in text:
+                env.clock.advance(60.0)      # 标题输出耗尽到恰等于 deadline
+            return real_print(*parts, **kwargs)
+    
+        monkeypatch.setattr("builtins.print", slow_title)
+        out = env.run(dict(BASE_ARGS, budget=60.0))
+>       assert FakeEngine.scan_calls == [], "标题后到期不得再调用 quick_scan"
+E       AssertionError: 标题后到期不得再调用 quick_scan
+E       assert ['healthy_pullback'] == []
+E         
+E         Left contains one more item: 'healthy_pullback'
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:932: AssertionError
+__________________ test_f1_step2_title_expiry_blocks_scorer ___________________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC57C3D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000010AFC34C610>
+
+    def test_f1_step2_title_expiry_blocks_scorer(env, monkeypatch):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        real_print = print
+    
+        def slow_title(*parts, **kwargs):
+            text = " ".join(str(p) for p in parts)
+            if "Step 2/3" in text:
+                env.clock.advance(60.0)      # 评分标题输出耗尽到恰等于 deadline
+            return real_print(*parts, **kwargs)
+    
+        monkeypatch.setattr("builtins.print", slow_title)
+        out = env.run(dict(BASE_ARGS, budget=60.0))
+>       assert FakeScorer.calls == [], "评分标题后到期不得再调用 auto_score_batch"
+E       AssertionError: 评分标题后到期不得再调用 auto_score_batch
+E       assert [{'codes': ['...e, ...}, ...}] == []
+E         
+E         Left contains one more item: {'codes': ['600001', '600002'], 'top_n': 10, 'force_refresh': False, 'config': {'scanner': {'auto_exclude_holdings': F...lls': {'dir': 'skills', 'enabled': [], 'types': {}}, 'decision': {'signal_weights': {}}, 'entry_exit': None, ...}, ...}
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:950: AssertionError
+________ test_f2_snapshot_failure_reports_facts_and_no_new_list_links _________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC34FB90>
+
+    def test_f2_snapshot_failure_reports_facts_and_no_new_list_links(env):
+        _single_candidate(env)
+        FakeSaves.snapshot_ok = False
+        FakeSaves.history_ok = True
+        FakeSaves.report_value = "reports/fake.md"
+        out = env.run(dict(BASE_ARGS))
+>       assert "快照失败" in out and "历史成功" in out and "报告已生成" in out
+E       AssertionError: assert ('快照失败' in '  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；非强制中断、非费用上限）\n\n\n===================...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top1 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:969: AssertionError
+______________ test_f2_all_three_failures_reported_independently ______________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFCBBFD90>
+
+    def test_f2_all_three_failures_reported_independently(env):
+        _single_candidate(env)
+        FakeSaves.snapshot_ok = False
+        FakeSaves.history_ok = False
+        FakeSaves.report_value = ""
+        out = env.run(dict(BASE_ARGS))
+>       assert "快照失败" in out and "历史失败" in out and "报告未生成" in out
+E       AssertionError: assert ('快照失败' in '  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；非强制中断、非费用上限）\n\n\n===================...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top1 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:982: AssertionError
+__________ test_f2_snapshot_ok_history_fail_report_empty_keeps_links __________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFCC2C390>
+
+    def test_f2_snapshot_ok_history_fail_report_empty_keeps_links(env):
+        _single_candidate(env)
+        FakeSaves.snapshot_ok = True
+        FakeSaves.history_ok = False
+        FakeSaves.report_value = ""
+        out = env.run(dict(BASE_ARGS))
+>       assert "快照成功" in out and "历史失败" in out and "报告未生成" in out
+E       AssertionError: assert ('快照成功' in '  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；非强制中断、非费用上限）\n\n\n===================...   或单只：l #1 深分析 / bz #1 重评分 / pos add #1 建仓\n\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top1 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:993: AssertionError
+_____ test_f2_save_exception_reports_unconfirmed_and_backtest_still_runs ______
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC300C10>
+
+    def test_f2_save_exception_reports_unconfirmed_and_backtest_still_runs(env):
+        _single_candidate(env)
+        FakeSaves.save_exc = RuntimeError("save boom")
+        out = env.run(dict(BASE_ARGS, backtest=True))
+>       assert "scan 落盘异常" in out
+E       AssertionError: assert 'scan 落盘异常' in '  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；非强制中断、非费用上限）\n\n\n===================...───────┴────────────┴────────┴──────┴───────┴───────┴───────┴───────┘\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n'
+
+tests\core\test_bzscan_budget.py:1001: AssertionError
+____________ test_f2_report_exception_keeps_snapshot_history_facts ____________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC999A50>
+
+    def test_f2_report_exception_keeps_snapshot_history_facts(env):
+        _single_candidate(env)
+        FakeSaves.snapshot_ok = True
+        FakeSaves.history_ok = True
+        FakeSaves.report_exc = RuntimeError("report boom")
+        out = env.run(dict(BASE_ARGS))
+>       assert "快照成功" in out and "历史成功" in out and "报告未生成" in out
+E       AssertionError: assert ('快照成功' in '  可选启动预算：末尾可加 --budget 600 --limit 15（默认不启用；从本次扫描入口计时，到期不再开始新阶段/评分/回测，已开始的调用会跑完；非强制中断、非费用上限）\n\n\n===================...红=笨总大前提存疑\n\n  scan 落盘失败（不影响主流程）: report boom\n  💡 提示：加 --backtest --start YYYY-MM-DD --end YYYY-MM-DD 对 Top1 批量回测\n\n')
+
+tests\core\test_bzscan_budget.py:1013: AssertionError
+________ test_f2_backtest_expiry_not_claim_saved_when_snapshot_failed _________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFCACBDD0>
+
+    def test_f2_backtest_expiry_not_claim_saved_when_snapshot_failed(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+        FakeSaves.snapshot_ok = False
+        FakeSaves.history_ok = False
+        FakeScorer.hook = lambda: env.clock.advance(1000.0)   # 评分后跨过截止
+        out = env.run(dict(BASE_ARGS, budget=10.0, backtest=True))
+        assert "回测未开始（0/2 只）" in out
+        assert "新名单快照已保存" not in out
+>       assert "已完整评分并保存" not in out
+E       AssertionError: assert '已完整评分并保存' not in '  启动预算：10 秒...，对比表诚实展示\n\n'
+E         
+E         '已完整评分并保存' is contained here:
+E           （0/2 只）
+E             已完整评分并保存的扫描结果保留；未开始项不计失败、不显示收益0
+E         ?   ++++++++
+E           
+E             (1/2) 600001 600001名：未开始回测（启动预算到期）...
+E         
+E         ...Full output truncated (15 lines hidden), use '-vv' to show
+
+tests\core\test_bzscan_budget.py:1026: AssertionError
+_____________ test_f3_constructor_failure_not_counted_as_complete _____________
+
+env = <test_bzscan_budget.Env object at 0x0000010B91946B10>
+
+    def test_f3_constructor_failure_not_counted_as_complete(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+    
+        def fail_first_init(kwargs):
+            if len(FakeBacktest.inits) == 1:
+                env.clock.advance(60.0)      # 构造耗尽到恰等于 deadline 后失败
+                raise RuntimeError("ctor boom")
+    
+        FakeBacktest.hook_init = fail_first_init
+        out = env.run(dict(BASE_ARGS, budget=60.0, backtest=True))
+        assert FakeBacktest.runs == [] and len(FakeBacktest.inits) == 1
+>       assert "成功 0/2 只" in out and "失败 1 只" in out and "未开始 1 只" in out
+E       AssertionError: assert ('成功 0/2 只' in '  启动预算：60 秒（bz scan；从本次扫描入口计时，配置/账户/主题定位/扫描准备都计入；到期不再开始新阶段/评分/回测，已开始的调用会跑完；准备阶段可能超出预算——非强制中断、非费用上限）\n\n\n============...──┴───────┴───────┴───────┘\n  回测完成 1/2 只；未开始 1 只（启动预算到期；不计失败、不显示收益0）\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n')
+
+tests\core\test_bzscan_budget.py:1044: AssertionError
+_________________ test_f3_run_failure_not_counted_as_complete _________________
+
+env = <test_bzscan_budget.Env object at 0x0000010AFC2F7B50>
+
+    def test_f3_run_failure_not_counted_as_complete(env):
+        FakeEngine.scan_results = {"healthy_pullback": ["600001", "600002"]}
+    
+        def fail_first_run(kwargs):
+            if kwargs.get("stock_code") == "600001":
+                env.clock.advance(60.0)      # run 耗尽到恰等于 deadline 后失败
+                raise RuntimeError("run boom")
+    
+        FakeBacktest.hook_run = fail_first_run
+        out = env.run(dict(BASE_ARGS, budget=60.0, backtest=True))
+        assert FakeBacktest.runs == ["600001"] and len(FakeBacktest.inits) == 1
+>       assert "成功 0/2 只" in out and "失败 1 只" in out and "未开始 1 只" in out
+E       AssertionError: assert ('成功 0/2 只' in '  启动预算：60 秒（bz scan；从本次扫描入口计时，配置/账户/主题定位/扫描准备都计入；到期不再开始新阶段/评分/回测，已开始的调用会跑完；准备阶段可能超出预算——非强制中断、非费用上限）\n\n\n============...──┴───────┴───────┴───────┘\n  回测完成 1/2 只；未开始 1 只（启动预算到期；不计失败、不显示收益0）\n\n  💡 笨总高分股回测未必跑赢——笨总偏定性选股，回测是技术面择时，对比表诚实展示\n\n')
+
+tests\core\test_bzscan_budget.py:1060: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_bzscan_budget.py::test_f1_rule_engine_construct_expiry_blocks_resolve
+FAILED tests/core/test_bzscan_budget.py::test_f1_theme_step1_title_expiry_blocks_locate
+FAILED tests/core/test_bzscan_budget.py::test_f1_single_rule_step1_title_expiry_blocks_scan
+FAILED tests/core/test_bzscan_budget.py::test_f1_step2_title_expiry_blocks_scorer
+FAILED tests/core/test_bzscan_budget.py::test_f2_snapshot_failure_reports_facts_and_no_new_list_links
+FAILED tests/core/test_bzscan_budget.py::test_f2_all_three_failures_reported_independently
+FAILED tests/core/test_bzscan_budget.py::test_f2_snapshot_ok_history_fail_report_empty_keeps_links
+FAILED tests/core/test_bzscan_budget.py::test_f2_save_exception_reports_unconfirmed_and_backtest_still_runs
+FAILED tests/core/test_bzscan_budget.py::test_f2_report_exception_keeps_snapshot_history_facts
+FAILED tests/core/test_bzscan_budget.py::test_f2_backtest_expiry_not_claim_saved_when_snapshot_failed
+FAILED tests/core/test_bzscan_budget.py::test_f3_constructor_failure_not_counted_as_complete
+FAILED tests/core/test_bzscan_budget.py::test_f3_run_failure_not_counted_as_complete
+12 failed, 71 deselected in 2.24s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix1-red-newtests-r2 stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix1-final-matrix stdout_bytes=1023 sha256=60444081f90be9cda7ee71bb5587eedeb8678652adc3bc5a3d0d3a85e0b7ab8a ===
+........................................................................ [ 10%]
+........................................................................ [ 21%]
+........................................................................ [ 32%]
+........................................................................ [ 42%]
+........................................................................ [ 53%]
+........................................................................ [ 64%]
+........................................................................ [ 75%]
+........................................................................ [ 85%]
+........................................................................ [ 96%]
+........................                                                 [100%]
+672 passed in 14.49s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix1-final-matrix stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix2-red-newtests stdout_bytes=3136 sha256=3765c52aab9bc23bbfe65f5b1dd76719c8949ce9d76d13c1f2a67fc71bce04a6 ===
+FF                                                                       [100%]
+================================== FAILURES ===================================
+______________ test_f1r2_scanner_import_expiry_blocks_first_ctor ______________
+
+env = <test_bzscan_budget.Env object at 0x00000165951214D0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000016594EA8C50>
+
+    def test_f1r2_scanner_import_expiry_blocks_first_ctor(env, monkeypatch):
+        """scanner_engine fromimport 返回即耗尽到 deadline：不得再构造首个扫描引擎。"""
+        import src.scanner.scanner_engine as _se  # 预导入真实模块（替身只改属性）
+        assert _se.ScannerEngine is FakeEngine
+        _slow_fromimport(monkeypatch, "src.scanner.scanner_engine", "ScannerEngine",
+                         lambda: env.clock.advance(60.0))
+        out = env.run(dict(BASE_ARGS, budget=60.0))
+>       assert FakeEngine.instances == [], "import 后到期不得再构造 ScannerEngine"
+E       AssertionError: import 后到期不得再构造 ScannerEngine
+E       assert [<test_bzscan...0165951230D0>] == []
+E         
+E         Left contains one more item: <test_bzscan_budget.FakeEngine object at 0x00000165951230D0>
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:1089: AssertionError
+________________ test_f1r2_budget_import_entry_clock_no_reset _________________
+
+env = <test_bzscan_budget.Env object at 0x0000016595CE6AD0>
+monkeypatch = <_pytest.monkeypatch.MonkeyPatch object at 0x0000016594C7DD50>
+
+    def test_f1r2_budget_import_entry_clock_no_reset(env, monkeypatch):
+        """入口时点在 budget_descriptor 验证 import 之前；验证 import 耗尽到原入口 deadline
+        后不得重起钟（否则会多出 budget 秒），也不得构造引擎/读配置。"""
+        import src.core.benzong.batch_scorer as _bs  # 预导入真实模块（属性替身已在 fixture）
+        assert callable(_bs.budget_descriptor)
+        _slow_fromimport(monkeypatch, "src.core.benzong.batch_scorer", "budget_descriptor",
+                         lambda: env.clock.advance(60.0))
+        out = env.run(dict(BASE_ARGS, budget=60.0))
+>       assert FakeEngine.instances == [], "入口预算耗尽不得再构造 ScannerEngine"
+E       AssertionError: 入口预算耗尽不得再构造 ScannerEngine
+E       assert [<test_bzscan...016595121890>] == []
+E         
+E         Left contains 2 more items, first extra item: <test_bzscan_budget.FakeEngine object at 0x0000016595CE4450>
+E         Use -v to get more diff
+
+tests\core\test_bzscan_budget.py:1105: AssertionError
+=========================== short test summary info ===========================
+FAILED tests/core/test_bzscan_budget.py::test_f1r2_scanner_import_expiry_blocks_first_ctor
+FAILED tests/core/test_bzscan_budget.py::test_f1r2_budget_import_entry_clock_no_reset
+2 failed, 83 deselected in 1.80s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix2-red-newtests stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===
+
+=== fix2-final-affected stdout_bytes=373 sha256=04efea033dff5abca1556d0cfe07359b2a596c8f86e9f7dd362a05c0d1798669 ===
+........................................................................ [ 79%]
+...................                                                      [100%]
+91 passed in 1.36s
+BLOCKED_IO_ATTEMPTS {'network': 0, 'subprocess': 0, 'real_state': 0}
+PROTECTED_PORTFOLIO_HASHES_UNCHANGED True
+PROTECTED_KNOWLEDGE_AND_PORTFOLIO_FILES 7
+KNOWLEDGE_FILE_SET_UNCHANGED True
+
+=== fix2-final-affected stderr_bytes=0 sha256=e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855 ===

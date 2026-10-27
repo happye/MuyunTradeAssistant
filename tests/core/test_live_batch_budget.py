@@ -454,7 +454,6 @@ def test_unknown_budget_shapes_still_rejected(text, monkeypatch, capsys):
     "doctor --budget 60",
     "b 600519 --budget 60",
     "bz 600519 --budget 60",
-    "bz scan 科技 --budget 60",
     "q --budget 60",
 ])
 def test_budget_still_rejected_on_unsupported_commands(text, monkeypatch, capsys):
@@ -914,6 +913,7 @@ def test_help_lists_live_budget_rows_within_border(capsys):
     out = capsys.readouterr().out
     for row in HELP_ROWS:
         assert row in out, f"帮助菜单缺少: {row}"
+    assert "bz scan --budget 600 --limit 15" in out, "T05-N 的 bz scan 预算示例缺失"
     budget_lines = [ln for ln in out.splitlines() if "--budget" in ln]
     assert len(budget_lines) >= len(HELP_ROWS) + 2, "ba / bz 多代码示例仍在, live 三行为新增"
     for line in budget_lines:
@@ -924,7 +924,8 @@ def test_help_lists_live_budget_rows_within_border(capsys):
 def test_help_does_not_advertise_budget_on_single_stock_or_scan(capsys):
     start.show_help()
     out = capsys.readouterr().out
-    for bad in ("l 600519 --budget", "l <代码> --budget", "scan --budget", "bz 600519 --budget"):
+    # 顶层 scan / l 单只 / bz 单只仍不支持；bz scan 自 T05-N 起支持，故从本表移除
+    for bad in ("l 600519 --budget", "l <代码> --budget", "bz 600519 --budget"):
         assert bad not in out, f"帮助不得宣传不支持入口: {bad}"
 
 

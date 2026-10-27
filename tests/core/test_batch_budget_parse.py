@@ -4,10 +4,11 @@
 锁死语义（合同 J1）：
 - 支持 ba / bzall（`ba --budget 60`）与 bz 多代码（`bz 600519,000001 --budget 60`）
 - `--budget VALUE` 与 `--budget=VALUE` 两种写法；只接受有限正数秒
-- 缺值/重复/0/负/nan/inf/非数字/未知选项/不支持入口（单只 bz、bz scan/check/manual、
+- 缺值/重复/0/负/nan/inf/非数字/未知选项/不支持入口（单只 bz、bz --check/--manual、
   单只 l/裸代码）→ 返回 None，且在确认、扫描读取、网络/AI、账本写入之前拒绝
 - T05-L 起 l 多代码 / la / l all / 裸多代码改为支持入口（live 合同，见
   test_live_batch_budget.py），这里不再列为不支持
+- T05-N 起 `bz scan`（含 筛选/选股 别名）改为支持入口（见 test_bzscan_budget.py）
 - 默认无 budget 时返回 dict 与旧黄金完全一致（不附加 budget 键，旧 mock/调用方兼容）
 
 跑法：pytest tests/core/test_batch_budget_parse.py
@@ -79,6 +80,16 @@ def test_bz_multi_budget_and_refresh_word_alias():
     )
 
 
+# ── T05-N：bz scan 起支持 --budget（值不混入主题/规则）──────────
+
+def test_scan_budget_supported_t05n():
+    mode, args = _parse("bz scan 科技 --budget 60")
+    assert mode == "benzong_scan" and args["budget"] == 60.0
+    assert args["theme"] == "" and args["rule"] == "科技"
+    mode, args = _parse("bz --budget 60 scan 科技")
+    assert mode == "benzong_scan" and args["budget"] == 60.0
+
+
 # ── 无预算：返回形状与旧黄金一致（不新增键） ────────────────
 
 def test_no_budget_exact_legacy_dicts():
@@ -130,8 +141,6 @@ def test_bad_budget_rejected_before_business(text, monkeypatch, capsys):
     "bz --manual --budget 60",
     "bz 600519 --manual --budget 60",
     "bz --check --budget 60",
-    "bz scan 科技 --budget 60",
-    "bz --budget 60 scan 科技",
     "l 600519 --budget 60",
     "l #3 --budget 60",
     "600519 --budget 60",
@@ -404,12 +413,14 @@ def test_fix2_parse_then_run_cli_rejections_isolated(monkeypatch, capsys):
 # ═══════ rev2 / J7：普通用户可发现性（帮助/横幅 + 正常无预算主动提示）═══════
 # 要求：真实入口输出可见——帮助菜单在 ba 与 bz 多代码位置列 --budget 示例、默认
 # 不启用、到点不开新只/当前只跑完；正常无预算 ba/bzall/多代码在确认/预览前主动
-# 提示；不加确认、不改 kwargs/账本/缓存/评分语义；单股/scan/l 不宣传适用性。
+# 提示；不加确认、不改 kwargs/账本/缓存/评分语义；单股/顶层 scan/l 不宣传适用性
+# （T05-N 起 bz scan 是支持入口，其可发现性见 test_bzscan_budget.py）。
 
 def _help_menu_lines(out):
     return [ln for ln in out.splitlines() if "--budget" in ln]
 
 
+# 不进入评分的入口（单股 / 顶层 scan / l）不得宣传适用性；bz scan 自 T05-N 起支持
 def test_vis_help_lists_optional_budget_examples_with_short_rows(capsys):
     start.show_help()
     out = capsys.readouterr().out
@@ -418,6 +429,7 @@ def test_vis_help_lists_optional_budget_examples_with_short_rows(capsys):
     joined = "\n".join(budget_lines)
     assert "ba --budget 60" in joined
     assert "bz 600519,000001 --budget 60" in joined
+    assert "bz scan --budget 600 --limit 15" in joined   # T05-N 新增可发现行
     assert "可选" in joined and "默认不启用" in joined
     assert "不开新只" in joined and "当前只跑完返回" in joined, \
         "必须说明到点不再开始下一只、当前一只完成后返回"
@@ -425,9 +437,9 @@ def test_vis_help_lists_optional_budget_examples_with_short_rows(capsys):
     for line in budget_lines:
         assert start._display_width(line) <= 74, \
             f"帮助行撑破边框: {line!r} width={start._display_width(line)}"
-    # 不支持入口不得宣传适用性
+    # 不支持入口不得宣传适用性（bz scan 已支持，不再列入）
     all_text = out
-    for bad in ("l --budget", "scan --budget", "bz 600519 --budget"):
+    for bad in ("l --budget", "bz 600519 --budget"):
         assert bad not in all_text, f"帮助不得宣传不支持入口: {bad}"
 
 
