@@ -19,6 +19,7 @@
 
 import json
 import logging
+import math
 import os
 import re
 import tempfile
@@ -36,9 +37,12 @@ _LAST_SCAN_FILE = _STATE_DIR / "last_scan.json"
 # 与 last_scan.json（只存最近一次）互补——历史供 scan review 验证选股涨跌表现。
 # v0.8.12.1 起全量保留不 prune（导入旧记录不能被静默删），窗口由查询侧控制。
 _SCAN_HISTORY_FILE = _STATE_DIR / "scan_history.jsonl"
-# 当日已深分析记录（v0.8.7.9，l all 去重用）：文件只存当天 {日期: {code: {time, source}}}，
-# 写入时自动覆盖旧日期 → 文件不膨胀；语义对齐笨总六维当日缓存（跨天自动失效）。
+# 当日已深分析记录（v0.8.7.9，l all 去重用）：{日期: {code: {time, source, outcome}}}。
+# 只读当天键（跨天自动失效）；T05-L 起写入按原始根合并，保留其它日期与同日其它条目，
+# 新记录带完成资格标记 outcome=complete（旧无标记记录不当作已核完成）。
 _DEEP_ANALYZED_FILE = _STATE_DIR / "deep_analyzed.json"
+# T05-L：当日已析记录的最小完成资格标记——只有完整深分析（LiveOutcome.COMPLETE）才写入
+DEEP_ANALYZED_COMPLETE = "complete"
 
 # 报告目录（项目内，gitignored；src/cli/session_state.py -> parents[2]=项目根）
 _REPORT_DIR = Path(__file__).resolve().parents[2] / "分析报告" / "scan"
@@ -291,24 +295,56 @@ def get_deep_analyzed() -> dict:
             return {}
         # 过滤脏条目（值必须是 {time, source} 结构），防调用方 .get("time") 崩
         return {k: v for k, v in rec.items() if isinstance(v, dict)}
-    except (OSError, json.JSONDecodeError, UnicodeDecodeError) as e:
+    except (OSError, ValueError, RecursionError) as e:
+        # T05-L：ValueError 覆盖 JSONDecodeError/UnicodeDecodeError；超深嵌套坏文件
+        # 的 RecursionError 同样按损坏处理（返回 {}），不让 l all 在确认前崩溃
         logger.warning(f"get_deep_analyzed 失败: {e}")
         return {}
 
 
+def deep_record_complete(rec) -> bool:
+    """当日已析记录是否带完成资格标记（T05-L）。
+
+    旧版记录（无 outcome，修复前可能把仅行情当成已析）与任何其它值一律 False——
+    只用于 l all 是否跳过的判断，不授予缓存/信号资格。
+    """
+    return isinstance(rec, dict) and rec.get("outcome") == DEEP_ANALYZED_COMPLETE
+
+
 def mark_deep_analyzed(codes: list, source: str = "") -> bool:
-    """把今天成功深分析的股票记入 deep_analyzed.json。失败不抛异常。"""
+    """把今天**完整**深分析的股票记入 deep_analyzed.json（带完成资格标记）。失败不抛异常。
+
+    T05-L：只应在 analyze_live 返回 LiveOutcome.COMPLETE 后调用。写入按原始根合并：
+    保留其它日期与同日其它条目（含坏/旧条目，原样不动）；文件存在但无法解析、
+    根不是 dict 或当天节点不是 dict → 返回 False 且不改写原文件（不把坏根洗成新根）。
+    空文件（0 字节/仅空白）视为无记录。
+    """
     try:
-        rec = get_deep_analyzed()
+        root: dict = {}
+        if _DEEP_ANALYZED_FILE.exists():
+            text = _DEEP_ANALYZED_FILE.read_bytes().decode("utf-8")
+            if text.strip():
+                root = json.loads(text)
+        if not isinstance(root, dict):
+            logger.debug("deep_analyzed.json 根类型非法：拒绝写入（原文件保留）")
+            return False
+        today = datetime.now().strftime("%Y-%m-%d")
+        day = root.get(today, {})
+        if not isinstance(day, dict):
+            logger.debug("deep_analyzed.json 当日节点类型非法：拒绝写入（原文件保留）")
+            return False
         now_hm = datetime.now().strftime("%H:%M")
         for c in codes:
             if c:
-                rec[str(c)] = {"time": now_hm, "source": source}
-        return _atomic_write_json(
-            _DEEP_ANALYZED_FILE,
-            {datetime.now().strftime("%Y-%m-%d"): rec},
-            indent=1,
-        )
+                day[str(c)] = {"time": now_hm, "source": source,
+                               "outcome": DEEP_ANALYZED_COMPLETE}
+        root[today] = day
+        return _atomic_write_json(_DEEP_ANALYZED_FILE, root, indent=1)
+    except (ValueError, RecursionError) as e:
+        # ValueError 覆盖 JSONDecodeError/UnicodeDecodeError/超大整数字面量；
+        # RecursionError 为超深嵌套坏文件——都按无法解析拒写，绝不抛出打断批次
+        logger.debug(f"deep_analyzed.json 无法解析：拒绝写入（原文件保留）: {type(e).__name__}")
+        return False
     except OSError as e:
         logger.warning(f"mark_deep_analyzed 失败: {e}")
         return False
@@ -462,17 +498,87 @@ def _canonical_batch_snapshot(raw):
         return None
 
 
-def _canonical_batch_budget(raw):
-    """启动预算描述的写入端白名单门（T05-J）。
+# ── T05-L：live 深分析批（l 多代码 / la / l all）的启动预算描述 ──────────
+# 与 ba 的 muyun.ba.budget/v1 分开的独立 schema：按 kind 读写同门校验，ba 合同不变；
+# 只落有限秒数，不落进程内单调截止点。到期只阻止「开始下一只」，不是硬墙/强取消。
+LIVE_BATCH_KINDS = ("l", "la", "l all")
+LIVE_BUDGET_SCHEMA = "muyun.live.budget/v1"
+LIVE_BUDGET_POLICY = "stop_starting_new_stock"
+LIVE_BUDGET_STOP_REASON = "budget_exhausted"
+_LIVE_BUDGET_KEYS = ("budget_seconds", "policy", "schema")
 
-    只有通过 batch_scorer 同一口径校验（schema/精确键集/策略/有限正数秒）的描述
+
+def _finite_positive_seconds(value) -> Optional[float]:
+    """有限正数秒归一化；bool/非数值/nan/inf/<=0 一律 None（不静默当无预算）。"""
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    try:
+        seconds = float(value)
+    except (TypeError, ValueError, OverflowError):
+        return None
+    if not math.isfinite(seconds) or seconds <= 0:
+        return None
+    return seconds
+
+
+def validate_live_budget_descriptor(raw) -> Optional[dict]:
+    """校验 live 批启动预算描述：schema/精确键集/策略/有限正数秒全过才返回规范化副本。
+
+    缺/坏/额外键/布尔/nan/inf/非正数/非白名单策略/ba schema 一律 None（显示未记录，
+    绝不渲染原始字符串）。
+    """
+    if not isinstance(raw, dict) or set(raw) != set(_LIVE_BUDGET_KEYS):
+        return None
+    if raw.get("schema") != LIVE_BUDGET_SCHEMA or raw.get("policy") != LIVE_BUDGET_POLICY:
+        return None
+    seconds = _finite_positive_seconds(raw.get("budget_seconds"))
+    if seconds is None:
+        return None
+    return {"schema": LIVE_BUDGET_SCHEMA, "policy": LIVE_BUDGET_POLICY,
+            "budget_seconds": seconds}
+
+
+def live_budget_descriptor(seconds) -> Optional[dict]:
+    """有限正数秒 → live 批账本预算描述；非法返回 None（写侧与读侧同一道门）。"""
+    return validate_live_budget_descriptor({
+        "schema": LIVE_BUDGET_SCHEMA, "policy": LIVE_BUDGET_POLICY,
+        "budget_seconds": seconds,
+    })
+
+
+def validate_batch_budget(kind, raw) -> Optional[dict]:
+    """按 kind 选预算描述门：ba → batch_scorer 原合同；live 三类 → live 合同；其它 None。
+
+    跨 kind 的描述（live run 带 ba schema 或反之）一律不通过，避免互相洗白。
+    """
+    if kind == "ba":
+        from src.core.benzong.batch_scorer import validate_budget_descriptor
+        return validate_budget_descriptor(raw)
+    if kind in LIVE_BATCH_KINDS:
+        return validate_live_budget_descriptor(raw)
+    return None
+
+
+def batch_budget_stop_reason(kind) -> Optional[str]:
+    """该 kind 的白名单预算终止原因；不支持预算的 kind 返回 None。"""
+    if kind == "ba":
+        from src.core.benzong.batch_scorer import BUDGET_STOP_REASON
+        return BUDGET_STOP_REASON
+    if kind in LIVE_BATCH_KINDS:
+        return LIVE_BUDGET_STOP_REASON
+    return None
+
+
+def _canonical_batch_budget(kind, raw):
+    """启动预算描述的写入端白名单门（T05-J；T05-L 按 kind 选门）。
+
+    只有通过该 kind 同一口径校验（schema/精确键集/策略/有限正数秒）的描述
     才允许落盘，并只保存**规范化副本**——绝不把调用方原始 dict、额外键或任意字符串
     写进账本。不可用时返回 None（run 仍登记，预算显示未记录）；校验异常只记固定
     原因类型，不拼接任意异常正文。
     """
     try:
-        from src.core.benzong.batch_scorer import validate_budget_descriptor
-        return validate_budget_descriptor(raw)
+        return validate_batch_budget(kind, raw)
     except Exception as e:
         logger.debug("batch_task_start 预算描述校验失败(按未记录处理，"
                      f"原因类型 {type(e).__name__})")
@@ -498,6 +604,8 @@ def batch_task_start(kind: str, key: str, codes: list,
       策略/有限正数秒校验，合法才保存**规范化副本**（只落秒数，绝不落进程内单调
       截止点）；非法/额外键/nan/inf/bool 一律不落盘（显示未记录），run 仍登记。
       未提供时记录保持旧形状（旧账本/旧调用方兼容，无迁移、不改写旧文件）。
+      T05-L：按 kind 选门——ba 只认 ba schema，l/la/l all 只认 live schema；
+      跨 kind 描述不落盘。
     """
     try:
         roster = [str(c) for c in codes]
@@ -521,7 +629,7 @@ def batch_task_start(kind: str, key: str, codes: list,
             if canonical is not None:
                 record["exec_snapshot"] = canonical
         if budget is not None:
-            canonical_budget = _canonical_batch_budget(budget)
+            canonical_budget = _canonical_batch_budget(kind, budget)
             if canonical_budget is not None:
                 record["budget"] = canonical_budget
         tasks.insert(0, record)
@@ -543,6 +651,8 @@ def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "",
     - kind+key 当前最新 run 必须正是该令牌
     - code 必须在该 run 的 roster 内
     - ok / degraded 必须是 bool（未知/坏结果不伪造成功）
+    - T05-L：done/degraded/failed 映射缺失或非 dict、not_started 字段存在但非 dict
+      （含显式 null）→ 无法核定旧状态，拒绝改写（不把坏映射重置成 {} 洗白）
     完成、降级、失败三种状态互斥转移；写盘失败返回 False（原子写保留旧文件）。
     """
     try:
@@ -561,14 +671,14 @@ def batch_task_mark(kind: str, key: str, code: str, ok: bool, note: str = "",
             return False
         # T05-J fix2：已确认未开始的同 run 晚到结果不得洗成已开始；not_started
         # 映射损坏（非 dict）时无法核定，一律拒绝改写（不抹未知）。
-        ns_map = latest.get("not_started")
-        if ns_map is not None and not isinstance(ns_map, dict):
-            return False
-        if isinstance(ns_map, dict) and code in ns_map:
-            return False
+        # T05-L：字段存在即须为 dict——显式 null 同样是坏映射，不当作“未登记”。
+        if "not_started" in latest:
+            ns_map = latest.get("not_started")
+            if not isinstance(ns_map, dict) or code in ns_map:
+                return False
         for name in ("done", "degraded", "failed"):
             if not isinstance(latest.get(name), dict):
-                latest[name] = {}
+                return False
         now = datetime.now().isoformat(timespec="seconds")
         if ok:
             if degraded:
@@ -600,17 +710,19 @@ def batch_task_not_started(kind: str, key: str, code: str,
     fail-closed（任一不满足 → False 且不写文件、不改新旧记录）：
     - 必须携带本次 run 令牌；kind+key 当前最新 run 必须正是该令牌
     - code 必须在该 run 的 roster 内
-    - reason 必须是白名单预算终止原因（budget_exhausted）
-    - 该 run 必须已登记合法预算描述（无预算 run 不允许凭空出现未开始）
+    - reason 必须是该 kind 的白名单预算终止原因（budget_exhausted）
+    - 该 run 必须已登记该 kind 的合法预算描述（T05-L：ba 认 ba schema，
+      l/la/l all 认 live schema；无预算 run 不允许凭空出现未开始）
     - 与 done/degraded/failed 互斥：已接受结果不得改判为未开始
+    - T05-L：run 级 stop_reason 已存在但非白名单，或已有未开始项却缺 stop_reason
+      → 不得借新 code 把旧坏/缺原因洗白
     只描述可见性，不授予缓存资格；不写绝对单调钟值，只落原因字符串。
     """
     try:
-        from src.core.benzong.batch_scorer import (
-            BUDGET_STOP_REASON, validate_budget_descriptor)
         if not isinstance(run_id, str) or not run_id:
             return False
-        if reason != BUDGET_STOP_REASON:
+        stop_reason = batch_budget_stop_reason(kind)
+        if stop_reason is None or reason != stop_reason:
             return False
         code = str(code)
         data = _load_batch_tasks()
@@ -621,7 +733,9 @@ def batch_task_not_started(kind: str, key: str, code: str,
         roster = [str(c) for c in latest.get("codes") or []]
         if code not in roster:
             return False
-        if validate_budget_descriptor(latest.get("budget")) is None:
+        if validate_batch_budget(kind, latest.get("budget")) is None:
+            return False
+        if "stop_reason" in latest and latest.get("stop_reason") != stop_reason:
             return False
         # T05-J fix2：已有 done/degraded/failed 映射必须可读（dict）才能核定
         # “是否已有结果”；损坏/缺失映射一律 fail-closed，不写未开始、不抹未知。
@@ -641,13 +755,16 @@ def batch_task_not_started(kind: str, key: str, code: str,
             if code in not_started:
                 # 幂等成功必须与 tasks 读门一致：run.stop_reason 也须为白名单原因；
                 # 缺失/非法时返回 False 且不改盘（不自动修补旧记录）。
-                return (not_started.get(code) == BUDGET_STOP_REASON
-                        and latest.get("stop_reason") == BUDGET_STOP_REASON)
+                return (not_started.get(code) == stop_reason
+                        and latest.get("stop_reason") == stop_reason)
+            # T05-L：已有未开始项却缺 run 级原因 → 旧状态不可核定，新 code 不得补写洗白
+            if not_started and "stop_reason" not in latest:
+                return False
         else:
             not_started = {}
             latest["not_started"] = not_started
-        not_started[code] = BUDGET_STOP_REASON
-        latest["stop_reason"] = BUDGET_STOP_REASON
+        not_started[code] = stop_reason
+        latest["stop_reason"] = stop_reason
         latest["ts_updated"] = datetime.now().isoformat(timespec="seconds")
         if not _atomic_write_json(_BATCH_TASKS_FILE, data, indent=1):
             return False

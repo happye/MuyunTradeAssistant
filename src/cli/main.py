@@ -5,6 +5,7 @@ import os
 import re
 import json
 import logging
+from enum import Enum
 from pathlib import Path
 
 # Windows PowerShell 环境下设置 UTF-8（通过环境变量，不替换sys.stdout避免与Rich冲突）
@@ -821,12 +822,25 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
 
 
+class LiveOutcome(Enum):
+    """analyze_live 的正常返回（T05-L）。普通 Enum：字符串/bool/None 都不等于任一成员。
+
+    - COMPLETE：取得技术指标并完整跑完编排器分析（批量才可记完成/当日已析）
+    - QUOTE_ONLY：只取得行情、技术分析未进行（批量记降级，可重试）
+    完全取不到数据仍按原样 sys.exit(1)（SystemExit），由批量入口计为失败。
+    """
+    COMPLETE = "complete"
+    QUOTE_ONLY = "quote_only"
+
+
 def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = False,
                  compact: bool = False, account_facts=None):
     """实时行情分析模式（通过AKShare）
 
     compact=True 时只输出顶部"人话摘要"面板，跳过详细报告与笨总摘要
     （la 批量模式用；单只分析默认 False 保持完整输出）。
+
+    T05-L：返回 LiveOutcome（COMPLETE / QUOTE_ONLY）；单只入口忽略返回值、输出不变。
     """
     
     stock_code = normalize_stock_code(stock_code)  # 统一缓存键口径（补前导零，不改其余格式）
@@ -1062,12 +1076,14 @@ def analyze_live(stock_code: str, ai_overrides: dict = None, ai_debug: bool = Fa
             display_result(result, strategy_decision, execution_eval, ai_result)
             # v0.8.6.2: l 命令末尾追加笨总评分摘要（缓存优先，避免每次 l 都 6 次 AI 调用）
             _print_benzong_summary(stock_code, stock_data.stock_name)
+        return LiveOutcome.COMPLETE
     else:
         # 无技术指标时，只显示基本信息
         console.print(f"\n[bold yellow]仅实时数据可用，无法进行技术分析[/bold yellow]")
         console.print("原因: 历史K线数据获取失败（网络不稳定或API限制）")
         console.print("建议: 使用交互模式手工输入数据进行分析")
         _print_daily_research_view(stock_code)
+        return LiveOutcome.QUOTE_ONLY
 
 
 def _print_daily_research_view(stock_code, *, app=None, as_of=None):
@@ -4481,13 +4497,15 @@ def _safe_batch_status_map(raw, label):
     return out, issues, pending
 
 
-def _safe_batch_not_started_map(raw):
+def _safe_batch_not_started_map(raw, kind="ba"):
     """T05-J：not_started 的安全只读视图：只认白名单原因，坏键/坏值只标异常。
 
     返回 (确认未开始映射, 异常说明, 待确认项)。非字符串/不在白名单的原因一律
     隔离为「待确认」且不参与计数，绝不渲染存库原始字符串。
+    T05-L：白名单原因按 kind 取（ba 与 l/la/l all 各自合同）；不支持预算的 kind 全部待确认。
     """
-    from src.core.benzong.batch_scorer import BUDGET_STOP_REASON
+    from src.cli.session_state import batch_budget_stop_reason
+    stop_reason = batch_budget_stop_reason(kind)
     if raw is None:
         return {}, [], []
     if not isinstance(raw, dict):
@@ -4496,7 +4514,7 @@ def _safe_batch_not_started_map(raw):
     for c, reason in raw.items():
         if not (isinstance(c, str) and c):
             bad += 1
-        elif reason == BUDGET_STOP_REASON:
+        elif stop_reason is not None and reason == stop_reason:
             out[c] = reason
         else:
             pending.append((c, "原因不在白名单" if isinstance(reason, str)
@@ -4517,12 +4535,15 @@ def _ba_budget_lines(kind, raw_budget, raw_stop_reason,
     final_gate A：确认性文案只消费 tasks 已算出的合格未开始数量/资格
     （confirmed_ns/ns_qualified），不按 stop_reason 单独重判；联合门未通过时只写
     “已记录预算到期原因，未开始状态待确认”，不输出确认未开始类承诺。
+    T05-L：l/la/l all 按各自 live 合同校验（跨 kind schema 不通过），文案用“分析”；
+    ba 文案保持“评分”。
     """
-    from src.core.benzong.batch_scorer import (
-        BUDGET_STOP_REASON, validate_budget_descriptor)
-    if kind != "ba":
+    from src.cli.session_state import (
+        LIVE_BATCH_KINDS, batch_budget_stop_reason, validate_batch_budget)
+    if kind != "ba" and kind not in LIVE_BATCH_KINDS:
         return []
-    verified = validate_budget_descriptor(raw_budget)
+    is_ba = kind == "ba"
+    verified = validate_batch_budget(kind, raw_budget)
     if verified is None:
         if raw_budget is None:
             return ["预算: 未记录（无预算运行或旧记录）",
@@ -4532,9 +4553,11 @@ def _ba_budget_lines(kind, raw_budget, raw_stop_reason,
     seconds = verified["budget_seconds"]
     lines = [
         f"预算: {seconds:g} 秒（策略：到期不再开始新股票）",
-        "    范围: 已开始的股票会跑完；准备阶段/单只评分可能超出预算（非强制中断/无费用上限）",
+        ("    范围: 已开始的股票会跑完；准备阶段/单只评分可能超出预算（非强制中断/无费用上限）"
+         if is_ba else
+         "    范围: 已开始的股票会分析完；准备阶段/单只分析可能超出预算（非强制中断/无费用上限）"),
     ]
-    if raw_stop_reason == BUDGET_STOP_REASON:
+    if raw_stop_reason == batch_budget_stop_reason(kind):
         if ns_qualified and confirmed_ns > 0:
             lines.append(f"    终止: 预算到期（已确认 {confirmed_ns} 只未开始，非失败）")
         elif ns_qualified:
@@ -4604,18 +4627,19 @@ def batch_tasks_cmd():
         console.print("  [yellow]还没有批量任务记录[/yellow]（l all / la / ba / l 多代码 会自动记账）")
         return
     # T05-J fix2：读门联核共用同一道预算描述校验（写侧同口径，只认严格类型）
-    from src.core.benzong.batch_scorer import (
-        BUDGET_STOP_REASON, validate_budget_descriptor)
+    # T05-L：按 kind 取同一道门——ba 认 ba 合同，l/la/l all 认 live 合同
+    from src.cli.session_state import batch_budget_stop_reason, validate_batch_budget
     for t in tasks:
+        _kind = t.get("kind")
         roster, issues = _safe_batch_roster(t.get("codes"))
         done, i_done, p_done = _safe_batch_status_map(t.get("done"), "done")
         degraded, i_deg, p_deg = _safe_batch_status_map(t.get("degraded"), "degraded")
         failed, i_fail, p_fail = _safe_batch_status_map(t.get("failed"), "failed")
-        not_started, i_ns, p_ns = _safe_batch_not_started_map(t.get("not_started"))
-        # T05-J fix2：读门联核——只有 ba kind + 可核对 run 身份 + 合法 typed 预算
-        # + 合法 run stop_reason + 三态原始映射可读 + 逐项白名单原因/roster 都齐，
-        # 才允许计入“预算未开始”。任一不满足：not_started 整体隔离为待确认（不计
-        # 确认状态、不显示“确认未调用评分”、不渲染原始字符串）。
+        not_started, i_ns, p_ns = _safe_batch_not_started_map(t.get("not_started"), _kind)
+        # T05-J fix2：读门联核——只有支持预算的 kind + 可核对 run 身份 + 该 kind 合法
+        # typed 预算 + 合法 run stop_reason + 三态原始映射可读 + 逐项白名单原因/roster
+        # 都齐，才允许计入“预算未开始”。任一不满足：not_started 整体隔离为待确认（不计
+        # 确认状态、不显示“确认未调用”、不渲染原始字符串）。
         # final_gate C：三态映射可读但同代码旧值待确认（如 done={'A':''}）时，仅该
         # code 的未开始隔离；其它资料完整的 code 仍独立可确认（不整批一刀切）。
         _ns_run_id = t.get("run_id")
@@ -4626,11 +4650,12 @@ def batch_tasks_cmd():
                               (("done", p_done), ("degraded", p_deg),
                                ("failed", p_fail))
                               for c, _ in pending}
+        _kind_stop_reason = batch_budget_stop_reason(_kind)
         _ns_gate = (
-            t.get("kind") == "ba"
+            _kind_stop_reason is not None
             and isinstance(_ns_run_id, str) and bool(_ns_run_id)
-            and validate_budget_descriptor(t.get("budget")) is not None
-            and t.get("stop_reason") == BUDGET_STOP_REASON
+            and validate_batch_budget(_kind, t.get("budget")) is not None
+            and t.get("stop_reason") == _kind_stop_reason
             and _maps_readable
         )
         if not_started:
@@ -4639,7 +4664,7 @@ def batch_tasks_cmd():
                         else "预算/终止/身份未联核通过")
                 p_ns = list(p_ns) + [(c, _why) for c in not_started]
                 i_ns = i_ns + [
-                    f"not_started 有 {len(not_started)} 项缺少可核对的 ba 运行身份/"
+                    f"not_started 有 {len(not_started)} 项缺少可核对的运行身份/"
                     "预算/终止原因/旧状态映射（已隔离，待确认，不计数）"]
                 not_started = {}
             else:
@@ -4728,8 +4753,9 @@ def batch_tasks_cmd():
         if len(shown_fail) > 5:
             console.print(f"    [dim]…等 {len(shown_fail)} 项失败[/dim]")
         shown_ns = [c for c in not_started if c in roster_set and c not in state_of]
+        _ns_unit = "评分" if _kind == "ba" else "分析"   # T05-L：live 批文案用“分析”
         for c in shown_ns[:5]:
-            console.print(f"    [yellow]⏸ {c}[/yellow]: 预算到期未开始（确认未调用评分，非失败）")
+            console.print(f"    [yellow]⏸ {c}[/yellow]: 预算到期未开始（确认未调用{_ns_unit}，非失败）")
         if len(shown_ns) > 5:
             console.print(f"    [dim]…等 {len(shown_ns)} 项预算未开始[/dim]")
         if pending_n or conflicts or ns_n:

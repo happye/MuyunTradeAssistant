@@ -5,7 +5,9 @@
 - 支持 ba / bzall（`ba --budget 60`）与 bz 多代码（`bz 600519,000001 --budget 60`）
 - `--budget VALUE` 与 `--budget=VALUE` 两种写法；只接受有限正数秒
 - 缺值/重复/0/负/nan/inf/非数字/未知选项/不支持入口（单只 bz、bz scan/check/manual、
-  l/la/l all、裸代码）→ 返回 None，且在确认、扫描读取、网络/AI、账本写入之前拒绝
+  单只 l/裸代码）→ 返回 None，且在确认、扫描读取、网络/AI、账本写入之前拒绝
+- T05-L 起 l 多代码 / la / l all / 裸多代码改为支持入口（live 合同，见
+  test_live_batch_budget.py），这里不再列为不支持
 - 默认无 budget 时返回 dict 与旧黄金完全一致（不附加 budget 键，旧 mock/调用方兼容）
 
 跑法：pytest tests/core/test_batch_budget_parse.py
@@ -119,7 +121,8 @@ def test_bad_budget_rejected_before_business(text, monkeypatch, capsys):
     assert ("无效" in out or "缺少" in out), out
 
 
-# ── 不支持入口：单只 bz / bz scan/check/manual / l/la/l all / 裸代码 ──
+# ── 不支持入口：单只 bz / bz scan/check/manual / 单只 l / 单只裸代码 ──
+# T05-L：l 多代码 / la / l all / 裸多代码已改为支持（live 合同），从本表移出
 
 @pytest.mark.parametrize("text", [
     "bz 600519 --budget 60",
@@ -130,11 +133,8 @@ def test_bad_budget_rejected_before_business(text, monkeypatch, capsys):
     "bz scan 科技 --budget 60",
     "bz --budget 60 scan 科技",
     "l 600519 --budget 60",
-    "l 600519,000001 --budget 60",
-    "la --budget 60",
-    "l all --budget 60",
+    "l #3 --budget 60",
     "600519 --budget 60",
-    "600519 000001 --budget 60",
 ])
 def test_unsupported_entries_reject_before_business(text, monkeypatch, capsys):
     _forbid_state_reads(monkeypatch)
@@ -322,8 +322,6 @@ def test_fix2_unknown_budget_option_shapes_rejected_before_early_returns(
 @pytest.mark.parametrize("text", [
     "q --budget 60",
     "help --budget 60",
-    "la --budget 60",
-    "l all --budget 60",
     "scan --budget 60",
     "scan market --budget 60",
     "scan review --budget 60",
@@ -370,9 +368,10 @@ def test_fix2_plain_words_containing_budget_are_not_options(capsys):
     ("benzong", {"meta": "600519", "manual": False, "refresh": False,
                  "check": False, "budget": 60}),         # 正数同样不支持
     ("live", {"stock_code": "600519", "budget": 60}),
-    ("live_multi", {"codes": ["600519", "000001"], "budget": 60}),
-    ("live_all", {"budget": 60}),
-    ("live_scan_all", {"force": False, "budget": 60}),
+    # T05-L：live 批改为支持模式，坏值同样先拒（合法正数见 test_live_batch_budget.py）
+    ("live_multi", {"codes": ["600519", "000001"], "budget": 0}),
+    ("live_all", {"budget": float("nan")}),
+    ("live_scan_all", {"force": False, "budget": "60"}),
     ("scan", {"budget": 60}),
     ("today", {"budget": 60}),
     ("batch_tasks", {"budget": 60}),
@@ -394,7 +393,7 @@ def test_fix2_run_cli_rejects_budget_before_any_business(
 def test_fix2_parse_then_run_cli_rejections_isolated(monkeypatch, capsys):
     """parse→run_cli 全链：不支持/未知预算形状不会落到任何处理器。"""
     calls = _forbid_all_business(monkeypatch)
-    assert start.parse_input("la --budget 60") is None
+    assert start.parse_input("l 600519 --budget 60") is None   # T05-L：单只仍不支持
     assert start.parse_input("bz scan --budgetx 60") is None
     assert start.parse_input("q --budget 60") is None
     assert calls == []

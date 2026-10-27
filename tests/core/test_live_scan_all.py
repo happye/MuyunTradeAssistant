@@ -3,12 +3,20 @@
 - parse_input: "l all"[-f] 分流 + 不破坏 l <代码> / l #N / la 既有语义
 - run_cli("live_scan_all"): 无扫描早退 / 确认取消 / 当天已析默认跳过 / -f 强制重析 /
   成功才记账、失败跳过不中断
+- T05-L：analyze_live 必须返回 LiveOutcome.COMPLETE 才算成功；当日已析夹具带完成资格
+  标记（outcome=complete），旧无标记记录的重析语义见 test_live_batch_outcomes.py
 
 mock session_state 与 src.cli.main.analyze_live，无网络无 AI、不触碰真实 ~/.muyun。
 """
 
 import start
 from src.cli import session_state
+from src.cli.main import LiveOutcome
+
+
+def _done_rec(hm: str) -> dict:
+    """T05-L：带完成资格标记的当日已析记录（mark_deep_analyzed 新格式）。"""
+    return {"time": hm, "source": "x", "outcome": "complete"}
 
 
 # ── parse_input 分流 ──────────────────────────────────────
@@ -82,6 +90,7 @@ def test_run_cli_l_all_runs_and_skips_failure(monkeypatch, capsys):
         if code == "600519":
             raise SystemExit  # 模拟数据获取失败（la 同款路径）
         print(f"分析{code}")
+        return LiveOutcome.COMPLETE   # T05-L：完整分析才算成功
 
     monkeypatch.setattr("src.cli.main.analyze_live", _fake_analyze_live)
     start.run_cli("live_scan_all", {})
@@ -92,11 +101,11 @@ def test_run_cli_l_all_runs_and_skips_failure(monkeypatch, capsys):
 
 
 def test_run_cli_l_all_skips_already_analyzed(monkeypatch, capsys):
-    marked = _mock_state(monkeypatch, analyzed={"600519": {"time": "09:30", "source": "x"}})
+    marked = _mock_state(monkeypatch, analyzed={"600519": _done_rec("09:30")})
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     calls = []
     monkeypatch.setattr("src.cli.main.analyze_live",
-                        lambda code, **kw: calls.append(code))
+                        lambda code, **kw: calls.append(code) or LiveOutcome.COMPLETE)
     start.run_cli("live_scan_all", {})
     out = capsys.readouterr().out
     assert calls == ["002475"]           # 已析的 600519 被跳过
@@ -106,11 +115,11 @@ def test_run_cli_l_all_skips_already_analyzed(monkeypatch, capsys):
 
 
 def test_run_cli_l_all_force_reruns_analyzed(monkeypatch, capsys):
-    _mock_state(monkeypatch, analyzed={"600519": {"time": "09:30", "source": "x"}})
+    _mock_state(monkeypatch, analyzed={"600519": _done_rec("09:30")})
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     calls = []
     monkeypatch.setattr("src.cli.main.analyze_live",
-                        lambda code, **kw: calls.append(code))
+                        lambda code, **kw: calls.append(code) or LiveOutcome.COMPLETE)
     start.run_cli("live_scan_all", {"force": True})
     out = capsys.readouterr().out
     assert calls == ["600519", "002475"]  # -f 强制全量重析，不跳过
@@ -119,8 +128,8 @@ def test_run_cli_l_all_force_reruns_analyzed(monkeypatch, capsys):
 
 def test_run_cli_l_all_all_done_no_calls(monkeypatch, capsys):
     _mock_state(monkeypatch, analyzed={
-        "600519": {"time": "09:30", "source": "x"},
-        "002475": {"time": "09:31", "source": "x"},
+        "600519": _done_rec("09:30"),
+        "002475": _done_rec("09:31"),
     })
     calls = []
     monkeypatch.setattr("src.cli.main.analyze_live",

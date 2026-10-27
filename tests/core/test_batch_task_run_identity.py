@@ -422,6 +422,7 @@ def test_live_multi_entry_binds_run_token(monkeypatch, capsys):
     def fake_analyze(code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None):
         if code == "000001":
             raise SystemExit
+        return cli_main.LiveOutcome.COMPLETE   # T05-L：完整分析才记完成
 
     monkeypatch.setattr(cli_main, "analyze_live", fake_analyze)
     start.run_cli("live_multi", {"codes": ["600519", "000001"]})
@@ -445,7 +446,8 @@ def test_live_all_entry_binds_run_token(monkeypatch, capsys):
     pm = mock.MagicMock(name="PortfolioManager")
     pm.return_value.request_account_facts.return_value = _fake_account_facts([e1, e2])
     monkeypatch.setattr(portfolio_mod, "PortfolioManager", pm)
-    monkeypatch.setattr(cli_main, "analyze_live", lambda code, **kw: None)
+    monkeypatch.setattr(cli_main, "analyze_live",
+                        lambda code, **kw: cli_main.LiveOutcome.COMPLETE)   # T05-L
     start.run_cli("live_all", {})
     out = capsys.readouterr().out
 
@@ -470,7 +472,8 @@ def test_live_scan_all_entry_binds_run_token(monkeypatch, capsys):
     monkeypatch.setattr(ss, "mark_deep_analyzed", lambda *a, **k: True)
     monkeypatch.setattr("builtins.input", lambda *a: "y")
     monkeypatch.setattr(cli_main, "analyze_live",
-                        lambda code, **kw: (_ for _ in ()).throw(SystemExit) if code == "000001" else None)
+                        lambda code, **kw: (_ for _ in ()).throw(SystemExit) if code == "000001"
+                        else cli_main.LiveOutcome.COMPLETE)   # T05-L：完整分析才记完成
     start.run_cli("live_scan_all", {})
     out = capsys.readouterr().out
 

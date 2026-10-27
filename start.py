@@ -8,6 +8,7 @@ import sys
 import os
 import math
 import subprocess
+import time
 
 # 确保工作目录为脚本所在目录
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
@@ -98,8 +99,11 @@ def show_help():
     L.append(_row("● 分析"))
     L.append(_cmd("l <代码>", "实时深分析（证据卡+本地只读研究状态）"))
     L.append(_cmd("l <代码>,<代码2>", "多代码批量（逗号/空格分隔均可）"))
+    L.append(_cmd("l 600519,000001 --budget 600", "可选时限；到点不开新只，当前只分析完"))
     L.append(_cmd("l all [-f]", "批量深分析最近扫描（-f 强制重析当天已析）"))
+    L.append(_cmd("l all [-f] --budget 600", "可选，确认后计时；当前只分析完返回"))
     L.append(_cmd("la", "一键分析所有持仓（简明卡）"))
+    L.append(_cmd("la --budget 600", "可选，默认不启用；到点不开新只"))
     L.append(_cmd("<6位代码>", "直接输代码，等同 l <代码>"))
     L.append(_cmd("#N", "取最近扫描第 N 只（l/bz/pos 通用）"))
     L.append(_cmd("diff", "列出可对比的股票（要两次分析记录）"))
@@ -218,6 +222,22 @@ def _resolve_index_arg(s: str):
     return item.get("code", ""), item.get("name", "")
 
 
+def _iter_code_pieces_raw(token):
+    """单个 token 按中英文逗号/顿号/分号切出的全部非空片段（含 - 开头的片段）。"""
+    for piece in str(token).replace("，", ",").replace("、", ",").replace("；", ";").replace(";", ",").split(","):
+        piece = piece.strip()
+        if piece:
+            yield piece
+
+
+def _iter_code_pieces(tokens: list):
+    """把 token 按中英文逗号/顿号/分号切成片段（跳过空片段与 - 开头的 flag）。"""
+    for tok in tokens:
+        for piece in _iter_code_pieces_raw(tok):
+            if not piece.startswith("-"):
+                yield piece
+
+
 def _extract_codes(tokens: list) -> tuple:
     """从 token 列表提取股票代码（v0.8.9.0 ISS-087 多代码支持）。
 
@@ -233,25 +253,32 @@ def _extract_codes(tokens: list) -> tuple:
     """
     codes: list = []
     invalid: list = []
-    for tok in tokens:
-        # 中英文逗号/顿号/分号统一当分隔符（空格已由外层 split 处理）
-        for piece in str(tok).replace("，", ",").replace("、", ",").replace("；", ";").replace(";", ",").split(","):
-            piece = piece.strip()
-            if not piece or piece.startswith("-"):
-                continue
-            if piece.startswith("#"):
-                ref = _resolve_index_arg(piece)
-                if ref and ref[0]:
-                    if ref[0] not in codes:
-                        codes.append(ref[0])
-                else:
-                    invalid.append(piece)
-            elif _is_stock_code(piece):
-                if piece not in codes:
-                    codes.append(piece)
+    # 中英文逗号/顿号/分号统一当分隔符（空格已由外层 split 处理）
+    for piece in _iter_code_pieces(tokens):
+        if piece.startswith("#"):
+            ref = _resolve_index_arg(piece)
+            if ref and ref[0]:
+                if ref[0] not in codes:
+                    codes.append(ref[0])
             else:
                 invalid.append(piece)
+        elif _is_stock_code(piece):
+            if piece not in codes:
+                codes.append(piece)
+        else:
+            invalid.append(piece)
     return codes, invalid
+
+
+def _distinct_code_pieces(tokens: list) -> int:
+    """纯语法计数（T05-L）：不同的「代码形状」片段数，不解析 #N（不读扫描状态）。
+
+    只计 6 位代码/带后缀代码与 #数字 引用；无法识别的片段不算代码（否则
+    `l #1 foo --budget 60` 会被当成多只而先读扫描状态）。预算只用于多代码批，
+    单个代码形状片段（含单个 #N）必须在 resolve_index 之前拒绝。
+    """
+    return len({p for p in _iter_code_pieces(tokens)
+                if _is_stock_code(p) or (p.startswith("#") and p[1:].isdigit())})
 
 
 def _parse_budget_seconds(raw):
@@ -271,9 +298,12 @@ def _parse_budget_seconds(raw):
     return value, None
 
 
-_BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；仅 ba/bzall 与 "
-                "bz 多代码共用批支持；到期只阻止开始下一只，已开始的会跑完，"
+_BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、"
+                "bz 多代码与 l 多代码/la/l all 批量深析；到期只阻止开始下一只，已开始的会跑完，"
                 "准备阶段可能超出，非强制中断/无费用上限）")
+
+# T05-L：不支持入口的统一说明（单只 l/bz、scan 等）
+_BUDGET_SCOPE = "预算仅用于 ba/bzall、bz 多代码，以及 l 多代码/la/l all 批量深析"
 
 # T05-J / rev2 J7：普通无预算流程的主动可发现性提示（在确认/缓存预览之前打印）。
 # 只说“可选、默认不启用、到点不开新只/当前只跑完”，不新增确认、不改 kwargs。
@@ -335,6 +365,10 @@ def _scan_budget_tokens(tokens: list):
     for tok in tokens:
         low = str(tok).lower()
         if not low.startswith("-"):
+            # T05-L：用逗号/顿号/分号粘在代码后的预算选项（如 600519,000001,--budget=60）
+            # 会在代码提取时被当成 flag 静默丢掉——必须显式拒绝，不能悄悄变成无预算批
+            if any(p.startswith(("--budget", "-budget")) for p in _iter_code_pieces_raw(low)):
+                unknown.append(tok)
             continue
         if low == "--budget" or low.startswith("--budget="):
             has_budget = True
@@ -368,16 +402,19 @@ def parse_input(user_input: str):
 
     # ── T05-J fix2：预算 option token 统一前置门（所有早返回之前）──
     # 未知预算形状（--budgetx/--budgets/--budget-any…）不得变成主题/位置参数或被
-    # 忽略；合法 --budget 只属于 ba/bzall 与 bz 多代码共用批，其余命令上的显式
-    # 预算同样拒绝（不是静默忽略）。只核以 - 开头的 option token，普通文本不受影响。
+    # 忽略；合法 --budget 只属于 ba/bzall、bz 多代码共用批与（T05-L）l 多代码/la/
+    # l all 批量深析，其余命令上的显式预算同样拒绝（不是静默忽略）。单只 l/裸代码
+    # 由各自分支在解析 #N 之前拒绝。只核以 - 开头的 option token，普通文本不受影响。
     _has_budget_opt, _unknown_budget_opts = _scan_budget_tokens(parts[1:])
     if _unknown_budget_opts:
         print(f"  [!] 未知预算选项: {'、'.join(str(t) for t in _unknown_budget_opts[:3])}"
               "（只支持 --budget <秒> 或 --budget=<秒>）")
         print(f"        {_BUDGET_HELP}")
         return None
-    if _has_budget_opt and cmd not in ("ba", "bzall", "bz", "benzong", "笨总"):
-        print("  [!] 该命令不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+    if (_has_budget_opt
+            and cmd not in ("ba", "bzall", "bz", "benzong", "笨总", "l", "live", "la", "lall")
+            and not _is_stock_code(parts[0])):
+        print(f"  [!] 该命令不支持 --budget（{_BUDGET_SCOPE}）")
         print(f"        {_BUDGET_HELP}")
         return None
 
@@ -391,14 +428,14 @@ def parse_input(user_input: str):
 
     # ── 实时分析：l/live + 代码，或直接输入6位代码 ──
     if cmd in ("la", "lall"):
+        # T05-L：la 支持可选启动预算；无预算时返回旧形状（不新增键）
         _budget, _rest, _budget_err = _split_budget_option(parts[1:])
         if _budget_err:
             print(f"  [!] {_budget_err}")
             print(f"        {_BUDGET_HELP}")
             return None
         if _budget is not None:
-            print("  [!] la 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
-            return None
+            return ("live_all", {"budget": _budget})
         return ("live_all", {})
 
     if cmd in ("ba", "bzall"):
@@ -418,49 +455,65 @@ def parse_input(user_input: str):
         return ("benzong_all", args)
 
     if cmd in ("l", "live"):
-        # T05-J：l/l all 不支持启动预算——在代码提取/扫描读取之前拒绝
-        _budget, _rest, _budget_err = _split_budget_option(parts[1:])
-        if _budget_err:
-            print(f"  [!] {_budget_err}")
+        # T05-L：l 多代码 / l all 支持可选启动预算；预算值先从 token 里分离（绝不变成
+        # 证券代码），语法坏值与单只（含单个 #N）在代码提取/扫描读取之前拒绝
+        budget, rest, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
             print(f"        {_BUDGET_HELP}")
             return None
-        if _budget is not None:
-            print("  [!] l/l all 多代码深析不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
-            return None
-        if len(parts) < 2:
+        if not rest:
             print("  [!] 用法: l <代码>[,代码2,...] | l #N | l all[-f]（批量深分析最近扫描）")
             print("      多代码用 英文逗号/中文逗号/空格 分隔，如: l 600519,000001 或 l 600519 000001")
             return None
         # v0.8.7.9: l all 批量深分析最近一次扫描结果（bz scan / scan market），补齐 ba（批评分）/la（批持仓）空白
         # v0.8.7.9: 当天已深分析的默认跳过，-f/--force 强制全部重分析
-        if parts[1].lower() == "all":
-            force = any(p.lower() in ("-f", "--force") for p in parts[2:])
-            return ("live_scan_all", {"force": force})
-        codes, invalid = _extract_codes(parts[1:])
+        if rest[0].lower() == "all":
+            force = any(str(p).lower() in ("-f", "--force") for p in rest[1:])
+            scan_args = {"force": force}
+            if budget is not None:
+                scan_args["budget"] = budget
+            return ("live_scan_all", scan_args)
+        if budget is not None and _distinct_code_pieces(rest) < 2:
+            print(f"  [!] 单只深析不支持 --budget（{_BUDGET_SCOPE}）")
+            return None
+        codes, invalid = _extract_codes(rest)
         if invalid:
             print(f"  [!] 无法识别的参数已跳过: {'、'.join(invalid)}（代码用6位数字；批量用逗号/空格分隔）")
         if not codes:
             print("  [!] 用法: l <6位股票代码>  例如: l 600519（多代码: l 600519,000001）")
             return None
         if len(codes) == 1:
+            if budget is not None:
+                print(f"  [!] 单只深析不支持 --budget（{_BUDGET_SCOPE}）")
+                return None
             return ("live", {"stock_code": codes[0]})
         # v0.8.9.0 ISS-087: 多代码一次性批量深分析（compact 卡片 + 单只失败跳过）
-        return ("live_multi", {"codes": codes})
+        multi_args = {"codes": codes}
+        if budget is not None:
+            multi_args["budget"] = budget
+        return ("live_multi", multi_args)
 
     if _is_stock_code(parts[0]):
-        # T05-J：裸代码（live 语义）不支持启动预算——先拒绝再解析代码
-        _budget, _rest, _budget_err = _split_budget_option(parts[1:])
-        if _budget_err:
-            print(f"  [!] {_budget_err}")
+        # T05-L：裸多代码（live_multi 语义）支持可选预算；单只裸代码在解析前拒绝
+        budget, rest_tail, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
             print(f"        {_BUDGET_HELP}")
             return None
-        if _budget is not None:
-            print("  [!] 单只/裸代码深析不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+        tokens = [parts[0]] + rest_tail
+        if budget is not None and _distinct_code_pieces(tokens) < 2:
+            print(f"  [!] 单只/裸代码深析不支持 --budget（{_BUDGET_SCOPE}）")
             return None
         # ISS-087：裸代码输入也支持多只（"600519 000001"），单只行为不变
-        codes, invalid = _extract_codes(parts)
+        codes, invalid = _extract_codes(tokens)
         if invalid:
             print(f"  [!] 无法识别的参数已跳过: {'、'.join(invalid)}")
+        if budget is not None and len(codes) < 2:
+            print(f"  [!] 单只/裸代码深析不支持 --budget（{_BUDGET_SCOPE}）")
+            return None
+        if budget is not None:
+            return ("live_multi", {"codes": codes, "budget": budget})
         if len(codes) >= 2:
             return ("live_multi", {"codes": codes})
         return ("live", {"stock_code": codes[0] if codes else parts[0]})
@@ -883,15 +936,15 @@ def parse_input(user_input: str):
             return None
         scan_intent = bool(bz_tokens) and bz_tokens[0].lower() in ("scan", "筛选", "选股")
         if scan_intent and budget is not None:
-            print("  [!] bz scan 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+            print(f"  [!] bz scan 不支持 --budget（{_BUDGET_SCOPE}）")
             return None
         if not scan_intent:
             _lows = [str(p).lower() for p in bz_tokens]
             if budget is not None and any(p in ("--check", "--体检", "check") for p in _lows):
-                print("  [!] bz --check 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+                print(f"  [!] bz --check 不支持 --budget（{_BUDGET_SCOPE}）")
                 return None
             if budget is not None and any(p in ("--manual", "-m", "manual") for p in _lows):
-                print("  [!] bz --manual 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）")
+                print(f"  [!] bz --manual 不支持 --budget（{_BUDGET_SCOPE}）")
                 return None
             # 移除预算 token 后继续旧解析（无预算时 bz_tokens 与 parts[1:] 逐项等价）
             parts = [parts[0]] + bz_tokens
@@ -979,7 +1032,7 @@ def parse_input(user_input: str):
                 multi_args["budget"] = budget
             return ("benzong_multi", multi_args)
         if budget is not None:
-            print("  [!] 单只 bz 不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分；"
+            print(f"  [!] 单只 bz 不支持 --budget（{_BUDGET_SCOPE}；"
                   "多代码请写成 bz 600519,000001 --budget 60）")
             return None
         if len(codes) == 1:
@@ -2076,12 +2129,16 @@ def _dispatch_benzong_cli(mode: str, args: dict) -> bool:
 
 
 
-def _batch_ledger_begin(ss, kind: str, key: str, codes: list):
+def _batch_ledger_begin(ss, kind: str, key: str, codes: list, budget=None):
     """C2/T05-H：登记一次独立批量运行并显示 run 身份；返回令牌（None=记录不可用）。
 
     每次调用都会新建 run_id/roster——不继承旧 run 的完成/失败，也不冒充缓存命中。
+    T05-L：budget 为已校验的 live 预算描述；无预算时不传该参数（旧调用方/旧 mock 兼容）。
     """
-    run_id = ss.batch_task_start(kind, key, codes)
+    if budget is None:
+        run_id = ss.batch_task_start(kind, key, codes)
+    else:
+        run_id = ss.batch_task_start(kind, key, codes, budget=budget)
     if run_id:
         print(f"  任务记录：run {run_id}（配置未冻结；本次独立 run，不继承旧记录）")
     else:
@@ -2089,24 +2146,215 @@ def _batch_ledger_begin(ss, kind: str, key: str, codes: list):
     return run_id
 
 
-def _batch_task_mark(ss, run_id, kind: str, key: str, code: str, ok: bool, note: str = "") -> bool:
+def _batch_task_mark(ss, run_id, kind: str, key: str, code: str, ok: bool, note: str = "",
+                     degraded: bool = False) -> bool:
     """C2/T05-H：逐项记账（必须携带本次 run 令牌）；返回记录是否可信。
 
     缺令牌 / 旧 run 晚到 / 清单外 / 写盘失败都由 session_state fail-closed 返回 False，
     入口据此提示“进度可能不完整”，不把可见性记录当成业务结果。
+    T05-L：degraded=True 只用于“仅行情”降级；非降级调用保持旧签名。
     """
     try:
+        if degraded:
+            return bool(ss.batch_task_mark(kind, key, code, ok, note, run_id=run_id,
+                                           degraded=True))
         return bool(ss.batch_task_mark(kind, key, code, ok, note, run_id=run_id))
     except Exception:
         return False
 
 
-def _batch_ledger_finish(run_id, rec_ok: bool, ok_n: int, failed_n: int, total: int) -> None:
-    """C2/T05-H：跑完显示已完成/失败/未记录结果计数；记录不可信时明确提示。"""
-    print(f"  任务记录：run {run_id}（已完成 {ok_n} / 失败 {failed_n} / 未记录结果 "
-          f"{max(0, total - ok_n - failed_n)}）")
+def _batch_task_not_started(ss, run_id, kind: str, key: str, code: str, reason: str) -> bool:
+    """T05-L：登记调度器确认“从未开始”的代码（预算到期）；返回记录是否可信。"""
+    if not run_id:
+        return False
+    try:
+        return bool(ss.batch_task_not_started(kind, key, code, run_id=run_id, reason=reason))
+    except Exception:
+        return False
+
+
+def _batch_ledger_finish(run_id, rec_ok: bool, ok_n: int, failed_n: int, total: int,
+                         degraded_n: int = 0, not_started_n=None) -> None:
+    """C2/T05-H：跑完显示已完成/降级/失败/未记录结果计数；记录不可信时明确提示。
+
+    T05-L：仅行情计“降级”；有预算时单列“预算未开始”。结果未知的股票不记账，
+    落在“未记录结果”（不冒充成功/失败/未开始）。
+    """
+    ns = not_started_n or 0
+    pending = max(0, total - ok_n - degraded_n - failed_n - ns)
+    print(f"  任务记录：run {run_id}（已完成 {ok_n} / 降级 {degraded_n} / 失败 {failed_n} / "
+          + (f"预算未开始 {ns} / " if not_started_n is not None else "")
+          + f"未记录结果 {pending}）")
     if not rec_ok:
         print("  [!] 任务记录写入失败：本次进度可能不完整（分析继续）")
+
+
+# ── T05-L：live 深分析批（l 多代码 / la / l all）的真实结果与可选启动预算 ──
+
+def _monotonic() -> float:
+    """live 批启动预算的单调钟入口（同一批只取一次截止点；测试可替换为假钟）。"""
+    return time.monotonic()
+
+
+def _live_deadline_expired(deadline) -> bool:
+    return deadline is not None and _monotonic() >= deadline
+
+
+_LIVE_BUDGET_HINT = ("  可选时限：末尾可加 --budget 600（秒，默认不启用）；"
+                     "到点不开始下一只，当前一只分析完再返回")
+
+_LIVE_QUOTE_ONLY_NOTE = "仅行情：技术分析未完成（可重试）"
+
+
+def _live_budget_notice(seconds: float, scope: str, after_confirm: bool) -> str:
+    """live 预算语义的用户可见说明（l all 确认后才计时；la/l 多代码从入口计时）。"""
+    when = ("确认后开始计时" if after_confirm
+            else "从现在开始计时，读取持仓/预取行情等准备也计入")
+    return (f"  启动预算：{seconds:g} 秒（{scope}；{when}；到期不再开始新股票，"
+            "已开始的股票会分析完，准备阶段可能超出预算——非强制中断、非费用上限）")
+
+
+def _live_budget_desc(args):
+    """取 live 预算描述：(描述|None, 是否可继续)。统一门已先拒坏值，这里防直接调用绕过。"""
+    budget = args.get("budget") if isinstance(args, dict) else None
+    if budget is None:
+        return None, True
+    from src.cli.session_state import live_budget_descriptor
+    desc = live_budget_descriptor(budget)
+    if desc is None:
+        print(_LIVE_BUDGET_INVALID)
+        return None, False
+    return desc, True
+
+
+def _dedupe_live_codes(codes) -> list:
+    """保序去重（执行名单 = 账本 roster = 计数口径）；空值忽略。"""
+    out, seen = [], set()
+    for c in codes or []:
+        if not c:
+            continue
+        key = str(c)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(key)
+    return out
+
+
+def _run_live_batch_loop(ss, analyze_live, ai_overrides, *, kind: str, key: str,
+                         entries: list, account_facts, run_id, deadline,
+                         deep_source=None, rec_ok: bool = True) -> dict:
+    """T05-L：live 批逐股循环（l 多代码 / la / l all 共用）。
+
+    entries: [(code, 标题)]，已保序去重，与账本 roster 同源。每只：核截止 → 打印
+    标题 → 临近调用前再核截止 → 登记已开始 → 调 analyze_live。
+    - LiveOutcome.COMPLETE：记完成；deep_source 非 None（l 多代码 / l all）才写当日已析
+    - LiveOutcome.QUOTE_ONLY：记降级（可重试），不写当日已析
+    - 其它返回值（None/bool/字符串/…）：结果未知——不计成功/失败/未开始、不写账本
+    - SystemExit/异常：记失败（单只失败不拖垮批次）
+    预算到期只阻止开始后续股票，已开始的分析允许跑完；未开始项只来自本调度器确认。
+    """
+    from src.cli.main import LiveOutcome
+    res = {"complete": [], "quote_only": [], "unknown": [], "failed": [],
+           "not_started": [], "stopped": False, "rec_ok": rec_ok}
+    started = set()
+    codes = [c for c, _ in entries]
+    total = len(entries)
+
+    def _stop_rest(rest):
+        res["stopped"] = True
+        for c in rest:
+            if c in started or c in res["not_started"]:
+                continue
+            res["not_started"].append(c)
+            if not _batch_task_not_started(ss, run_id, kind, key, c,
+                                           ss.LIVE_BUDGET_STOP_REASON):
+                res["rec_ok"] = False
+
+    for i, (code, header) in enumerate(entries, 1):
+        if _live_deadline_expired(deadline):
+            _stop_rest(codes[i - 1:])
+            break
+        print(f"\n{'='*60}")
+        print(f"  [{i}/{total}] {header}")
+        print(f"{'='*60}")
+        if _live_deadline_expired(deadline):
+            print("  预算到期：本只未开始（未调用分析）")
+            _stop_rest(codes[i - 1:])
+            break
+        started.add(code)
+        try:
+            outcome = analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
+                                   compact=True, account_facts=account_facts)
+        except SystemExit:
+            print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
+            res["rec_ok"] = _batch_task_mark(ss, run_id, kind, key, code, False,
+                                             "数据获取失败") and res["rec_ok"]
+            res["failed"].append(code)
+            continue
+        except Exception as e:
+            print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
+            res["rec_ok"] = _batch_task_mark(ss, run_id, kind, key, code, False,
+                                             f"{type(e).__name__}: {e}") and res["rec_ok"]
+            res["failed"].append(code)
+            continue
+        if outcome is LiveOutcome.COMPLETE:
+            res["complete"].append(code)
+            res["rec_ok"] = _batch_task_mark(ss, run_id, kind, key, code, True) and res["rec_ok"]
+            if deep_source is not None:
+                # 完整分析才记当日已析（失败/仅行情/未知下次自动重试）；逐只落盘。
+                # 记录异常一律按“未保存”处理，绝不打断后续股票
+                try:
+                    _saved = bool(ss.mark_deep_analyzed([code], source=deep_source))
+                except Exception:
+                    _saved = False
+                if not _saved:
+                    print(f"  ⚠ {code} 当日已析记录未保存（记录文件异常或写入失败）："
+                          "下次 l all 可能重复分析")
+        elif outcome is LiveOutcome.QUOTE_ONLY:
+            res["quote_only"].append(code)
+            print(f"  ⚠ {code} 仅取得行情，技术分析未完成：记为降级（可重试），不计成功"
+                  + ("，不记当日已析" if deep_source is not None else ""))
+            res["rec_ok"] = _batch_task_mark(ss, run_id, kind, key, code, True,
+                                             _LIVE_QUOTE_ONLY_NOTE,
+                                             degraded=True) and res["rec_ok"]
+        else:
+            res["unknown"].append(code)
+            print(f"  ⚠ {code} 未返回完成状态（结果未知）：不计成功/失败"
+                  + ("，不记当日已析" if deep_source is not None else ""))
+    return res
+
+
+def _print_live_batch_summary(res: dict, *, kind: str, total: int, run_id,
+                              budget_desc) -> None:
+    """T05-L：live 批收尾——完成/仅行情/未知/预算未开始/失败分开计，预算语义如实说明。"""
+    complete, quote_only = res["complete"], res["quote_only"]
+    unknown, failed, not_started = res["unknown"], res["failed"], res["not_started"]
+    line = f"\n  批量完成：{len(complete)}/{total} 成功"
+    if quote_only:
+        line += f"；仅行情(降级，可重试) {len(quote_only)}: {', '.join(quote_only)}"
+    if unknown:
+        line += f"；结果未知 {len(unknown)}: {', '.join(unknown)}"
+    if budget_desc is not None and not_started:
+        line += f"；预算未开始 {len(not_started)}"
+    if failed:
+        line += f"；失败: {', '.join(failed)}"
+    print(line)
+    if budget_desc is not None:
+        if res["stopped"]:
+            print("  预算到期：不再开始后续股票（已开始的股票已分析完；准备阶段可能超出预算，"
+                  "非强制中断）")
+            follow = ("下次 l all 会继续这些股票" if kind == "l all"
+                      else "需要时重跑会开新的独立 run")
+            print(f"  预算未开始 {len(not_started)} 只：{', '.join(not_started)}"
+                  f"（未调用分析，不计失败；{follow}）")
+        print("  预算说明：到期只阻止开始下一只股票；已开始的股票与准备阶段继续完成，"
+              "实际耗时可能超出预算（非强制中断、无费用上限）")
+    if run_id:
+        _batch_ledger_finish(run_id, res["rec_ok"], len(complete), len(failed), total,
+                             degraded_n=len(quote_only),
+                             not_started_n=(len(not_started) if budget_desc is not None
+                                            else None))
 
 
 def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) -> bool:
@@ -2115,67 +2363,82 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
     命中并执行后返回 True；非 live_* mode 返回 False，由 run_cli 继续 elif。
     承接：live / live_multi / live_all / live_scan_all。
     行为锁定：test_t04e_dispatch_golden（含 T04-G0 扩展）。
+    T05-L：三个批量入口只把 LiveOutcome.COMPLETE 记成功；可选 --budget 共用同一
+    单调截止点（到期不开始下一只，已开始的分析跑完）。
     """
     global _ai_debug
 
     if mode == "live":
+        # T05-L：单只深析不支持预算——绕过 run_cli 统一门的直接调用也显式拒绝，不静默忽略
+        if isinstance(args, dict) and args.get("budget") is not None:
+            print(f"  [!] 单只深析不支持 --budget（{_BUDGET_SCOPE}）")
+            return True
         analyze_live(args["stock_code"], ai_overrides=ai_overrides, ai_debug=_ai_debug)
         return True
 
     if mode == "live_multi":
         # v0.8.9.0 ISS-087: 多代码一次性批量深分析（l 600519,000001 / l 600519 000001）。
-        # 模式对齐 l all：compact 卡片 + 单只失败跳过不拖垮批次 + 成功记当日已析
+        # 模式对齐 l all：compact 卡片 + 单只失败跳过不拖垮批次 + 完整分析记当日已析
         # （后续 l all 自动跳过，缓存化省钱）。显式点名的代码全部重析，不做当日跳过。
         from src.cli import session_state as _ss
-        codes = [c for c in args.get("codes", []) if c]
+        budget_desc, ok = _live_budget_desc(args)
+        if not ok:
+            return True
+        codes = _dedupe_live_codes(args.get("codes", []))
         if not codes:
             print("  [!] 没有可分析的代码")
             return True
         print(f"\n  批量深分析 {len(codes)} 只（每只约0.5~1分钟，含AI调用）：{'、'.join(codes)}")
+        # T05-L：手动多代码在预取/账户快照之前起算（同一截止点贯穿全批）
+        deadline = None
+        if budget_desc is not None:
+            deadline = _monotonic() + budget_desc["budget_seconds"]
+            print(_live_budget_notice(budget_desc["budget_seconds"], "l 多代码",
+                                      after_confirm=False))
+        else:
+            print(_LIVE_BUDGET_HINT)
         # ISS-088：批量预取行情（新浪批量/东财全市场 1 次请求），逐只分析时
         # get_realtime_quote 直接命中预取映射——N 只行情从 N 次请求压成 1 次
-        try:
-            from src.data.akshare_client import AKShareClient
-            got = AKShareClient.prefetch_realtime_quotes(codes)
-            print(f"  行情预取：{got}/{len(codes)} 只命中批量源（逐只分析零重复请求）")
-        except Exception as _e:
-            print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
-        failed = []
-        ok = 0
+        if not _live_deadline_expired(deadline):
+            try:
+                from src.data.akshare_client import AKShareClient
+                got = AKShareClient.prefetch_realtime_quotes(codes)
+                print(f"  行情预取：{got}/{len(codes)} 只命中批量源（逐只分析零重复请求）")
+            except Exception as _e:
+                print(f"  [!] 行情预取失败（不影响分析，逐只回退）: {type(_e).__name__}")
         # C2/T05-H：批量任务账本（tasks 命令可查进度与失败项）——键含代码集摘要，
         # 防不同代码集同数量碰撞；每次启动新建独立 run，令牌绑定全部逐项 mark
         _tk = "手动多代码 " + ",".join(codes[:4]) + ("…" if len(codes) > 4 else "")
-        run_id = _batch_ledger_begin(_ss, "l", _tk, codes)
-        _rec_ok = bool(run_id)
+        run_id = _batch_ledger_begin(_ss, "l", _tk, codes, budget=budget_desc)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
-        from src.data.portfolio import PortfolioManager as _PM_multi
-        _acct_facts = _PM_multi().request_account_facts(estimate_nav=True)
-        for i, code in enumerate(codes, 1):
-            print(f"\n{'='*60}")
-            print(f"  [{i}/{len(codes)}] {code}")
-            print(f"{'='*60}")
-            try:
-                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug, compact=True,
-                             account_facts=_acct_facts)
-                _ss.mark_deep_analyzed([code], source="手动多代码")
-                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, True) and _rec_ok
-                ok += 1
-            except SystemExit:
-                print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
-                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, False, "数据获取失败") and _rec_ok
-                failed.append(code)
-            except Exception as e:
-                print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
-                _rec_ok = _batch_task_mark(_ss, run_id, "l", _tk, code, False,
-                                           f"{type(e).__name__}: {e}") and _rec_ok
-                failed.append(code)
-        print(f"\n  批量完成：{ok}/{len(codes)} 成功"
-              + (f"；失败: {', '.join(failed)}" if failed else ""))
-        if run_id:
-            _batch_ledger_finish(run_id, _rec_ok, ok, len(failed), len(codes))
+        _acct_facts = None
+        if not _live_deadline_expired(deadline):
+            from src.data.portfolio import PortfolioManager as _PM_multi
+            _acct_facts = _PM_multi().request_account_facts(estimate_nav=True)
+        res = _run_live_batch_loop(
+            _ss, analyze_live, ai_overrides, kind="l", key=_tk,
+            entries=[(c, c) for c in codes], account_facts=_acct_facts,
+            run_id=run_id, deadline=deadline, deep_source="手动多代码",
+            rec_ok=bool(run_id))
+        _print_live_batch_summary(res, kind="l", total=len(codes), run_id=run_id,
+                                  budget_desc=budget_desc)
         return True
 
     if mode == "live_all":
+        from src.cli import session_state as _ss_la
+        budget_desc, ok = _live_budget_desc(args)
+        if not ok:
+            return True
+        # T05-L：la 在读取账户快照之前起算；快照同时形成 roster 与全批上下文
+        deadline = None
+        if budget_desc is not None:
+            deadline = _monotonic() + budget_desc["budget_seconds"]
+            print(_live_budget_notice(budget_desc["budget_seconds"], "la",
+                                      after_confirm=False))
+            if _live_deadline_expired(deadline):
+                print("  预算到期：尚未读取持仓清单，本次未开始分析"
+                      "（持仓名单未知，未登记任务；需要时重跑）")
+                return True
         from src.data.portfolio import PortfolioManager
         pm = PortfolioManager()
         # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
@@ -2189,62 +2452,63 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
             else:
                 print("\n  当前无持仓记录")
             return True
-        print(f"\n  一键分析所有持仓（{len(_entries)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
+        _seen, _uniq = set(), []
+        for e in _entries:
+            _c = str(e.stock_code)
+            if not e.stock_code or _c in _seen:
+                continue
+            _seen.add(_c)
+            _uniq.append(e)
+        print(f"\n  一键分析所有持仓（{len(_uniq)}只）—— 简明模式，每只一张人话摘要卡（详情单独跑 l <代码>）\n")
         if _incomplete:
             print("  [!] ⚠ 账本/持仓库读取异常——持仓清单可能不完整，待对账（不当作空仓）\n")
-        from src.cli import session_state as _ss_la
-        _la_codes = [e.stock_code for e in _entries]
+        if budget_desc is None:
+            print(_LIVE_BUDGET_HINT)
+        _la_codes = [str(e.stock_code) for e in _uniq]
         _tk_la = "持仓 " + ",".join(_la_codes[:4]) + ("…" if len(_la_codes) > 4 else "")
-        run_id = _batch_ledger_begin(_ss_la, "la", _tk_la, _la_codes)
-        _rec_ok = bool(run_id)
-        _la_ok = 0
-        _la_failed = []
-        for i, e in enumerate(_entries, 1):
+        run_id = _batch_ledger_begin(_ss_la, "la", _tk_la, _la_codes, budget=budget_desc)
+        _la_entries = []
+        for e in _uniq:
             _src_tag = "  [账本持仓·投影缺失——成本/比例未知]" if e.from_ledger else ""
-            print(f"\n{'='*60}")
-            print(f"  [{i}/{len(_entries)}] {e.stock_name or e.stock_code} ({e.stock_code}){_src_tag}")
-            print(f"{'='*60}")
-            try:
-                analyze_live(e.stock_code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
-                             compact=True, account_facts=_acct_facts)
-                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code, True) and _rec_ok
-                _la_ok += 1
-            except SystemExit:
-                print(f"  [!] {e.stock_code} 数据获取失败（已跳过，不影响其余持仓）")
-                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code,
-                                           False, "数据获取失败") and _rec_ok
-                _la_failed.append(e.stock_code)
-            except Exception as ex:
-                # handler 名不可与循环变量 e 撞名——as e 会把 e 重绑为异常对象，
-                # 下一行取 .stock_code 即 AttributeError 且从 handler 传播跳出整批
-                print(f"  [!] 分析失败: {ex}")
-                _rec_ok = _batch_task_mark(_ss_la, run_id, "la", _tk_la, e.stock_code,
-                                           False, str(ex)[:120]) and _rec_ok
-                _la_failed.append(e.stock_code)
-        print(f"\n  批量完成：{_la_ok}/{len(_entries)} 成功"
-              + (f"；失败: {', '.join(_la_failed)}" if _la_failed else ""))
-        if run_id:
-            _batch_ledger_finish(run_id, _rec_ok, _la_ok, len(_la_failed), len(_entries))
+            _la_entries.append((str(e.stock_code),
+                                f"{e.stock_name or e.stock_code} ({e.stock_code}){_src_tag}"))
+        res = _run_live_batch_loop(
+            _ss_la, analyze_live, ai_overrides, kind="la", key=_tk_la,
+            entries=_la_entries, account_facts=_acct_facts, run_id=run_id,
+            deadline=deadline, deep_source=None, rec_ok=bool(run_id))
+        _print_live_batch_summary(res, kind="la", total=len(_la_entries), run_id=run_id,
+                                  budget_desc=budget_desc)
         return True
 
     if mode == "live_scan_all":
         # v0.8.7.9: l all —— 对最近一次扫描结果（bz scan / scan market）批量深度分析
         # 模式对齐 ba（读 session_state + 过期提示 + y/N 确认）与 la（compact 卡 + 单只失败跳过）
-        # 去重：当天已深分析的默认跳过（session_state 当日记录），-f/--force 强制重析
+        # 去重：当天已**完整**深分析的默认跳过（T05-L 起只认带完成资格标记的记录），
+        # -f/--force 强制重析
         from src.cli import session_state
         from datetime import datetime as _dt
+        budget_desc, ok = _live_budget_desc(args)
+        if not ok:
+            return True
         force = bool(args.get("force"))
         last = session_state.get_last_scan()
         if not last or not last.get("items"):
             print("\n  [!] 还没有扫描结果。先跑：bz scan <主题> 或 scan market [规则]")
             return True
-        items = [it for it in last["items"] if isinstance(it, dict) and it.get("code")]
+        items, _seen_codes = [], set()
+        for it in last["items"]:
+            if isinstance(it, dict) and it.get("code") and str(it["code"]) not in _seen_codes:
+                _seen_codes.add(str(it["code"]))
+                items.append(it)
         if not items:
             print("\n  [!] 最近扫描结果里没有可用代码")
             return True
-        done = {} if force else session_state.get_deep_analyzed()
+        records = {} if force else session_state.get_deep_analyzed()
+        done = {c: r for c, r in records.items() if session_state.deep_record_complete(r)}
         new_items = [it for it in items if it["code"] not in done]
         skipped = [it for it in items if it["code"] in done]
+        # T05-L：今天的旧版记录（无完成资格标记，修复前可能把仅行情算作已析）不再直接跳过
+        unverified = [it for it in new_items if it["code"] in records]
         when = (last.get("timestamp") or "")[:16].replace("T", " ")
         try:
             _age_min = max(0, round((_dt.now() - _dt.fromisoformat(last.get("timestamp") or "")).total_seconds() / 60))
@@ -2258,10 +2522,20 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
                            for it in skipped[:6])
             _more = f" 等{len(skipped)}只" if len(skipped) > 6 else ""
             print(f"  ⏭ 今天已深分析 {len(skipped)} 只，默认跳过：{_sk}{_more}")
+        if unverified:
+            _uv = "、".join(f"{it.get('name') or it['code']}" for it in unverified[:6])
+            _uv_more = f" 等{len(unverified)}只" if len(unverified) > 6 else ""
+            print(f"  ⚠ 今天另有 {len(unverified)} 只是旧版已析记录（无完成资格标记，修复前可能把"
+                  f"仅行情算作已析）：本次将重新深分析（含AI调用费用）：{_uv}{_uv_more}")
         if not new_items:
             print("  ✓ 这批今天全都分析过了（不重复花AI费用）。强制重分析：l all -f")
             return True
         print(f"  将深分析 {len(new_items)} 只，每只一张简明卡（同 la），详情再单独 l <代码>")
+        if budget_desc is not None:
+            print(_live_budget_notice(budget_desc["budget_seconds"], "l all",
+                                      after_confirm=True))
+        else:
+            print(_LIVE_BUDGET_HINT)
         try:
             ans = input(f"  批量深度分析 {len(new_items)} 只（每只约0.5~1分钟，含AI调用）。继续?(y/N) ")
         except (EOFError, KeyboardInterrupt):
@@ -2270,42 +2544,27 @@ def _dispatch_live_cli(mode: str, args: dict, analyze_live, ai_overrides: dict) 
         if ans.strip().lower() not in ("y", "yes"):
             print("  已取消")
             return True
+        # T05-L：l all 在用户确认之后、执行准备（账本/账户快照）之前起算
+        deadline = (_monotonic() + budget_desc["budget_seconds"]
+                    if budget_desc is not None else None)
         src_label = last.get("source", "?")
-        failed = []
-        ok = 0
+        _codes = [str(it["code"]) for it in new_items]
         # C2/T05-H：批量任务账本——每次运行独立 run，令牌绑定全部逐项 mark
-        run_id = _batch_ledger_begin(session_state, "l all", src_label,
-                                     [it["code"] for it in new_items])
-        _rec_ok = bool(run_id)
+        run_id = _batch_ledger_begin(session_state, "l all", src_label, _codes,
+                                     budget=budget_desc)
         # N0/B2：批量请求共享同一账户事实（同版本；下一命令重新读）
-        from src.data.portfolio import PortfolioManager as _PM_all
-        _acct_facts = _PM_all().request_account_facts(estimate_nav=True)
-        for i, it in enumerate(new_items, 1):
-            code, name = it["code"], it.get("name", "")
-            print(f"\n{'='*60}")
-            print(f"  [{i}/{len(new_items)}] {name or code} ({code})")
-            print(f"{'='*60}")
-            try:
-                analyze_live(code, ai_overrides=ai_overrides, ai_debug=_ai_debug,
-                             compact=True, account_facts=_acct_facts)
-                # 成功才记当日已析（失败下次自动重试）；逐只落盘，Ctrl-C 中断不丢记录
-                session_state.mark_deep_analyzed([code], source=src_label)
-                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code, True) and _rec_ok
-                ok += 1
-            except SystemExit:
-                print(f"  [!] {code} 数据获取失败（已跳过，不影响其余）")
-                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code,
-                                           False, "数据获取失败") and _rec_ok
-                failed.append(code)
-            except Exception as e:
-                print(f"  [!] {code} 分析失败: {type(e).__name__}: {e}")
-                _rec_ok = _batch_task_mark(session_state, run_id, "l all", src_label, code,
-                                           False, f"{type(e).__name__}: {e}") and _rec_ok
-                failed.append(code)
-        print(f"\n  批量完成：{ok}/{len(new_items)} 成功"
-              + (f"；失败: {', '.join(failed)}" if failed else ""))
-        if run_id:
-            _batch_ledger_finish(run_id, _rec_ok, ok, len(failed), len(new_items))
+        _acct_facts = None
+        if not _live_deadline_expired(deadline):
+            from src.data.portfolio import PortfolioManager as _PM_all
+            _acct_facts = _PM_all().request_account_facts(estimate_nav=True)
+        _scan_entries = [(str(it["code"]), f"{it.get('name', '') or it['code']} ({it['code']})")
+                         for it in new_items]
+        res = _run_live_batch_loop(
+            session_state, analyze_live, ai_overrides, kind="l all", key=src_label,
+            entries=_scan_entries, account_facts=_acct_facts, run_id=run_id,
+            deadline=deadline, deep_source=src_label, rec_ok=bool(run_id))
+        _print_live_batch_summary(res, kind="l all", total=len(_scan_entries),
+                                  run_id=run_id, budget_desc=budget_desc)
         return True
 
     return False
@@ -2570,13 +2829,18 @@ def _dispatch_backtest_cli(
 
 
 _SUPPORTED_BUDGET_MODES = ("benzong_all", "benzong_multi")
+# T05-L：live 深分析批（l 多代码 / la / l all）的预算走 live 合同（单只 live 仍不支持）
+_LIVE_BUDGET_MODES = ("live_multi", "live_all", "live_scan_all")
+
+_LIVE_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始分析"
+                        "（不读取扫描结果/持仓、不调用 AI、不写账本）")
 
 
 def _reject_budget_request(mode: str, args) -> bool:
     """T05-J fix2：run_cli 最前统一预算门（在确认/扫描/缓存/网络/AI/账本之前）。
 
     - 不支持的 mode 只要显式 budget 非 None（含正数/坏值）一律拒绝，不执行业务
-    - 支持 mode 的坏预算（非有限正数秒）同样先拒绝
+    - 支持 mode 的坏预算（非有限正数秒）同样先拒绝（ba/bz 与 live 各按自己的合同）
     - 无 budget / budget=None：完全保持旧行为
     返回 True 表示已拒绝（run_cli 必须直接 return）。
     """
@@ -2585,9 +2849,14 @@ def _reject_budget_request(mode: str, args) -> bool:
     budget = args.get("budget")
     if budget is None:
         return False
+    if mode in _LIVE_BUDGET_MODES:
+        from src.cli.session_state import live_budget_descriptor
+        if live_budget_descriptor(budget) is None:
+            print(_LIVE_BUDGET_INVALID)
+            return True
+        return False
     if mode not in _SUPPORTED_BUDGET_MODES:
-        print("  [!] 该命令不支持 --budget（预算仅用于 ba/bzall 与 bz 多代码共用评分）；"
-              "本次未执行")
+        print(f"  [!] 该命令不支持 --budget（{_BUDGET_SCOPE}）；本次未执行")
         return True
     from src.core.benzong.batch_scorer import budget_descriptor
     if budget_descriptor(budget) is None:

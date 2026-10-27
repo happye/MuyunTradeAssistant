@@ -221,7 +221,7 @@ def test_run_cli_live_multi_dispatch_wiring(monkeypatch):
     calls, marks = [], []
     with _swap(cli_main, "analyze_live",
                lambda code, ai_overrides=None, ai_debug=False, compact=False, account_facts=None:
-               calls.append((code, compact))), \
+               calls.append((code, compact)) or cli_main.LiveOutcome.COMPLETE), \
          _swap(ss, "mark_deep_analyzed", lambda codes, source="": marks.append((codes, source))), \
          _quiet():
         start_mod.run_cli("live_multi", {"codes": ["600519", "000001"]})
