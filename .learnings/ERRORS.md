@@ -666,3 +666,7 @@ Status: resolved / parent temporary review fixture only。独立退出复验先3
 ## ERR-20261026-Git与定位路径
 
 状态：resolved。T05-J本地932241c首推直连GitHub443失败；核已有127.0.0.1:7890代理可达后，用单次Git参数同时覆盖http.proxy与http.https://github.com.proxy推送成功，未改全局配置、未重提交或强推。定位缓存消费者时误猜src/core/services/plan_update_prep.py，rg报路径不存在；用rg --files核实实际src/core/trade_plan/plan_update_prep.py。后续先定位再读，不据猜测报告消费者全集。
+
+## ERR-20261027-T05M取证收尾
+
+状态：已修执行器、交付待收口。首次full的PS Start-Process/WaitForExit返回child ExitCode=null，日志4762绿不能冒充真实exit0；Python Popen.wait经0/7标准库探针后复验full已记录整数0。首次网络归因只socket门不满足原guard，后续均调用原runner；历史红bookend漏采/重建不追认。exec终态旧session再次误续读，已改store管理并在exit清空引用；路径定位必须先rg --files。用户新额度停止后仅做快照及交接，未继续测试。

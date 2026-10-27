@@ -1,6 +1,22 @@
 # 融合项目恢复入口
 
-## 当前中断交接：2026-10-27 T05-M 已实施未验收（本机工作树WIP，未提交）
+## 当前停止交接：2026-10-27 用户新额度不足7%继而不足3%，T05-M保留WIP
+
+用户明确要求立即收尾，已禁止新派发/测试/审批；此前持续授权转历史。远端已同步至main@02f6100（L代码847eb66已交付），本次T05-M产品代码**未提交、未最终交付**。原另一机M WIP没有套用；本机为按合同重实施。
+
+**已完成**：l多/la/l all一次加载deepcopy冻结配置，逐股独立副本；非秘密白名单配置指纹与tasks按kind同门；真实影子capture_shadow透传批副本而单只None保持旧路径。独立Sol/high代码阻断清零。先前回归/追修：12业务红→191新绿→307最小相关绿，定向IO三项0；真实影子2红/170绿→172绿与972相关绿（network278）。秘密值标点边界、缺省provider模型、ba共用门等均已追修。
+
+**全量实际状态**：第一次4762 passed/12 skipped/1 deselected（525.73s），PS启动器漏真实child退出码，不追认0；已保留。修复为Python Popen.wait并经标准库0/7退出探针后再跑：第二次也4762 passed/12 skipped/1 deselected，身份文件记录child_returncode=0、type=int；用户停止检查时已自行结束，自有launcher46712/child44532已退出，无需强杀。第二次日志与身份在`C:/Users/Crux/AppData/Local/Temp/muyun-t05m-live-config-20261027/stage/full-exitcode-fix/`，label=`final-full-exit-20261027T2032`。最终跑后manifest/current与独立全量证据收口、正式回执和产品Git交付尚未完成，禁止把这些未知写为已验收。
+
+**停止身份**：task=`muyun-t05m-live-config-20261027`，session=`codex-12114f3b-09bd-4b40-bdac-4e68e28bb49c`，合同SHA=`591df16a6551d4dbf3acdbb75eaf03b1ea0102fb668e02f69dbaba7a933a2b1a`；最新request=`4f9616e1-f217-41a1-8807-2b273d1a4407`。stopAttempt=`7b0a153a-91bb-4dc4-859e-12da6d5495c9`，STOP_PENDING/STOP_REQUEST_RUNNING；cancelSkippedReason=foreign-or-unknown-native-activity，工具已blocked，最后观测running=true/queue0。不得重投/重复cancel/杀用户共享Host，不声称整个Host子树停止。
+
+**WIP及保护**：允许7文件（start.py、main.py、session_state.py、三个既有测试mock签名、新test_live_batch_config.py）全部副本/哈希及tracked patch保存`C:/Users/Crux/AppData/Local/Temp/muyun-t05m-live-config-20261027/wip-stop-20261027/`。9保护hash与基线相同、原flat218路径都在（非内容hash证明）；用户原账户/索引/个人配置保持。新测试未跟踪，勿漏存或误删。禁止为清树丢弃这些WIP。
+
+**证据边界**：完整原件保留dsh/、stage/fix1/fix2/fix3/full/full-exitcode-fix。首次net_trace仅网络门诊断不满足完整guard，不能追认；fix2红bookends事后重建、最初空SHA误用修后记录保留；旧546清单漏ignored local，fix3已加仅存在性/hash；fixture静态检索不自证动态完整；site-packages未逐字节pin、testPlan=[]不是formalbridge receipt。宽矩阵/全量blocked网络和子进程计数按原日志，不称全程零IO或双方费用。
+
+**将来恢复**：先取得新恢复指令，核Git/工作树、进度check与原生未决活动。先读第二次full真实身份/完整终态答复及before/after/current hash，未执行新测试先核已有证据；若完整可追溯则最后独立证据审核、回执/文档/账本/Git交付。旧task停止锁不可绕过；确需新续修身份时明确范围及实际HEAD，不重投已结束或未知请求。进度E47/98≈48.0%、A40/111≈36.0%、P42.0%–68.6%、18/47不变，BATCH-BUDGET/G7/T05/V1未关闭。T05-N仅只读设计（bzscan阶段预算、limit默认15统一allrules结构上限25、轮询取候选、费用维度文案），未派发实施。
+
+## 历史另一机中断交接：2026-10-27 T05-M 已实施未验收（本机工作树WIP，未提交）
 
 用户要求收尾、将开新对话继续。**已交付并推送**：T05-L `847eb66`（代码+测试）/`7b7de87`（文档账本）；T05-M有限合同`c0a048e`（见第十轮计划顶部）。main=origin/main=本收尾提交。
 

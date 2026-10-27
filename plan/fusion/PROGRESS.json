@@ -1976,7 +1976,7 @@
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "T05-L已交付（847eb66）。T05-M（live批配置一次冻结+非秘密配置指纹）已在本机工作树实施、新测试249通过/HEAD红灯已验，但最终守卫全量与独立复核未完成、未提交，不计进度；恢复按RESUME完成复核/全量/文档账本后交付。随后T05-N：bz scan全链可选--budget与上限/维度文案诚实化。"
+      "next_action": "用户新额度不足7%继而不足3%已停止。T05-M独立代码复核通过，第二次全量4762/12skip/1deselected且真实child_returncode=0；7文件未提交WIP已快照，先核最终manifest/原生终态、独立证据审核及回执/Git收口，未经新恢复指令不继续。N仅设计未实施；指标不变。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -2773,6 +2773,57 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05L_LIVE_BUDGET_ACCEPTANCE.json"
+      ]
+    },
+    {
+      "id": "T05M-STOP-20261027",
+      "date": "2026-10-27",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "用户新额度不足7%继而不足3%停止；M代码独立复核已过、全量第二次4762通过且真实exit0，最终证据/回执/Git未收口，保留7文件WIP与外部快照；指标和范围/权重/适用性不变。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/RESUME.md"
       ]
     }
   ],

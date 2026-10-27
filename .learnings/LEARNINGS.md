@@ -2740,3 +2740,7 @@ Status: applied / V1-G7-SESSION限定接收。共享租约必须由真实daemon 
 Status: applied / T05-L（Claude Code 本机重实施，V1-G7-BATCH-BUDGET 有限范围）。`analyze_live` 完整分析与“仅实时数据可用”降级都隐式返回 None，`l 多代码/la/l all` 三个循环把“不抛异常”记为成功并写当日已析，下一次 `l all` 静默跳过从未做过技术分析的股票。修法：被调方返回普通 Enum（COMPLETE/QUOTE_ONLY，非 str 混入），调用方用 `is` 只认 COMPLETE；None/bool/字符串/MagicMock 一律“结果未知”，不计成功/失败/未开始。旧当日记录没有完成资格标记，不当作已核完成，并在原 y/N 确认前预告会重新分析（含 AI 费用）。持久化写入要合并**原始根**、坏根/坏当日节点拒写，不能把读侧过滤后的视图整份写回——那会抹掉历史日期与读侧跳过的坏行。
 
 同类扫描（铁律 1③）：`pos plan all` 已检查布尔返回、ba 只认结构化结果、scan（analyze_portfolio）单独处理无指标——“隐式 None 当成功”剩余 0 处。验证教训：公司内网下普通 `pytest` 会在真实外源调用处**挂起**而非失败（HEAD 基线同样挂起），应走 `plan/fusion/iteration9/review_test_runner.py` 守卫，网络/子进程/真实状态被拦截后快速失败并计数。
+
+## LRN-20261027-T05M-收尾（交付未收口）
+
+批配置冻结必须顺查真实下游：shadow捕获已有config入口但未透传仍会逐股读盘；已补真实链双方向红绿。秘密值识别需覆盖空白/Bearer/标点与词内合法值。所有产品诊断也须调用既有完整guard，不自制较弱门。PS WaitForExit后ExitCode可能空，日志绿不等于取得OS退出码；Python父进程wait并先测0/7再收证。M源码/测试已实现并独立复核，全量第二次有真实0，但新额度停止，回执/Git交付未收口，不能标已交付。
