@@ -2,6 +2,15 @@
 
 **2026-10-27更新**：T05-L已由Claude Code在本机按下方合同重实施并限定接收（Codex中止时的WIP已被取代、不得套用）；此前“新额度不足8%停止覆盖”转为历史，见RESUME历史段。
 
+## 2026-10-27 当前有限合同：T05-M live 批配置一次冻结与非秘密配置指纹
+
+关联`V1-G7-BATCH-BUDGET`（任务输入/配置身份子项），基线main@7b7de87，Claude Code 主控实施/Git，muyun-coder 写测试，独立复核按风险派 code-quality-guard。依据：盘点确认 `l 多代码/la/l all` 每只股票仍 `load_config()`+`apply_ai_overrides`+重建编排器，批内若改 settings 会混用配置，tasks 只能显示“配置未冻结”。
+
+- 行为：三入口在预算起点之后、首只股票之前**只加载一次**配置并深拷贝冻结（含 REPL noai 覆盖）；`analyze_live` 增可选 `config`，给定时每只先深拷贝再覆盖/置 debug，不读盘、不跨股污染；单只 `l`、`-l` 与 chat 路径不变（config=None 照旧读盘）。冻结失败（读取/解析/非 dict/复制失败）→ 首只开始前显式终止“配置加载失败：本次未开始分析”，不登记任务、不调 AI，日志只记异常类型。预算在冻结前已到期 → 不再加载配置，按 T05-L 登记未开始。
+- 身份：从冻结配置派生 `muyun.live.config_fingerprint/v1`：只取白名单非秘密分析参数（decision/skills/event/entry_exit/fusion 全节，ai 仅 enabled/provider/当前 provider 的 model/direction_aware_adjustment/request_timeout/max_retries/modifier），递归剔除 key/secret/token/password/url/endpoint 类键与 URL/sk- 形状字符串，规范 JSON 的 sha256；只落 schema/scope/sha256，不落配置内容、URL、密钥或密钥摘要。账本按 kind 读写同门（live 只认 live schema，ba 执行快照合同不变，跨 kind 不通过）；tasks 对 live 显示“配置: live 批配置已冻结；指纹=…”及范围说明（技能 YAML 内容/数据/提示词未核定），坏/旧/缺显示未冻结。启动行显示同一指纹。
+- 验收：先红后绿——每批 load_config 恰 1 次（N 只）、每只拿到独立副本且覆盖/debug 不泄漏、批中改盘不影响本批、冻结失败零业务、预算先到期不加载、指纹确定性/白名单/排除秘密/改白名单参数指纹变/改密钥或 URL 指纹不变、账本 kind 门与 tasks 展示、单只与 chat 不变；守卫 runner 相关回归 + 全量。
+- 不做：编排器跨股复用与技能 YAML 内容身份（需架构评审另卡）、资源硬界、缓存输入身份、bz scan（下一卡 T05-N）；不改评分/缓存键/CACHE_VERSION。进度预计不变（子范围）。
+
 ## 2026-10-27 有限合同（已限定接收）：T05-L 深分析真实结果与可选启动预算
 
 关联`V1-G7-BATCH-BUDGET`，基线main@3f08bf5，当前身份见RESUME；K交付已完成，L已绑定/派发，未验收。用户恢复持续协作且此前明确可选时限与正常发现入口。
