@@ -1,3 +1,7 @@
+## LRN-20261028-FLAKY-TIMEOUT：并发测试的超时必须远大于“线程进入被测体”的调度延迟
+
+状态：已修（测试）。`tests/core/test_baostock_session.py::test_parallel_ancestor_abandonment_prevents_late_child_io` 用 30ms 父级截止，再断言子线程 2s 内已进入 body。负载下（全量并行跑、另一个复核进程同时跑测试）子线程 30ms 内没进入 body，父级先放弃，会话门正确地不再启动 body——产品没错，测试假设“30ms 内必已进入”错了，表现为全量偶发 1 失败、单文件 5 次 1 失败。修法：父级截止放宽到 0.5s（body 阻塞在 release 上 3s，仍保证“进入后才放弃”的被测时序）；同文件同构的 late-login/late-logout（50ms）一并放宽。修后单文件连跑 8 次全绿。护栏：写“超时后晚到副作用”类测试，超时取值要留出数百毫秒调度余量，被测体用 Event 阻塞来保证时序，不靠极短超时“碰运气”。
+
 ## LRN-20261028-ISS135：先记成功再做展示，except 分支不能无条件再记一次
 
 状态：已修（`src/cli/main.py::analyze_portfolio`）。分析成功后立刻 `results.append(...)`，后面还有证据/建议/逐只展示；展示一旦抛异常，宽 except 又 `results.append((pos, stock_data, None, None, None))` 并报“分析失败”——汇总表同一股两行、分析明明成功却报失败。修法：成功入表后置 `_analyzed=True`，except 按该标记区分“展示异常（分析已完成）”与“分析失败”，前者不再入表。由 code-quality-guard 在 T05-P 复核中发现，回归用 `HookConsole.print_hook` 在逐只展示行抛一次异常（先红：汇总表计数 2）。同类扫描（AST：同一 try 的 body 与 handler 都 append 同一列表）：13 处中仅此 1 处真实，其余要么 append 是块内最后语句，要么是诊断原因累积（多记是有意保守）。

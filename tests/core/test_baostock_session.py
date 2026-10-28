@@ -304,7 +304,10 @@ def test_parallel_ancestor_abandonment_prevents_late_child_io():
         session.run(body, timeout=1, label="parallel-child")
 
     with pytest.raises(ParallelTimeout):
-        run_parallel_with_deadline([child], max_workers=1, timeout=0.03)
+        # 父级截止须明显长于子线程启动+进入 body 的调度延迟（负载下 30ms 不够，会在进入前就放弃，
+        # body 根本不运行而 entered 永不置位——产品行为正确但测试假设失效）；body 阻塞在 release
+        # 上 3s，0.5s 截止仍保证“已进入后才放弃”这一被测时序
+        run_parallel_with_deadline([child], max_workers=1, timeout=0.5)
     assert entered.wait(2)
     release.set()
     deadline = time.monotonic() + 2
@@ -373,7 +376,7 @@ def test_late_login_result_does_not_write_shared_state(monkeypatch):
 
     monkeypatch.setattr(bs, "login", login)
     with pytest.raises(session.BaostockTimeout):
-        session.run(session._login_impl, timeout=0.05, label="late-login")
+        session.run(session._login_impl, timeout=0.5, label="late-login")  # 同上：留足进入调度余量
     assert entered.wait(2)
     release.set()
     deadline = time.monotonic() + 2
@@ -396,7 +399,7 @@ def test_late_logout_result_does_not_write_shared_state(monkeypatch):
 
     monkeypatch.setattr(bs, "logout", logout)
     with pytest.raises(session.BaostockTimeout):
-        session.run(session._logout_impl, timeout=0.05, label="late-logout")
+        session.run(session._logout_impl, timeout=0.5, label="late-logout")  # 同上：留足进入调度余量
     assert entered.wait(2)
     release.set()
     deadline = time.monotonic() + 2
