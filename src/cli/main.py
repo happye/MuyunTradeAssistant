@@ -414,9 +414,53 @@ def display_result(result, strategy_decision=None, execution_eval=None, ai_resul
     )
 
 
-def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
-    """一键分析当前所有持仓股"""
+def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False, *, budget_seconds=None):
+    """一键分析当前所有持仓股
+
+    T05-P（顶层 scan/s 可选启动预算，budget_seconds=None 即不启用、不取时钟、行为不变）：
+    - 只接受有限正数秒（bool/非数/nan/inf/<=0 在账户/配置/取数前固定文案拒绝）。
+    - 入口（预算验证 import 之前）取一次 monotonic 换算绝对截止，不重起钟；模块导入/
+      账户快照（含估值行情）/配置/编排器准备都计入。到期只阻止开始下一只持仓，取数线程
+      一旦启动，该只走完整旧路径（30 秒取数门/降级/分析/证据/建议/展示），截止不下传。
+    - 未开始集合只取调度器切片 positions[k:]（单独存放，不进 results、不从失败倒推）；
+      汇总表/操作建议只含已处理项。非强制中断、非费用上限，不自动续跑。
+    """
+    import time
+
+    # T05-P：入口时点早于预算验证 import（import 耗时同样计入），之后绝不重起钟
+    _entry_at = time.monotonic() if budget_seconds is not None else None
+    deadline = None
+    if budget_seconds is not None:
+        from src.core.benzong.batch_scorer import budget_descriptor
+        _budget_desc = budget_descriptor(budget_seconds)
+        if _budget_desc is None:
+            console.print("  [red][!] 预算参数无效（需有限正数秒）；本次未开始持仓扫描"
+                          "（不读取账户/持仓、不取数、不调用 AI）[/red]")
+            return
+        deadline = _entry_at + _budget_desc["budget_seconds"]
+        console.print(
+            f"[dim]  启动预算：{_budget_desc['budget_seconds']:g} 秒（scan 持仓扫描；从持仓扫描入口计时，"
+            "不含命令分发前的公共模块加载；取数模块导入/账户快照（含估值行情）/配置/编排器准备都计入；"
+            "到期不再开始下一只持仓，"
+            "当前一只会跑完；准备阶段可能超出——非强制中断、非费用上限）[/dim]")
+
+    def _expired() -> bool:
+        return deadline is not None and time.monotonic() >= deadline
+
+    def _stop_before_list(stage: str) -> None:
+        console.print(f"  ⏱ 启动预算已到期：{stage}（尚未读取持仓清单）")
+        console.print("  本次未读取账户/持仓清单——持仓名单未知（不代表空仓）；"
+                      "未开始任何持仓分析（非强制中断）")
+
+    if _expired():
+        _stop_before_list("入口校验后")
+        return
+
     from src.data.akshare_client import get_stock_data, AKShareClient, _baostock_logout
+
+    if _expired():
+        _stop_before_list("业务模块导入后")
+        return
 
     pm = PortfolioManager()
     # O0/Y2：批量清单先经同一请求快照形成（账本确定有仓 ∪ 兼容投影代码，
@@ -431,41 +475,70 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
             console.print("\n[yellow]当前无持仓记录，请先使用 --pos-add 添加持仓[/yellow]")
         return
 
+    # 调度器确证未开始的持仓（预算到期）：只取 positions[k:] 切片，与 results 分开存放
+    not_started = []
+
+    def _stop_after_list(stage: str) -> None:
+        console.print(f"  ⏱ 启动预算已到期：{stage}，不再开始后续持仓")
+
     console.print(f"\n[bold cyan]🔍 持仓扫描模式[/bold cyan]")
-    console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...")
+    if _expired():
+        not_started = list(positions)
+        console.print(f"共 {len(positions)} 只持仓股（启动预算已到期，不开始逐个分析）")
+    else:
+        console.print(f"共 {len(positions)} 只持仓股，开始逐个分析...")
+    if deadline is None:
+        # T05-P：预算仅 REPL 顶层 scan 支持（CLI --portfolio 仍拒绝），提示限定 REPL 语境
+        console.print("[dim]  可选时限：REPL 中可用 scan --budget 600（默认不启用；到期不再开始下一只持仓，"
+                      "当前一只跑完；非强制中断、非费用上限）[/dim]")
     if _incomplete:
         console.print("[yellow]  ⚠ 账本/持仓库读取异常——持仓清单可能不完整，待对账（不当作空仓）[/yellow]")
 
-    # 数据时效性提示
-    from datetime import datetime
-    now = datetime.now()
-    is_trading = (now.weekday() < 5
-                  and ((9 <= now.hour < 12) or (13 <= now.hour < 15)))
-    if is_trading:
-        console.print("[dim]  ⏱ 盘中模式：数据来自最近交易日K线（Baostock约30秒延迟），技术指标准确[/dim]")
-    else:
-        console.print("[dim]  ⏱ 盘后模式：数据为最近交易日收盘数据，技术指标准确[/dim]")
-    console.print()
-
-    # 加载配置（所有股票共用一个编排器）
-    config = load_config()
-    config = apply_ai_overrides(config, ai_overrides or {})
-    enabled_skills = config.get("skills", {}).get("enabled", None)
-    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
-    weights = config.get("decision", {}).get("signal_weights", None)
-    skill_types = config.get("skills", {}).get("types", None)
-    ai_config = config.get("ai", None)
-    # debug模式：覆盖配置中的debug开关
-    if ai_debug and ai_config:
-        ai_config["debug"] = True
-    event_config = config.get("event", None)
-    entry_exit_config = config.get("entry_exit", None)
-    orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
-
     results = []  # (pos, stock_data, decision_result, strategy_decision, ai_result)
 
-    for i, pos in enumerate(positions, 1):
+    if not_started:
+        _stop_after_list("持仓清单形成后（尚未加载配置/编排器）")
+    else:
+        # 数据时效性提示
+        from datetime import datetime
+        now = datetime.now()
+        is_trading = (now.weekday() < 5
+                      and ((9 <= now.hour < 12) or (13 <= now.hour < 15)))
+        if is_trading:
+            console.print("[dim]  ⏱ 盘中模式：数据来自最近交易日K线（Baostock约30秒延迟），技术指标准确[/dim]")
+        else:
+            console.print("[dim]  ⏱ 盘后模式：数据为最近交易日收盘数据，技术指标准确[/dim]")
+        console.print()
+
+        # 加载配置（所有股票共用一个编排器）
+        config = load_config()
+        config = apply_ai_overrides(config, ai_overrides or {})
+        enabled_skills = config.get("skills", {}).get("enabled", None)
+        skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+        weights = config.get("decision", {}).get("signal_weights", None)
+        skill_types = config.get("skills", {}).get("types", None)
+        ai_config = config.get("ai", None)
+        # debug模式：覆盖配置中的debug开关
+        if ai_debug and ai_config:
+            ai_config["debug"] = True
+        event_config = config.get("event", None)
+        entry_exit_config = config.get("entry_exit", None)
+        orchestrator = build_live_orchestrator(config, rag_service=_cli_rag())
+        if _expired():
+            not_started = list(positions)
+            _stop_after_list("配置与编排器准备后（尚未开始逐只分析）")
+
+    # 清单形成后/编排器准备后已到期（not_started 已定）则整段跳过逐只循环
+    for i, pos in enumerate(positions if not not_started else [], 1):
+        if _expired():
+            not_started = list(positions[i - 1:])
+            _stop_after_list(f"第 {i}/{len(positions)} 只开始前")
+            break
         console.print(f"[dim]─── [{i}/{len(positions)}] {pos.stock_name or pos.stock_code} ({pos.stock_code}) ───[/dim]")
+        if _expired():
+            not_started = list(positions[i - 1:])
+            _stop_after_list(f"第 {i}/{len(positions)} 只标题后、取数前")
+            break
 
         # 获取数据（带超时保护，防止单只股票卡死整个扫描）
         stock_data = None
@@ -800,7 +873,15 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
                 "-", "无指标", "-", "-"
             )
 
-    console.print(summary_table)
+    if results or not not_started:
+        console.print(summary_table)
+    else:
+        # T05-P：全部为预算未开始——不打印空汇总表，也不称分析失败；清单不完整只称已枚举范围
+        if _incomplete:
+            console.print("[yellow]本次没有完成分析的持仓（已枚举的持仓均为预算未开始，不是分析失败；"
+                          "清单不完整）[/yellow]")
+        else:
+            console.print("[yellow]本次没有完成分析的持仓（全部为预算未开始，不是分析失败）[/yellow]")
 
     # 操作建议汇总
     actions_summary = {"建仓": 0, "加仓": 0, "持仓": 0, "减仓": 0, "清仓": 0, "观望": 0}
@@ -821,6 +902,17 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False):
 
     if action_parts:
         console.print(f"\n  操作建议: {'  '.join(action_parts)}")
+
+    if not_started:
+        # T05-P：未开始只来自调度器切片；未取数/未分析，不计失败、不进汇总表/操作建议
+        _ns_text = "、".join(f"{p.stock_code} {p.stock_name}" if p.stock_name else str(p.stock_code)
+                            for p in not_started)
+        console.print(f"\n[yellow]⏱ 启动预算未开始 {len(not_started)} 只：{_ns_text}[/yellow]")
+        console.print("[dim]  未取数/未分析，不计失败、不计入操作建议；如需继续可再次 scan 或 l <代码>"
+                      "（会重新分析，可能产生 AI 费用），不自动续跑[/dim]")
+        if _incomplete:
+            console.print("[dim]  持仓清单不完整：以上仅为已枚举范围内的未开始项，"
+                          "未枚举的持仓不在此列（待对账）[/dim]")
 
 
 class LiveOutcome(Enum):

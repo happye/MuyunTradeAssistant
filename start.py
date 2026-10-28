@@ -111,7 +111,7 @@ def show_help():
     L.append(_cmd("diff <代码>", "同股最近两次分析对比（变化点）"))
     L.append(_row())
     L.append(_row("● 扫描与复盘"))
-    L.append(_cmd("scan [s]", "一键分析所有持仓（非全市场扫描）"))
+    L.append(_cmd("scan [s] [--budget 秒]", "一键分析所有持仓（非全市场扫描）"))
     L.append(_cmd("scan market [规则|主题]", "全市场扫描（主题词如 AI,半导体）"))
     L.append(_cmd("scan market deep", "扫描 + 自动深度分析"))
     L.append(_cmd("scan market deep --budget 600", "自动深析可选；到期不开新只，当前只跑完"))
@@ -302,14 +302,15 @@ def _parse_budget_seconds(raw):
 
 
 _BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、"
-                "bz scan、bz 多代码、l 多代码/la/l all 批量深析，以及 scan market deep "
-                "自动深度分析；到期只阻止开始下一步，已开始的调用会跑完，准备阶段可能超出，"
-                "非强制中断/无费用上限）")
+                "bz scan、bz 多代码、l 多代码/la/l all 批量深析，scan market deep "
+                "自动深度分析，以及 scan 持仓扫描；到期只阻止开始下一步，已开始的调用会跑完，"
+                "准备阶段可能超出，非强制中断/无费用上限）")
 
 # T05-L：不支持入口的统一说明（单只 l/bz、scan 等）；T05-N 起 bz scan 已支持；
-# T05-O 起 scan market deep 自动深度分析也支持（普通交互 scan market 仍不支持）
+# T05-O 起 scan market deep 自动深度分析也支持（普通交互 scan market 仍不支持）；
+# T05-P 起顶层 scan 持仓扫描也支持
 _BUDGET_SCOPE = ("预算仅用于 ba/bzall、bz scan、bz 多代码、l 多代码/la/l all 批量深析，"
-                 "以及 scan market deep 自动深度分析")
+                 "scan market deep 自动深度分析，以及 scan 持仓扫描")
 
 # T05-O：scan market deep 预算的拒绝/校验文案（不暴露内部 helper/文件名）
 _SCAN_MARKET_BUDGET_SCOPE = "预算仅用于 scan market deep 自动深度分析"
@@ -665,7 +666,7 @@ def parse_input(user_input: str):
         # scan review [天数]：复盘近N天扫描历史的涨跌（验证选股，v0.8.11）
         if len(parts) >= 2 and parts[1].lower() in ("review", "复盘"):
             if _has_budget_opt:
-                print(f"  [!] 该命令不支持 --budget（{_SCAN_MARKET_BUDGET_SCOPE}）；本次未执行")
+                print(f"  [!] scan review 不支持 --budget（{_BUDGET_SCOPE}）；本次未执行")
                 return None
             rest = parts[2:]
             # scan review import：导入 v0.8.7~v0.8.10 的旧扫描报告（一次性）
@@ -678,10 +679,28 @@ def parse_input(user_input: str):
                 except ValueError:
                     print(f"  [!] '{rest[0]}' 不是有效天数，已按默认 7 天处理（用法: scan review 14）")
             return ("scan_review", {"days": days})
-        if _has_budget_opt:
-            print(f"  [!] 该命令不支持 --budget（{_SCAN_MARKET_BUDGET_SCOPE}；"
-                  "scan 为持仓组合分析）；本次未执行")
+        # T05-P：顶层 scan 是一键持仓分析，支持可选 --budget；剥离预算后仍有其他 token
+        # （主题/代码等）在业务前拒绝，不再静默忽略主题词去跑全部持仓 AI 分析。
+        budget, rest, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
+            print(f"        {_BUDGET_HELP}")
             return None
+        if rest:
+            print(f"  [!] scan 是一键持仓分析，不接受主题/额外参数: "
+                  f"{' '.join(str(t) for t in rest)[:60]}；本次未执行")
+            _sub = str(rest[0]).lower()
+            if budget is not None and _sub in ("market", "m"):
+                # 预算写在子命令前：指向真正支持预算的写法，不让用户二次被拒
+                print("        预算请写在子命令之后：scan market deep [规则|主题] --budget 600"
+                      "（普通 scan market 不支持预算）")
+            elif budget is not None and _sub in ("review", "复盘"):
+                print("        scan review 复盘不支持 --budget；持仓分析可选: scan --budget 600")
+            else:
+                print("        全市场主题扫描请用: scan market <规则|主题>；持仓分析可选: scan --budget 600")
+            return None
+        if budget is not None:
+            return ("scan", {"budget": budget})
         return ("scan", {})
 
     # ── 扫描规则列表 ──
@@ -1179,7 +1198,7 @@ _COMMAND_HINTS = {
     "bz": "bz <代码>[,代码2...] 评分(支持多代码) | bz scan <主题> 主题选股",
     "b": "b <代码> 回测 | bb 批量回测",
     "bb": "bb 批量回测",
-    "scan": "scan market [主题] 全市场扫描 | scan <主题>",
+    "scan": "scan 一键分析全部持仓（--budget 可选） | scan market [规则|主题] 全市场扫描",
     "s": "scan market [主题] 全市场扫描（s 即 scan）",
     "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan 交易计划",
     "expect": "expect 未来事件日历+预期透支度",
@@ -3375,6 +3394,10 @@ _LIVE_BUDGET_MODES = ("live_multi", "live_all", "live_scan_all")
 _LIVE_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始分析"
                         "（不读取扫描结果/持仓、不调用 AI、不写账本）")
 
+# T05-P：顶层 scan 持仓扫描的坏预算拒绝文案（与 analyze_portfolio 程序化入口同语义）
+_SCAN_PORTFOLIO_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始持仓扫描"
+                                  "（不读取账户/持仓、不取数、不调用 AI）")
+
 
 def _reject_budget_request(mode: str, args) -> bool:
     """T05-J fix2：run_cli 最前统一预算门（在确认/扫描/缓存/网络/AI/账本之前）。
@@ -3393,6 +3416,13 @@ def _reject_budget_request(mode: str, args) -> bool:
         from src.cli.session_state import live_budget_descriptor
         if live_budget_descriptor(budget) is None:
             print(_LIVE_BUDGET_INVALID)
+            return True
+        return False
+    if mode == "scan":
+        # T05-P：顶层 scan 持仓扫描预算（同门校验有限正数秒；合法放行，坏值业务前拒绝）。
+        from src.core.benzong.batch_scorer import budget_descriptor
+        if budget_descriptor(budget) is None:
+            print(_SCAN_PORTFOLIO_BUDGET_INVALID)
             return True
         return False
     if mode == "scan_market":
@@ -3445,7 +3475,11 @@ def run_cli(mode: str, args: dict):
         pass
 
     elif mode == "scan":
-        analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
+        if args.get("budget") is not None:
+            analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug,
+                              budget_seconds=args["budget"])
+        else:
+            analyze_portfolio(ai_overrides=ai_overrides, ai_debug=_ai_debug)
 
     elif _dispatch_scan_cli(
         mode,

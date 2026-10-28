@@ -446,7 +446,6 @@ def test_unknown_budget_shapes_still_rejected(text, monkeypatch, capsys):
 
 
 @pytest.mark.parametrize("text", [
-    "scan --budget 60",
     "scan market --budget 60",
     "pos list --budget 60",
     "today --budget 60",

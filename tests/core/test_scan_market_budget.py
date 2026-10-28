@@ -465,10 +465,9 @@ def test_parse_market_glued_or_unknown_budget_rejected(text, capsys):
     "scan market 缩量 --budget 60",
     "scan review --budget 60",
     "scan review 7 --budget=60",
-    "scan --budget 60",
 ])
 def test_parse_unsupported_entries_keep_rejecting_budget(text, monkeypatch, capsys):
-    """普通交互 scan market / scan review / 顶层 scan 带预算仍先拒（旧负例保留）。"""
+    """普通交互 scan market / scan review 带预算仍先拒（旧负例保留；顶层 scan 持仓扫描自 T05-P 起支持）。"""
     monkeypatch.setattr(session_state, "get_last_scan", _boom)
     monkeypatch.setattr(session_state, "resolve_index", _boom)
     assert start.parse_input(text) is None

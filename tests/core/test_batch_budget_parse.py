@@ -331,7 +331,6 @@ def test_fix2_unknown_budget_option_shapes_rejected_before_early_returns(
 @pytest.mark.parametrize("text", [
     "q --budget 60",
     "help --budget 60",
-    "scan --budget 60",
     "scan market --budget 60",
     "scan review --budget 60",
     "pos list --budget 60",
@@ -381,7 +380,8 @@ def test_fix2_plain_words_containing_budget_are_not_options(capsys):
     ("live_multi", {"codes": ["600519", "000001"], "budget": 0}),
     ("live_all", {"budget": float("nan")}),
     ("live_scan_all", {"force": False, "budget": "60"}),
-    ("scan", {"budget": 60}),
+    # T05-P 起顶层 scan 支持合法预算（见 test_portfolio_scan_budget.py），坏值仍先拒
+    ("scan", {"budget": 0}),
     ("today", {"budget": 60}),
     ("batch_tasks", {"budget": 60}),
     ("benzong_all", {"budget": 0}),                      # 支持模式坏值先拒
