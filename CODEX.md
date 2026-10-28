@@ -1,6 +1,6 @@
 # CODEX.md — 暮云思辨投资助手 Codex 专用配置
 
-当前交接（2026-10-28，Claude Code本机续工）：T05-P已交付`2c2bfcb`（文档`7c8f6d6`），T05-Q（bb与pos plan all合并收口）合同`f53f1d3`在实施；Codex机器上T05-O的DSH STOP_PENDING锁仍按原纪律保留（不重投、不杀共享Host）。协作方式优化建议见[COLLAB_OPTIMIZATION_PROPOSAL_20261028](plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md)。恢复见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-28）：T05-Q 已交付 `cf973dc`，下一步 V1-G5-SOLVER，详见 [RESUME](plan/fusion/RESUME.md)；Codex机器上T05-O的DSH STOP_PENDING锁仍按原纪律保留（不重投、不杀共享Host）。协作方式优化建议见[COLLAB_OPTIMIZATION_PROPOSAL_20261028](plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md)。
 
 > **单一信源是 [AGENTS.md](AGENTS.md)**——Codex CLI 会自动读取仓库根目录的 AGENTS.md，
 > 本文件不重复其内容（架构/命令/数据源/踩坑警示以 AGENTS.md 为准），只补充 Codex 特有的操作说明。

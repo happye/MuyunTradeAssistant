@@ -1947,9 +1947,13 @@
           {
             "path": "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-P REPL top-level scan portfolio optional start budget only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json",
+            "anchor": "T05-Q bb/pos plan all batch closeout (summary, arg shape, three-state outcome, start budget) only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H through P accepted; remaining bb/pos plan all entry resources, full skill/data/prompt and cache input qualification still pending"
+        "basis": "Partial T05-H through Q accepted; per-entry start budgets closed out; cache input qualification, hard resource bounds, physical cancel and cost caps still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1994,21 +1998,25 @@
           {
             "path": "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-P REPL top-level scan portfolio optional start budget only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json",
+            "anchor": "T05-Q bb/pos plan all batch closeout (summary, arg shape, three-state outcome, start budget) only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H through P accepted; remaining bb/pos plan all entry resources, full skill/data/prompt and cache input qualification still pending"
+        "basis": "Partial T05-H through Q accepted; per-entry start budgets closed out; cache input qualification, hard resource bounds, physical cancel and cost caps still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "H至P各有限子范围已接收（P为REPL顶层scan持仓扫描启动预算）；bb/pos plan all等其他入口期限资源、完整配置/数据/提示词及缓存输入资格仍待，不能由子批替代。",
+          "reason": "H至Q各有限子范围已接收，逐入口启动预算已收口（Q为bb与pos plan all）；缓存输入资格、硬资源界、物理取消、费用上限及完整配置/数据/提示词身份仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "Claude Code本机续工：P（REPL顶层scan持仓扫描启动预算）已在2c2bfcb有限接收。下一候选T05-Q：bb批量回测验证屏幕汇总+可选启动预算+未开始单列，先合同后实施；之后pos plan all。指标不变。"
+      "next_action": "逐入口启动预算已在T05-Q（cf973dc）收口，不再按入口追加字母卡。剩余深水项（缓存输入资格、硬资源界、物理取消、费用上限）先做价值评估或由用户决定是否纳入V1，再排期；见plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md第3.b/3.i节。指标不变。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -3062,6 +3070,57 @@
       "evidence": [
         "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
         "plan/fusion/RESUME.md"
+      ]
+    },
+    {
+      "id": "T05Q-ACCEPT-20261028",
+      "date": "2026-10-28",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "Q bb与pos plan all批量收口有限接收（代码cf973dc）：bb屏幕汇总与参数校验、pos plan all答N不再计失败、两者可选启动预算；逐入口启动预算到此收口。分数/范围/权重/适用性不变，BATCH-BUDGET未闭合，剩余深水项先评估价值。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json"
       ]
     }
   ],

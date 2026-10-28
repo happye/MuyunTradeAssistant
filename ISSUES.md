@@ -1,3 +1,5 @@
+T05-Q（2026-10-28，Claude Code本机）已限定接收，代码`cf973dc`；`bb`屏幕汇总与参数校验、`pos plan all`答N记“未接受”、两者可选启动预算见ISS-136、ISS-137及[回执](plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json)；另登记ISS-138（分配薄层价格为NaN/inf时显示“≈nan元”，待修）与ISS-139（`bb`全失败时汇总仍显示平均收益+0.00%，P3待修）。不关闭`V1-G7-BATCH-BUDGET`剩余的缓存输入资格、硬资源界、物理取消、费用上限。
+
 T05-P（2026-10-28，Claude Code本机）已限定接收，代码`2c2bfcb`；顶层`scan`持仓扫描可选预算与额外参数业务前拒绝见ISS-134及[回执](plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json)；另登记ISS-135（持仓汇总表展示阶段异常时重复行，待修）。不关闭`bb`、`pos plan all`、缓存输入资格或G7/T05整体。
 
 T05-O（2026-10-28）已限定接收并按额度信号停止，代码`56fbe21`；自动deep预算与候选/未开始口径见ISS-133及[回执](plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)。
@@ -2413,3 +2415,41 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **实证**：`orchestrator.analyze`成功后即`results.append(...)`，其后同一`try`内证据/建议/逐只展示若抛异常，原`except`再追加`(pos, stock_data, None, None, None)`并打印“分析失败”，汇总表同一代码两行、已完成分析被报成失败（code-quality-guard在T05-P复核中发现）。
 - **修复**：分析已完成仅展示出错时黄字提示、`logger.info`、不再入表；分析本身失败保持原warning与原入表。操作建议计数原本只计有策略结果的行，修前后均计该股一次。
 - **证据**：先红`tests/core/test_portfolio_scan_budget.py::test_iss135_display_failure_after_analyze_keeps_single_summary_row`（`HookConsole.print_hook`在逐只展示行抛一次异常，汇总表计数2）→修后绿；相关3文件237通过（守卫runner）。同类扫描（AST：同一try的body与handler都append同一列表）13处中仅此1处真实。未新增logger.warning。
+
+
+### ISS-136: bb 汇总不上屏、参数误读（第二个代码被当起始日期）、缺可选启动预算（T05-Q）
+
+- **状态/日期**：2026-10-28已修，代码`cf973dc`（合同`f53f1d3`）。code-quality-guard独立复核无P0；验证数字见[DELIVERY_PLAN](plan/fusion/iteration10/DELIVERY_PLAN.md)的T05-Q验收段与[回执](plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json)。
+- **代码位置**：`start.py:630-687`（`parse_input`的bb解析分支：先剥离`--budget`，再按中英文逗号/顿号/分号/空格切片段，逐片段校验）；`src/cli/main.py:1399`（`run_batch_validation`，新增关键字参数`budget_seconds`，结束时总打印批量汇总）；`src/core/backtest_validator.py:275`（`build_batch_validation_payload`新增可选`not_started`）、`:673-691`（提示）、`:760-781`（渲染）；新增`src/cli/start_budget.py`（只含计时/校验/到期判断）。
+- **实证**：合同基线`cb77f25`上，（1）REPL`bb`跑完只打印逐只✓/✗，`run_batch_validation`已算出的汇总只在CLI显式导出时才写进文件；（2）`bb`只按英文逗号切代码，第2、3个参数直接当日期且不校验，`bb 600519 000001`会把000001当起始日期，多余参数被静默丢弃；（3）无预算。新测试`tests/core/test_bb_budget.py`先在旧代码上出业务断言失败（与“缺函数/参数”类失败分列），修复后转绿。
+- **修复**：`bb`跑完总在屏幕打印批量汇总（请求数/成功/失败/预算未开始、平均收益与超额、四项检查通过数、个股摘要、失败记录、提示），按纯文本输出（失败原因里的方括号原样显示）；导出与返回值不变。参数开始前校验：代码用中英文逗号/顿号/分号/空格分隔，日期须是真实的YYYY-MM-DD、最多两个且起≤止，无法识别的参数、`-x`类选项、没有代码、`#N`一律拒绝并说明原因。可选`bb <代码,...> [起 止] --budget 600`：从批量回测入口计时，到点不再开始下一只，已开始的一只（含全区间、样本内外、walk-forward窗口）跑完；未开始单列、不算失败；CLI批量验证仍不支持预算。无预算调用形状与payload键集合不变（golden测试锁定）。
+- **同类剩余**：`pos plan all`的同期问题见ISS-137。`bb`既有小缺口未修，见回执`known_followups`（共享`_is_stock_code`放行全角数字代码；只给一个未来起始日期时未对默认结束日期校验）；成功数为0时的汇总数字见ISS-139。
+- **限制**：离线守卫runner验证，不代表真实回测数据/真实网络；预算为协作式（到点只阻止开始下一只，非强制中断、非费用上限，准备阶段可能超出），不自动续跑、无任务账本；缓存输入资格、硬资源界、物理取消、费用上限未做；`V1-G7-BATCH-BUDGET`未关闭，进度不变。
+
+
+### ISS-137: pos plan all --update 答 N 被记为失败、缺可选启动预算（T05-Q）
+
+- **状态/日期**：2026-10-28已修，代码`cf973dc`（合同`f53f1d3`）。code-quality-guard独立复核发现1处P1（更新模式续跑提示误导），已在同卡修复；验证数字见DELIVERY_PLAN的T05-Q验收段与回执。
+- **代码位置**：`src/cli/main.py:2632`（新`_plan_outcome`，返回成功/未接受/失败三态；`:2624`的`_generate_or_update_plan`保留bool薄包装，单只路径不变）；`src/cli/main.py:3124-3180`（`manage_positions`的plan all分支：三态汇总、预算与未开始提示；`:3173-3178`为按模式区分的续跑指引）；`src/cli/main.py:2722`（`manage_positions`新增关键字参数`budget_seconds`，`:2746-2751`拒绝非plan-all带预算）；`start.py:1056-1070`（pos plan解析分支：剥离`--budget`，单只`pos plan <代码>`带预算拒绝）；新增`src/cli/start_budget.py`。
+- **实证**：合同基线`cb77f25`上，`_generate_or_update_plan`只返回bool，`--update`时用户答N（“未接受，原计划继续有效”）也返回False，批量汇总把它计成“✗ 失败”，与T05-L“布尔返回混淆状态”同类（`.learnings/LEARNINGS.md`的LRN-20261027-LIVE-OUTCOME当时记“`pos plan all`已检查布尔返回”，未覆盖“答N≠失败”这一层，属同类扫描漏判）。`pos plan all`无预算。新测试`tests/core/test_pos_plan_all_budget.py`先在旧代码上出业务断言失败（与“缺函数/参数”类失败分列），修复后转绿。
+- **修复**：答N现记为“↩ 未接受”，汇总分列成功/跳过/未接受/失败，“未接受”仅在大于0时出现；单只`pos plan <代码>`行为不变。可选`pos plan all [--update] --budget 600`：计时包含逐只取数、笨总评分（含AI）和y/N确认的等待时间；到点不再开始下一只，当前一只跑完；未开始单列、不算失败；全部未开始时不打印0/0/0汇总。续跑指引按模式区分：生成模式重跑会自动跳过已生成的；更新模式可逐只`pos plan <代码> --update`，或`pos plan all --update`（会从第1只重新开始，已更新的会再次询问）。单只`pos plan`和其他pos子命令带`--budget`被拒绝。无预算时调用形状不变，标题后多一行可选提示。
+- **同类剩余**：2026-10-28主控扫描src+start.py全部批量计数循环（`fail += 1`/`failed += 1`/`failures += 1`）：仅`pos plan all`（已修）把用户主动拒绝计为失败；`fear backfill`的failed指交易日拿不到数据（接口保留期边界/网络），输出附说明，不属同类；chat连续失败计数与claim提取失败计数为真实调用失败。剩余0处。
+- **限制**：账户口径不变（`pos plan all`仍读管理投影，未扩为请求快照）；离线守卫runner验证，不代表真实行情/真实AI/真实账户效果；预算为协作式，非强制中断、非费用上限，不自动续跑；`V1-G7-BATCH-BUDGET`未关闭，进度不变。
+
+
+### ISS-138: 分配薄层价格 NaN/inf 走 REJECTED 并显示“≈nan 元”（待修，归 G5-CASH-NAV）
+
+- **状态/日期**：2026-10-28登记，待修；归`V1-G5-CASH-NAV`（T05-Q回执`known_followups`已记；非本卡引入，本卡未改）。优先级待定。
+- **代码位置**：`src/data/account_snapshot.py:516`（价格校验`p <= 0`对NaN为假、对inf不拦，放行）、`:542`（NaN时`p > 0`为假故`qty=0`）、`:551-554`（`min_amount`/`min_total`为nan或inf，REJECTED文案出现“≈nan 元”/“≈inf 元”）；`:474`文档约定“价格缺失 → CONDITIONAL”，与上述实际路径不一致。
+- **实证**：静态推断，未运行：价格为NaN/inf时不进入`:517`的CONDITIONAL分支，而是走到`:550-561`返回REJECTED并给出无意义金额文案，同时`released_budget_weight`把额度释放回池。`allocate_tradeable_budget`在`src/`内无生产调用（grep只命中定义处）；测试侧有引用（`tests/core/test_account_snapshot.py`、`test_j2_account_service.py`、`test_k0a_account_integrity.py`、`tests/backtest/e7b_controlled_scenarios.py`），是否已覆盖NaN/inf价格待确认。
+- **影响**：目前无生产调用，不影响用户可见行为；一旦接入G5求解链路，坏价格会被当成“确定不可行”而不是“缺输入”。
+- **修复方向（未实施）**：在`:516`校验价格为有限正数，非有限按缺失走CONDITIONAL；先写红测试再修，修后核`released_budget_weight`语义。
+- **限制**：未修；修前不要在文案层只遮掉“nan”字样。
+
+
+### ISS-139: bb 成功数为 0 时汇总仍显示“平均收益 +0.00%”（P3，既有行为，待修）
+
+- **状态/日期**：2026-10-28登记，待修（P3，展示正确性）；T05-Q让汇总总上屏后更容易看到，既有行为，非本卡引入，本卡未改。
+- **代码位置**：`src/core/backtest_validator.py:295-302`（`success_count`为0时`avg_return`/`avg_excess_return`取0.0）、`:761`（汇总渲染`平均收益: {…:+.2f}%`）。
+- **实证**：成功数为0时，汇总仍打印“平均收益: +0.00%”这类无意义数字（既有行为，T05-Q回执`known_followups`已记；本次按代码静态读到，未单独运行复现）。
+- **修复方向（未实施）**：成功数为0时不显示平均收益/超额（或标“无”）；先写红测试。

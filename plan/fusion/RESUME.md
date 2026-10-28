@@ -1,22 +1,21 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-28 T05-P 由 Claude Code 本机实施并限定接收
+## 当前续工：2026-10-28 T05-Q 已交付，下一步 G5-SOLVER（Claude Code 本机）
 
-**身份**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code主控（Opus）+ muyun-coder（sonnet，按工单实施与测试）、code-quality-guard（opus，独立只读复核）、muyun-doc-writer（sonnet，文档）。用户本会话`/goal`授权拉取最新并持续接手开发，因此下方“历史停止交接”里“先有新恢复指令”的前置已满足。卡片T05-P（关联V1-G7-BATCH-BUDGET），绑定基线main=`dbbca69`；合同提交`76cebba`，代码提交`2c2bfcb`，另有测试可移植性修复`d760708`（测试写文件未指定utf-8、本机默认cp1252致失败，非产品逻辑）。
+**谁在做**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code 主控负责合同/集成/Git，muyun-coder 写代码与测试，code-quality-guard 独立复核，muyun-doc-writer 写文档。另一台机器 Codex/DSH 的 STOP_PENDING 锁与原件不在本机，本机不重投其请求、不绕锁、不声称其 Host 已停净。
 
-**与其他机器/旧WIP的关系**：另一机器Codex/DSH的STOP_PENDING锁与原件（`C:/Users/Crux/...`）不在本机，本机不重投其请求、不绕锁、不声称其Host已停净。本机旧T05-M WIP已`git stash`（`stash@{0}`），被`d400320`取代，**禁止重套**。
+**已交付提交**：T05-P `2c2bfcb`/`7c8f6d6`（代码/文档），ISS-135 修复 `5870ae8`，T05-Q `cf973dc`（合同 `f53f1d3`），测试修复 `d760708`（文件编码）/`1922506`（并发测试调度竞态），协作建议 `cb77f25`。T05-P 细节见 DELIVERY_PLAN 与其回执；T05-Q 验收见 [DELIVERY_PLAN](iteration10/DELIVERY_PLAN.md) 顶部与[回执](iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json)（最终树全量结果以回执为准）。
 
-**交付范围**：REPL顶层`scan --budget 600`/`s --budget=600`（一键持仓分析`analyze_portfolio`）新增可选启动预算：从持仓扫描入口一次monotonic截止（不含命令分发前的公共模块加载），取数模块导入、账户快照（含估值行情）、配置、编排器准备都计入；到期不再开始下一只持仓，当前一只取数启动后整只完成；非强制中断、非费用上限，不自动续跑、无任务账本。未开始只列调度器确证未开始的代码与计数，不进汇总表/操作建议、不计失败；全部未开始不称失败；清单未形成称“持仓名单未知（不代表空仓）”；清单不完整只称已枚举范围。无预算行为不变，仅在“共N只持仓股”后多一行可选提示；CLI`--portfolio`仍不支持`--budget`。行为变化：`scan 半导体`等额外参数以前被静默忽略并跑全部持仓AI分析，现在业务前拒绝并指引`scan market <规则|主题>`；`scan --budget 60 market deep`指引`scan market deep [规则|主题] --budget 600`；`scan review`不支持预算；命令提示里错误的`scan <主题>`已改正。
+**进度与下一步**：工程47/98、验收40/111、合同42.0%–68.6%不变；`V1-G7-BATCH-BUDGET`的“逐入口启动预算”部分到此收口，该条仍未关闭，剩余为缓存输入资格、硬资源界、物理取消、费用上限，需先评估价值或由用户决定是否纳入 V1。下一步转向 `V1-G5-SOLVER`（组合预算求解与事件账本的独立验收映射，预计能让验收分真实移动），之后 `V1-G1-TRANSACTION-MATRIX`。待修登记：ISS-138（归 G5-CASH-NAV）、ISS-139、ISS-131。
 
-**证据**：新测试`tests/core/test_portfolio_scan_budget.py`先在未改代码上57失败/8通过（业务断言红27、缺符号红30）；追补后新文件71通过；相关10文件815通过；全量守卫（非UTF-8模式）5020通过/1失败/12跳过，唯一失败是测试代码页缺陷，已在`d760708`修复并复跑该文件15通过，最终树（含复核P2追修与ISS-135修复`5870ae8`）全量守卫5028通过/0失败/12跳过/1排除（非UTF-8模式，541s，真实exit0，网络952/子进程12均被拦截、real_state=0）。code-quality-guard独立复核无P0/P1，18个突变全杀，4条文案P2与测试缺口已修。真实REPL临时HOME冒烟通过（未写`~/.muyun`、未触网）。回执见[T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json](iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json)（主控维护）。
+**恢复步骤**：
+1. 读 `AGENTS.md`，再读本段（需要时再读 `MILESTONES.md`、`STATUS.md`）；
+2. 核 Git 日志与工作树，确认 `cf973dc` 在 main，运行项目解释器的 `scripts/check_progress.py --check`；
+3. 新卡先按实际 HEAD 绑定合同；
+4. 验证一律走守卫 runner `plan/fusion/iteration9/review_test_runner.py`（本机公司内网普通 `pytest` 会挂起），其通过不代表真实数据源/真实 AI/真实账户效果；
+5. 不套用旧 WIP `stash@{0}`（本机旧 T05-M WIP，已被 `d400320` 取代）。
 
-**验证环境说明（内网/守卫runner）**：本机公司内网，普通`pytest`会挂起，验证全部走`plan/fusion/iteration9/review_test_runner.py`守卫runner。结论层级：离线守卫+REPL临时HOME冒烟，不代表真实外源/真实AI/真实账户效果。
-
-**进度**：工程47/98（48.0%）、验收40/111（36.0%）、合同42.0%–68.6%、18/47不变；V1-G7-BATCH-BUDGET/G7/T05/V1未关闭。剩余入口：`bb`、`pos plan all`，以及完整配置/数据/提示词与缓存输入资格。
-
-**下一卡候选T05-Q**：`bb`批量回测验证结束后的屏幕汇总（现状REPL`bb`只打印逐只✓/✗，汇总只在CLI显式导出时写文件）+可选启动预算+未开始单列。另有待修既有缺陷：ISS-135（`src/cli/main.py::analyze_portfolio`分析成功后先append、展示阶段异常时except再append，汇总表同一代码重复行）、ISS-131（证据`source`硬编码）；是否并入T05-Q待主控定。
-
-**恢复步骤**：1. 读`AGENTS.md`→`MILESTONES.md`→`STATUS.md`→本页；2. 核Git日志（确认T05-P代码`2c2bfcb`及本批文档提交）与工作树，运行项目解释器的`check_progress.py --check`；3. 新卡先按实际HEAD绑定合同，验证一律走守卫runner；4. 不套用另一台机器的Codex/DSH WIP，不重套`stash@{0}`。
+**不要做**：① 不重套 `stash@{0}`，不套用另一台机器的 Codex/DSH WIP；② 不再按入口新开预算卡，BATCH-BUDGET 剩余项先评估价值；③ 不把离线守卫通过写成真实效果通过。
 
 ## 历史停止交接：2026-10-28 不足10%，完成T05-O后停止（已被上方Claude Code续工取代）
 

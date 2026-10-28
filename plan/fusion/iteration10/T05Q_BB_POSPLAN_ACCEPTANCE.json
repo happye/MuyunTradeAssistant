@@ -1,0 +1,33 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-28",
+  "status": "ACCEPTED_BB_POSPLAN_BATCH_CLOSEOUT_SCOPE_ONLY",
+  "task_ids": ["V1-G7-BATCH-BUDGET"],
+  "base_commit": "cb77f25",
+  "contract_commit": "f53f1d3",
+  "delivery_commit": "cf973dc",
+  "related_commits": {"1922506": "test-only: widen race-prone timeouts in tests/core/test_baostock_session.py (flaky under load, unrelated to T05-Q code)"},
+  "roles": {"implementation_and_tests": "muyun-coder (sonnet)", "independent_review": "code-quality-guard (opus), read-only, 29 mutants in a temporary worktree", "contract_integration_ledger_followups": "Claude Code main agent (Opus)", "docs": "muyun-doc-writer (sonnet)", "model_metadata_verified": false},
+  "accepted_scope": [
+    "bb always prints the batch summary on screen (markup/highlight/emoji off); export paths and return value unchanged",
+    "bb argument shape: codes split by ASCII/CJK comma, enumeration comma, semicolon and spaces; strict ASCII YYYY-MM-DD real dates, at most 2, start<=end; unknown pieces, dash options, no code, #N rejected before business; parse golden unchanged",
+    "bb --budget: one deadline from entry (before backtest-module import); checks after validation/import/config and before each stock (header before/after); a started stock completes all windows; not-started only from stock_codes[k:]; payload adds not_started/not_started_count only when budget given",
+    "pos plan all three-state outcome: declined (answer N) counted separately, not as failure; _generate_or_update_plan keeps bool wrapper; single-stock path unchanged",
+    "pos plan all [--update] --budget: budget validated before PortfolioManager; clock includes fetch, benzong scoring with AI and y/N waits; not-started listed; resume hint differs by mode; all-not-started prints no 0/0/0 summary; other pos subcommands and single pos plan with budget rejected",
+    "shared src/cli/start_budget.py (clock/validation/expiry only), used by the two new entries only",
+    "no-budget kwargs for bb and pos_plan dispatch byte-identical (golden locked)"
+  ],
+  "validation": {
+    "runner": "plan/fusion/iteration9/review_test_runner.py, without -X utf8",
+    "red_on_base": "test_bb_budget 96 failed/11 passed (missing-symbol 46, business 50); test_pos_plan_all_budget 73 failed/22 passed (missing-symbol 39, business 34)",
+    "green_related_10_files": "944 passed after review follow-ups, BLOCKED_IO network/subprocess/real_state 0",
+    "full_before_follow_ups": "5230 passed / 1 failed / 12 skipped / 1 deselected; the failure was a flaky timing test in test_baostock_session.py, fixed in 1922506 (8/8 standalone green)",
+    "full_final_tree": "cf973dc+1922506: 5234 passed / 0 failed / 12 skipped / 1 deselected in 674.25s, real exit 0, without -X utf8; network 1172 / subprocess 12 blocked, real_state 0; protected hashes unchanged",
+    "repl_smoke": "temp HOME: bb tiny budget -> summary shows budget-not-started 2; bad args (foo, 2024-02-30, start>end) rejected; pos plan all tiny budget stops before reading roster; pos plan <code>/pos list with budget rejected; no ~/.muyun writes, no network",
+    "independent_review": "code-quality-guard: 29 mutants, 25 killed; 1 P1 (update-mode resume hint misleading) fixed with 3 regression tests; P2 emoji and action-branch assertions added; remaining survivors cosmetic/equivalent",
+    "not_verified": "real backtest data, real AI scoring, real account effects"
+  },
+  "known_followups": ["fullwidth-digit codes accepted by shared _is_stock_code (pre-existing)", "bb single future start date not checked against default end=today (pre-existing)", "bb summary shows average +0.00% when success=0 (pre-existing, cosmetic)", "allocate_tradeable_budget NaN/inf price -> REJECTED with ~nan text (ISS-138, G5-CASH-NAV)"],
+  "progress": {"engineering": "47/98 unchanged", "acceptance": "40/111 unchanged", "contract_index": "42.0%-68.6% unchanged", "batch_budget_closed": false},
+  "remaining": "per-entry start budgets closed out; BATCH-BUDGET still open for cache input qualification, hard resource bounds, physical cancel, cost caps - assess value or user decision before more cards"
+}
