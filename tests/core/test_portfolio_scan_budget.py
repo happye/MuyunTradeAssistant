@@ -700,3 +700,24 @@ def test_incomplete_list_all_not_started_says_enumerated_only(rig):
     out = rig.run(budget_seconds=BUDGET)
     assert "已枚举的持仓均为预算未开始" in out and "清单不完整" in out, out
     assert "全部为预算未开始" not in out, out
+
+
+# ═══════ 9. ISS-135：分析成功后逐只展示抛异常，汇总表不得重复该股 ═══════
+
+def test_iss135_display_failure_after_analyze_keeps_single_summary_row(rig):
+    raised = []
+
+    def hook(text):
+        if "决策:" in text and not raised:
+            raised.append(text)
+            raise RuntimeError("展示异常（测试）")
+
+    rig.console.print_hook = hook
+    out = rig.run()
+    assert raised, "钩子必须在逐只展示行触发"
+    assert rig.count("analyze:") == 3
+    summary = out[out.index("持仓扫描汇总"):]
+    assert summary.count(CODES[0]) == 1, f"汇总表重复行: {summary}"
+    assert "分析失败" not in out, "分析已成功，展示异常不得报成分析失败"
+    assert "展示异常" in out and "分析已完成" in out, out
+    assert "持仓×3" in summary, "已完成分析的一只仍计入操作建议"

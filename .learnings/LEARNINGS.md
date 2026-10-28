@@ -1,3 +1,7 @@
+## LRN-20261028-ISS135：先记成功再做展示，except 分支不能无条件再记一次
+
+状态：已修（`src/cli/main.py::analyze_portfolio`）。分析成功后立刻 `results.append(...)`，后面还有证据/建议/逐只展示；展示一旦抛异常，宽 except 又 `results.append((pos, stock_data, None, None, None))` 并报“分析失败”——汇总表同一股两行、分析明明成功却报失败。修法：成功入表后置 `_analyzed=True`，except 按该标记区分“展示异常（分析已完成）”与“分析失败”，前者不再入表。由 code-quality-guard 在 T05-P 复核中发现，回归用 `HookConsole.print_hook` 在逐只展示行抛一次异常（先红：汇总表计数 2）。同类扫描（AST：同一 try 的 body 与 handler 都 append 同一列表）：13 处中仅此 1 处真实，其余要么 append 是块内最后语句，要么是诊断原因累积（多记是有意保守）。
+
 ## LRN-20261028-CODEPAGE：文本读写必须显式 encoding，别靠机器默认代码页
 
 状态：已修（测试）。本机 Windows 默认代码页是 cp1252（`locale.getpreferredencoding()`），不是 GBK/UTF-8：`tests/chat/test_chat_file_tools.py:107` 的 `write_text("外面")` 没写 encoding，在本机全量守卫里 UnicodeEncodeError 失败；用 `-X utf8` 跑则通过——同一测试的绿红取决于启动参数，不是代码对错。修法：显式 `encoding="utf-8"`。同类扫描（AST，`open`/`read_text`/`write_text` 无 encoding 且非二进制）：src+start.py 产品代码 0 处；tests 另 3 处只读 `json.dumps` 生成的纯 ASCII，安全。护栏：在非中文代码页机器上跑全量时不要加 `-X utf8` 掩盖问题；全量结果要注明是否 UTF-8 模式。控制台打印中文到管道（如 Git Bash 下跑 `check_progress.py`）同理需 `PYTHONIOENCODING=utf-8` 或 `-X utf8`。

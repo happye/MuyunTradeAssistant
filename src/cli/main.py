@@ -621,6 +621,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False, *, budg
             results.append((pos, stock_data, None, None, None))
             continue
 
+        _analyzed = False  # ISS-135：分析成功已入 results，后续展示异常不得再追加一行
         try:
             # L1：有仓判定数量感知——重建仓（旧比例0、数量>0）不得按空仓分析
             # M0：HELD/UNKNOWN 都按有仓保守处理（未知不按空仓吞退出方向）
@@ -636,6 +637,7 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False, *, budg
                 trade_plan=acct_ctx.trade_plan,
             )
             results.append((pos, stock_data, decision_result, strategy_decision, ai_result))
+            _analyzed = True
             # C1：分析证据落盘（JSONL + 证据卡），失败不影响主流程
             # F2：构造 DecisionPacket → 证据卡携带终态字段
             _packet = None
@@ -780,9 +782,14 @@ def analyze_portfolio(ai_overrides: dict = None, ai_debug: bool = False, *, budg
                     console.print(f"  [dim]💡 跑 `pos plan {pos.stock_code}` 查看完整计划，编辑 portfolio.yaml 应用调整[/dim]")
 
         except Exception as e:
-            logger.warning(f"分析 {pos.stock_code} 失败: {e}")
-            console.print(f"  [red]✗ 分析失败: {e}[/red]")
-            results.append((pos, stock_data, None, None, None))
+            if _analyzed:
+                # 分析已完成并入汇总；仅逐只展示出错——不报分析失败、不重复入表
+                logger.info(f"展示 {pos.stock_code} 分析结果异常（分析已完成）: {e}")
+                console.print(f"  [yellow]⚠ 逐只展示异常（分析已完成，汇总表保留结果）: {e}[/yellow]")
+            else:
+                logger.warning(f"分析 {pos.stock_code} 失败: {e}")
+                console.print(f"  [red]✗ 分析失败: {e}[/red]")
+                results.append((pos, stock_data, None, None, None))
 
     # ===== 汇总表格 =====
     # 扫描结束，清理baostock连接
