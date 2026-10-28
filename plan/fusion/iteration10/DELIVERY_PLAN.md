@@ -1,5 +1,20 @@
 # 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
 
+## 2026-10-28 合同（Claude Code本机）：T05-P 顶层 scan/s 持仓扫描可选启动预算
+
+关联`V1-G7-BATCH-BUDGET`，前置T05-O已交付`56fbe21`/文档`dbbca69`。本机Claude Code主控（Opus）任合同/集成/Git，muyun-coder（sonnet）按工单实施与测试，code-quality-guard（opus）独立只读复核，验证一律走未改的`plan/fusion/iteration9/review_test_runner.py`守卫（公司内网普通pytest会在真实外源处挂起）。绑定基线main=`dbbca69`；另一机器Codex/DSH的锁与原件不在本机，本卡与其无关，不重投其请求。
+
+- **入口**：REPL顶层`scan --budget 600`/`s --budget=600`（一键持仓分析`analyze_portfolio`）。复用`_split_budget_option`，缺值/重复/非数/非有限/≤0/未知形状按既有门在业务前拒绝；无`--budget`时`parse_input`仍返回`("scan", {})`，分发仍以旧kwargs调用（不传`budget_seconds`）。`scan market`/`scan review`、CLI`--portfolio`的预算语义不变（CLI仍拒绝）。
+- **顶层scan额外参数**：现状`scan 半导体`静默忽略主题词、直接跑全部持仓AI分析，而`_COMMAND_HINTS["scan"]`还写着`scan <主题>`。本卡改为：顶层scan剥离预算后仍有其他token即业务前拒绝并指引`scan market <规则|主题>`，零业务；提示文案改正。
+- **程序化**：`analyze_portfolio(ai_overrides=None, ai_debug=False, *, budget_seconds=None)`。None不取时钟、行为不变；非None经`batch_scorer.budget_descriptor`同门校验，bool/非数/nan/inf/≤0在任何业务import/账户/配置前固定文案拒绝。
+- **计时**：有预算时函数入口（首个业务import之前）取一次`time.monotonic()`换算绝对截止，不重起钟。检查点：入口校验后、业务import后（尚未读持仓清单）、请求账户快照（含估值行情）形成清单后、配置/编排器构造后、每只持仓标题打印前与取数线程启动前。该股取数一旦启动，整股旧路径（30秒取数门、行情降级、分析、证据/影子/观察量/建议、展示）允许完成；截止不传入取数/编排器/AI，不改30秒局部门、账户事实/建议语义或信号权限。到期只阻止开始下一只，非强制中断、非费用上限，准备阶段可能超出。
+- **清单口径**：清单未形成即到期→说明未读取持仓清单，不得说空仓或全部未开始。清单为空沿原文案（不完整仍报待对账）。清单形成后到期→仅调度器确证未开始的`positions[i:]`列为“预算未开始”，不从缺失/失败结果倒推；`holding_entries`不完整时只称“已枚举范围内”，注明未枚举持仓不在此列。
+- **汇总**：结果tuple只收已处理项；汇总表/操作建议只统计已处理，未开始单列代码与计数（未取数/未分析，不计失败/零分/不入操作建议）；全部未开始不称全部失败。可提示手工再次`scan`或`l <代码>`，不称自动续跑/零费用；不新增任务账本/续跑协议。baostock清理照旧在汇总前执行。
+- **可发现**：有预算时入口打印一次语义说明；无预算时在“共N只持仓股”后提示可选`--budget 600`（空清单不提示）。banner/help的scan行、`_BUDGET_HELP`/`_BUDGET_SCOPE`列入“scan 持仓扫描”；拒绝文案不堆内部helper名。
+- **文件所有权**（muyun-coder）：`start.py`（仅顶层scan解析、预算文案常量、banner/hint、scan分发）、`src/cli/main.py`（仅`analyze_portfolio`）、新`tests/core/test_portfolio_scan_budget.py`，以及`tests/core/test_batch_budget_parse.py`/`test_live_batch_budget.py`/`test_scan_market_budget.py`中把`"scan --budget 60"`从拒绝列表移出（不删其他负例）。不改账户服务、取数/30秒门、编排器、session_state、共享超时helper、评分/CACHE_VERSION、真实配置/账户/知识库、runner或全局fixture。新warning需三处同步，先报主控。
+- **有界验收**：新文件先在未修代码上出业务红（与缺符号红分列），再最小实现转绿。假钟覆盖：解析合法/坏值零业务/额外token拒绝/无预算旧形状；程序化坏值零业务；各检查点恰到期（import后、清单后、编排器后、首股前、中途第k只取数后跨截止→下一只零取数）；当前股整股完成；不完整清单口径；全未开始/部分未开始显示及汇总只含已处理；无预算行为与提示。守卫runner跑新文件与受影响相关文件，网络/子进程/真实状态三项0；code-quality-guard复核后按需最终回归，不预设重复全量。真实REPL临时HOME冒烟（不碰真实`~/.muyun`、不触网）。
+- 工程47/98、验收40/111、合同42.0%–68.6%、18/47预计不变；本子范围不关闭BATCH-BUDGET/G7/T05/V1。
+
 ## 2026-10-28 已限定接收并停止：T05-O scan market 自动deep阶段/逐股启动预算
 
 2026-10-28 T05-O限定接收（代码`56fbe21`）：`scan market deep --budget 600`及独立CLI自动deep支持可选阶段/逐股启动预算，从scan_market执行入口计时；当前阶段/股票可完成。候选初筛保存与deep终态独立，预算路径必要兜底失败不沿用原未过滤池；快照/历史/报告分别提示，未开始不排名/失败/零分，冲突状态归未知。独立Sol/high阻断清零，12+2业务红留证，此前714相关加最终受影响114通过（pytest1.26s、wall3.083s、真实exit0/守卫IO0）增量接收，无最终树单次714/全量声明。进度不变；用户额度不足10%要求完成本卡后收尾，已停止，不开P。 [验收回执](T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)。起算限scan_market执行入口，不包含Python/REPL/argparse公共启动；无预算旧fallback语义未在本卡核定。
