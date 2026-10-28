@@ -280,8 +280,14 @@ def build_batch_validation_payload(
     backtest_mode: str,
     layer_mode: str,
     failures: list[dict[str, Any]] | None = None,
+    not_started: list[str] | None = None,
 ) -> dict[str, Any]:
-    """构造多标的批量验证汇总 payload。"""
+    """构造多标的批量验证汇总 payload。
+
+    not_started（T05-Q）：None=不启用启动预算，payload/summary 键集合与旧版一致；
+    给列表（可为空）时增 `not_started` 与 `summary.not_started_count`——因启动预算
+    未开始的代码（非失败，不进 stocks/failures）。
+    """
     failures = failures or []
     stock_summaries = [_summarize_validation_payload(payload) for payload in validation_payloads]
     success_count = len(stock_summaries)
@@ -323,8 +329,13 @@ def build_batch_validation_payload(
         },
         "stocks": stock_summaries,
         "failures": failures,
-        "batch_hints": _build_batch_validation_hints(stock_summaries, failures, total_requested),
+        "batch_hints": _build_batch_validation_hints(
+            stock_summaries, failures, total_requested,
+            len(not_started) if not_started is not None else 0),
     }
+    if not_started is not None:
+        payload["summary"]["not_started_count"] = len(not_started)
+        payload["not_started"] = list(not_started)
     return payload
 
 
@@ -659,6 +670,7 @@ def _build_batch_validation_hints(
     stock_summaries: list[dict[str, Any]],
     failures: list[dict[str, Any]],
     total_requested: int,
+    not_started_count: int = 0,
 ) -> list[str]:
     hints: list[str] = []
     if failures:
@@ -672,8 +684,11 @@ def _build_batch_validation_hints(
             hints.append(f"有 {weak_generalization} 只股票样本内外表现断裂，需警惕参数过拟合。")
         if sum(1 for item in stock_summaries if item["full_period_excess_return_pct"] > 0) < max(1, len(stock_summaries) // 2):
             hints.append("多数股票未跑赢基准，当前策略跨标的泛化仍偏弱。")
-    if not hints:
-        hints.append(f"批量验证已覆盖 {total_requested} 只股票，当前未发现明显共性异常，可继续扩大样本。")
+    covered = total_requested - not_started_count
+    if not hints and (covered > 0 or not_started_count == 0):
+        hints.append(f"批量验证已覆盖 {covered} 只股票，当前未发现明显共性异常，可继续扩大样本。")
+    if not_started_count > 0:
+        hints.append(f"有 {not_started_count} 只因启动预算未开始（非失败），如需继续可再次 bb 这些代码（会重新回测）。")
     return hints
 
 
@@ -741,7 +756,8 @@ def _render_batch_validation_report(payload: dict[str, Any]) -> str:
         "批量回测验证汇总",
         f"区间: {meta['start_date']} ~ {meta['end_date']}",
         f"回测模式: {meta['backtest_mode']} | 分层模式: {meta['layer_mode']}",
-        f"请求股票数: {summary['requested_count']} | 成功: {summary['success_count']} | 失败: {summary['failure_count']}",
+        f"请求股票数: {summary['requested_count']} | 成功: {summary['success_count']} | 失败: {summary['failure_count']}"
+        + (f" | 预算未开始: {summary['not_started_count']}" if "not_started" in payload else ""),
         f"平均收益: {summary['average_return_pct']:+.2f}% | 平均超额: {summary['average_excess_return_pct']:+.2f}%",
         "",
         "一、检查通过概览",
@@ -760,6 +776,14 @@ def _render_batch_validation_report(payload: dict[str, Any]) -> str:
         lines.extend(["", "三、失败记录"])
         for item in payload["failures"]:
             lines.append(f"- {item['stock_code']}: {item['error']}")
+    if payload.get("not_started"):
+        lines.extend(["", "三·一、预算未开始"])
+        lines.extend(f"- {code}" for code in payload["not_started"])
     lines.extend(["", "四、提示"])
     lines.extend(f"- {hint}" for hint in payload["batch_hints"])
     return "\n".join(lines) + "\n"
+
+
+def render_batch_validation_report(payload: dict[str, Any]) -> str:
+    """批量验证汇总文本的公开入口（屏幕汇总与 txt 导出同一份渲染）。"""
+    return _render_batch_validation_report(payload)

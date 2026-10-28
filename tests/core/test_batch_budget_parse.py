@@ -342,7 +342,6 @@ def test_fix2_unknown_budget_option_shapes_rejected_before_early_returns(
     "watch --budget 60",
     "diff 600519 --budget 60",
     "b 600519 --budget 60",
-    "bb 600519 --budget 60",
     "expect 30 --budget 60",
     "rules --budget 60",
     "industries --budget 60",
@@ -382,6 +381,8 @@ def test_fix2_plain_words_containing_budget_are_not_options(capsys):
     ("live_scan_all", {"force": False, "budget": "60"}),
     # T05-P 起顶层 scan 支持合法预算（见 test_portfolio_scan_budget.py），坏值仍先拒
     ("scan", {"budget": 0}),
+    # T05-Q 起 bb 批量回测验证支持合法预算（见 test_bb_budget.py），坏值仍先拒
+    ("batch_backtest", {"codes": ["600519"], "budget": 0}),
     ("today", {"budget": 60}),
     ("batch_tasks", {"budget": 60}),
     ("benzong_all", {"budget": 0}),                      # 支持模式坏值先拒

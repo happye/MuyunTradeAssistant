@@ -1405,9 +1405,38 @@ def run_batch_validation(
     export_batch_validation_json_path: str | None = None,
     export_batch_validation_txt_path: str | None = None,
     layer_mode: str = "decision_strategy_execution",
+    *,
+    budget_seconds=None,
 ):
-    """多标的批量回测验证。"""
-    from src.core.backtest_engine import BacktestEngine
+    """多标的批量回测验证。
+
+    T05-Q（REPL bb 可选启动预算，budget_seconds=None 即不启用、不取时钟、行为不变）：
+    - 只接受有限正数秒（bool/非数/nan/inf/<=0 在回测模块 import/配置/回测前固定文案拒绝，返回 None）。
+    - 入口时点由 StartBudget.begin 先于回测模块 import 读取，之后绝不重起钟；回测模块导入/
+      配置读取都计入。到期只阻止开始下一只股票，一只一旦开始 run，其全区间/样本内外/
+      walk-forward 窗口整只完成，截止不传入回测引擎。
+    - 未开始集合只取 stock_codes[k:] 切片（已规范化代码），不进 payloads/failures；
+      有预算时总以列表（可为空）传给 build_batch_validation_payload，无预算传 None。
+    - 结束时总在屏幕打印批量汇总（markup=False：失败原因含异常原文/方括号，不经 rich 标签）。
+    """
+    from src.cli.start_budget import StartBudget
+
+    budget, _budget_err = StartBudget.begin(budget_seconds)
+    if budget_seconds is not None and budget is None:
+        console.print("  [red][!] 预算参数无效（需有限正数秒）；本次未开始批量回测"
+                      "（不读配置、不取数、不回测）[/red]")
+        return None
+
+    def _expired() -> bool:
+        return budget is not None and budget.expired()
+
+    stock_codes = [normalize_stock_code(code) for code in stock_codes]
+    # 未开始集合：有预算时恒为列表（可为空），无预算为 None
+    not_started = None if budget is None else []
+
+    stop_stage = "入口校验后" if _expired() else None
+    if stop_stage is None:
+        from src.core.backtest_engine import BacktestEngine
     from src.core.backtest_validator import (
         build_batch_validation_payload,
         build_replay_consistency_check,
@@ -1416,9 +1445,10 @@ def run_batch_validation(
         export_batch_validation_json,
         export_batch_validation_txt,
         load_trading_dates,
+        render_batch_validation_report,
     )
-
-    stock_codes = [normalize_stock_code(code) for code in stock_codes]
+    if stop_stage is None and _expired():
+        stop_stage = "回测模块导入后"
 
     console.print(f"\n[bold cyan]批量回测验证模式[/bold cyan]")
     console.print(f"  股票数: {len(stock_codes)}")
@@ -1426,18 +1456,43 @@ def run_batch_validation(
     console.print(f"  初始资金: ¥{capital:,.0f}")
     console.print(f"  分层模式: {layer_mode}")
     console.print(f"  回测模式: {backtest_mode}")
+    if budget is not None:
+        console.print(
+            f"[dim]  启动预算：{budget.seconds:g} 秒（bb 批量回测验证；从批量回测入口计时，"
+            "回测模块导入/配置读取都计入；到期不再开始下一只股票，已开始的一只"
+            "（含全区间、样本内外与 walk-forward 窗口）会跑完；非强制中断、非费用上限）[/dim]")
+    else:
+        console.print("[dim]  可选时限：REPL 中可用 bb <代码,...> --budget 600"
+                      "（默认不启用；到期不再开始下一只，当前一只跑完）[/dim]")
 
-    config = load_config()
-    skills_dir = config.get("skills", {}).get("dir", "./src/skills")
-    weights = config.get("decision", {}).get("signal_weights", None)
-    skill_types = config.get("skills", {}).get("types", None)
-    entry_exit_config = config.get("entry_exit", None)
+    if stop_stage is None:
+        config = load_config()
+        skills_dir = config.get("skills", {}).get("dir", "./src/skills")
+        weights = config.get("decision", {}).get("signal_weights", None)
+        skill_types = config.get("skills", {}).get("types", None)
+        entry_exit_config = config.get("entry_exit", None)
+        if _expired():
+            stop_stage = "配置读取后"
+
+    if stop_stage is not None:
+        not_started = list(stock_codes)
+        console.print(f"  ⏱ 启动预算已到期：{stop_stage}，不开始任何股票（未开始 {len(not_started)} 只，非失败）")
 
     payloads: list[dict] = []
     failures: list[dict[str, str]] = []
 
-    for index, stock_code in enumerate(stock_codes, start=1):
+    for index, stock_code in enumerate(stock_codes if stop_stage is None else [], start=1):
+        if _expired():
+            not_started = list(stock_codes[index - 1:])
+            console.print(f"  ⏱ 启动预算已到期：第 {index}/{len(stock_codes)} 只开始前，"
+                          f"不再开始后续股票（未开始 {len(not_started)} 只，非失败）")
+            break
         console.print(f"[bold yellow]({index}/{len(stock_codes)}) 正在验证 {stock_code}...[/bold yellow]")
+        if _expired():
+            not_started = list(stock_codes[index - 1:])
+            console.print(f"  ⏱ 启动预算已到期：第 {index}/{len(stock_codes)} 只标题后、回测前，"
+                          f"不再开始后续股票（未开始 {len(not_started)} 只，非失败）")
+            break
 
         def build_engine(target_layer_mode: str, target_start_date: str | None = None, target_end_date: str | None = None) -> BacktestEngine:
             return BacktestEngine(
@@ -1499,7 +1554,12 @@ def run_batch_validation(
         backtest_mode=backtest_mode,
         layer_mode=layer_mode,
         failures=failures,
+        not_started=not_started,
     )
+
+    # T05-Q：汇总总上屏（含无预算）；markup=False——失败记录里的异常原文可能含方括号
+    console.print(render_batch_validation_report(batch_payload),
+                  markup=False, highlight=False, emoji=False)
 
     if export_batch_validation_json_path:
         output = export_batch_validation_json(batch_payload, export_batch_validation_json_path)
@@ -2554,8 +2614,23 @@ def _display_trade_plan(pos):
         console.print(f"  [dim]adjustments: {len(tp.adjustments)} 条调整记录[/dim]")
 
 
+class PlanOutcome(Enum):
+    """pos plan 单只生成/更新的三态结果（T05-Q）：用户答 N 是 DECLINED，不是 FAILED。"""
+    SUCCESS = "success"
+    DECLINED = "declined"
+    FAILED = "failed"
+
+
 def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
     """为单只持仓生成或更新 TradePlan。返回是否成功。
+
+    T05-Q：本体移入 _plan_outcome（三态）；此处保留 bool 薄包装（单只路径/既有测试锁定）。
+    """
+    return _plan_outcome(pm, stock_code, update=update) is PlanOutcome.SUCCESS
+
+
+def _plan_outcome(pm, stock_code: str, update: bool = False) -> PlanOutcome:
+    """为单只持仓生成或更新 TradePlan。返回 PlanOutcome 三态（调用方用 is 比较）。
 
     T04-D：编排下沉 prepare_generate_or_update_plan；本函数只负责 rich 展示、
     更新路径 Y/n 与 attach_plan。文案与旧实现对齐。
@@ -2570,7 +2645,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
 
     if oc.status == PU_NO_POSITION:
         console.print(f"[red]✗ {stock_code} 无持仓记录[/red]")
-        return False
+        return PlanOutcome.FAILED
 
     action_label = oc.action_label or ("更新" if update else "生成")
 
@@ -2580,7 +2655,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             console.print(f"   [dim]检查网络/代理，或跑 bz --check 体检数据源[/dim]")
         else:
             console.print(f"   [red]✗ 无法获取技术面数据，{action_label}已跳过[/red]")
-        return False
+        return PlanOutcome.FAILED
 
     price = oc.price if oc.price is not None else 0.0
     console.print(f"   [green]✓[/green] 读取当前技术面（ATR={oc.atr_str}, 价格=¥{price:.2f}）")
@@ -2609,7 +2684,7 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
 
     if oc.status == PU_GENERATE_FAILED:
         console.print(f"   [red]✗ {action_label}失败: {oc.generate_error}[/red]")
-        return False
+        return PlanOutcome.FAILED
 
     plan = oc.plan
     meta = oc.meta or {}
@@ -2628,19 +2703,19 @@ def _generate_or_update_plan(pm, stock_code: str, update: bool = False) -> bool:
             accepted = False
         if not accepted:
             console.print("   [dim]未接受，原计划继续有效[/dim]")
-            return False
+            return PlanOutcome.DECLINED
         plan = accept_plan_update(plan, old_stop, proposed_stop)
     elif oc.status != PU_READY_NEW:
         console.print(f"   [red]✗ {action_label}失败: 未知状态 {oc.status}[/red]")
-        return False
+        return PlanOutcome.FAILED
 
     if pm.attach_plan(stock_code, plan):
         console.print(f"   [green]✓ {action_label}成功[/green]")
         if meta.get("fallback_reasons"):
             console.print(f"   [dim]⚠ 降级提示: {' / '.join(meta['fallback_reasons'])}[/dim]")
-        return True
+        return PlanOutcome.SUCCESS
     console.print(f"   [red]✗ 写回失败[/red]")
-    return False
+    return PlanOutcome.FAILED
 
 
 
@@ -2650,7 +2725,7 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                      trade_date: str = "", note: str = "",
                      cash: float | None = None,
                      security_id: str = "", cost_price: float = 0.0,
-                     acquired_at: str = ""):
+                     acquired_at: str = "", *, budget_seconds=None):
     """持仓管理子命令
 
     ratio 语义（F1）：add=建仓仓位（None→0.20 兜底）；confirm=实际成交的仓位变化
@@ -2658,7 +2733,37 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
     J2：confirm 带 qty+price → 账户事件账本事务（唯一事实源，confirm_fill 协议）→
     成功后才更新比例投影；缺 qty → 旧比例确认（不产数量级事实，如实提示）。
     opening/openinglot：期初导入（现金锚定/持仓批次——用户确认的数量级事实）。
+
+    T05-Q（pos plan all 可选启动预算，budget_seconds=None 即不启用、不取时钟、行为不变）：
+    - 仅 action=plan 且 stock_code 为 all/*/全部 的批量分支使用；其余收到非 None 一律拒绝
+      （防程序化绕过 start.py 层的拒绝）。坏值（bool/非数/nan/inf/<=0）在构造
+      PortfolioManager/读持仓前固定文案拒绝。
+    - 入口时点由 StartBudget.begin 在构造 PortfolioManager 之前读取，之后绝不重起钟；
+      逐只取数、生成路径笨总评分（含 AI）与更新路径 y/N 确认等待都计入。到期只阻止开始
+      下一只，当前一只（含 y/N 等待）整只完成；未开始 = 调度器确证未开始的剩余持仓切片。
     """
+    _plan_budget = None
+    if budget_seconds is not None:
+        if action != "plan":
+            console.print("[red]✗ 该命令不支持 --budget（仅 pos plan all 支持）；本次未执行[/red]")
+            return
+        if str(stock_code).lower() not in ("all", "*", "全部"):
+            console.print("[red]✗ 单只 pos plan 不支持 --budget（仅 pos plan all 支持）；本次未执行[/red]")
+            return
+        from src.cli.start_budget import StartBudget
+        _plan_budget, _plan_budget_err = StartBudget.begin(budget_seconds)
+        if _plan_budget is None:
+            console.print("  [red][!] 预算参数无效（需有限正数秒）；本次未开始批量计划"
+                          "（不读持仓、不取数、不调用 AI）[/red]")
+            return
+        if _plan_budget.expired():
+            # 复核P1：续跑指引按 update 分支——更新模式不跳过任何持仓，重跑会从第 1 只开始
+            _again = ("可再次 pos plan all --update（会从第 1 只重新开始）" if update
+                      else "可再次 pos plan all 继续")
+            console.print("  ⏱ 启动预算已到期：入口校验后；本次未读取持仓清单，"
+                          f"未开始任何计划生成/更新（非强制中断，{_again}）")
+            return
+
     pm = PortfolioManager()
 
     if action == "opening":
@@ -3025,18 +3130,53 @@ def manage_positions(action: str, stock_code: str = "", name: str = "", price: f
                 console.print("[yellow]⚠ 当前无持仓记录[/yellow]")
                 return
             console.print(f"\n[bold cyan]📋 批量{'更新' if update else '生成'}交易计划（{len(positions)} 只持仓）[/bold cyan]")
-            ok, skip, fail = 0, 0, 0
-            for pos in positions:
+            if _plan_budget is not None:
+                console.print(
+                    f"[dim]  启动预算：{_plan_budget.seconds:g} 秒（pos plan all；从批量计划入口计时，"
+                    "计时包含逐只取数、生成路径的笨总评分（含 AI）与更新路径的 y/N 确认等待；"
+                    "到期不再开始下一只，当前一只会跑完——非强制中断、非费用上限）[/dim]")
+            else:
+                console.print("[dim]  可选时限：pos plan all [--update] --budget 600"
+                              "（默认不启用；到期不再开始下一只，当前一只跑完）[/dim]")
+            ok, skip, declined, fail = 0, 0, 0, 0
+            # 调度器确证未开始的持仓（预算到期）：只取 positions[k:] 切片，与成败计数分开
+            not_started = []
+            if _plan_budget is not None and _plan_budget.expired():
+                not_started = list(positions)
+                console.print("  ⏱ 启动预算已到期：持仓清单读取后，不开始任何计划生成/更新")
+            for idx, pos in enumerate(positions if not not_started else []):
                 if not update and pos.trade_plan is not None:
                     skip += 1
                     console.print(f"  [dim]⏭ {pos.stock_code} {pos.stock_name} 已有计划，跳过（用 pos plan all --update 更新）[/dim]")
                     continue
+                if _plan_budget is not None and _plan_budget.expired():
+                    not_started = list(positions[idx:])
+                    console.print(f"  ⏱ 启动预算已到期：第 {idx + 1}/{len(positions)} 只开始前，不再开始后续持仓")
+                    break
                 console.print(f"\n[bold]▶ {pos.stock_code} {pos.stock_name}[/bold]")
-                if _generate_or_update_plan(pm, pos.stock_code, update=update):
+                outcome = _plan_outcome(pm, pos.stock_code, update=update)
+                if outcome is PlanOutcome.SUCCESS:
                     ok += 1
+                elif outcome is PlanOutcome.DECLINED:
+                    declined += 1
                 else:
                     fail += 1
-            console.print(f"\n[bold]批量完成：✓ {ok} 成功 / ⏭ {skip} 跳过 / ✗ {fail} 失败[/bold]")
+            declined_part = f" / ↩ {declined} 未接受" if declined else ""
+            if not_started and ok + skip + declined + fail == 0:
+                console.print("\n[bold]本次没有开始任何计划生成/更新（全部为预算未开始，不是失败）[/bold]")
+            else:
+                console.print(f"\n[bold]批量完成：✓ {ok} 成功 / ⏭ {skip} 跳过{declined_part} / ✗ {fail} 失败[/bold]")
+            if not_started:
+                # 未开始只来自调度器切片；不计失败、不自动续跑。复核P1：续跑指引按 update 分支——
+                # 生成模式重跑会自动跳过已生成的；更新模式不跳过任何持仓，重跑会从第 1 只重新开始
+                _codes = "、".join(p.stock_code for p in not_started)
+                if update:
+                    _hint = ("未更新，不计失败；继续可逐只 pos plan <代码> --update，"
+                             "或 pos plan all --update（会从第 1 只重新开始、已更新的会再次询问），不自动续跑")
+                else:
+                    _hint = ("未生成，不计失败；可再次 pos plan all 继续（已生成的会自动跳过），"
+                             "不自动续跑；名单可能含已有计划、本会被跳过的")
+                console.print(f"  ⏱ 启动预算未开始 {len(not_started)} 只：{_codes}（{_hint}）")
             return
 
         # 单只

@@ -147,11 +147,12 @@ def show_help():
     L.append(_cmd("pos opening <现金> / openinglot <码 量 成本 [日]>", "期初导入（现金锚定/持仓批次）"))
     L.append(_cmd("pos rm <代码>", "删除持仓记录"))
     L.append(_cmd("pos plan <代码>|all [--update]", "查看 / 生成 / 更新交易计划"))
+    L.append(_cmd("pos plan all [--update] --budget 600", "可选；到点不开新只，当前只跑完"))
     L.append(_cmd("pos overweight <代码> [依据]", "超配策略（教学十，只出手一次）"))
     L.append(_row())
     L.append(_row("● 回测"))
     L.append(_cmd("b <代码> [起 止 资金]", "单只回测（默认近1年，10万）"))
-    L.append(_cmd("bb <代码,代码> [起 止]", "批量回测验证"))
+    L.append(_cmd("bb <代码,代码> [起 止] [--budget 秒]", "批量回测验证，到点不开新只"))
     L.append(_row())
     L.append(_row("● 市场情报"))
     L.append(_cmd("expect [天数]", "预期事件日历 + 透支面板（默认30天）"))
@@ -303,14 +304,16 @@ def _parse_budget_seconds(raw):
 
 _BUDGET_HELP = ("预算用法: --budget <秒> 或 --budget=<秒>（有限正数；支持 ba/bzall、"
                 "bz scan、bz 多代码、l 多代码/la/l all 批量深析，scan market deep "
-                "自动深度分析，以及 scan 持仓扫描；到期只阻止开始下一步，已开始的调用会跑完，"
+                "自动深度分析，scan 持仓扫描，bb 批量回测验证，以及 pos plan all 批量交易计划；"
+                "到期只阻止开始下一步，已开始的调用会跑完，"
                 "准备阶段可能超出，非强制中断/无费用上限）")
 
 # T05-L：不支持入口的统一说明（单只 l/bz、scan 等）；T05-N 起 bz scan 已支持；
 # T05-O 起 scan market deep 自动深度分析也支持（普通交互 scan market 仍不支持）；
-# T05-P 起顶层 scan 持仓扫描也支持
+# T05-P 起顶层 scan 持仓扫描也支持；T05-Q 起 bb 批量回测验证与 pos plan all 也支持
 _BUDGET_SCOPE = ("预算仅用于 ba/bzall、bz scan、bz 多代码、l 多代码/la/l all 批量深析，"
-                 "scan market deep 自动深度分析，以及 scan 持仓扫描")
+                 "scan market deep 自动深度分析，scan 持仓扫描，bb 批量回测验证，"
+                 "以及 pos plan all 批量交易计划")
 
 # T05-O：scan market deep 预算的拒绝/校验文案（不暴露内部 helper/文件名）
 _SCAN_MARKET_BUDGET_SCOPE = "预算仅用于 scan market deep 自动深度分析"
@@ -493,9 +496,13 @@ def parse_input(user_input: str):
               "（只支持 --budget <秒> 或 --budget=<秒>）")
         print(f"        {_BUDGET_HELP}")
         return None
+    # T05-Q：pos 只对 `pos plan|p all|*|全部` 放行（其余 pos 子命令带预算仍按原文案拒绝）
+    _pos_plan_all = (cmd == "pos" and len(parts) >= 3 and parts[1].lower() in ("plan", "p")
+                     and parts[2].lower() in ("all", "*", "全部"))
     if (_has_budget_opt
             and cmd not in ("ba", "bzall", "bz", "benzong", "笨总", "l", "live", "la", "lall",
-                            "scan", "s")
+                            "scan", "s", "bb")
+            and not _pos_plan_all
             and not _is_stock_code(parts[0])):
         print(f"  [!] 该命令不支持 --budget（{_BUDGET_SCOPE}）")
         print(f"        {_BUDGET_HELP}")
@@ -621,18 +628,62 @@ def parse_input(user_input: str):
 
     # ── 批量回测 ──
     if cmd == "bb":
-        if len(parts) < 2:
-            print("  [!] 用法: bb <代码1,代码2,...> [起始日期 结束日期]")
+        # T05-Q：先剥离可选 --budget，再按中英文逗号/顿号/分号与空格切片段：6 位代码、
+        # 严格 YYYY-MM-DD 真实日期（最多 2 个，起<=止）；其他片段/flag/无代码在业务前拒绝
+        _bb_usage = "  [!] 用法: bb <代码1,代码2,...> [起始日期 结束日期] [--budget 秒]"
+        budget, rest, budget_err = _split_budget_option(parts[1:])
+        if budget_err:
+            print(f"  [!] {budget_err}")
+            print(f"        {_BUDGET_HELP}")
             return None
-        codes = [c.strip() for c in parts[1].split(",") if c.strip()]
-        if not codes:
-            print("  [!] 请提供至少一个股票代码")
+        if not rest:
+            print(_bb_usage)
+            return None
+        import re
+        from datetime import datetime
+        codes, dates, bad = [], [], []
+        # _iter_code_pieces 会跳过 - 开头的 flag（含粘在代码后的 `600519,-x`）；这里要显式拒绝
+        # 它们，故逐 token 取含 flag 的全部片段（_iter_code_pieces_raw）
+        for piece in (p for tok in rest for p in _iter_code_pieces_raw(tok)):
+            if piece.startswith("-"):
+                bad.append(("flag", piece))
+            elif _is_stock_code(piece):
+                if piece not in codes:
+                    codes.append(piece)
+            elif re.match(r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$", piece):  # 只认 ASCII 数字（\d 会放行全角）
+                try:
+                    datetime.strptime(piece, "%Y-%m-%d")
+                    dates.append(piece)
+                except ValueError:
+                    bad.append(("date", piece))
+            else:
+                bad.append(("piece", piece))
+        reason = None
+        if bad:
+            kind, first = bad[0]
+            if kind == "flag":
+                reason = f"不支持的选项: {first}（bb 只支持 --budget <秒>）"
+            elif kind == "date":
+                reason = f"日期无效: {first}（需真实日期，格式 YYYY-MM-DD）"
+            else:
+                reason = f"无法识别的参数: {first}（代码用6位数字，日期用 YYYY-MM-DD，不支持 #N）"
+        elif not codes:
+            reason = "请提供至少一个股票代码"
+        elif len(dates) > 2:
+            reason = f"日期最多 2 个（起始日期 结束日期），收到 {len(dates)} 个"
+        elif len(dates) == 2 and dates[0] > dates[1]:
+            reason = f"起始日期晚于结束日期: {dates[0]} > {dates[1]}"
+        if reason:
+            print(f"  [!] {reason}")
+            print(_bb_usage)
             return None
         args = {"codes": codes}
-        if len(parts) >= 3:
-            args["start_date"] = parts[2]
-        if len(parts) >= 4:
-            args["end_date"] = parts[3]
+        if len(dates) >= 1:
+            args["start_date"] = dates[0]
+        if len(dates) >= 2:
+            args["end_date"] = dates[1]
+        if budget is not None:
+            args["budget"] = budget
         return ("batch_backtest", args)
 
     # ── 扫描 ──
@@ -999,11 +1050,24 @@ def parse_input(user_input: str):
                 print("      pos plan 600519 --update 按当前行情更新计划")
                 print("      pos plan all             批量生成（无计划的持仓）")
                 print("      pos plan all --update    批量更新所有持仓计划")
+                print("      pos plan all [--update] --budget 600   可选启动预算（到点不开始下一只）")
                 return None
             target = parts[2]
+            # T05-Q：预算只属于 pos plan all；先剥离 --budget，--update 判定改看剥离后的 rest
+            budget, rest, budget_err = _split_budget_option(parts[3:])
+            if budget_err:
+                print(f"  [!] {budget_err}")
+                print(f"        {_BUDGET_HELP}")
+                return None
+            if budget is not None and target.lower() not in ("all", "*", "全部"):
+                print(f"  [!] 单只 pos plan 不支持 --budget（{_BUDGET_SCOPE}）；本次未执行")
+                return None
             # v0.8.7.5 审计修复：帮助文本曾宣传 --u（实际只认 --update/-u），补齐防用户照旧写法静默失效
-            update = "--update" in parts[3:] or "-u" in parts[3:] or "--u" in parts[3:]
-            return ("pos_plan", {"stock_code": target, "update": update})
+            update = "--update" in rest or "-u" in rest or "--u" in rest
+            plan_args = {"stock_code": target, "update": update}
+            if budget is not None:
+                plan_args["budget"] = budget
+            return ("pos_plan", plan_args)
         elif sub in ("overweight", "ow"):
             # 报告3.1 笨总教学十超配策略：pos overweight <代码> [依据...]
             if len(parts) < 3:
@@ -1197,10 +1261,10 @@ _COMMAND_HINTS = {
     "ba": "ba 批量笨总评分最近扫描结果",
     "bz": "bz <代码>[,代码2...] 评分(支持多代码) | bz scan <主题> 主题选股",
     "b": "b <代码> 回测 | bb 批量回测",
-    "bb": "bb 批量回测",
+    "bb": "bb <代码,代码> [起 止] 批量回测验证（--budget 可选）",
     "scan": "scan 一键分析全部持仓（--budget 可选） | scan market [规则|主题] 全市场扫描",
     "s": "scan market [主题] 全市场扫描（s 即 scan）",
-    "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan 交易计划",
+    "pos": "pos 持仓总览 | pos add/rm <代码> 建仓/清仓 | pos plan <代码>|all 交易计划（all 可加 --budget）",
     "expect": "expect 未来事件日历+预期透支度",
     "fear": "fear 恐慌指数总览 | fear history 多周期回顾+走势图 | fear backfill 回填历史",
     "doctor": "doctor 运行诊断：解释器/依赖/配置/状态缓存只读体检（零 AI 零网络）",
@@ -2393,6 +2457,15 @@ def _dispatch_pos_cli(mode: str, args: dict, manage_positions) -> bool:
         )
         return True
     if mode == "pos_plan":
+        if args.get("budget") is not None:
+            # T05-Q：仅显式预算才多传 budget_seconds，无预算调用形状逐字不变（golden 锁定）
+            manage_positions(
+                "plan",
+                stock_code=args.get("stock_code", ""),
+                update=args.get("update", False),
+                budget_seconds=args["budget"],
+            )
+            return True
         manage_positions(
             "plan",
             stock_code=args.get("stock_code", ""),
@@ -3377,6 +3450,15 @@ def _dispatch_backtest_cli(
         from datetime import datetime, timedelta
         start_date = args.get("start_date") or (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
         end_date = args.get("end_date") or datetime.now().strftime("%Y-%m-%d")
+        if args.get("budget") is not None:
+            # T05-Q：仅显式预算才多传 budget_seconds，无预算调用逐字不变（golden 锁定）
+            run_batch_validation(
+                stock_codes=args["codes"],
+                start_date=start_date,
+                end_date=end_date,
+                budget_seconds=args["budget"],
+            )
+            return True
         run_batch_validation(
             stock_codes=args["codes"],
             start_date=start_date,
@@ -3397,6 +3479,12 @@ _LIVE_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本�
 # T05-P：顶层 scan 持仓扫描的坏预算拒绝文案（与 analyze_portfolio 程序化入口同语义）
 _SCAN_PORTFOLIO_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始持仓扫描"
                                   "（不读取账户/持仓、不取数、不调用 AI）")
+
+# T05-Q：bb 批量回测验证 / pos plan all 批量计划的坏预算拒绝文案（与程序化入口同语义）
+_BB_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始批量回测"
+                      "（不读配置、不取数、不回测）")
+_POS_PLAN_BUDGET_INVALID = ("  [!] 预算参数无效（需有限正数秒）；本次未开始批量计划"
+                            "（不读持仓、不取数、不调用 AI）")
 
 
 def _reject_budget_request(mode: str, args) -> bool:
@@ -3423,6 +3511,23 @@ def _reject_budget_request(mode: str, args) -> bool:
         from src.core.benzong.batch_scorer import budget_descriptor
         if budget_descriptor(budget) is None:
             print(_SCAN_PORTFOLIO_BUDGET_INVALID)
+            return True
+        return False
+    if mode == "batch_backtest":
+        # T05-Q：bb 批量回测验证预算（同门校验有限正数秒；合法放行，坏值业务前拒绝）。
+        from src.core.benzong.batch_scorer import budget_descriptor
+        if budget_descriptor(budget) is None:
+            print(_BB_BUDGET_INVALID)
+            return True
+        return False
+    if mode == "pos_plan":
+        # T05-Q：pos plan all 批量计划预算（坏值拒绝；合法但目标非 all/*/全部 同样拒绝）。
+        from src.core.benzong.batch_scorer import budget_descriptor
+        if budget_descriptor(budget) is None:
+            print(_POS_PLAN_BUDGET_INVALID)
+            return True
+        if str(args.get("stock_code", "")).lower() not in ("all", "*", "全部"):
+            print(f"  [!] 单只 pos plan 不支持 --budget（{_BUDGET_SCOPE}）；本次未执行")
             return True
         return False
     if mode == "scan_market":
