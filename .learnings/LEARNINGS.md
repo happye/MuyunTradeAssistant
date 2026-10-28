@@ -1,3 +1,7 @@
+## LRN-20261028-CODEPAGE：文本读写必须显式 encoding，别靠机器默认代码页
+
+状态：已修（测试）。本机 Windows 默认代码页是 cp1252（`locale.getpreferredencoding()`），不是 GBK/UTF-8：`tests/chat/test_chat_file_tools.py:107` 的 `write_text("外面")` 没写 encoding，在本机全量守卫里 UnicodeEncodeError 失败；用 `-X utf8` 跑则通过——同一测试的绿红取决于启动参数，不是代码对错。修法：显式 `encoding="utf-8"`。同类扫描（AST，`open`/`read_text`/`write_text` 无 encoding 且非二进制）：src+start.py 产品代码 0 处；tests 另 3 处只读 `json.dumps` 生成的纯 ASCII，安全。护栏：在非中文代码页机器上跑全量时不要加 `-X utf8` 掩盖问题；全量结果要注明是否 UTF-8 模式。控制台打印中文到管道（如 Git Bash 下跑 `check_progress.py`）同理需 `PYTHONIOENCODING=utf-8` 或 `-X utf8`。
+
 ## LRN-20261028-T05O：显示上下文内的真实调用门与互斥状态
 
 状态：有限修复并接收，代码`56fbe21`。预算门须在status.__enter__/提示/模块import/构造之后且下一真实调用之前；必要兜底异常不能拿未过滤旧池冒充本主题完整候选。成功与未开始flag/预算停止原因互斥，异常组合只标未知；successFalse不自证具体失败类别。完整候选保存与deep完成分开。714相关后仅状态门改，以2红→114增量接收，无最终单次714/full声明。

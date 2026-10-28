@@ -104,7 +104,7 @@ def test_read_file_sandbox_escapes_rejected():
         _mk(r, "inside.txt", "ok")
         # 外部真实存在的文件，尝试各类逃逸路径
         outside = Path(tempfile.mkdtemp(prefix="muyun_outside_"))
-        (outside / "secret.txt").write_text("外面")
+        (outside / "secret.txt").write_text("外面", encoding="utf-8")
         escapes = [
             f"../{outside.name}/secret.txt",
             f"a/../../{outside.name}/secret.txt",
