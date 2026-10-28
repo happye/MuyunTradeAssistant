@@ -10,6 +10,8 @@
 
 At each new conversation and batch handoff, follow [the shared progress lifecycle](plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新). Read `plan/fusion/RESUME.md`, check Git and run the project interpreter's `scripts/check_progress.py --check`, then read the active task. The shared `PROGRESS.json` owns progress; Claude auto-memory and chat history are not separate authorities. After status/evidence changes, the designated ledger owner updates JSON and runs `--render` then `--check` before delivery. Other agents return task IDs and evidence deltas; do not overwrite each other's ledger edits.
 
+**Collaboration process:** [plan/fusion/WORKFLOW.md](plan/fusion/WORKFLOW.md) is the single source for how work is done here (card selection and caps, contract template, verification layering, lightweight receipts, the 4 must-update docs, quota/interruption rules, multi-machine rules). The current plan and task cards live in [plan/fusion/iteration11/PLAN.md](plan/fusion/iteration11/PLAN.md). Where this file and WORKFLOW disagree on process, WORKFLOW wins; product red lines stay in AGENTS.md. On this machine Claude Code acts as controller without DSH (WORKFLOW §9): subagents implement/review, the main agent owns contracts, acceptance, Git and the ledger.
+
 ## Before any non-trivial work: read the discipline skill
 
 **Read `skills/muyun-dev-discipline/SKILL.md` first.** It is the tool-neutral master copy of this project's engineering discipline gates (fix-in-four-steps, same-class scanning, docs≠fix, verification-by-running, tuning red lines, pre-commit checklist). A synced copy also lives in `.claude/skills/muyun-dev-discipline/`.
@@ -89,7 +91,7 @@ Avoid speculative edits — if uncertain, state assumptions clearly and enumerat
 ## Context Management & Memory
 
 - **Reuse the existing handoff.** Before a context reset, update `plan/fusion/RESUME.md`; do not create another per-session handoff or duplicate archive.
-- **Read order at session start:** [AGENTS.md](AGENTS.md) → [progress lifecycle](plan/fusion/PROGRESS_CONTRACT.md#7-跨会话跨工具恢复与看板更新) → progress check summary/current task → [MILESTONES.md](MILESTONES.md) → [STATUS](plan/fusion/STATUS.md) → [RESUME](plan/fusion/RESUME.md) → current acceptance/plan and Git worktree. `ISSUES.md` provides issue detail; old handoffs are historical evidence only.
+- **Read order at session start:** [AGENTS.md](AGENTS.md) → [RESUME](plan/fusion/RESUME.md) current section → `scripts/check_progress.py --check` → [current plan](plan/fusion/iteration11/PLAN.md) (queue + active card contract) → Git worktree. Read [WORKFLOW](plan/fusion/WORKFLOW.md) before process work; read [MILESTONES.md](MILESTONES.md)/[STATUS](plan/fusion/STATUS.md) only when G/T definitions or status are needed. `ISSUES.md` provides issue detail; old handoffs and iteration 2–10 plans are historical evidence only.
 - Auto-memory (`~/.claude/projects/.../memory/`) is injected automatically; consult `MEMORY.md` for user preferences and project direction — no need to read memory files manually.
 - When a lesson, constraint, or decision matters for future work, persist it as a memory file (one fact per file, with frontmatter) and add a one-line pointer in `MEMORY.md`. Record the root cause, the fix, and the guardrail that prevents recurrence — do not repeat the same mistake.
 - Revisit the current plan before making changes so prior decisions are not lost. Use the `neat-freak` skill to sync docs and memory at phase transitions or session end, preventing knowledge rot.

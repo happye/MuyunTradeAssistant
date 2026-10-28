@@ -1027,7 +1027,7 @@
             "anchor": "G5已有求解/事件账本，但整体部分完成"
           }
         ],
-        "basis": "historical_acceptance_record"
+        "basis": "historical_acceptance_record；2026-10-28核定：solve_budget在src内无生产调用，工程met仅指库层实现，生产接线归V1-G5-SNAPSHOT（与ROLLOUT.md一致）"
       },
       "acceptance": {
         "status": "unknown",
@@ -1048,7 +1048,7 @@
         }
       ],
       "depends_on": [],
-      "next_action": "找到既有预算/账本实现的独立验收证据，只有缺口才补测或修复。"
+      "next_action": "按第十一轮计划G5-SOLVER-1合同执行（plan/fusion/iteration11/PLAN.md第3节）：求解器库层不变量S1–S7补测、账本明示语义L2/L3锁定与L1/L4明示排除、性质→测试映射与独立复核；产品路径跨候选消费归V1-G5-SNAPSHOT。"
     },
     {
       "id": "V1-G5-RECALL",
@@ -3122,6 +3122,59 @@
       "evidence": [
         "plan/fusion/iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json"
       ]
+    },
+    {
+      "id": "MAINT-WORKFLOW-20261028",
+      "date": "2026-10-28",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G5-SOLVER",
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "维护：协作流程与计划重组——新建WORKFLOW（流程唯一规范）、第十一轮计划（按能力排序的卡片队列与G5-SOLVER-1合同）与codex-dsh工具需求清单；第十轮计划转历史；G5-SOLVER工程证据说明限定为库层。分数/范围/权重/适用性不变。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/WORKFLOW.md",
+        "plan/fusion/iteration11/PLAN.md"
+      ]
     }
   ],
   "history_batches": [
@@ -3269,17 +3322,37 @@
     {
       "path": "plan/fusion/STATUS.md",
       "role": "current",
-      "purpose": "当前及历史批次接收范围，不另计百分比。"
+      "purpose": "G/T状态变化记录；2026-10-28起不再追加每批接收日志（见WORKFLOW 6.3）。"
     },
     {
       "path": "plan/fusion/RESUME.md",
       "role": "current",
-      "purpose": "恢复/下一任务/工作区保护。"
+      "purpose": "恢复入口：只有一个当前段（≤8KB），历史靠git log。"
+    },
+    {
+      "path": "plan/fusion/iteration11/PLAN.md",
+      "role": "execution",
+      "purpose": "当前计划与任务卡唯一入口：卡片队列、当前合同、待用户决定、本机受限清单、卡号与条款对照。"
+    },
+    {
+      "path": "plan/fusion/WORKFLOW.md",
+      "role": "workflow",
+      "purpose": "协作流程唯一规范：选卡与卡数上限、合同模板、分层验证、轻量回执、单一来源文档同步、额度中断、DSH与多机器规则、度量。"
+    },
+    {
+      "path": "plan/fusion/CODEX_DSH_TOOL_REQUESTS_20261028.md",
+      "role": "external_requests",
+      "purpose": "codex-dsh工具层问题与需求清单，交独立工具项目评估；暮云不实施。"
+    },
+    {
+      "path": "plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md",
+      "role": "historical_proposal",
+      "purpose": "协作冗余的问题与证据记录，已由WORKFLOW采纳。"
     },
     {
       "path": "plan/fusion/iteration10/DELIVERY_PLAN.md",
-      "role": "execution",
-      "purpose": "当前可执行合同与第十轮历史实施卡，映射量化ID。"
+      "role": "historical",
+      "purpose": "第十轮（T04/T05/BUG，10-21~10-28）合同与验收，已收口；不再作为当前执行入口。"
     },
     {
       "path": "plan/fusion/DESIGN.md",

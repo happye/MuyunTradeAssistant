@@ -1,21 +1,14 @@
 # 融合项目恢复入口
 
-## 当前续工：2026-10-28 T05-Q 已交付，下一步 G5-SOLVER（Claude Code 本机）
+## 当前：2026-10-28 Claude Code 本机主控，第十一轮开局
 
-**谁在做**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code 主控负责合同/集成/Git，muyun-coder 写代码与测试，code-quality-guard 独立复核，muyun-doc-writer 写文档。另一台机器 Codex/DSH 的 STOP_PENDING 锁与原件不在本机，本机不重投其请求、不绕锁、不声称其 Host 已停净。
-
-**已交付提交**：T05-P `2c2bfcb`/`7c8f6d6`（代码/文档），ISS-135 修复 `5870ae8`，T05-Q `cf973dc`（合同 `f53f1d3`），测试修复 `d760708`（文件编码）/`1922506`（并发测试调度竞态），协作建议 `cb77f25`。T05-P 细节见 DELIVERY_PLAN 与其回执；T05-Q 验收见 [DELIVERY_PLAN](iteration10/DELIVERY_PLAN.md) 顶部与[回执](iteration10/T05Q_BB_POSPLAN_ACCEPTANCE.json)（最终树全量结果以回执为准）。
-
-**进度与下一步**：工程47/98、验收40/111、合同42.0%–68.6%不变；`V1-G7-BATCH-BUDGET`的“逐入口启动预算”部分到此收口，该条仍未关闭，剩余为缓存输入资格、硬资源界、物理取消、费用上限，需先评估价值或由用户决定是否纳入 V1。下一步转向 `V1-G5-SOLVER`（组合预算求解与事件账本的独立验收映射，预计能让验收分真实移动），之后 `V1-G1-TRANSACTION-MATRIX`。待修登记：ISS-138（归 G5-CASH-NAV）、ISS-139、ISS-131。
-
-**恢复步骤**：
-1. 读 `AGENTS.md`，再读本段（需要时再读 `MILESTONES.md`、`STATUS.md`）；
-2. 核 Git 日志与工作树，确认 `cf973dc` 在 main，运行项目解释器的 `scripts/check_progress.py --check`；
-3. 新卡先按实际 HEAD 绑定合同；
-4. 验证一律走守卫 runner `plan/fusion/iteration9/review_test_runner.py`（本机公司内网普通 `pytest` 会挂起），其通过不代表真实数据源/真实 AI/真实账户效果；
-5. 不套用旧 WIP `stash@{0}`（本机旧 T05-M WIP，已被 `d400320` 取代）。
-
-**不要做**：① 不重套 `stash@{0}`，不套用另一台机器的 Codex/DSH WIP；② 不再按入口新开预算卡，BATCH-BUDGET 剩余项先评估价值；③ 不把离线守卫通过写成真实效果通过。
+- 最近交付：T05-Q 代码 `cf973dc` / 文档 `984dd03`；台账不变（工程 47/98、验收 40/111、合同 42.0%–68.6%、18/47）。
+- 本轮新建：协作流程 [WORKFLOW](WORKFLOW.md)、[第十一轮计划](iteration11/PLAN.md)、[codex-dsh 工具需求清单](CODEX_DSH_TOOL_REQUESTS_20261028.md)；提交号见 git log。
+- 下一步：第十一轮计划队列第 1 项 G5-SOLVER-1（合同在 [PLAN](iteration11/PLAN.md) 第 3 节）。
+- 阻断/待用户决定：[PLAN](iteration11/PLAN.md) 第 5 节 D1–D5。
+- 运行中的外部状态：Codex 机器上 T05-O 的 DSH STOP_PENDING 仍在该机，原纪律保留（不重投、不杀共享 Host）；本机无运行中任务。
+- 恢复步骤：读 `AGENTS.md` → 本段 → `.venv/Scripts/python.exe -B -X utf8 scripts/check_progress.py --check` → 按 PLAN 队列开卡。
+- 不要做：① 不套用本机 `stash@{0}` 旧 T05-M WIP；② 不重投另一台机器的未知请求；③ 不按入口追加 T05 字母卡。
 
 ## 历史停止交接：2026-10-28 不足10%，完成T05-O后停止（已被上方Claude Code续工取代）
 

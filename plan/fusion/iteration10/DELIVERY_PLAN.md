@@ -1,4 +1,6 @@
-# 第十轮：T05-D 旧并行 executor 退出界（ISS-120 剩余 4 处）
+# 第十轮：工程可靠性与批量入口（T04/T05/BUG，2026-10-21～10-28，已收口）
+
+本轮已收口，当前计划见 [第十一轮计划](../iteration11/PLAN.md)；以下为历史合同与验收，不再作为当前执行入口。
 
 ## 2026-10-28 已限定接收：T05-Q bb 与 pos plan all 批量收口（Claude Code本机）
 
@@ -78,7 +80,7 @@
 
 **2026-10-27更新**：T05-L已由Claude Code在本机按下方合同重实施并限定接收（Codex中止时的WIP已被取代、不得套用）；此前“新额度不足8%停止覆盖”转为历史，见RESUME历史段。
 
-## 2026-10-27 当前有限合同：T05-M live 批配置一次冻结与非秘密配置指纹
+## 2026-10-27 历史有限合同：T05-M live 批配置一次冻结与非秘密配置指纹
 
 关联`V1-G7-BATCH-BUDGET`（任务输入/配置身份子项），基线main@7b7de87，Claude Code 主控实施/Git，muyun-coder 写测试，独立复核按风险派 code-quality-guard。依据：盘点确认 `l 多代码/la/l all` 每只股票仍 `load_config()`+`apply_ai_overrides`+重建编排器，批内若改 settings 会混用配置，tasks 只能显示“配置未冻结”。
 
@@ -126,7 +128,7 @@
 
 用户已明确撤销旧停止信号。main@4e50c64，T05-K新task/session及合同入口见RESUME，旧J停止锁保留。主控已复核start.py来源join/reasoning.splitlines及CLI缓存market_turnover消费者。有限合同要求共享读写门：score有限[0,100]且非bool，confidence正且≤1（0.3弱正不误拒），invalidate缺失/None/bool；warnings/sources缺失或list[str]、reasoning缺失或str；market_turnover缺失/None/有限非负数，0保持旧默认回落、bool拒绝。坏条目当miss只重算该维；写端验证实际快照且拒坏载荷时保留旧有效文件、不初始化路径。缓存键/TTL/版本/prompt/formula不改、不清真实用户缓存、不以类型门自证配置/PIT资格。有限临时缓存红绿覆盖字段边界、五维命中一维失败续跑、全部有效/force_refresh、真实CLI摘要/展示报告/计划miss降级。DSH拥有cache.py/plain_errors及7项中列定测试，Codex负责文档/Git；新warning三处核对。实际数据/sector-meta额外AI路径保持，不承诺全缓存零AI。已完成并限定接收，进度不变。历史428守卫后仅两测试隔离修订，以日期4红/4绿及logger4红/4绿、最终26两文件守卫增量接收；独立PASS，28最终依赖一致、542源码清单和原用户资产保持。无最终树单次428、全量、完整安装环境或formalbridge回执声明；完整证据见[T05-K回执](T05K_CACHE_PAYLOAD_ACCEPTANCE.json)。下一卡先核l系列仅行情被记成功与可选批期限，配置/资源/缓存输入身份仍未通过。
 
-## 当前量化关联（2026-10-25）
+## 历史量化关联（2026-10-25）
 
 本文件保存实施合同与历史执行记录；任务/权重/当前验收状态唯一见[PROGRESS](../PROGRESS.md)。T04-A–D映射`V1-G7-SERVICES`，E–L映射`V1-G7-DISPATCH`，T05-D/F1/F2映射`V1-G7-WAIT-EXIT`，E/E2/E3映射`V1-G7-LATE-CACHE`。同条款多个补修不重复加分；先前缺冻结分母，不追造每批百分点。
 
@@ -163,7 +165,7 @@
 
 **本卡同类核对**：原报5处中股名/预告本已受限，已留显式更正；本次3个明确门外站点已修。只对这组已核定入口成立，不证明其它模块、登录/心跳或共享会话整体安全。下一张全会话租约须先落跨模块合同与有限矩阵，再实施。
 
-## 2026-10-25 当前合同：T05-F1 主题代码核验查询等待界
+## 2026-10-25 历史合同：T05-F1 主题代码核验查询等待界
 
 状态：2026-10-25限定接收，基线main@e28c674（已推送），本批交付SHA核main日志。Codex主控/Git，Sol/medium开发、Sol/high只读审查；架构Astra/low已裁决此有限切片。实际型号缺运行元数据时标未核实。
 
@@ -180,7 +182,7 @@
 
 后续会话合同候选为完整查询worker的非阻塞独占租约：旧worker实际结束前保持busy，新请求立即降级、无排队；登录/心跳/创建/分页/登出全部消费者共同接入。该候选尚未批准实施，不引入actor或单站点伪全局锁；真实数据串证券尚无复现证据。
 
-## 2026-10-24 当前合同：T05-E3 嵌套放弃状态与缓存保护
+## 2026-10-24 历史合同：T05-E3 嵌套放弃状态与缓存保护
 
 状态：2026-10-25增量限定接收。用户最新指派只在Codex实施，主控规划/Git、原生Subagent开发与复核；下方Claude/DSH身份为历史。基线main@2727141，已fetch核origin/main一致。
 
@@ -209,7 +211,7 @@
 
 下一批先定位Baostock完整查询/结果迭代共享会话边界，固定有限反例与合同；真实MID不以模拟晋级，G7/T05/V1仍未关闭。T04机械拆分暂缓。
 
-更新 2026-10-21。本文件是第十轮唯一合同与执行入口；第九轮历史合同与证据仍在 [iteration9/DELIVERY_PLAN.md](../iteration9/DELIVERY_PLAN.md)，不重算。
+更新 2026-10-21。本文件是第十轮唯一合同与执行入口（历史表述：第十轮已于 2026-10-28 收口，当前计划见 [第十一轮计划](../iteration11/PLAN.md)）；第九轮历史合同与证据仍在 [iteration9/DELIVERY_PLAN.md](../iteration9/DELIVERY_PLAN.md)，不重算。
 
 ## 角色与分工（本轮）
 
@@ -374,7 +376,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 修法 | 仅改 `tests/conftest.py`：session 隔离改指临时目录 + 会话结束文件名集合守卫。不改 src 生产路径 |
 | 定测 | `tests/core/test_report_dir_isolation.py` 4 项（session 偏离生产路径 / 绿路径不碰仓库 / 未隔离红灯演示+清理 / 守卫差分） |
 | 全量 | 3323 passed/0 failed/11 skipped/1 deselected（339.82s） |
-| 下一张 | ~~CLI pos plan --update 再抽~~（T04-D 本提交关闭）/ ~~T05-E~~（本提交关闭）/ T05-G7 仍待 Baostock·MID（不抢道）；不绑 G7/v43 |
+| 下一张 | ~~CLI pos plan --update 再抽~~（T04-D 本提交关闭）/ ~~T05-E~~（本提交关闭）/ T05-G7 仍待 Baostock·MID（不抢道）；不绑 G7/v43（历史队列，已被第十一轮计划取代） |
 
 
 
@@ -391,7 +393,7 @@ ormalize_stock_code 桥；持仓文件格式；TradePlan 字段语义；G7/v43�
 | 停止与回滚 | CLI 更新文案或「拒接受仍保留原计划」偏离 → 回滚；独立 commit，可 revert。 |
 
 
-## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）
+## 候选队列（未开工，按价值排序；每张开工前补全卡片字段）（历史队列，已被第十一轮计划取代）
 
 1. ~~**T04-C chat add/plan/overweight 去 CLI 桥**~~（已关闭）：prepare_trade_plan_draft + activate_overweight_checked。
 1b. ~~**T04-D CLI pos plan --update 再抽**~~（本提交已关闭）：prepare_generate_or_update_plan + accept_plan_update；CLI 薄封装保留 Y/n。

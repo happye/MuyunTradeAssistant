@@ -459,7 +459,7 @@ V1合同进度指数 / 确认下界–可能上界。E=工程met权重/工程适
 
 - verification：找到既有预算/账本实现的独立验收证据，只有缺口才补测或修复。；解除条件：已有预算求解和事件账本实现，按明示支持范围补齐独立验收映射；本条不计同快照分配/资金规则。
 
-下一步：找到既有预算/账本实现的独立验收证据，只有缺口才补测或修复。
+下一步：按第十一轮计划G5-SOLVER-1合同执行（plan/fusion/iteration11/PLAN.md第3节）：求解器库层不变量S1–S7补测、账本明示语义L2/L3锁定与L1/L4明示排除、性质→测试映射与独立复核；产品路径跨候选消费归V1-G5-SNAPSHOT。
 
 ### V1-G5-RECALL · 固定研究预算下的候选召回增益
 
@@ -778,9 +778,13 @@ V1合同进度指数 / 确认下界–可能上界。E=工程met权重/工程适
 - [plan/fusion/PROGRESS.md](../../plan/fusion/PROGRESS.md)：generated；自动生成的完整量化任务账本。
 - [plan/fusion/PROGRESS_CONTRACT.md](../../plan/fusion/PROGRESS_CONTRACT.md)：contract；计分、范围变化、阶段交付与校验边界的固定合同。
 - [docs/开发进度看板.html](../../docs/%E5%BC%80%E5%8F%91%E8%BF%9B%E5%BA%A6%E7%9C%8B%E6%9D%BF.html)：generated；本地可筛选进度页。
-- [plan/fusion/STATUS.md](../../plan/fusion/STATUS.md)：current；当前及历史批次接收范围，不另计百分比。
-- [plan/fusion/RESUME.md](../../plan/fusion/RESUME.md)：current；恢复/下一任务/工作区保护。
-- [plan/fusion/iteration10/DELIVERY_PLAN.md](../../plan/fusion/iteration10/DELIVERY_PLAN.md)：execution；当前可执行合同与第十轮历史实施卡，映射量化ID。
+- [plan/fusion/STATUS.md](../../plan/fusion/STATUS.md)：current；G/T状态变化记录；2026-10-28起不再追加每批接收日志（见WORKFLOW 6.3）。
+- [plan/fusion/RESUME.md](../../plan/fusion/RESUME.md)：current；恢复入口：只有一个当前段（≤8KB），历史靠git log。
+- [plan/fusion/iteration11/PLAN.md](../../plan/fusion/iteration11/PLAN.md)：execution；当前计划与任务卡唯一入口：卡片队列、当前合同、待用户决定、本机受限清单、卡号与条款对照。
+- [plan/fusion/WORKFLOW.md](../../plan/fusion/WORKFLOW.md)：workflow；协作流程唯一规范：选卡与卡数上限、合同模板、分层验证、轻量回执、单一来源文档同步、额度中断、DSH与多机器规则、度量。
+- [plan/fusion/CODEX_DSH_TOOL_REQUESTS_20261028.md](../../plan/fusion/CODEX_DSH_TOOL_REQUESTS_20261028.md)：external_requests；codex-dsh工具层问题与需求清单，交独立工具项目评估；暮云不实施。
+- [plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md](../../plan/fusion/COLLAB_OPTIMIZATION_PROPOSAL_20261028.md)：historical_proposal；协作冗余的问题与证据记录，已由WORKFLOW采纳。
+- [plan/fusion/iteration10/DELIVERY_PLAN.md](../../plan/fusion/iteration10/DELIVERY_PLAN.md)：historical；第十轮（T04/T05/BUG，10-21~10-28）合同与验收，已收口；不再作为当前执行入口。
 - [plan/fusion/DESIGN.md](../../plan/fusion/DESIGN.md)：design；冻结融合架构与不变量，设计不等于验收。
 - [plan/fusion/VALIDATION.md](../../plan/fusion/VALIDATION.md)：validation；真实效果与发布验证原则。
 - [plan/ARCHITECTURE.md](../../plan/ARCHITECTURE.md)：historical_design；原工程架构，当前执行范围由G/T及量化账本承接。
@@ -809,6 +813,7 @@ V1合同进度指数 / 确认下界–可能上界。E=工程met权重/工程适
 - 2026-10-28 T05O-ACCEPT-STOP-20261028 / progress / V1-progress-1：O阶段/逐股启动预算与候选/未开始口径有限接收，714相关后最终114增量、独立阻断清零；用户额度不足10%完成当前卡后停止，不派P。分数/范围/权重/适用性不变。
 - 2026-10-28 T05P-ACCEPT-20261028 / progress / V1-progress-1：Claude Code本机续工：P REPL顶层scan持仓扫描可选启动预算有限接收（代码2c2bfcb），scan &lt;主题&gt;改为拒绝；先57红后71绿、相关815通过；含追修与ISS-135（5870ae8）的最终树全量守卫5028通过/0失败/12跳过（非UTF-8模式、真实exit0），独立复核无P0/P1。分数/范围/权重/适用性不变，BATCH-BUDGET未闭合。
 - 2026-10-28 T05Q-ACCEPT-20261028 / progress / V1-progress-1：Q bb与pos plan all批量收口有限接收（代码cf973dc）：bb屏幕汇总与参数校验、pos plan all答N不再计失败、两者可选启动预算；逐入口启动预算到此收口。分数/范围/权重/适用性不变，BATCH-BUDGET未闭合，剩余深水项先评估价值。
+- 2026-10-28 MAINT-WORKFLOW-20261028 / progress / V1-progress-1：维护：协作流程与计划重组——新建WORKFLOW（流程唯一规范）、第十一轮计划（按能力排序的卡片队列与G5-SOLVER-1合同）与codex-dsh工具需求清单；第十轮计划转历史；G5-SOLVER工程证据说明限定为库层。分数/范围/权重/适用性不变。
 
 ## 历史遗留分流（不重复计分；待复核不是剔除V1）
 

@@ -1,6 +1,8 @@
 # 暮云融合决策架构：从多方意见到可跟踪的投资计划
 
-> **当前入口（2026-10-16）：[里程碑](../../MILESTONES.md) → [状态](STATUS.md) → [恢复](RESUME.md) → [R15](iteration9/R15_ACCEPTANCE.md) → [第九轮计划](iteration9/DELIVERY_PLAN.md)。v0.8.38新增财务采集身份门限定接收，未发布；2844全量通过，v37及此前验收保留。接续G4真实现金/行业资格及安全材料进入通道；真实MID、G4整体与V1未完成，v15/capture_only/default不变。
+> **当前入口（2026-10-28）：当前计划与任务卡见 [第十一轮计划](iteration11/PLAN.md)；协作流程见 [WORKFLOW](WORKFLOW.md)；进度与下一步见 [恢复](RESUME.md)。**
+>
+> **历史入口（2026-10-16，已过期，仅作证据）：[里程碑](../../MILESTONES.md) → [状态](STATUS.md) → [恢复](RESUME.md) → [R15](iteration9/R15_ACCEPTANCE.md) → [第九轮计划](iteration9/DELIVERY_PLAN.md)。v0.8.38新增财务采集身份门限定接收，未发布；2844全量通过，v37及此前验收保留。接续G4真实现金/行业资格及安全材料进入通道；真实MID、G4整体与V1未完成，v15/capture_only/default不变。
 
 初始方案日期：2026-09-25。以下为融合目标与第一轮F0–F9的历史设计/交付背景，不能当作当前全部完成保证；当前实现、验收与未完成能力以上方入口为准。第一轮记录仍见[EXECUTION_RECORD.md](EXECUTION_RECORD.md)和[ARCHITECT_REPORT.md](ARCHITECT_REPORT.md)。
 

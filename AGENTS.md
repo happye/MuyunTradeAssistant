@@ -1,6 +1,6 @@
 # 暮云思辨投资助手 — AI Agent 开发手册
 
-当前交接（2026-10-28）：T05-Q 已交付 `cf973dc`，下一步 V1-G5-SOLVER，详见 [RESUME](plan/fusion/RESUME.md)。
+当前进度与下一步见 [RESUME](plan/fusion/RESUME.md)；当前计划与任务卡见 [第十一轮计划](plan/fusion/iteration11/PLAN.md)；协作流程以 [WORKFLOW](plan/fusion/WORKFLOW.md) 为准。
 
 > 任何 AI 编码工具打开此项目时，请先阅读本文件。
 > 详细文档索引见末尾。
@@ -12,6 +12,8 @@
 V1任务/权重/状态唯一登记在`plan/fusion/PROGRESS.json`，读`plan/fusion/PROGRESS.md`或`docs/开发进度看板.html`查看生成视图；计分规则见`plan/fusion/PROGRESS_CONTRACT.md`。实质开发先关联稳定任务ID，交付报告说明行为、证据、工程/验收/合同指数前后与剩余/阻断；维护任务允许进度不变。改账本后运行`python -B -X utf8 scripts/check_progress.py --render`及`--check`；不手改生成文件、不用测试数或commit数涨分。范围/权重/适用性变更须留版本与前后影响，未知证据不当作未实施，百分比不能绕过必需验收门。
 
 **跨会话、跨工具必须执行**：在同一项目打开任何新对话，先读`plan/fusion/PROGRESS_CONTRACT.md`第7节、`plan/fusion/RESUME.md`，核Git/工作树并运行项目解释器的`check_progress.py --check`，再读取当前任务段；不假定聊天历史或某工具私有memory已共享。批次状态/证据变化后由唯一账本写入者更新JSON及变更记录、执行`--render`与`--check`后再交付；其余Agent只提交任务ID/证据增量，避免相互覆盖。关闭对话前同步恢复指针；无证据或纯维护允许分数不变。规则与账本随Git持久化，不代表浏览器后台跟踪代码或模型绝对服从规则。
+
+每批交付的文档同步范围、回执模板与额度中断规则以 [WORKFLOW](plan/fusion/WORKFLOW.md) 第 6–7 节为准。
 
 > **多 Agent 共用规则**：本文件只定义项目共同规范，不给阅读者自动分配架构师或实施者身份。角色以用户对当前会话的指派为准；Codex 专属约定见 `CODEX.md`，Claude Code 专属约定见 `CLAUDE.md`。共享交接文档中的作者职责不得覆盖当前 Agent 已获指派的任务。
 
@@ -91,7 +93,7 @@ AI 驱动的 A 股交易策略系统，**非实盘交易**，定位是研究/回
 
 核心能力：全市场扫描、深度分析（含 Weinstein 阶段）、买卖点精确触发、回测框架、RAG 策略知识检索、**TradePlan 持久化交易计划**（v0.8.5）、**笨总 6 维 AI 自动评分 + 主题精准选股**（v0.8.6）、**气宗持有模式 + 事件四要素**（v0.8.6.3）、**笨总视频理念优化：板块层信号+三倍定律+超配+市场宽度+产业线索**（v0.8.6.8）。
 
-当前产品基线为 **v0.8.42 当次行业条件化现金观察限定接收**，共享会话生命周期按第十轮限定接收；真实 MID 仍 NO_VALID，G3/G4/G7/T04 及 V1 整体未完成。cv6/binding_v4/assertion_v2、v15、capture_only/default、笨总缓存和阈值保持。T01 仅登记业务读取范围通过，管理投影视图豁免。当前进度、待办与证据分别见 [MILESTONES](MILESTONES.md)、[RESUME](plan/fusion/RESUME.md) 和 [第九轮计划](plan/fusion/iteration9/DELIVERY_PLAN.md)；历史测试数字不作为当前验收。
+当前产品基线为 **v0.8.42 当次行业条件化现金观察限定接收**，共享会话生命周期按第十轮限定接收；真实 MID 仍 NO_VALID，G3/G4/G7/T04 及 V1 整体未完成。cv6/binding_v4/assertion_v2、v15、capture_only/default、笨总缓存和阈值保持。T01 仅登记业务读取范围通过，管理投影视图豁免。当前进度、待办与证据分别见 [PROGRESS](plan/fusion/PROGRESS.md)、[RESUME](plan/fusion/RESUME.md) 和 [第十一轮计划](plan/fusion/iteration11/PLAN.md)（流程见 [WORKFLOW](plan/fusion/WORKFLOW.md)）；历史测试数字不作为当前验收。
 
 版本变更见 [README 版本历史](README.md#版本历史)；较早叙事保存在现有 [截至v0.8.14归档](docs/archive/AGENT版本叙事归档_截至v0.8.14_2026-09.md) 与 [v0.8.15–v0.8.19归档](docs/archive/AGENT版本叙事归档_v0.8.15-v0.8.19_2026-09.md)。归档与历史实施账本只作历史证据，不作为当前执行或通过保证。
 
@@ -395,7 +397,9 @@ docs/               # 详细文档
 | `ISSUES.md` | 所有问题追踪+ 顶部当前待办汇总 |
 | `docs/archive/2026-09-25_交接_C批次实施与F系列接手.md` | 历史M/C与F接手记录；当前状态见 `plan/fusion/STATUS.md`，不从归档推定完成状态 |
 | `docs/archive/2026-09-24_交接_扫描复盘观察池与架构师迭代计划.md` | 历史交接（已归档）：scan review/观察池交付明细 |
-| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；当前实施唯一入口为第九轮DELIVERY_PLAN.md，审批为同目录R15_ACCEPTANCE.md；S2AC文件只保留专项原范围与证据；iteration历史只作证据。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
+| `plan/` | 当前里程碑 = [plan/fusion/STATUS.md](plan/fusion/STATUS.md)，跨对话交接 = [RESUME](plan/fusion/RESUME.md)（含明确标注的 Codex 架构师会话记忆，不向其他 Agent 分配身份）；当前计划入口 = `plan/fusion/iteration11/PLAN.md`，流程 = `plan/fusion/WORKFLOW.md`，第九/十轮计划（含 R15_ACCEPTANCE.md 审批）只作历史证据；S2AC文件只保留专项原范围与证据；iteration历史只作证据。按复查索引比较源码变更，只重看受影响块；设计交付、实现、场景验证和策略效果不得混为完成 |
+| `plan/fusion/WORKFLOW.md` | 协作流程唯一规范（角色、选卡与卡号上限、卡片生命周期、验证、回执与文档同步、额度与中断、DSH 使用规则） |
+| `plan/fusion/iteration11/PLAN.md` | 当前计划与任务卡入口（卡片队列、合同、待用户决定事项） |
 | `tests/README.md` | **v0.8.13 新增**：测试目录说明与跑法（离线默认 `pytest -q`/外源与 AI 显式启用/用户目录隔离机制） |
 | `docs/archive/` | 历史版本文档归档（v0.7.x~v0.8.6.x 迭代规划/里程碑/旧交接 + 2026-09 迁出的 AGENTS 版本叙事归档，不再维护），索引见 `docs/archive/README.md` |
 | `portfolio.yaml` | 当前持仓记录 |

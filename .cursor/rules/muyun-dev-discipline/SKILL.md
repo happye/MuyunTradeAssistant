@@ -172,7 +172,10 @@ git show --stat HEAD | tail -5    # 看代码文件行数变化，别只看 mess
 9. **`subprocess.run(text=True)` 必须显式 `encoding="utf-8"`**（LRN-20260924-014）：不带 encoding 时中文 Windows 父进程按 GBK 解码子进程 UTF-8 输出 → 中文全乱码 → 靠解析输出内容的断言全灭（「一会过一会不过」先查解码码页，再谈环境状态依赖）
 10. **patch 模块属性期间禁止让任何模块「首次 import」**（LRN-20260925-015）：`from X import Y` 按值绑定会把替身永久捕获进导入方命名空间（monkeypatch 只恢复被 patch 的模块属性）→ 全量绿但局部组合跑红的顺序依赖，第一嫌疑；patch 类测试文件顶部先预导入有 by-value 绑定的真实模块；且**接线测试（parse_input→run_cli 全链）与单元直调测试必须并存**——直调实现抓不到接线断裂（M6 doctor P0 实证）
 
-完整 15 条见 `AGENTS.md` §五。
+11. **全量不加 `-X utf8`，文本读写一律显式 `encoding="utf-8"`**（LRN-20261028-CODEPAGE）：本机 Windows 默认代码页是 cp1252，`write_text("中文")` 不带 encoding 会 UnicodeEncodeError；`-X utf8` 会把这类缺陷掩盖成绿。全量结果要注明是否 UTF-8 模式
+12. **并发/超时测试的超时要远大于“线程进入被测体”的调度延迟**（LRN-20261028-FLAKY-TIMEOUT）：30ms 父级截止在负载下会在子线程进入前就放弃，测试偶发失败而产品正确；被测体用 Event 阻塞保证时序，超时留数百毫秒余量。偶发失败当缺陷修，不重跑碰运气
+
+完整 15 条见 `AGENTS.md` §五；协作流程（选卡、回执、文档同步、额度中断）见 `plan/fusion/WORKFLOW.md`。
 
 ---
 

@@ -1,6 +1,6 @@
 # 第九轮：账户与行动说明统一补修 → 合同冻结 → M2只读研究 → T01 today卡片 → G3研究资格
 
-更新2026-10-20。**本文件仍是第九轮唯一合同与历史证据入口；T05及远端增量限定接收，最终合同与结果见末节。** 以下v42测试为历史限定验收，2026-10-20整合结果见末节。原批当时状态： v0.8.42限定接收`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未commit/tag/push。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹起止稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅受影响组1 passed（2.19s），真实worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），最终进程退出case1 passed。真实PDF和SSE各请求一次，产生1个当前条件化组2期。v39-v41历史验收保持。真实MID仍NO_VALID，历史行业/PIT、ROE、现金持续性UNKNOWN；G4整体/V1未完成；capture_only/default、旧接受态、缓存、阈值不变。
+更新2026-10-20。**本文件仍是第九轮唯一合同与历史证据入口（历史，当前计划见 [../iteration11/PLAN.md](../iteration11/PLAN.md)）；T05及远端增量限定接收，最终合同与结果见末节。** 以下v42测试为历史限定验收，2026-10-20整合结果见末节。原批当时状态： v0.8.42限定接收`ACCEPTED_CURRENT_CONDITIONAL_CASH_OBSERVATIONS_ONLY`，未commit/tag/push。父12文件328 passed/1 skipped（29.05s），最终全量3049 passed/0 failed/3 skipped/1 external deselected（229.65s）；460项源码/测试/材料指纹起止稳定，7保护hash/知识库集合不变。network 785、child 12均阻断、real_state 0。独立8组按轮次7 passed+1临时夹具错误（4.04s）后仅受影响组1 passed（2.19s），真实worker共2次；原guard两正式文件107 passed/1 skipped（6.03s），最终进程退出case1 passed。真实PDF和SSE各请求一次，产生1个当前条件化组2期。v39-v41历史验收保持。真实MID仍NO_VALID，历史行业/PIT、ROE、现金持续性UNKNOWN；G4整体/V1未完成；capture_only/default、旧接受态、缓存、阈值不变。
 
 **此前G3合同保持**：数值/来源资格修复升`cv6/g3.binding_v4`，综合method自动吸收组件变化，使已保存cv5评估待复核；旧原件及接受主槽保留，新结果只入候选。旧cv3冻结语料不覆盖。命题算法assertion_v2、笨总缓存和交易阈值保持；shadow_v15仅冻结已验工程合同，不宣称真实MID/投资效果过门。未来新增解析能力独立版本化，不追改本合同。
 
