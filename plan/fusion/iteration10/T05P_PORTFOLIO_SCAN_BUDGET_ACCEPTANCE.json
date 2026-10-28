@@ -1,0 +1,79 @@
+{
+  "schema": "muyun-acceptance/v1",
+  "date": "2026-10-28",
+  "status": "ACCEPTED_PORTFOLIO_SCAN_OPTIONAL_START_BUDGET_SCOPE_ONLY",
+  "base_commit": "dbbca69ae86ef8eea9691e1ca0c5d358eaa979d7",
+  "contract_commit": "76cebba",
+  "delivery_commit": "2c2bfcb",
+  "related_commits": {
+    "d760708": "test-only: tests/chat/test_chat_file_tools.py explicit utf-8 write (cp1252 default code page on this machine); found by the T05-P full guarded run, unrelated to T05-P code"
+  },
+  "task_ids": [
+    "V1-G7-BATCH-BUDGET"
+  ],
+  "contract": {
+    "id": "muyun-v1-g7-portfolio-scan-budget",
+    "source": "plan/fusion/iteration10/DELIVERY_PLAN.md T05-P section",
+    "implementer": "muyun-coder (sonnet) per work order; main agent applied review P2 wording fixes and 6 follow-up tests",
+    "git_owner": "Claude Code main agent on machine C:\\Users\\HanPeiyi\\SVN\\Muyun",
+    "roles": {
+      "locate": "muyun-explorer (haiku)",
+      "implementation_and_tests": "muyun-coder (sonnet)",
+      "independent_review": "code-quality-guard (opus), read-only, guarded probes and 18 mutants in a temporary worktree",
+      "docs": "muyun-doc-writer (sonnet)",
+      "contract_integration_ledger": "Claude Code main agent (Opus)"
+    },
+    "model_metadata_verified": false,
+    "other_machine_state": "Codex/DSH STOP_PENDING locks and originals live on another machine; not touched or re-submitted from here. Stale local T05-M WIP was stashed (stash@{0}), superseded by d400320, must not be re-applied."
+  },
+  "accepted_scope": [
+    "REPL top-level scan/s accepts optional finite positive --budget/--budget=; malformed values and unknown shapes rejected before business via _split_budget_option; no-budget parse stays (\"scan\", {}) and run_cli call shape is byte-identical",
+    "run_cli unified gate validates mode scan budget with batch_scorer.budget_descriptor; bad values rejected with fixed text before analyze_portfolio",
+    "analyze_portfolio(*, budget_seconds=None): one monotonic deadline taken at function entry before the validation import; checkpoints after validation, after business import, after account snapshot/roster, after config+orchestrator, before each stock header and after header before fetch; once a stock fetch starts the whole old path completes; deadline not propagated into fetch/orchestrator/AI; 30s fetch gate unchanged",
+    "not-started set comes only from the scheduler slice positions[k:], kept apart from results; summary table and action counts include processed items only; all-not-started never called failure; roster-not-formed expiry says roster unknown, never empty; incomplete roster wording limited to enumerated scope",
+    "No-budget path unchanged except one REPL optional hint after the count line (not printed for empty roster)",
+    "Extra tokens after top-level scan (e.g. scan 半导体) previously silently ignored and ran AI analysis of all holdings; now rejected before business with guidance to scan market; budget-before-subcommand forms point to scan market deep ... --budget 600 or say scan review unsupported",
+    "banner/help/_BUDGET_HELP/_BUDGET_SCOPE/_COMMAND_HINTS updated; scan review rejection uses current scope",
+    "CLI --portfolio budget remains rejected (unchanged)"
+  ],
+  "validation": {
+    "runner": "plan/fusion/iteration9/review_test_runner.py (plain pytest hangs on this corporate intranet at real data-source calls)",
+    "red_on_base": "tests/core/test_portfolio_scan_budget.py (65 tests) on unmodified product code: 57 failed/8 passed; 27 business-assertion reds, 30 TypeError unexpected keyword budget_seconds",
+    "green_new_file": "71 passed after review follow-ups (65 + 6), BLOCKED_IO network/subprocess/real_state 0",
+    "related_10_files": "815 passed (22.09s); network 254 blocked attempts all from tests/core/test_o0_exceptional_account.py pre-existing external calls, identical 254 on baseline worktree; subprocess 0, real_state 0",
+    "full_guarded_before_follow_ups": "5020 passed / 1 failed / 12 skipped, network 952 / subprocess 12 / real_state 0 (all blocked), protected hashes unchanged; run WITHOUT -X utf8; the single failure was tests/chat/test_chat_file_tools.py::test_read_file_sandbox_escapes_rejected (UnicodeEncodeError, cp1252 default), fixed in d760708 and that file re-run 15 passed; follow-up changes after this run were wording + 6 tests, covered by the 815 related run and by full_guarded_final_tree",
+    "full_guarded_final_tree": "after review follow-ups and ISS-135 fix (5870ae8): 5028 passed / 0 failed / 12 skipped / 1 deselected in 541.05s, real exit 0, run WITHOUT -X utf8; network 952 / subprocess 12 blocked, real_state 0; protected portfolio hashes and knowledge file set unchanged",
+    "repl_smoke": "real start.py with temp HOME and PYTHONIOENCODING=utf-8: scan --budget 0.000001 -> expired after entry validation, roster not read, says not empty; scan 半导体 and scan --budget 60 market rejected with guidance; --budget abc and s --budget=0 rejected; temp HOME only received startup .muyun_cacert.pem, no ~/.muyun writes, no network",
+    "independent_review": "code-quality-guard: mergeable, no P0/P1, 18 mutants killed (>= to >, slice [i:], each of 6 checkpoints removed, clock after import, unconditional table/notes/hint, parse leaks, gate removal, not-started into results, mid-fetch checkpoint, double logout); 6 P2: P2-1..P2-4 wording fixed in 2c2bfcb, P2-6 test gaps covered by 6 new tests, P2-5 docs synced in the docs commit",
+    "not_verified": "real external data sources, product AI, real account effects; wall-clock overrun of the current stock (30s fetch gate + AI) is by design"
+  },
+  "existing_test_contract_updates": [
+    "tests/core/test_batch_budget_parse.py: removed \"scan --budget 60\" from unsupported list; run_cli case (\"scan\", {\"budget\": 60}) -> (\"scan\", {\"budget\": 0}) bad-value negative",
+    "tests/core/test_live_batch_budget.py: removed \"scan --budget 60\" from unsupported list",
+    "tests/core/test_scan_market_budget.py: removed \"scan --budget 60\" from unsupported list and corrected docstring",
+    "T05-O card clause 'portfolio scan with budget rejected before business' superseded by T05-P for REPL top-level scan only"
+  ],
+  "same_class_scan": {
+    "implicit_encoding_text_io": "AST scan of src+start.py: 0 product sites; tests: 1 real site fixed (d760708), 3 reads of ASCII-only json.dumps output left as safe",
+    "pre_existing_defect_found": "analyze_portfolio appends results after analyze succeeds and appends again in except if a later display step raises -> duplicate summary row and false 'analysis failed' (ISS-135, fixed separately in 5870ae8 with red-first regression; AST scan 13 sites, 1 real)"
+  },
+  "protection": {
+    "protected_portfolio_hashes_unchanged": true,
+    "knowledge_file_set_unchanged": true,
+    "cache_version_unchanged": true,
+    "no_new_logger_warning": true
+  },
+  "progress": {
+    "engineering": "47/98 (48.0%) unchanged",
+    "acceptance": "40/111 (36.0%) unchanged",
+    "contract_index": "42.0%-68.6% unchanged",
+    "closed": "18/47 unchanged",
+    "batch_budget_closed": false
+  },
+  "remaining": [
+    "bb batch backtest validation: no budget, no on-screen batch summary in REPL (candidate T05-Q)",
+    "pos plan all budget (per-stock benzong scoring with AI, interactive update confirmations)",
+    "full config/data/prompt and cache input qualification, resource hard bounds, physical cancel, cost caps",
+    "ISS-131 evidence source hardcoded"
+  ]
+}

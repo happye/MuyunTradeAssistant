@@ -1,3 +1,5 @@
+T05-P（2026-10-28，Claude Code本机）已限定接收，代码`2c2bfcb`；顶层`scan`持仓扫描可选预算与额外参数业务前拒绝见ISS-134及[回执](plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json)；另登记ISS-135（持仓汇总表展示阶段异常时重复行，待修）。不关闭`bb`、`pos plan all`、缓存输入资格或G7/T05整体。
+
 T05-O（2026-10-28）已限定接收并按额度信号停止，代码`56fbe21`；自动deep预算与候选/未开始口径见ISS-133及[回执](plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json)。
 
 T05-N（2026-10-28）已限定接收，代码`f0a2425`；bz scan预算/limit与保存事实见ISS-132及[回执](plan/fusion/iteration10/T05N_BZSCAN_BUDGET_ACCEPTANCE.json)，不关闭其他入口/资源/缓存输入资格。
@@ -2390,4 +2392,24 @@ ich.Text）。修前定测 	ests/ui/test_bug_tui_markup.py 4 项全红，panel �
 - **位置**：`src/cli/main.py::scan_market`（3048）、`src/scanner/scanner_engine.py::deep_analyze`（327），REPL/CLI接线及deep结果展示。
 - **验证**：首次新API失败/业务红/fixture缺口分列；12+2业务追修红→此前714相关+最终114增量，真实exit0/IO0；无最终单次714或全量声明。
 - **同类剩余**：无预算旧主题兜底失败后沿用原池的分支1处保持既有语义，本卡未核定，后续若改须另定合同；公共REPL/argparse启动不含于scan_market起算。账户G2/T01与完整缓存输入资格不由本卡通过。
-- **边界**：当前阶段/股票可完成，非硬期限/取消/费用上限；P持仓扫描仅定位、未实施。
+- **边界**：当前阶段/股票可完成，非硬期限/取消/费用上限；P持仓扫描仅定位、未实施（后由T05-P实施，见ISS-134）。
+
+
+### ISS-134: 顶层scan静默忽略主题词跑全部持仓AI、缺可选启动预算（T05-P）
+
+- **状态/日期**：2026-10-28有限修复，代码`2c2bfcb`（合同`76cebba`，测试代码页可移植性修复`d760708`）；code-quality-guard独立复核无P0/P1。
+- **代码位置**：`start.py`顶层scan解析分支（约682-704，`parse_input`中剥离预算、额外token业务前拒绝）；`src/cli/main.py::analyze_portfolio`（417，新增`budget_seconds`关键字参数与各检查点）。
+- **实证**：合同基线`dbbca69`上`scan 半导体`的主题词被静默忽略，直接对全部持仓逐只跑AI分析，命令提示`_COMMAND_HINTS["scan"]`还写着不存在的`scan <主题>`；顶层持仓扫描无预算。新测试`tests/core/test_portfolio_scan_budget.py`在未改代码上57失败/8通过（业务断言红27、缺符号红30）。
+- **修复**：REPL`scan --budget 600`/`s --budget=600`一次monotonic截止（持仓扫描入口起算，不含命令分发前公共模块加载），取数模块导入/账户快照（含估值行情）/配置/编排器准备计入；到期不开始下一只持仓，当前一只取数启动后整只完成；未开始只列调度器确证的代码与计数，不进汇总表/操作建议、不计失败，全部未开始不称失败，清单未形成称“持仓名单未知（不代表空仓）”，清单不完整只称已枚举范围。无预算行为不变，仅在“共N只持仓股”后多一行可选提示。`scan`剥离预算后仍有额外token即业务前拒绝并指引`scan market <规则|主题>`；`scan --budget 60 market deep`指引`scan market deep [规则|主题] --budget 600`；`scan review`不支持预算；命令提示改正。
+- **验证**：追补后新文件71通过；相关10文件815通过；全量守卫（非UTF-8模式）5020通过/1失败/12跳过，唯一失败为测试代码页缺陷（本机默认cp1252、`write_text`未指定encoding），已在`d760708`修复并复跑该文件15通过，最终树（含复核P2追修与ISS-135修复`5870ae8`）全量守卫5028通过/0失败/12跳过/1排除（非UTF-8模式，541s，真实exit0，网络952/子进程12均被拦截、real_state=0）；独立复核18个突变全杀，4条文案P2与测试缺口已修；真实REPL临时HOME冒烟（未写`~/.muyun`、未触网）。验证均走守卫runner（本机公司内网普通pytest会挂起）。
+- **同类剩余**：`bb`批量回测（REPL现只打印逐只✓/✗，汇总只在CLI显式导出时写文件，下一卡候选T05-Q）与`pos plan all`的预算/未开始口径未做；CLI`--portfolio`仍不支持`--budget`。
+- **限制**：离线守卫+冒烟，不等于真实外源/真实AI/真实账户效果；协作式预算，非强制中断、非费用上限，准备阶段可能超出；不自动续跑、无任务账本；完整配置/数据/提示词与缓存输入资格未做；V1-G7-BATCH-BUDGET/G7/T05/V1未关闭，进度不变（工程47/98、验收40/111）。
+
+
+### ISS-135: 持仓扫描汇总表在展示阶段异常时重复行（既有缺陷，T05-P复核发现）
+
+- **状态/日期**：2026-10-28登记并修复，代码`5870ae8`（P3，展示/汇总正确性）。
+- **代码位置**：`src/cli/main.py::analyze_portfolio`——成功入表后置`_analyzed=True`；`except`按该标记区分“逐只展示异常（分析已完成）”与“分析失败”。
+- **实证**：`orchestrator.analyze`成功后即`results.append(...)`，其后同一`try`内证据/建议/逐只展示若抛异常，原`except`再追加`(pos, stock_data, None, None, None)`并打印“分析失败”，汇总表同一代码两行、已完成分析被报成失败（code-quality-guard在T05-P复核中发现）。
+- **修复**：分析已完成仅展示出错时黄字提示、`logger.info`、不再入表；分析本身失败保持原warning与原入表。操作建议计数原本只计有策略结果的行，修前后均计该股一次。
+- **证据**：先红`tests/core/test_portfolio_scan_budget.py::test_iss135_display_failure_after_analyze_keeps_single_summary_row`（`HookConsole.print_hook`在逐只展示行抛一次异常，汇总表计数2）→修后绿；相关3文件237通过（守卫runner）。同类扫描（AST：同一try的body与handler都append同一列表）13处中仅此1处真实。未新增logger.warning。

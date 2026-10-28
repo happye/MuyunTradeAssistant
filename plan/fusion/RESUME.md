@@ -1,6 +1,24 @@
 # 融合项目恢复入口
 
-## 当前停止交接：2026-10-28 不足10%，完成T05-O后停止
+## 当前续工：2026-10-28 T05-P 由 Claude Code 本机实施并限定接收
+
+**身份**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code主控（Opus）+ muyun-coder（sonnet，按工单实施与测试）、code-quality-guard（opus，独立只读复核）、muyun-doc-writer（sonnet，文档）。用户本会话`/goal`授权拉取最新并持续接手开发，因此下方“历史停止交接”里“先有新恢复指令”的前置已满足。卡片T05-P（关联V1-G7-BATCH-BUDGET），绑定基线main=`dbbca69`；合同提交`76cebba`，代码提交`2c2bfcb`，另有测试可移植性修复`d760708`（测试写文件未指定utf-8、本机默认cp1252致失败，非产品逻辑）。
+
+**与其他机器/旧WIP的关系**：另一机器Codex/DSH的STOP_PENDING锁与原件（`C:/Users/Crux/...`）不在本机，本机不重投其请求、不绕锁、不声称其Host已停净。本机旧T05-M WIP已`git stash`（`stash@{0}`），被`d400320`取代，**禁止重套**。
+
+**交付范围**：REPL顶层`scan --budget 600`/`s --budget=600`（一键持仓分析`analyze_portfolio`）新增可选启动预算：从持仓扫描入口一次monotonic截止（不含命令分发前的公共模块加载），取数模块导入、账户快照（含估值行情）、配置、编排器准备都计入；到期不再开始下一只持仓，当前一只取数启动后整只完成；非强制中断、非费用上限，不自动续跑、无任务账本。未开始只列调度器确证未开始的代码与计数，不进汇总表/操作建议、不计失败；全部未开始不称失败；清单未形成称“持仓名单未知（不代表空仓）”；清单不完整只称已枚举范围。无预算行为不变，仅在“共N只持仓股”后多一行可选提示；CLI`--portfolio`仍不支持`--budget`。行为变化：`scan 半导体`等额外参数以前被静默忽略并跑全部持仓AI分析，现在业务前拒绝并指引`scan market <规则|主题>`；`scan --budget 60 market deep`指引`scan market deep [规则|主题] --budget 600`；`scan review`不支持预算；命令提示里错误的`scan <主题>`已改正。
+
+**证据**：新测试`tests/core/test_portfolio_scan_budget.py`先在未改代码上57失败/8通过（业务断言红27、缺符号红30）；追补后新文件71通过；相关10文件815通过；全量守卫（非UTF-8模式）5020通过/1失败/12跳过，唯一失败是测试代码页缺陷，已在`d760708`修复并复跑该文件15通过，最终树（含复核P2追修与ISS-135修复`5870ae8`）全量守卫5028通过/0失败/12跳过/1排除（非UTF-8模式，541s，真实exit0，网络952/子进程12均被拦截、real_state=0）。code-quality-guard独立复核无P0/P1，18个突变全杀，4条文案P2与测试缺口已修。真实REPL临时HOME冒烟通过（未写`~/.muyun`、未触网）。回执见[T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json](iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json)（主控维护）。
+
+**验证环境说明（内网/守卫runner）**：本机公司内网，普通`pytest`会挂起，验证全部走`plan/fusion/iteration9/review_test_runner.py`守卫runner。结论层级：离线守卫+REPL临时HOME冒烟，不代表真实外源/真实AI/真实账户效果。
+
+**进度**：工程47/98（48.0%）、验收40/111（36.0%）、合同42.0%–68.6%、18/47不变；V1-G7-BATCH-BUDGET/G7/T05/V1未关闭。剩余入口：`bb`、`pos plan all`，以及完整配置/数据/提示词与缓存输入资格。
+
+**下一卡候选T05-Q**：`bb`批量回测验证结束后的屏幕汇总（现状REPL`bb`只打印逐只✓/✗，汇总只在CLI显式导出时写文件）+可选启动预算+未开始单列。另有待修既有缺陷：ISS-135（`src/cli/main.py::analyze_portfolio`分析成功后先append、展示阶段异常时except再append，汇总表同一代码重复行）、ISS-131（证据`source`硬编码）；是否并入T05-Q待主控定。
+
+**恢复步骤**：1. 读`AGENTS.md`→`MILESTONES.md`→`STATUS.md`→本页；2. 核Git日志（确认T05-P代码`2c2bfcb`及本批文档提交）与工作树，运行项目解释器的`check_progress.py --check`；3. 新卡先按实际HEAD绑定合同，验证一律走守卫runner；4. 不套用另一台机器的Codex/DSH WIP，不重套`stash@{0}`。
+
+## 历史停止交接：2026-10-28 不足10%，完成T05-O后停止（已被上方Claude Code续工取代）
 
 用户最新指令允许完成当前卡后收尾，现已完成并停止新派发/测试，不开启P。M代码d400320、N代码f0a2425/文档5191680已推送；O代码56fbe21与本批文档交付以实际main/origin日志核对。Codex负责合同/验收/Git，DSH唯一实施与测试，用户共享Host保留。
 
@@ -57,7 +75,7 @@
 
 **下次恢复**：先核`git status`应仍为上述WIP；若工作树丢失，用`git apply .cache/t05m-wip/tracked-wip.patch`并复制测试副本。然后①守卫全量`./.venv/Scripts/python.exe -B -X utf8 plan/fusion/iteration9/review_test_runner.py tests`（约9分钟；普通pytest在内网真实外源处会挂起）②派code-quality-guard复核（重点：密钥/URL不得进指纹或账本、指纹稳定性、冻结时点、跨股不污染）③按复核修正→提交代码→同步STATUS/RESUME/MILESTONES/DELIVERY_PLAN/README/AGENTS/ISSUES/使用手册+回执`iteration10/T05M_LIVE_CONFIG_ACCEPTANCE.json`+PROGRESS变更记录→`check_progress.py --render/--check`→推送。之后下一卡T05-N：`bz scan`全链可选`--budget`（入口起算、传`auto_score_batch(deadline=)`、`--backtest`循环共用截止）+候选上限/“×5维”文案诚实化；再盘点scan market deep/scan/bb/pos plan all的期限与续跑身份。进度E48.0%/A36.0%/P42.0%–68.6%、18/47不变。
 
-## 当前续工：2026-10-27 T05-L 由 Claude Code 本机重实施并限定接收
+## 历史续工：2026-10-27 T05-L 由 Claude Code 本机重实施并限定接收
 
 **身份**：本机`C:\Users\HanPeiyi\SVN\Muyun`，Claude Code主控（Opus）+ muyun-explorer（haiku，调用链定位）、muyun-coder（sonnet，写两份新测试）、code-quality-guard（opus，独立只读对抗复核，未改文件）、muyun-doc-writer（sonnet，文档）。用户本会话`/goal`授权拉取最新、接手开发、持续工作；用户说明本机是公司内网，产品第三方数据接口连不上属正常，重心在方案/产品设计/代码质量。卡片T05-L（关联V1-G7-BATCH-BUDGET），实施基线main=`b65d7bd`（=T05-K `3f08bf5`+收尾文档）；交付代码commit `847eb66`（主控以Git日志为准）。
 
@@ -120,7 +138,7 @@
 
 **下一卡未实施**：T05-K只做只读定位，未创建DSH任务/合同/请求，产品与测试无待交付改动。恢复先核用户新授权与实际Git，再定有限合同。缓存资格草案须先补核可选字段消费者：主控实际发现`start.py`的来源join/遍历、reasoning.splitlines和CLI缓存market_turnover参与计算；定位员“sources/reasoning无不安全消费”结论不完整，不能直接照抄。复核坐标后再定schema，不先承诺仅score/confidence/invalidate/warnings足够。只用临时缓存反例，禁止真实用户缓存探针/清理；公式/prompt/CACHE_VERSION保持，完整配置/资源界及V1仍待。
 
-## 当前续工：2026-10-26 T05-J 可选时限与正常发现入口已限定接收
+## 历史续工：2026-10-26 T05-J 可选时限与正常发现入口已限定接收
 
 用户`/goal`持续Codex+DSH授权有效，后续明确选择可选总时限且要求使用者知晓选项。T05-J已完成ba/bz多代码子范围：`--budget <秒>`/`--budget=<秒>`默认不启用；费用确认后在共用执行入口取单一monotonic截止，准备及逐股边界检查，到点不再开始下一只，当前只允许完成。正常启动/h菜单与默认命令缓存预览/确认前提示都有真实输出测试。不是硬墙、强取消或费用上限；l/la/l all本卡不支持该参数。
 

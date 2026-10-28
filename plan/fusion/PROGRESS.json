@@ -1943,9 +1943,13 @@
           {
             "path": "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-O automatic market-deep stage/stock start budget only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-P REPL top-level scan portfolio optional start budget only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H through O accepted; remaining portfolio/bb/plan entry resources, full skill/data/prompt and cache input qualification still pending"
+        "basis": "Partial T05-H through P accepted; remaining bb/pos plan all entry resources, full skill/data/prompt and cache input qualification still pending"
       },
       "acceptance": {
         "status": "unmet",
@@ -1986,21 +1990,25 @@
           {
             "path": "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
             "anchor": "T05-O automatic market-deep stage/stock start budget only; full criterion open"
+          },
+          {
+            "path": "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
+            "anchor": "T05-P REPL top-level scan portfolio optional start budget only; full criterion open"
           }
         ],
-        "basis": "Partial T05-H through O accepted; remaining portfolio/bb/plan entry resources, full skill/data/prompt and cache input qualification still pending"
+        "basis": "Partial T05-H through P accepted; remaining bb/pos plan all entry resources, full skill/data/prompt and cache input qualification still pending"
       },
       "blockers": [
         {
           "type": "verification",
-          "reason": "H至O各有限子范围已接收；portfolio scan/bb/pos plan all等其他入口期限资源、完整配置/数据/提示词及缓存输入资格仍待，不能由子批替代。",
+          "reason": "H至P各有限子范围已接收（P为REPL顶层scan持仓扫描启动预算）；bb/pos plan all等其他入口期限资源、完整配置/数据/提示词及缓存输入资格仍待，不能由子批替代。",
           "release_condition": "核定现有批量入口的全链总期限、资源上限、任务输入/配置身份、成功复用及失败续跑行为，经有界场景验收；保留已验扫描补算monotonic截止，不把某单次30秒当整批预算。"
         }
       ],
       "depends_on": [
         "V1-G7-SESSION"
       ],
-      "next_action": "用户不足10%指令已执行：O有限接收后停止，不派P。未来获恢复指令先同步Git/实际HEAD及原生锁；P仅只读定位持仓扫描预算与账户roster不完整口径，先合同后实施。指标不变。"
+      "next_action": "Claude Code本机续工：P（REPL顶层scan持仓扫描启动预算）已在2c2bfcb有限接收。下一候选T05-Q：bb批量回测验证屏幕汇总+可选启动预算+未开始单列，先合同后实施；之后pos plan all。指标不变。"
     },
     {
       "id": "V1-G7-PERF-COST",
@@ -3001,6 +3009,58 @@
       },
       "evidence": [
         "plan/fusion/iteration10/T05O_SCAN_DEEP_BUDGET_ACCEPTANCE.json",
+        "plan/fusion/RESUME.md"
+      ]
+    },
+    {
+      "id": "T05P-ACCEPT-20261028",
+      "date": "2026-10-28",
+      "type": "progress",
+      "scope_revision": "V1-progress-1",
+      "task_ids": [
+        "V1-G7-BATCH-BUDGET"
+      ],
+      "reason": "Claude Code本机续工：P REPL顶层scan持仓扫描可选启动预算有限接收（代码2c2bfcb），scan <主题>改为拒绝；先57红后71绿、相关815通过；含追修与ISS-135（5870ae8）的最终树全量守卫5028通过/0失败/12跳过（非UTF-8模式、真实exit0），独立复核无P0/P1。分数/范围/权重/适用性不变，BATCH-BUDGET未闭合。",
+      "before": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "after": {
+        "engineering": {
+          "denominator": 98,
+          "met": 47,
+          "unknown": 46,
+          "lower": 47.95918367346939,
+          "upper": 94.89795918367346
+        },
+        "acceptance": {
+          "denominator": 111,
+          "met": 40,
+          "unknown": 7,
+          "lower": 36.03603603603604,
+          "upper": 42.34234234234234
+        },
+        "lower": 41.99760985475271,
+        "upper": 68.6201507630079,
+        "closed": false
+      },
+      "evidence": [
+        "plan/fusion/iteration10/T05P_PORTFOLIO_SCAN_BUDGET_ACCEPTANCE.json",
         "plan/fusion/RESUME.md"
       ]
     }

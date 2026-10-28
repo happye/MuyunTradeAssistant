@@ -1,6 +1,6 @@
 # 暮云思辨投资助手 — AI Agent 开发手册
 
-当前交接（2026-10-28停止）：用户额度不足10%，已完成当前T05-O并停止，代码56fbe21；M/N/O均限定接收，714相关加最终114增量通过，未跑最终全仓。DSH已锁STOP_PENDING，最后running=false/queue0；不杀用户共享Host。P仅只读定位未派发。恢复见[RESUME](plan/fusion/RESUME.md)。
+当前交接（2026-10-28，Claude Code本机续工）：T05-P顶层`scan`/`s`持仓扫描可选`--budget`已限定交付，代码`2c2bfcb`（另`d760708`修测试代码页可移植性、合同`76cebba`）；进度不变（工程47/98、验收40/111），BATCH-BUDGET/G7/T05/V1未关闭。下一候选T05-Q：`bb`批量回测屏幕汇总+可选启动预算+未开始单列。另一机器Codex/DSH的STOP_PENDING锁与原件不在本机，不重投其请求。恢复见[RESUME](plan/fusion/RESUME.md)。
 
 > 任何 AI 编码工具打开此项目时，请先阅读本文件。
 > 详细文档索引见末尾。
@@ -41,6 +41,7 @@ bz --check / bz --manual         # 数据源体检 / 单股手动评分兜底
 expect [天数]                   # 默认未来30天事件/预期透支；events为事后事件
 fear / fear history / fear backfill  # 客观恐慌指数 / 历史图 / 断点回填
 scan market deep --budget 600   # 自动深析可选启动预算；当前阶段/股票可完成
+scan --budget 600               # 持仓扫描可选启动预算；当前一只跑完
 scan review [天数]              # 默认7天扫描收益、沪深300同窗超额/走势
 scan review import              # 导入旧扫描报告，同(时间,来源)幂等
 watch / watch add <代码|#N> / watch rm <代码>
